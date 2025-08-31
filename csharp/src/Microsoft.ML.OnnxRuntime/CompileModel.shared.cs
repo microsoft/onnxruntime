@@ -147,6 +147,12 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Delegate to write/save a buffer containing ONNX model bytes to a custom destination.
+        /// </summary>
+        /// <param name="buffer">The buffer to write out.</param>
+        public delegate void WriteBufferDelegate(ReadOnlySpan<byte> buffer);
+
+        /// <summary>
         /// Sets a delegate that is called by ORT to write out the output model's serialized ONNX bytes.
         /// The provided delegate may be called repeatedly until the entire output model has been written out.
         /// Each call to the delegate is expected to consume/handle the entire input buffer.
@@ -154,36 +160,54 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="writeBufferDelegate">The delegate called by ORT to write out the model.</param>
         public void SetOutputModelWriteBufferDelegate(WriteBufferDelegate writeBufferDelegate)
         {
-            ReleaseWriteBufferDelegate();
+            _writeBufferDelegateState?.Dispose();
+            _writeBufferDelegateState =
+                new DelegateResources<WriteBufferConnector, NativeMethods.DOrtWriteBufferDelegate>(
+                    new WriteBufferConnector(writeBufferDelegate),
+                    new NativeMethods.DOrtWriteBufferDelegate(WriteBufferConnector.WriteBufferDelegateWrapper));
 
-            _writeBufferConnector = new WriteBufferConnector(writeBufferDelegate);
-            _writeBufferDelegate = new NativeMethods.DOrtWriteBufferDelegate(
-                WriteBufferConnector.WriteBufferDelegateWrapper);
-
-            // make sure these stay alive. not sure if this is necessary when they're class members though
-            _writeBufferConnectorHandle = GCHandle.Alloc(_writeBufferConnector);
-            _writeBufferDelegateHandle = GCHandle.Alloc(_writeBufferDelegate);
-
-            IntPtr funcPtr = Marshal.GetFunctionPointerForDelegate(_writeBufferDelegate);
+            IntPtr funcPtr = _writeBufferDelegateState.GetFunctionPointerForDelegate();
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelWriteFunc(
                     handle,
                     funcPtr,
-                    GCHandle.ToIntPtr(_writeBufferConnectorHandle)));
+                    _writeBufferDelegateState.GetConnectorHandleAsPointer()));
+        }
+
+        // TODO: Add return value and other parameters
+        public delegate void HandleInitializerDelegate(string initializerName);
+
+        /// <summary>
+        /// Sets a delegate that is called by ORT for every initializer when generating the compiled model.
+        /// The delegate allows the user to determine whether the initializer should be stored within the compiled
+        /// model or externally in a file. If the delegate chooses to store an initializer externally, the delegate
+        /// implementation is responsible for writing the initializer data to a file.
+        /// </summary>
+        /// <param name="handleInitializerDelegate">The delegate called by ORT for every initializer.</param>
+        public void SetOutputModelHandleInitializerDelegate(HandleInitializerDelegate handleInitializerDelegate)
+        {
+            _handleInitializerDelegateState?.Dispose();
+            _handleInitializerDelegateState =
+                new DelegateResources<HandleInitializerConnector, NativeMethods.DOrtHandleInitializerDataDelegate>(
+                    new HandleInitializerConnector(handleInitializerDelegate),
+                    new NativeMethods.DOrtHandleInitializerDataDelegate(
+                        HandleInitializerConnector.HandleInitializerDelegateWrapper));
+
+            IntPtr funcPtr = _handleInitializerDelegateState.GetFunctionPointerForDelegate();
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelHandleInitializerFunc(
+                    handle,
+                    funcPtr,
+                    _handleInitializerDelegateState.GetConnectorHandleAsPointer()));
         }
 
         #region Delegate helpers
         /// <summary>
-        /// Delegate to write/save a buffer containing ONNX model bytes to a custom destination.
-        /// </summary>
-        /// <param name="buffer">The buffer to write out.</param>
-        public delegate void WriteBufferDelegate(ReadOnlySpan<byte> buffer);
-
-        /// <summary>
         /// Class to bridge the C# and native worlds for the "write buffer" delegate
         /// </summary>
-        internal class WriteBufferConnector
+        private class WriteBufferConnector
         {
             private readonly WriteBufferDelegate _csharpDelegate;
 
@@ -223,6 +247,110 @@ namespace Microsoft.ML.OnnxRuntime
                 return IntPtr.Zero;
             }
         }
+
+        /// <summary>
+        /// Class to bridge the C# and native worlds for the "write buffer" delegate
+        /// </summary>
+        private class HandleInitializerConnector
+        {
+            private readonly HandleInitializerDelegate _csharpDelegate;
+
+            internal HandleInitializerConnector(HandleInitializerDelegate handleInitializerDelegate)
+            {
+                _csharpDelegate = handleInitializerDelegate;
+            }
+
+            public static IntPtr HandleInitializerDelegateWrapper(
+                IntPtr /* void* */ state,
+                IntPtr /* const char* */ initializerName,
+                IntPtr /* const OrtValue* */ initializerValue,
+                IntPtr /* const OrtExternalInitializerInfo* */ externalInfo,
+                out IntPtr /* OrtExternalInitializerInfo** */ newExternalInfo)
+            {
+                newExternalInfo = IntPtr.Zero;
+
+                try
+                {
+
+                    HandleInitializerConnector connector = (HandleInitializerConnector)GCHandle.FromIntPtr(state).Target;
+                    var utf8InitializerName = NativeOnnxValueHelper.StringFromNativeUtf8(initializerName);
+                    connector._csharpDelegate(utf8InitializerName);
+                }
+                catch (Exception ex)
+                {
+                    var error = $"The C# HandleInitializer delegate threw an exception: {ex.Message}";
+                    IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                    return status;
+                }
+
+                return IntPtr.Zero;
+            }
+        }
+
+        private class DelegateResources<Connector, Delegate> : IDisposable
+            where Connector : class
+            where Delegate : class
+        {
+            public DelegateResources(Connector connector, Delegate @delegate)
+            {
+                _connector = connector;
+                _delegate = @delegate;
+                _connectorHandle = GCHandle.Alloc(_connector);
+                _delegateHandle = GCHandle.Alloc(_delegate);
+            }
+
+            public IntPtr GetFunctionPointerForDelegate()
+            {
+                return Marshal.GetFunctionPointerForDelegate(_delegate);
+            }
+
+            public IntPtr GetConnectorHandleAsPointer()
+            {
+                return GCHandle.ToIntPtr(_connectorHandle);
+            }
+
+            #region IDispose implementation
+            public void Dispose()
+            {
+                DisposeImpl();
+                GC.SuppressFinalize(this);
+            }
+
+            protected virtual void DisposeImpl()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                if (_connectorHandle.IsAllocated)
+                {
+                    _connectorHandle.Free();
+                    _connector = null;
+                }
+
+                if (_delegateHandle.IsAllocated)
+                {
+                    _delegateHandle.Free();
+                    _delegate = null;
+                }
+
+                _disposed = true;
+            }
+
+            ~DelegateResources()
+            {
+                DisposeImpl();
+            }
+            #endregion
+
+            private Connector _connector = null;
+            private Delegate _delegate = null;
+            private GCHandle _connectorHandle = default;
+            private GCHandle _delegateHandle = default;
+            private bool _disposed = false;
+        }
         #endregion
 
         internal IntPtr Handle => handle;
@@ -242,47 +370,20 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.CompileApi.OrtReleaseModelCompilationOptions(handle);
             handle = IntPtr.Zero;
 
-            ReleaseWriteBufferDelegate();
+            _writeBufferDelegateState?.Dispose();
             return true;
         }
 
         /// <summary>
-        /// Release resources for the "write buffer" delegate set via SetOutputModelWriteBufferDelegate.
+        /// Stores delegate state for the "write buffer" delegate.
         /// </summary>
-        private void ReleaseWriteBufferDelegate()
-        {
-            if (_writeBufferConnectorHandle.IsAllocated)
-            {
-                _writeBufferConnectorHandle.Free();
-                _writeBufferConnector = null;
-            }
-
-            if (_writeBufferDelegateHandle.IsAllocated)
-            {
-                _writeBufferDelegateHandle.Free();
-                _writeBufferDelegate = null;
-            }
-        }
+        private DelegateResources<WriteBufferConnector, NativeMethods.DOrtWriteBufferDelegate>
+            _writeBufferDelegateState = null;
 
         /// <summary>
-        /// Instance of helper class to connect C and C# usage of the "write buffer" delegate.
+        /// Stores delegate state for the "handle initializer" delegate.
         /// </summary>
-        WriteBufferConnector _writeBufferConnector = null;
-
-        /// <summary>
-        /// Handle to the "write buffer" delegate connector that is passed to the C API as state for the
-        /// "write buffer" delegate.
-        /// </summary>
-        GCHandle _writeBufferConnectorHandle = default;
-
-        /// <summary>
-        /// Delegate instance for "write buffer" that is provided to the C API.
-        /// </summary>
-        NativeMethods.DOrtWriteBufferDelegate _writeBufferDelegate = null;
-
-        /// <summary>
-        /// Handle to the "write buffer" delegate (ensures stays alive).
-        /// </summary>
-        GCHandle _writeBufferDelegateHandle = default;
+        private DelegateResources<HandleInitializerConnector, NativeMethods.DOrtHandleInitializerDataDelegate>
+            _handleInitializerDelegateState = null;
     }
 }

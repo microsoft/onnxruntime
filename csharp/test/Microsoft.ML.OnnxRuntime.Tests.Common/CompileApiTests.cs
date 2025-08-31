@@ -130,9 +130,9 @@ public class CompileApiTests
         using (var compileOptions = new OrtModelCompilationOptions(sess_options))
         {
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
-            var output_model_file = "squeezenet_write_delegate_ctx.onnx";
+            var outputModelFilePath = "squeezenet_write_delegate_ctx.onnx";
 
-            using (FileStream fs = new FileStream(output_model_file, FileMode.Create, FileAccess.Write))
+            using (FileStream fs = new FileStream(outputModelFilePath, FileMode.Create, FileAccess.Write))
             {
                 void BasicWriteBufferDelegate(ReadOnlySpan<byte> buffer)
                 {
@@ -145,11 +145,46 @@ public class CompileApiTests
                 compileOptions.SetOutputModelWriteBufferDelegate(BasicWriteBufferDelegate);
                 compileOptions.CompileModel();
             }
-            Assert.True(File.Exists(output_model_file));
+            Assert.True(File.Exists(outputModelFilePath));
 
-            if (File.Exists(output_model_file))
+            if (File.Exists(outputModelFilePath))
             {
-                File.Delete(output_model_file);
+                File.Delete(outputModelFilePath);
+            }
+        }
+    }
+
+    [Fact]
+    public void HandleInitializersWithDelegate()
+    {
+        var sess_options = new SessionOptions();
+
+        using (var compileOptions = new OrtModelCompilationOptions(sess_options))
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+            var outputModelFilePath = "squeezenet_handle_initializer_delegate_ctx.onnx";
+            var initializersFilePath = "squeezenet_handle_initializer_delegate_ctx.bin";
+
+            using (FileStream fs = new FileStream(initializersFilePath, FileMode.Create, FileAccess.Write))
+            {
+                void BasicHandleInitializer(string initializerName)
+                {
+                    Assert.True(initializerName.Length > 0);
+                    Console.WriteLine(initializerName);
+                    // fs.Write(buffer.ToArray(), 0, buffer.Length);  // Write it out to a file
+                }
+
+                // Compile and generate an output model.
+                compileOptions.SetInputModelFromBuffer(model);
+                compileOptions.SetOutputModelPath(outputModelFilePath);
+                compileOptions.SetOutputModelHandleInitializerDelegate(BasicHandleInitializer);
+                compileOptions.CompileModel();
+            }
+            Assert.True(File.Exists(outputModelFilePath));
+
+            if (File.Exists(outputModelFilePath))
+            {
+                File.Delete(outputModelFilePath);
             }
         }
     }

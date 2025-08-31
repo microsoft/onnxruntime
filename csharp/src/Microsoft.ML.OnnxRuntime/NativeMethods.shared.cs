@@ -2414,7 +2414,7 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtHandleInitializerDataDelegate(
             IntPtr /* void* */ state,
-            byte[] /* const char* */ initializerName,
+            IntPtr /* const char* */ initializerName,
             IntPtr /* const OrtValue* */ initializerValue,
             IntPtr /* const OrtExternalInitializerInfo* */ externalInfo,
             out IntPtr /* OrtExternalInitializerInfo** */ newExternalInfo

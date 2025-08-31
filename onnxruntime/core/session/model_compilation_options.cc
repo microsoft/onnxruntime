@@ -104,7 +104,7 @@ Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr a
 }
 
 void ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state) {
-  session_options_.value.ep_context_gen_options.output_model_location = epctx::OutStreamHolder{
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::BufferWriteFuncHolder{
       write_func,
       state,
   };
@@ -253,11 +253,11 @@ Status ModelCompilationOptions::Check() const {
                            "Invalid buffer configuration for output model: allocator is null");
   }
 
-  const epctx::OutStreamHolder* output_stream_ptr = ep_context_gen_options.TryGetOutputModelOutStream();
+  const epctx::BufferWriteFuncHolder* output_write_func_holder = ep_context_gen_options.TryGetOutputModelWriteFunc();
 
-  if (output_stream_ptr != nullptr && output_stream_ptr->write_func == nullptr) {
+  if (output_write_func_holder != nullptr && output_write_func_holder->write_func == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid write-to-stream function for output model: function pointer is null");
+                           "Invalid buffer writing function for output model: function pointer is null");
   }
 
   return Status::OK();

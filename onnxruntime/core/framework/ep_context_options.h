@@ -25,7 +25,7 @@ struct BufferHolder {
 /// <summary>
 /// Holds the opaque stream state and the write function that ORT calls to write out the output model.
 /// </summary>
-struct OutStreamHolder {
+struct BufferWriteFuncHolder {
   OrtWriteBufferFunc write_func = nullptr;
   void* stream_state = nullptr;  // Opaque pointer to user's stream state. Passed as first argument to write_func.
 };
@@ -65,7 +65,7 @@ struct ModelGenOptions {
     kReturnError,
   };
 
-  ModelGenOptions() = default;
+  ModelGenOptions();
 
   // Initializes from string key/value pairs in session config options.
   explicit ModelGenOptions(const ConfigOptions& config_options);
@@ -79,18 +79,18 @@ struct ModelGenOptions {
   std::variant<std::monostate,         // Initial state (no output model location)
                std::filesystem::path,  // output model path
                BufferHolder,           // buffer to save output model
-               OutStreamHolder>        // Function to write the output model to a user's stream.
+               BufferWriteFuncHolder>  // Function to write the output model to a user's stream.
       output_model_location = std::monostate{};
 
   std::variant<std::monostate,               // Initial state (initializers embedded in ONNX model).
-               ExternalInitializerFileInfo,  // Initializers saved in an external file
+               ExternalInitializerFileInfo,  // Initializers saved to a single external file depending on size.
                InitializerHandler>           // Custom function called for every initializer to determine location.
       initializers_location = std::monostate{};
 
   bool HasOutputModelLocation() const;
   const std::filesystem::path* TryGetOutputModelPath() const;
   const BufferHolder* TryGetOutputModelBuffer() const;
-  const OutStreamHolder* TryGetOutputModelOutStream() const;
+  const BufferWriteFuncHolder* TryGetOutputModelWriteFunc() const;
 
   bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
@@ -98,15 +98,15 @@ struct ModelGenOptions {
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Class that wraps the user's OrtOutStreamWriteFunc function to enable use with
+// Class that wraps the user's OrtBufferWriteFunc function to enable use with
 // C++'s std::ostream.
 // Example:
-//    OutStreamHolder stream_holder{write_func, stream_state};
-//    std::unique_ptr<OutStreamBuf> out_stream_buf = std::make_unique<OutStreamBuf>(stream_holder);
+//    BufferWriteFuncHolder write_func_holder{write_func, stream_state};
+//    std::unique_ptr<OutStreamBuf> out_stream_buf = std::make_unique<OutStreamBuf>(write_func_holder);
 //    std::ostream out_stream(out_stream_buf.get());
 class OutStreamBuf : public std::streambuf {
  public:
-  explicit OutStreamBuf(OutStreamHolder out_stream_holder);
+  explicit OutStreamBuf(BufferWriteFuncHolder write_func_holder);
   ~OutStreamBuf();
 
   const Status& GetStatus() const {
@@ -118,7 +118,7 @@ class OutStreamBuf : public std::streambuf {
   int sync() override;
 
  private:
-  OutStreamHolder out_stream_holder_{};
+  BufferWriteFuncHolder write_func_holder_{};
   std::vector<char> buffer_;
   Status last_status_{};
 };

@@ -14,6 +14,8 @@ namespace onnxruntime {
 namespace epctx {
 // class ModelGenOptions
 
+ModelGenOptions::ModelGenOptions() = default;
+
 ModelGenOptions::ModelGenOptions(const ConfigOptions& config_options) {
   enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
 
@@ -48,8 +50,8 @@ const BufferHolder* ModelGenOptions::TryGetOutputModelBuffer() const {
   return std::get_if<BufferHolder>(&output_model_location);
 }
 
-const OutStreamHolder* ModelGenOptions::TryGetOutputModelOutStream() const {
-  return std::get_if<OutStreamHolder>(&output_model_location);
+const BufferWriteFuncHolder* ModelGenOptions::TryGetOutputModelWriteFunc() const {
+  return std::get_if<BufferWriteFuncHolder>(&output_model_location);
 }
 
 bool ModelGenOptions::AreInitializersEmbeddedInOutputModel() const {
@@ -67,8 +69,8 @@ const InitializerHandler* ModelGenOptions::TryGetInitializerHandler() const {
 #if !defined(ORT_MINIMAL_BUILD)
 // class OutStreamBuf
 
-OutStreamBuf::OutStreamBuf(OutStreamHolder out_stream_holder)
-    : out_stream_holder_(out_stream_holder), buffer_(4096) {
+OutStreamBuf::OutStreamBuf(BufferWriteFuncHolder write_func_holder)
+    : write_func_holder_(write_func_holder), buffer_(65536) {
   setp(buffer_.data(), buffer_.data() + buffer_.size());
 }
 
@@ -111,7 +113,7 @@ int OutStreamBuf::sync() {
   Status status = Status::OK();
 
   ORT_TRY {
-    status = ToStatusAndRelease(out_stream_holder_.write_func(out_stream_holder_.stream_state,
+    status = ToStatusAndRelease(write_func_holder_.write_func(write_func_holder_.stream_state,
                                                               ptr, num_bytes));
   }
   ORT_CATCH(const std::exception& e) {
