@@ -176,6 +176,13 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         // TODO: Add return value and other parameters
+        /// <summary>
+        /// Delegate called by ORT for every initializer when generating the compiled model.
+        /// The delegate allows the user to determine whether the initializer should be stored within the compiled
+        /// model or externally in a file. If the delegate chooses to store an initializer externally, the delegate
+        /// implementation is responsible for writing the initializer data to a file.
+        /// </summary>
+        /// <param name="initializerName">The initializer's name.</param>
         public delegate void HandleInitializerDelegate(string initializerName);
 
         /// <summary>
@@ -288,6 +295,11 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Disposable class that stores resources for a delegate provided by the user.
+        /// </summary>
+        /// <typeparam name="Connector">The type of the connector class (e.g., WriteBufferConnector)</typeparam>
+        /// <typeparam name="Delegate">The type of the native delegate.</typeparam>
         private class DelegateResources<Connector, Delegate> : IDisposable
             where Connector : class
             where Delegate : class
@@ -371,6 +383,7 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
 
             _writeBufferDelegateState?.Dispose();
+            _handleInitializerDelegateState?.Dispose();
             return true;
         }
 
