@@ -71,7 +71,7 @@ struct RunConfig {
   bool use_extensions = false;
   bool compile_ep_context{false};
   std::basic_string<ORTCHAR_T> compile_model_path;
-  int compile_embed_mode{0};
+  bool compile_binary_embed{false};
 };
 
 struct PerformanceTestConfig {

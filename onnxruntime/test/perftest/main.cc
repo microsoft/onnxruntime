@@ -144,7 +144,7 @@ Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::Performan
   session_options.AppendExecutionProvider(provider_name, provider_options);
 
   Ort::ModelCompilationOptions model_compile_options(env, session_options);
-  model_compile_options.SetEpContextEmbedMode(test_config.run_config.compile_embed_mode);
+  model_compile_options.SetEpContextEmbedMode(test_config.run_config.compile_binary_embed);
   model_compile_options.SetInputModelPath(test_config.model_info.model_file_path.c_str());
   model_compile_options.SetOutputModelPath(output_ctx_model_path.c_str());
 
