@@ -788,6 +788,31 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.SessionOptionsSetEpSelectionPolicyDelegate,
                     typeof(DSessionOptionsSetEpSelectionPolicyDelegate));
 
+            OrtReleaseExternalInitializerInfo =
+                (DOrtReleaseExternalInitializerInfo)Marshal.GetDelegateForFunctionPointer(
+                    api_.ReleaseExternalInitializerInfo,
+                    typeof(DOrtReleaseExternalInitializerInfo));
+
+            OrtCreateExternalInitializerInfo =
+                (DOrtCreateExternalInitializerInfo)Marshal.GetDelegateForFunctionPointer(
+                    api_.CreateExternalInitializerInfo,
+                    typeof(DOrtCreateExternalInitializerInfo));
+
+            OrtExternalInitializerInfo_GetFilePath =
+                (DOrtExternalInitializerInfo_GetFilePath)Marshal.GetDelegateForFunctionPointer(
+                    api_.ExternalInitializerInfo_GetFilePath,
+                    typeof(DOrtExternalInitializerInfo_GetFilePath));
+
+            OrtExternalInitializerInfo_GetFileOffset =
+                (DOrtExternalInitializerInfo_GetFileOffset)Marshal.GetDelegateForFunctionPointer(
+                    api_.ExternalInitializerInfo_GetFileOffset,
+                    typeof(DOrtExternalInitializerInfo_GetFileOffset));
+
+            OrtExternalInitializerInfo_GetByteSize =
+                (DOrtExternalInitializerInfo_GetByteSize)Marshal.GetDelegateForFunctionPointer(
+                    api_.ExternalInitializerInfo_GetByteSize,
+                    typeof(DOrtExternalInitializerInfo_GetByteSize));
+
             OrtGetModelCompatibilityForEpDevices = (DOrtGetModelCompatibilityForEpDevices)Marshal.GetDelegateForFunctionPointer(
                 api_.GetModelCompatibilityForEpDevices,
                 typeof(DOrtGetModelCompatibilityForEpDevices));
@@ -2419,6 +2444,34 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /* const OrtExternalInitializerInfo* */ externalInfo,
             out IntPtr /* OrtExternalInitializerInfo** */ newExternalInfo
         );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseExternalInitializerInfo(IntPtr /* OrtExternalInitializerInfo* */ info);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateExternalInitializerInfo(
+            byte[] /* const ORTCHAR_T* */ filePath,
+            long /* int64_t */ fileOffset,
+            UIntPtr /* size_t */ byteSize,
+            out IntPtr /* OrtExternalInitializerInfo** */ outInfo);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* const ORTCHAR_T* */ DOrtExternalInitializerInfo_GetFilePath(
+            IntPtr /* const OrtExternalInitializerInfo* */ info);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate long /* int64_t */ DOrtExternalInitializerInfo_GetFileOffset(
+            IntPtr /* const OrtExternalInitializerInfo* */ info);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate UIntPtr /* size_t */ DOrtExternalInitializerInfo_GetByteSize(
+            IntPtr /* const OrtExternalInitializerInfo* */ info);
+
+        public static DOrtReleaseExternalInitializerInfo OrtReleaseExternalInitializerInfo;
+        public static DOrtCreateExternalInitializerInfo OrtCreateExternalInitializerInfo;
+        public static DOrtExternalInitializerInfo_GetFilePath OrtExternalInitializerInfo_GetFilePath;
+        public static DOrtExternalInitializerInfo_GetFileOffset OrtExternalInitializerInfo_GetFileOffset;
+        public static DOrtExternalInitializerInfo_GetByteSize OrtExternalInitializerInfo_GetByteSize;
 #endregion
 
 #region Auto EP API related
