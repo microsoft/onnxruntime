@@ -18,6 +18,15 @@
  * - `kBuilderOptimizationLevel`: Sets the TensorRT builder optimization level (0-5).
  * - `kONNXBytestream`: Specifies the ONNX model as a bytestream.
  * - `kONNXBytestreamSize`: Specifies the size of the ONNX bytestream.
+ * - `kEngineCacheEnable`: Enables or disables engine caching.
+ * - `kEngineCachePath`: Specifies the path for engine cache storage.
+ * - `kEngineCachePrefix`: Specifies a prefix for engine cache files.
+ * - `kTimingCacheEnable`: Enables or disables timing cache.
+ * - `kTimingCachePath`: Specifies the path for timing cache storage.
+ * - `kForceTimingCacheMatch`: Forces timing cache usage even if device profile doesn't match.
+ * - `kEngineDecryptionEnable`: Enables or disables engine decryption.
+ * - `kEngineDecryptionLibPath`: Specifies the path to the engine decryption library.
+ * - `kForceSequentialEngineBuild`: Forces sequential engine building.
  */
 namespace onnxruntime {
 namespace nv {
@@ -36,6 +45,15 @@ constexpr const char* kCudaGraphEnable = "enable_cuda_graph";
 constexpr const char* kBuilderOptimizationLevel = "nv_builder_optimization_level";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
 constexpr const char* kUseExternalDataInitializer = "nv_use_external_data_initializer";
+constexpr const char* kEngineCacheEnable = "nv_engine_cache_enable";
+constexpr const char* kEngineCachePath = "nv_engine_cache_path";
+constexpr const char* kEngineCachePrefix = "nv_engine_cache_prefix";
+constexpr const char* kTimingCacheEnable = "nv_timing_cache_enable";
+constexpr const char* kTimingCachePath = "nv_timing_cache_path";
+constexpr const char* kForceTimingCacheMatch = "nv_force_timing_cache";
+constexpr const char* kEngineDecryptionEnable = "nv_engine_decryption_enable";
+constexpr const char* kEngineDecryptionLibPath = "nv_engine_decryption_lib_path";
+constexpr const char* kForceSequentialEngineBuild = "nv_force_sequential_engine_build";
 
 }  // namespace provider_option_names
 namespace run_option_names {

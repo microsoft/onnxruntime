@@ -44,6 +44,15 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
           .AddAssignmentToReference(nv::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(nv::provider_option_names::kMaxSharedMemSize, info.max_shared_mem_size)
           .AddAssignmentToReference(nv::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
+          .AddAssignmentToReference(nv::provider_option_names::kEngineCacheEnable, info.engine_cache_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kEngineCachePath, info.engine_cache_path)
+          .AddAssignmentToReference(nv::provider_option_names::kEngineCachePrefix, info.engine_cache_prefix)
+          .AddAssignmentToReference(nv::provider_option_names::kEngineDecryptionEnable, info.engine_decryption_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kEngineDecryptionLibPath, info.engine_decryption_lib_path)
+          .AddAssignmentToReference(nv::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
+          .AddAssignmentToReference(nv::provider_option_names::kTimingCacheEnable, info.timing_cache_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kTimingCachePath, info.timing_cache_path)
+          .AddAssignmentToReference(nv::provider_option_names::kForceTimingCacheMatch, info.force_timing_cache)
           .AddAssignmentToReference(nv::provider_option_names::kDetailedBuildLog, info.detailed_build_log)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMinShapes, info.profile_min_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
@@ -101,13 +110,23 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {nv::provider_option_names::kMaxSharedMemSize, MakeStringWithClassicLocale(info.max_shared_mem_size)},
       {nv::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
+      {nv::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.engine_cache_enable)},
+      {nv::provider_option_names::kEngineCachePath, MakeStringWithClassicLocale(info.engine_cache_path)},
+      {nv::provider_option_names::kEngineCachePrefix, MakeStringWithClassicLocale(info.engine_cache_prefix)},
+      {nv::provider_option_names::kEngineDecryptionEnable, MakeStringWithClassicLocale(info.engine_decryption_enable)},
+      {nv::provider_option_names::kEngineDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
+      {nv::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
+      {nv::provider_option_names::kTimingCacheEnable, MakeStringWithClassicLocale(info.timing_cache_enable)},
+      {nv::provider_option_names::kTimingCachePath, MakeStringWithClassicLocale(info.timing_cache_path)},
+      {nv::provider_option_names::kForceTimingCacheMatch, MakeStringWithClassicLocale(info.force_timing_cache)},
       {nv::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.detailed_build_log)},
       {nv::provider_option_names::kProfilesMinShapes, MakeStringWithClassicLocale(info.profile_min_shapes)},
       {nv::provider_option_names::kProfilesMaxShapes, MakeStringWithClassicLocale(info.profile_max_shapes)},
       {nv::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
       {nv::provider_option_names::kBuilderOptimizationLevel, MakeStringWithClassicLocale(info.builder_optimization_level)},
-      {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)}};
+      {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)},
+      {nv::provider_option_names::kMultiProfileEnable, MakeStringWithClassicLocale(info.multi_profile_enable)}};
   return options;
 }
 }  // namespace onnxruntime

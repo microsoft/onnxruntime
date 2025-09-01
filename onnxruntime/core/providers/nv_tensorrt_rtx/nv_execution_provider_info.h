@@ -26,6 +26,7 @@ struct NvExecutionProviderInfo {
   size_t max_workspace_size{0};
   size_t max_shared_mem_size{0};
   bool dump_subgraphs{false};
+  bool engine_cache_enable{false};
   std::string engine_cache_path{""};
   bool weight_stripped_engine_enable{false};
   std::string onnx_model_folder_path{""};
@@ -37,7 +38,9 @@ struct NvExecutionProviderInfo {
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
+  bool timing_cache_enable{false};
   std::string timing_cache_path{""};
+  bool force_timing_cache{false};
   bool detailed_build_log{false};
   bool sparsity_enable{false};
   int auxiliary_streams{-1};

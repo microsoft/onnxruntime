@@ -346,6 +346,9 @@ class NvExecutionProvider : public IExecutionProvider {
   int auxiliary_streams_ = -1;
   int builder_optimization_level_ = TRT_DEFAULT_OPTIMIZER_LEVEL;
   std::string cache_path_, engine_decryption_lib_path_;
+  bool timing_cache_enable_ = false;
+  std::string timing_cache_path_;
+  bool force_timing_cache_ = false;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   std::mutex tensorrt_mu_;
   int device_id_;

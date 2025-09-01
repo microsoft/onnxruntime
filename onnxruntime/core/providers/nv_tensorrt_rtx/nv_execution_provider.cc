@@ -979,7 +979,12 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   ep_context_file_path_ = info.ep_context_file_path;
   ep_context_embed_mode_ = info.ep_context_embed_mode;
   enable_engine_cache_for_ep_context_model();
+  engine_cache_enable_ = info.engine_cache_enable;
+  cache_path_ = info.engine_cache_path;
   cache_prefix_ = info.engine_cache_prefix;
+  timing_cache_enable_ = info.timing_cache_enable;
+  timing_cache_path_ = info.timing_cache_path;
+  force_timing_cache_ = info.force_timing_cache;
   // use a more global cache if given
   engine_decryption_enable_ = info.engine_decryption_enable;
   if (engine_decryption_enable_) {
