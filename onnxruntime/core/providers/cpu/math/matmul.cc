@@ -141,6 +141,56 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+template <>
+Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
+
+  const Tensor* a = ctx->Input<Tensor>(0);
+  const Tensor* b = ctx->Input<Tensor>(1);
+  const auto& b_shape = b->Shape();
+
+  // match CUDA kernel implementation, ignore transpose for vectors
+  const bool trans_a = false;
+  const bool trans_b = false;
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b, false, false));
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
+
+  if (helper.K() == 0) {
+    // When we have (M, 0, N) then the inputs are empty, but the output should
+    // be filled out with zeros.
+    memset(y->MutableDataRaw(), 0, y->SizeInBytes());
+    return Status::OK();
+  }
+
+  const auto* a_data = a->Data<MLFloat16>();
+  const auto* b_data = b ? b->Data<MLFloat16>() : nullptr;
+  auto* y_data = y->MutableData<MLFloat16>();
+
+  const size_t max_len = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(trans_a);
+  const size_t ldb = helper.Ldb(trans_b);
+  std::vector<MLAS_HALF_GEMM_DATA_PARAMS> data(max_len);
+  for (size_t i = 0; i < max_len; i++) {
+    data[i].A = a_data + helper.LeftOffsets()[i];
+    data[i].lda = lda;
+    data[i].B = b_data + helper.RightOffsets()[i];
+    data[i].ldb = ldb;
+    data[i].C = y_data + helper.OutputOffsets()[i];
+    data[i].ldc = N;
+  }
+  MlasHalfGemmBatch(M, N, K, max_len, data.data(), thread_pool);
+  return Status::OK();
+}
+
 #if defined(__aarch64__) && defined(__linux__)
 bool GemmPackBBfloat16(AllocatorPtr& alloc,
                        const Tensor& tensor_b,
@@ -300,55 +350,6 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
                   M, N, K, data.data(), max_len, thread_pool);
   }
-  return Status::OK();
-}
-
-Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
-  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-
-  const Tensor* a = ctx->Input<Tensor>(0);
-  const Tensor* b = ctx->Input<Tensor>(1);
-  const auto& b_shape = b->Shape();
-
-  // match CUDA kernel implementation, ignore transpose for vectors
-  const bool trans_a = false;
-  const bool trans_b = false;
-
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b, false, false));
-  Tensor* y = ctx->Output(0, helper.OutputShape());
-
-  // Bail out early if the output is going to be empty
-  if (y->Shape().Size() == 0)
-    return Status::OK();
-
-  if (helper.K() == 0) {
-    // When we have (M, 0, N) then the inputs are empty, but the output should
-    // be filled out with zeros.
-    memset(y->MutableDataRaw(), 0, y->SizeInBytes());
-    return Status::OK();
-  }
-
-  const auto* a_data = a->Data<MLFloat16>();
-  const auto* b_data = b ? b->Data<MLFloat16>() : nullptr;
-  auto* y_data = y->MutableData<MLFloat16>();
-
-  const size_t max_len = helper.OutputOffsets().size();
-  const size_t M = static_cast<size_t>(helper.M());
-  const size_t N = static_cast<size_t>(helper.N());
-  const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = helper.Lda(trans_a);
-  const size_t ldb = helper.Ldb(trans_b);
-  std::vector<MLAS_HALF_GEMM_DATA_PARAMS> data(max_len);
-  for (size_t i = 0; i < max_len; i++) {
-    data[i].A = a_data + helper.LeftOffsets()[i];
-    data[i].lda = lda;
-    data[i].B = b_data + helper.RightOffsets()[i];
-    data[i].ldb = ldb;
-    data[i].C = y_data + helper.OutputOffsets()[i];
-    data[i].ldc = N;
-  }
-  MlasHalfGemmBatch(M, N, K, max_len, data.data(), thread_pool);
   return Status::OK();
 }
 
