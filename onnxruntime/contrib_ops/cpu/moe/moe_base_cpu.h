@@ -50,8 +50,11 @@ class MoEBaseCPU {
 
     swiglu_fusion_ = op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0);
     swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
-    activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
-    activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 0.0f);
+    activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.702f);
+    activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 1.0f);
+    // Support legacy attribute name for interleaved layout used by some tests
+    int64_t swiglu_interleaved_attr = op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_interleaved", 0);
+    swiglu_interleaved_ = (swiglu_interleaved_attr == 1);
   }
 
   bool normalize_routing_weights_;
@@ -62,6 +65,7 @@ class MoEBaseCPU {
   float activation_beta_;
   float swiglu_limit_;
   int64_t swiglu_fusion_;
+  bool swiglu_interleaved_ = false;
 };
 
 }  // namespace contrib
