@@ -872,7 +872,6 @@ static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* dat
     return Ort::Status{nullptr};
   }
   using tensor_elem_data_map = std::unordered_map<ONNXTensorElementDataType, size_t>;
-  ;
   static tensor_elem_data_map tensor_elem_data_size{
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, sizeof(uint8_t)},
