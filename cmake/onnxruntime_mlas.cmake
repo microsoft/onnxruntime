@@ -200,6 +200,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_bitnet_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
@@ -646,6 +647,7 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_bitnet_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp

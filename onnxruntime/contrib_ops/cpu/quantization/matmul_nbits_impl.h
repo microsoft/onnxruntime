@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename inputT, typename zeroT>
+template <typename inputT, typename zeroT, int qbits = 4>
 void DequantizeBlockwise(
     inputT* output,              // dequantized output
     const uint8_t* quant_data,   // quantized input
