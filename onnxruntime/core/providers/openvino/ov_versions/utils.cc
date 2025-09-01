@@ -153,6 +153,24 @@ GetConnectedClusters(const GraphViewer& graph_viewer, const std::vector<std::vec
   return connected_clusters;
 }
 
+bool AddTrivialClusterToNextClusterIfConnected(const GraphViewer& graph_viewer,
+                                               const NodeIndex curr_node_index,
+                                               const std::vector<NodeIndex>& search_cluster) {
+  for (auto index : search_cluster) {
+    auto curr_node = graph_viewer.GetNode(index);
+    for (auto node = curr_node->InputNodesBegin(); node != curr_node->InputNodesEnd(); ++node) {
+      if ((*node).Index() == curr_node_index)
+        return true;
+    }
+
+    for (auto node = curr_node->OutputNodesBegin(); node != curr_node->OutputNodesEnd(); ++node) {
+      if ((*node).Index() == curr_node_index)
+        return true;
+    }
+  }
+  return false;
+}
+
 void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                const std::vector<NodeIndex>& cluster,
                                const std::unordered_set<std::string>& ng_required_initializers,
