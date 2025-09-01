@@ -175,7 +175,6 @@ namespace Microsoft.ML.OnnxRuntime
                     _writeBufferDelegateState.GetConnectorHandleAsPointer()));
         }
 
-        // TODO: Add return value and other parameters
         /// <summary>
         /// Delegate called by ORT for every initializer when generating the compiled model.
         /// The delegate allows the user to determine whether the initializer should be stored within the compiled
@@ -183,7 +182,17 @@ namespace Microsoft.ML.OnnxRuntime
         /// implementation is responsible for writing the initializer data to a file.
         /// </summary>
         /// <param name="initializerName">The initializer's name.</param>
-        public delegate void HandleInitializerDelegate(string initializerName);
+        /// <param name="initializerValue">The readonly OrtValue instance containing the data, type, and
+        /// shape of the initializer.</param>
+        /// <param name="optionalExternalInfo">May be null. If the initializer is originally stored externally,
+        /// this contains the file path, file offset, and data size. Otherwise, this is null.</param>
+        /// <returns>A new OrtExternalInitializerInfo indicating the new location of the initializer.
+        /// Returns null if the initializer should be stored within the generated compiled model.</returns>
+        /// <remarks>The return value may be null.</remarks>
+        public delegate OrtExternalInitializerInfo HandleInitializerDelegate(
+            string initializerName,
+            IReadOnlyOrtValue initializerValue,
+            IReadOnlyExternalInitializerInfo optionalExternalInfo);
 
         /// <summary>
         /// Sets a delegate that is called by ORT for every initializer when generating the compiled model.
@@ -280,8 +289,45 @@ namespace Microsoft.ML.OnnxRuntime
                 {
 
                     HandleInitializerConnector connector = (HandleInitializerConnector)GCHandle.FromIntPtr(state).Target;
-                    var utf8InitializerName = NativeOnnxValueHelper.StringFromNativeUtf8(initializerName);
-                    connector._csharpDelegate(utf8InitializerName);
+                    string utf8InitializerName = NativeOnnxValueHelper.StringFromNativeUtf8(initializerName);
+                    IReadOnlyOrtValue readOnlyInitializerValue = new OrtValue(initializerValue, owned: false);
+                    IReadOnlyExternalInitializerInfo readOnlyExternalInfo = null;
+
+                    if (externalInfo != IntPtr.Zero)
+                    {
+                        readOnlyExternalInfo = new OrtExternalInitializerInfo(externalInfo, ownsHandle: false);
+                    }
+
+                    // Call user's delegate, which may return the new location of the initializer.
+                    OrtExternalInitializerInfo optionalNewExternalInfo = connector._csharpDelegate(
+                        utf8InitializerName, readOnlyInitializerValue, readOnlyExternalInfo);
+
+                    if (optionalNewExternalInfo != null)
+                    {
+                        // Delegate returned info about a new location for the initializer.
+                        // Can't guarantee that the new external info returned by user's delegate is not referenced
+                        // by other C# code. ORT expects to own the new external info, so create a copy here and
+                        // give it to ORT.
+                        string newFilePath = optionalNewExternalInfo.GetFilePath();
+                        byte[] newFilePathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(newFilePath);
+
+                        IntPtr status = NativeMethods.OrtCreateExternalInitializerInfo(
+                            newFilePathBytes,
+                            optionalNewExternalInfo.GetFileOffset(),
+                            (UIntPtr)optionalNewExternalInfo.GetByteSize(),
+                            out newExternalInfo);
+
+                        if (status != IntPtr.Zero)
+                        {
+                            return status;
+                        }
+                    }
+                    else
+                    {
+                        // User's delegate did not return a new location for the initializer. ORT will store initializer
+                        // within the generated compiled model.
+                        newExternalInfo = IntPtr.Zero;
+                    }
                 }
                 catch (Exception ex)
                 {

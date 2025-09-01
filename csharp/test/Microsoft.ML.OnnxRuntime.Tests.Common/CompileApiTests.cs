@@ -155,7 +155,7 @@ public class CompileApiTests
     }
 
     [Fact]
-    public void HandleInitializersWithDelegate()
+    public void HandleInitializersDelegate()
     {
         var sess_options = new SessionOptions();
 
@@ -167,11 +167,26 @@ public class CompileApiTests
 
             using (FileStream fs = new FileStream(initializersFilePath, FileMode.Create, FileAccess.Write))
             {
-                void BasicHandleInitializer(string initializerName)
+                // Custom delegate that stores large initializers in a new file.
+                OrtExternalInitializerInfo BasicHandleInitializer(string initializerName,
+                                                                  IReadOnlyOrtValue initializerValue,
+                                                                  IReadOnlyExternalInitializerInfo optionalExternalInfo)
                 {
                     Assert.True(initializerName.Length > 0);
-                    Console.WriteLine(initializerName);
-                    // fs.Write(buffer.ToArray(), 0, buffer.Length);  // Write it out to a file
+
+                    var byteSize = initializerValue.GetTensorSizeInBytes();
+                    if (byteSize <= 64)
+                    {
+                        // Keep small initializers stored within model.
+                        return null;
+                    }
+
+                    long byteOffset = fs.Position;
+                    ReadOnlySpan<byte> dataSpan = initializerValue.GetTensorDataAsSpan<byte>();
+                    fs.Write(dataSpan.ToArray(), 0, dataSpan.Length);  // Write it out to a file
+
+                    // Return the data's new location.
+                    return new OrtExternalInitializerInfo(initializersFilePath, byteOffset, byteSize);
                 }
 
                 // Compile and generate an output model.
@@ -181,6 +196,59 @@ public class CompileApiTests
                 compileOptions.CompileModel();
             }
             Assert.True(File.Exists(outputModelFilePath));
+
+            if (File.Exists(outputModelFilePath))
+            {
+                File.Delete(outputModelFilePath);
+            }
+        }
+    }
+
+    [Fact]
+    public void HandleInitializersDelegateWithReuse()
+    {
+        var sess_options = new SessionOptions();
+
+        using (var compileOptions = new OrtModelCompilationOptions(sess_options))
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("conv_qdq_external_ini.onnx");
+            var outputModelFilePath = "conv_qdq_external_ini.reuse.ctx.onnx";
+            bool reusedExternalInitializers = false;
+
+            // Custom delegate that reuses the original external initializer file.
+            OrtExternalInitializerInfo ReuseExternalInitializers(string initializerName,
+                                                                 IReadOnlyOrtValue initializerValue,
+                                                                 IReadOnlyExternalInitializerInfo optionalExternalInfo)
+            {
+                Assert.True(initializerName.Length > 0);
+
+                if (optionalExternalInfo != null)
+                {
+                    reusedExternalInitializers = true;  // For test assertion only
+                    string originalFilePath = optionalExternalInfo.GetFilePath();
+                    long originalFileOffset = optionalExternalInfo.GetFileOffset();
+                    long originalByteSize = optionalExternalInfo.GetByteSize();
+
+                    Assert.True(originalFilePath.Length > 0);
+                    Assert.True(originalFileOffset >= 0);
+                    Assert.True(originalByteSize > 0);
+
+                    // This initializer comes from an external file. Reuse it for compiled model.
+                    return new OrtExternalInitializerInfo(originalFilePath, originalFileOffset, originalByteSize);
+                }
+
+                // Otherwise, embed initializers that were not originally external.
+                return null;
+            }
+
+            // Compile and generate an output model.
+            compileOptions.SetInputModelFromBuffer(model);
+            compileOptions.SetOutputModelPath(outputModelFilePath);
+            compileOptions.SetOutputModelHandleInitializerDelegate(ReuseExternalInitializers);
+            compileOptions.CompileModel();
+
+            Assert.True(File.Exists(outputModelFilePath));
+            Assert.True(reusedExternalInitializers);
 
             if (File.Exists(outputModelFilePath))
             {

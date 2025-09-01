@@ -11,10 +11,10 @@ namespace Microsoft.ML.OnnxRuntime
     /// Class to that stores information about the file location where an "external" initializer is stored.
     /// </summary>
     /// <see cref="OrtModelCompilationOptions.HandleInitializerDelegate"/>
-    public class OrtExternalInitializerInfo : SafeHandle
+    public class OrtExternalInitializerInfo : SafeHandle, IReadOnlyExternalInitializerInfo
     {
         // Set to true when constructed with an externally managed constant handle owned by ORT.
-        private readonly bool _isConst;
+        private readonly bool _ownsHandle = true;
 
         /// <summary>
         /// Create a new OrtExternalInitializerInfo instance. 
@@ -28,26 +28,25 @@ namespace Microsoft.ML.OnnxRuntime
             var platformFilePath = NativeOnnxValueHelper.GetPlatformSerializedString(filePath);
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtCreateExternalInitializerInfo(platformFilePath, fileOffset, (UIntPtr)byteSize, out handle));
-            _isConst = false;
+            _ownsHandle = true;
         }
 
         /// <summary>
         /// Create a new OrtExternalInitializerInfo instance from an existing native OrtExternalInitializerInfo handle.
         /// </summary>
         /// <param name="constHandle">Native OrtExternalInitializerInfo handle.</param>
-        /// <remarks>
-        /// The instance is read-only.
-        /// </remarks>
+        /// <param name="ownsHandle">True if the OrtExternalInitializerInfo instance owns the native handle.
+        /// Defaults to false.</param>
         /// <exception cref="InvalidOperationException"></exception>
-        internal OrtExternalInitializerInfo(IntPtr constHandle)
-            : base(IntPtr.Zero, ownsHandle: false)
+        internal OrtExternalInitializerInfo(IntPtr constHandle, bool ownsHandle = false)
+            : base(IntPtr.Zero, ownsHandle)
         {
             if (constHandle == IntPtr.Zero)
             {
                 throw new InvalidOperationException($"{nameof(OrtExternalInitializerInfo)}: Invalid instance.");
             }
             SetHandle(constHandle);
-            _isConst = true;
+            _ownsHandle = ownsHandle;
         }
 
         /// <summary>
@@ -65,7 +64,7 @@ namespace Microsoft.ML.OnnxRuntime
                 return string.Empty;
             }
 
-            return NativeOnnxValueHelper.StringFromNativeUtf8(filePathPtr);
+            return NativeOnnxValueHelper.StringFromNativePathString(filePathPtr);
         }
 
         /// <summary>
@@ -98,7 +97,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>true on success and false on error.</returns>
         protected override bool ReleaseHandle()
         {
-            if (_isConst)
+            if (!_ownsHandle)
             {
                 // Return false to indicate an error.
                 // ReleaseHandle() should not be called on a const handle that this class does not own.
@@ -109,5 +108,32 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             return true;
         }
+    }
+
+    /// <summary>
+    /// Interface for all readonly methods implemented by OrtExternalInitializerInfo.
+    /// </summary>
+    public interface IReadOnlyExternalInitializerInfo
+    {
+        /// <summary>
+        /// Get the file path to the file that store's the initializer's data.
+        /// </summary>
+        /// <remarks>
+        /// The path is relative to the filesystem directory where the ONNX model was stored.
+        /// </remarks>
+        /// <returns>The file path.</returns>
+        string GetFilePath();
+
+        /// <summary>
+        /// Get the byte offset within the file where the initializer's data is stored.
+        /// </summary>
+        /// <returns>The file offset location.</returns>
+        long GetFileOffset();
+
+        /// <summary>
+        /// Get the size in bytes of the initializer's data within the file.
+        /// </summary>
+        /// <returns>The size in bytes of the initializer data.</returns>
+        long GetByteSize();
     }
 }
