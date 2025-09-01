@@ -988,6 +988,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   force_sequential_engine_build_ = info.force_sequential_engine_build;
   sparsity_enable_ = info.sparsity_enable;
   auxiliary_streams_ = info.auxiliary_streams;
+  builder_optimization_level_ = info.builder_optimization_level;
   profile_min_shapes = info.profile_min_shapes;
   profile_max_shapes = info.profile_max_shapes;
   profile_opt_shapes = info.profile_opt_shapes;
@@ -2534,6 +2535,23 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   if (max_shared_mem_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_SHARED_MEMORY, max_shared_mem_size_);
   }
+
+  // Set builder optimization level
+#if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 1)
+  if (builder_optimization_level_ != 3) {
+    if (builder_optimization_level_ < 0 || builder_optimization_level_ > 5) {
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Invalid builder optimization level " << builder_optimization_level_ 
+                           << ". Valid range is [0-5]. Using default level 3.";
+    } else {
+      trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Builder optimization level is set to " << builder_optimization_level_;
+    }
+  }
+#else
+  if (builder_optimization_level_ != 3) {
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Builder optimization level can only be used on TensorRT RTX 1.1 onwards!";
+  }
+#endif
 
   // Only set compute capability for Turing
   const std::string kTuringComputeCapability{"75"};

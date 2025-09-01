@@ -13,7 +13,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/shared_library/provider_api.h"
 
-#define TRT_DEFAULT_OPTIMIZER_LEVEL 3
+#define TRT_DEFAULT_OPTIMIZER_LEVEL 4
 
 namespace onnxruntime {
 // Information needed to construct trt execution providers.
@@ -41,6 +41,7 @@ struct NvExecutionProviderInfo {
   bool detailed_build_log{false};
   bool sparsity_enable{false};
   int auxiliary_streams{-1};
+  int builder_optimization_level{TRT_DEFAULT_OPTIMIZER_LEVEL};
   std::string extra_plugin_lib_paths{""};
   std::string profile_min_shapes{""};
   std::string profile_max_shapes{""};

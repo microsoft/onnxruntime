@@ -15,6 +15,7 @@
  * - `kProfilesMaxShapes`: Specifies the maximum shapes for profiling.
  * - `kProfilesOptShapes`: Specifies the optimal shapes for profiling.
  * - `kCudaGraphEnable`: Enables or disables CUDA graph optimizations.
+ * - `kBuilderOptimizationLevel`: Sets the TensorRT builder optimization level (0-5).
  * - `kONNXBytestream`: Specifies the ONNX model as a bytestream.
  * - `kONNXBytestreamSize`: Specifies the size of the ONNX bytestream.
  */
@@ -32,6 +33,7 @@ constexpr const char* kProfilesMinShapes = "nv_profile_min_shapes";
 constexpr const char* kProfilesMaxShapes = "nv_profile_max_shapes";
 constexpr const char* kProfilesOptShapes = "nv_profile_opt_shapes";
 constexpr const char* kCudaGraphEnable = "enable_cuda_graph";
+constexpr const char* kBuilderOptimizationLevel = "nv_builder_optimization_level";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
 constexpr const char* kUseExternalDataInitializer = "nv_use_external_data_initializer";
 

@@ -344,6 +344,7 @@ class NvExecutionProvider : public IExecutionProvider {
   size_t onnx_external_data_bytestream_size_ = 0;
   bool sparsity_enable_ = false;
   int auxiliary_streams_ = -1;
+  int builder_optimization_level_ = TRT_DEFAULT_OPTIMIZER_LEVEL;
   std::string cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   std::mutex tensorrt_mu_;
