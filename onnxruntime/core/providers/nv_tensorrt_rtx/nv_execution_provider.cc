@@ -20,7 +20,6 @@
 #include "onnx_ctx_model_helper.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_graph.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
 #include "core/common/parse_string.h"
@@ -85,40 +84,6 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
-
-namespace cuda {
-template <>
-void Impl_Cast(
-    cudaStream_t stream,
-    const int64_t* input_data, int32_t* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(static_cast<void*>(stream), input_data, output_data, count);
-}
-
-template <>
-void Impl_Cast(
-    cudaStream_t stream,
-    const int32_t* input_data, int64_t* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(static_cast<void*>(stream), input_data, output_data, count);
-}
-
-template <>
-void Impl_Cast(
-    cudaStream_t stream,
-    const double* input_data, float* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(static_cast<void*>(stream), input_data, output_data, count);
-}
-
-template <>
-void Impl_Cast(
-    cudaStream_t stream,
-    const float* input_data, double* output_data,
-    size_t count) {
-  return g_host->cuda__Impl_Cast(static_cast<void*>(stream), input_data, output_data, count);
-}
-}  // namespace cuda
 
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
                                              uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
@@ -373,49 +338,17 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     break;                                                                                  \
   }
 
-#define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                         \
-  case DATA_TYPE: {                                                                                               \
-    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                   \
-    skip_input_binding_allowed = false;                                                                           \
-    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                            \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
-      data = scratch_buffers.back().get();                                                                        \
-      cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);             \
-    } else {                                                                                                      \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
-      data = scratch_buffers.back().get();                                                                        \
-    }                                                                                                             \
-    break;                                                                                                        \
-  }
-
 #define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                             \
   case DATA_TYPE: {                                                                         \
     auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                    \
     data_ptr = output_tensor_ptr;                                                           \
     if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                     \
-      buffers[output_name] = output_tensor_ptr;                                             \
+      buffer = output_tensor_ptr;                                                           \
     } else {                                                                                \
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1)); \
-      buffers[output_name] = scratch_buffers.back().get();                                  \
+      buffer = scratch_buffers.back().get();                                                \
     }                                                                                       \
     break;                                                                                  \
-  }
-
-#define CASE_GET_CAST_OUTPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                        \
-  case DATA_TYPE: {                                                                                               \
-    auto output_tensor_ptr = output_tensor.GetTensorMutableData<SrcT>();                                          \
-    data_ptr = output_tensor_ptr;                                                                                 \
-    skip_output_binding_allowed = false;                                                                          \
-    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                           \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
-      buffers[output_name] = scratch_buffers.back().get();                                                        \
-      output_dim_sizes[i] = static_cast<int>(elem_cnt);                                                           \
-    } else {                                                                                                      \
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
-      buffers[output_name] = scratch_buffers.back().get();                                                        \
-      output_dim_sizes[i] = 1;                                                                                    \
-    }                                                                                                             \
-    break;                                                                                                        \
   }
 
 #define CASE_COPY_TENSOR(DATA_TYPE, DstT)                                                                                                          \
@@ -425,15 +358,6 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(DstT), cudaMemcpyDeviceToDevice, stream)); \
     }                                                                                                                                              \
     break;                                                                                                                                         \
-  }
-
-#define CASE_CAST_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                                   \
-  case DATA_TYPE: {                                                                                                                               \
-    auto output_tensor_ptr = output_tensor.GetTensorMutableData<DstT>();                                                                          \
-    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                           \
-      cuda::Impl_Cast<SrcT, DstT>(stream, reinterpret_cast<SrcT*>(allocator->getBuffer()), reinterpret_cast<DstT*>(output_tensor_ptr), elem_cnt); \
-    }                                                                                                                                             \
-    break;                                                                                                                                        \
   }
 
 /*
@@ -558,7 +482,6 @@ Status BindContextInput(Ort::KernelContext& ctx,
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
-      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
@@ -583,8 +506,6 @@ Status BindContextInput(Ort::KernelContext& ctx,
  * param output_type - Data type of the output
  * param i - Output iteration index
  * param output_tensors - Output iteration index to output's ORT value
- * param output_dim_sizes - Output iteration index to the multiplocation of its shape's dimensions
- * param dds_output_set - DDS output set
  * param dds_output_allocator_map - DDS output to its allocator
  * param scratch_buffer - The allocation buffer created by TRT EP
  * param allocator - ORT allocator
@@ -596,16 +517,11 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          const char* output_name,
                          size_t output_index,
                          size_t output_type,
-                         size_t i,
-                         std::unordered_map<size_t, Ort::UnownedValue>& output_tensors,
-                         std::unordered_map<size_t, int>& output_dim_sizes,
                          DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
-                         std::unordered_map<char const*, void*>& buffers,
                          nvinfer1::Dims& dims,
-                         void*& data_ptr,
-                         bool& skip_output_binding_allowed) {
+                         void*& data_ptr) {
   // Get output shape
   dims = trt_context->getTensorShape(output_name);
   int nb_dims = dims.nbDims;
@@ -635,9 +551,10 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       data_ptr = nullptr;  // Set data_ptr to nullptr for DDS output binding.
     }
   } else {
-    output_tensors[i] = ctx.GetOutput(output_index, dims.d, nb_dims);
-    auto& output_tensor = output_tensors[i];
+    auto output_tensor = ctx.GetOutput(output_index, dims.d, nb_dims);
     const auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
+
+    void* buffer = nullptr;
 
     switch (output_type) {
       // below macros set data_ptr and skip_output_binding_allowed variables
@@ -649,13 +566,12 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
-      CASE_GET_CAST_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
       }
     }
-    trt_context->setTensorAddress(output_name, buffers[output_name]);
+    trt_context->setTensorAddress(output_name, buffer);
   }
 
   return Status::OK();
@@ -712,7 +628,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
-    CASE_CAST_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, float, double)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -2861,7 +2776,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   }
 
   // Save TRT engine, other TRT objects and input/output info to map
-  parsers_.emplace(fused_node.Name(), std::move(trt_parser));
   engines_.emplace(fused_node.Name(), std::move(trt_engine));
   contexts_.emplace(fused_node.Name(), std::move(trt_context));
   networks_.emplace(fused_node.Name(), std::move(trt_network));
@@ -2877,7 +2791,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
     std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
     *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
-          &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
+          &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
           input_shape_ranges_[context->node_name], &tensorrt_mu_,
           engine_cache_enable_, cache_path_,
@@ -2915,7 +2829,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto trt_profiles = trt_state->profiles;
-    int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_set<std::string> input_names;
 
     if (alloc_ == nullptr) {
@@ -2990,16 +2903,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     /*
      * Set output shapes and bind output buffers
      */
-    std::unordered_map<char const*, void*> buffers;
-    buffers.reserve(num_outputs);
-    using OutputOrtValue = Ort::UnownedValue;
-    std::unordered_map<size_t, OutputOrtValue> output_tensors;
-    output_tensors.reserve(num_outputs);
-    std::unordered_map<size_t, int> output_dim_sizes;
-    output_dim_sizes.reserve(num_outputs);
-
     if (require_io_binding) {
-      bool skip_output_binding_allowed = true;
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
 
@@ -3017,16 +2921,15 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr, skip_output_binding_allowed);
+
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type,
+                                          dds_output_allocator_map, scratch_buffers, alloc, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
         }
 
         trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
       }
-
-      trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
     }
 
     // Set execution context memory
@@ -3105,14 +3008,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         auto status = BindKernelOutput(ctx, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
-        }
-      } else {
-        auto& output_tensor = output_tensors[i];
-        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-          if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-          }
         }
       }
     }
@@ -3237,7 +3132,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
-    int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
@@ -3307,16 +3201,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     /*
      * Set output shapes and bind output buffers
      */
-    std::unordered_map<char const*, void*> buffers;
-    buffers.reserve(num_outputs);
-    using OutputOrtValue = Ort::UnownedValue;
-    std::unordered_map<size_t, OutputOrtValue> output_tensors;
-    output_tensors.reserve(num_outputs);
-    std::unordered_map<size_t, int> output_dim_sizes;
-    output_dim_sizes.reserve(num_outputs);
-
     if (require_io_binding) {
-      bool skip_output_binding_allowed = true;
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
 
@@ -3335,16 +3220,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         nvinfer1::Dims dims;
         void* data_ptr = nullptr;
 
-        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                          dds_output_allocator_map, scratch_buffers, alloc, buffers, dims, data_ptr, skip_output_binding_allowed);
+        Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type,
+                                          dds_output_allocator_map, scratch_buffers, alloc, dims, data_ptr);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
         }
 
         trt_state->output_tensors[output_index] = TensorParams{data_ptr, dims};
       }
-
-      trt_state->skip_io_binding_allowed = trt_state->skip_io_binding_allowed | skip_output_binding_allowed;
     }
 
     // Set execution context memory
@@ -3424,14 +3307,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         auto status = BindKernelOutput(ctx, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
-        }
-      } else {
-        auto& output_tensor = output_tensors[i];
-        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-          if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-          }
         }
       }
     }
