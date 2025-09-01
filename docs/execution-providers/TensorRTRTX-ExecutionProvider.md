@@ -1,23 +1,24 @@
 ---
 title: NVIDIA - TensorRT RTX
-description: Instructions to execute ONNX Runtime on NVIDIA RTX GPUs with the Nvidia TensorRT RTX execution provider
+description: Instructions to execute ONNX Runtime on NVIDIA RTX GPUs with the NVIDIA TensorRT RTX execution provider
 parent: Execution Providers
 nav_order: 17
 redirect_from: /docs/reference/execution-providers/TensorRTRTX-ExecutionProvider
 ---
 
-# Nvidia TensorRT RTX Execution Provider
+# NVIDIA TensorRT RTX Execution Provider
 {: .no_toc }
 
-Nvidia TensorRT RTX execution provider is the preferred execution provider for GPU acceleration on consumer hardware (RTX PCs). It is more straightforward to use than the datacenter focused legacy TensorRT Execution provider and more performant than CUDA EP. 
-Just some of the things that make it a better fit on RTX PCs than our legacy TensorRT Execution Provider: 
-* Much smaller footprint
-* Much faster model compile/load times.
-* Better usability in terms of use of cached models across multiple RTX GPUs.
+NVIDIA TensorRT RTX Execution Provider (EP) is the **recommended** choice for GPU acceleration on NVIDIA consumer hardware (RTX PCs). It offers a more straightforward experience than the datacenter-focused legacy TensorRT EP and delivers superior performance compared to the CUDA EP.
 
-The Nvidia TensorRT RTX execution provider in the ONNX Runtime makes use of NVIDIA's [TensorRT](https://developer.nvidia.com/tensorrt) RTX Deep Learning inferencing engine (TODO: correct link to TRT RTX documentation once available) to accelerate ONNX models on RTX GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT RTX execution provider with ONNX Runtime.
+Here's why it's a better fit for RTX PCs than the legacy TensorRT EP:
+*   **Smaller footprint:** Optimizes resource usage.
+*   **Faster model compile and load times:** Get up and running quicker.
+*   **Enhanced usability:** Seamlessly use cached models across multiple RTX GPUs.
 
-Currently TensorRT RTX supports RTX GPUs from Ampere or later architectures. Support for Turing GPUs is coming soon.
+The TensorRT (TRT) RTX EP leverages NVIDIA's new deep learning inference engine, [TensorRT RTX](https://developer.nvidia.com/tensorrt-rtx), to accelerate ONNX models on RTX GPUs. Microsoft and NVIDIA collaborated closely to integrate the TensorRT RTX execution provider with ONNX Runtime.
+
+Currently, TensorRT RTX supports RTX GPUs based on Ampere or later architectures. Support for Turing GPUs is anticipated soon.
 
 ## Contents
 {: .no_toc }
@@ -26,10 +27,35 @@ Currently TensorRT RTX supports RTX GPUs from Ampere or later architectures. Sup
 {:toc}
 
 ## Install
-Please select the Nvidia TensorRT RTX version of Onnx Runtime: https://onnxruntime.ai/docs/install. (TODO!)
+
+### Windows / C/C++
+
+TODO: All sources of download like Nuget, etc. (WinML?)
+
+### Python
+
+```sh
+pip install onnxruntime-gpu
+```
 
 ## Build from source
-See [Build instructions](../build/eps.md#tensorrt-rtx).
+
+### Pre-requisites
+* Download latest [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit)
+  * The path to the CUDA installation must be set via the `CUDA_HOME` environment variable, or use the `--cuda_home` arg in the build command. The installation directory should contain `bin`, `include` and `lib` sub-directories.
+* Download [TensorRT RTX](https://developer.nvidia.com/tensorrt-rtx)
+
+### Windows
+
+```ps
+.\build.bat --config Release --parallel 32 --build_dir build --use_nv_tensorrt_rtx --tensorrt_rtx_home path\to\tensorrt-rtx" --cuda_home "path\to\cuda\home" --cmake_generator "Visual Studio 17 2022" --use_vcpkg --build_shared_lib --enable_cuda_minimal_build --skip_tests --build
+```
+
+### Linux
+
+```sh
+./build.sh --config Release --parallel 32 --build_dir build --use_nv_tensorrt_rtx --tensorrt_rtx_home path/to/tensorrt-rtx" --cuda_home "path/to/cuda/home" --cmake_generator "Visual Studio 17 2022" --use_vcpkg --build_shared_lib --enable_cuda_minimal_build --skip_tests --build
+```
 
 ## Requirements
 
@@ -209,20 +235,20 @@ TensorRT RTX configurations can be set by execution provider options. It's usefu
   * Note that multiple TensorRT RTX profiles can be enabled by passing multiple shapes for the same input tensor.
   * Check TensorRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
 
-## NV TensorRT RTX EP Caches
-There are two major TRT RTX EP caches:
-* Embedded engine model / EPContext model
-* Internal TensorRT RTX cache
+## TensorRT RTX EP Caches
+There are two major types of caches in TensorRT RTX EP :
+* EP context model
+* Internal TensorRT RTX cache (TODO)
 
-The internal TensorRT RTX cache is automatically managed by the EP. The user only needs to manage EPContext caching. 
+The internal TensorRT RTX cache is automatically managed by the EP. The user only needs to manage EP context caching. 
 **Caching is important to help reduce session creation time drastically.**
 
-TensorRT RTX separates compilation into an ahead of time (AOT) compiled engine and a just in time (JIT) compilation. The AOT compilation can be stored as EPcontext model, this model will be compatible across multiple GPU generations.
-Upon loading such an EPcontext model TensorRT RTX will just in time compile the engine to fit to the used GPU. This JIT process is accelerated by TensorRT RTX's internal cache.
+TensorRT RTX separates compilation into an ahead of time (AOT) compiled engine and a just in time (JIT) compilation. The AOT compilation can be stored as EP context model, this model will be compatible across multiple GPU generations.
+Upon loading such an EP context model, TensorRT RTX will just in time compile the engine to fit to the used GPU. This JIT process is accelerated by TensorRT RTX's internal cache.
 For an example usage see:
 https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/providers/nv_tensorrt_rtx/nv_basic_test.cc
 
-### More about Embedded engine model / EPContext model
+### More about EP context model
 * TODO: decide on a plan for using weight-stripped engines by default. Fix the EP implementation to enable that. Explain the motivation and provide example on how to use the right options in this document.
 * EPContext models also **enable packaging an externally compiled engine** using e.g. `trtexec`. A [python script](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/tensorrt/gen_trt_engine_wrapper_onnx_model.py) that is capable of packaging such a precompiled engine into an ONNX file is included in the python tools. (TODO: document how this works with weight-stripped engines).
 
