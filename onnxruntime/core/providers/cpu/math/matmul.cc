@@ -6,7 +6,6 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
 
