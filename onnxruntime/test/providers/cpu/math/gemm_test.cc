@@ -96,7 +96,7 @@ auto get_bias_value = [](const std::vector<float>& bias_data, BiasType bias_type
 
 }  // namespace
 
-// Only CUDA, ROCM, CoreML and XNNPack kernels have float 16 support
+// Only CPU, CUDA, ROCM, CoreML and XNNPack kernels have float 16 support
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -196,7 +196,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   }
 }
 
-// Only CUDA, ROCM and CoreML kernels have float 16 support
+// Only CPU, CUDA, ROCM and CoreML kernels have float 16 support
 TEST(GemmOpTest, GemmTransB_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
