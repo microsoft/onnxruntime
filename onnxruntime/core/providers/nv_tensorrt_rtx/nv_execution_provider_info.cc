@@ -61,6 +61,26 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
           .AddAssignmentToReference(nv::provider_option_names::kBuilderOptimizationLevel, info.builder_optimization_level)
           .AddAssignmentToReference(nv::provider_option_names::kUseExternalDataInitializer, info.use_external_data_initializer)
           .AddAssignmentToReference(nv::provider_option_names::kMultiProfileEnable, info.multi_profile_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kWeightStrippedEngineEnable, info.weight_stripped_engine_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kOnnxModelFolderPath, info.onnx_model_folder_path)
+          .AddValueParser(
+              nv::provider_option_names::kONNXBytestream,
+              [&onnx_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                onnx_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(nv::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
+          .AddValueParser(
+              nv::provider_option_names::kExternalDataBytestream,
+              [&external_data_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                external_data_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(nv::provider_option_names::kExternalDataBytestreamSize, info.external_data_bytestream_size)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
@@ -126,7 +146,13 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
       {nv::provider_option_names::kBuilderOptimizationLevel, MakeStringWithClassicLocale(info.builder_optimization_level)},
       {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)},
-      {nv::provider_option_names::kMultiProfileEnable, MakeStringWithClassicLocale(info.multi_profile_enable)}};
+      {nv::provider_option_names::kMultiProfileEnable, MakeStringWithClassicLocale(info.multi_profile_enable)},
+      {nv::provider_option_names::kWeightStrippedEngineEnable, MakeStringWithClassicLocale(info.weight_stripped_engine_enable)},
+      {nv::provider_option_names::kOnnxModelFolderPath, MakeStringWithClassicLocale(info.onnx_model_folder_path)},
+      {nv::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.onnx_bytestream))},
+      {nv::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
+      {nv::provider_option_names::kExternalDataBytestream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_data_bytestream))},
+      {nv::provider_option_names::kExternalDataBytestreamSize, MakeStringWithClassicLocale(info.external_data_bytestream_size)}};
   return options;
 }
 }  // namespace onnxruntime
