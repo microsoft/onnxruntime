@@ -31,8 +31,8 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
 
   // Normalize dispatch = ceil_div(output_size, 64)
   ORT_ENFORCE(rank == static_cast<size_t>(4), "Input tensor must have rank 4.");
-  uint32_t dispatch_x = onnxruntime::narrow<uint32_t>(transposed_kernel_shape_vector[0] * transposed_kernel_shape_vector[1]);
-  uint32_t dispatch_y = ceil_div(transposed_kernel_shape_vector[2], 8);
+  uint32_t dispatch_x = ceil_div(transposed_kernel_shape_vector[0] * transposed_kernel_shape_vector[1], 2);
+  uint32_t dispatch_y = ceil_div(transposed_kernel_shape_vector[2], 4);
   uint32_t dispatch_z = ceil_div(transposed_kernel_shape_vector[3], 8);
 
   TensorShape transposed_kernel_shape(transposed_kernel_shape_vector);
