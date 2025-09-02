@@ -200,6 +200,19 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       can_use_dynamic_quant_mlas_ = (!b_quantization_might_be_asymmetric && b_scale_available);
 
+      // Kleidi dynamic path requires strictly positive, finite scales.
+      // Disable if any invalid scale is detected.
+      if (can_use_dynamic_quant_mlas_) {
+        const auto bs = b_scale_tensor->DataAsSpan<float>();
+        const bool has_invalid =
+            std::any_of(bs.begin(), bs.end(),
+                        [](float s) { return !std::isfinite(s) || s <= 0.0f; });
+
+        if (has_invalid) {
+          can_use_dynamic_quant_mlas_ = false;
+        }
+      }
+
       // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
       // We check that here too before attempting to use them.
       if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {
@@ -379,7 +392,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     if (y->Shape().Size() == 0)
       return Status::OK();
 
-    auto a_data = static_cast<const uint8_t*>(ctx->Input<Tensor>(IN_A)->DataRaw());
+    const float* a_data = ctx->Input<Tensor>(IN_A)->Data<float>();
     auto* y_data = y->MutableData<float>();
 
     // batch gemm
@@ -393,7 +406,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
     for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
       auto& params = gemm_data_vec[gemm_idx];
-      params.A = reinterpret_cast<const float*>(a_data + helper.LeftOffsets()[gemm_idx]);
+      params.A = a_data + helper.LeftOffsets()[gemm_idx];
       params.lda = gemm_shape.K;
       params.PackedB = packed_b_.get();
       params.C = y_data + helper.OutputOffsets()[gemm_idx];
