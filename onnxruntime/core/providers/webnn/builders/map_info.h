@@ -47,6 +47,8 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 5> supported_fallback
 // Use ONNX-to-ONNX op mapping to improve the search complexity for WebNN ops in the op_inputs_map.
 const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
     {"ConvInteger", {"Cast", "Conv", "DequantizeLinear"}},
+    {"DynamicQuantizeLinear",
+     {"Cast", "Clip", "Div", "Max", "Min", "QuantizeLinear", "ReduceMax", "ReduceMin", "Reshape", "Round", "Sub"}},
     {"Einsum", {"MatMul", "Mul", "ReduceSum", "Reshape", "Transpose", "Trilu"}},
     {"GroupQueryAttention",
      {"Add", "Cast", "Concat", "CumSum", "Div", "Expand", "Less", "MatMul", "Reshape", "ScatterND",
@@ -190,7 +192,6 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"GatherND", {"gatherND", {{0, "input"}, {1, "indices"}}}},
     {"GreaterOrEqual", {"greaterOrEqual", {{0, "a"}, {1, "b"}}}},
     {"Conv", {"conv2d", {{0, "input"}, {1, "filter"}, {2, "bias"}}}},
-    {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", {{0, "input"}}}},
     {"GatherElements", {"gatherElements", {{0, "input"}, {1, "indices"}}}},
     {"ScatterND", {"scatterND", {{0, "input"}, {1, "indices"}, {2, "updates"}}}},
     {"Where", {"where", {{0, "condition"}, {1, "trueValue"}, {2, "falseValue"}}}},
