@@ -35,9 +35,11 @@ class PyModelCompiler {
   /// <param name="embed_compiled_data_into_model">True to embed compiled binary data into EPContext nodes.</param>
   /// <param name="external_initializers_file_path">The file into which to store initializers for non-compiled
   /// nodes.</param>
-  /// <param name="flags">Flags from OrtCompileApiFlags</param>
   /// <param name="external_initializers_size_threshold">Ignored if 'external_initializers_file_path' is empty.
   /// Initializers with a size greater than this threshold are dumped into the external file.</param>
+  /// <param name="flags">Flags from OrtCompileApiFlags</param>
+  /// <param name="graph_opt_level">Optimization level for graph transformations on the model.
+  /// Defaults to ORT_DISABLE_ALL to allow EP to get the original loaded model.</param>
   /// <returns>A Status indicating error or success.</returns>
   static onnxruntime::Status Create(/*out*/ std::unique_ptr<PyModelCompiler>& out,
                                     onnxruntime::Environment& env,
@@ -46,7 +48,8 @@ class PyModelCompiler {
                                     bool embed_compiled_data_into_model = false,
                                     const std::string& external_initializers_file_path = {},
                                     size_t external_initializers_size_threshold = 1024,
-                                    size_t flags = 0);
+                                    size_t flags = 0,
+                                    GraphOptimizationLevel graph_opt_level = GraphOptimizationLevel::ORT_DISABLE_ALL);
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().

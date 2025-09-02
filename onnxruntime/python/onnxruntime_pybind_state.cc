@@ -2743,7 +2743,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        bool embed_compiled_data_into_model = false,
                        std::string external_initializers_file_path = {},
                        size_t external_initializers_size_threshold = 1024,
-                       size_t flags = OrtCompileApiFlags_NONE) {
+                       size_t flags = OrtCompileApiFlags_NONE,
+                       GraphOptimizationLevel graph_optimization_level = GraphOptimizationLevel::ORT_DISABLE_ALL) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;
         OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
@@ -2751,7 +2752,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                                       embed_compiled_data_into_model,
                                                       external_initializers_file_path,
                                                       external_initializers_size_threshold,
-                                                      flags));
+                                                      flags, graph_optimization_level));
         return result;
 #else
         ORT_UNUSED_PARAMETER(sess_options);
@@ -2761,6 +2762,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(external_initializers_file_path);
         ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
         ORT_UNUSED_PARAMETER(flags);
+        ORT_UNUSED_PARAMETER(graph_optimization_level);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))
