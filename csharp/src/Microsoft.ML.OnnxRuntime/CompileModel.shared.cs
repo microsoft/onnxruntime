@@ -265,7 +265,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Class to bridge the C# and native worlds for the "write buffer" delegate
+        /// Class to bridge the C# and native worlds for the "handle initializer" delegate
         /// </summary>
         private class HandleInitializerConnector
         {
