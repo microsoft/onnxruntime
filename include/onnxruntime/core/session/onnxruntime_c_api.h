@@ -3818,7 +3818,7 @@ struct OrtApi {
    *   CoreMLExecutionProvider (or CoreML)
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
-   *       that should be used to add it.
+   *       that may also be used to add it.
    *
    * QNN supported keys:
    *   "backend_type": Type of QNN backend. Specifies a backend path that is the associated QNN backend library file
