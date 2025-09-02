@@ -105,7 +105,7 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
     std::string ov_device_name;
     auto get_gpu_device_id = [&](const std::string& ov_device) {
       try {
-        auto device_id_str = ov_core_->get_property(ov_device, "GPU_DEVICE_ID").as<std::string>();
+        const std::string device_id_str = ov_core_->get_property(ov_device, "GPU_DEVICE_ID").as<std::string>();
         return static_cast<uint32_t>(std::stoul(device_id_str, nullptr, 0));
       } catch (ov::Exception&) {
         return 0u;  // If we can't get the GPU_DEVICE_ID info, we won't have a device ID.
