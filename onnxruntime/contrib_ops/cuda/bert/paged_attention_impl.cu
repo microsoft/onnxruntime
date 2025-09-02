@@ -326,7 +326,7 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
       device_prop, stream, q, key_cache, value_cache, output, cumulative_seqlens_q, cumulative_seqlens_kv,
       /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size, max_query_len,
-      max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size, max_num_blocks_per_seq,
+      max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size-1, max_num_blocks_per_seq,
       block_size));
 
   DUMP_TENSOR_INIT();

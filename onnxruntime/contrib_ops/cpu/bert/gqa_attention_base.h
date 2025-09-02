@@ -299,14 +299,14 @@ class GQAAttentionBase {
 
           // local_window_size does not include the current query token, while window_size includes it.
           const bool should_apply_local_window = local_window_size_ >= 0 &&
-                                                 seq_causal_length > static_cast<size_t>(local_window_size_) + 1;
+                                                 seq_causal_length > static_cast<size_t>(local_window_size_);
 
-          const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ - 1 : 0;
-          const size_t window_size = should_apply_local_window ? local_window_size_ + 1 : seq_causal_length;
+          const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ : 0;
+          const size_t window_size = should_apply_local_window ? local_window_size_ : seq_causal_length;
 
           // Mask everything before local window, if local window should be applied
           if (should_apply_local_window) {
-            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
+            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_; total_seq_id++) {
               if constexpr (std::is_same<U, float>::value) {
                 output_softmax[total_seq_id] = 0.f;
               } else {
