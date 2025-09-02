@@ -2674,7 +2674,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP could not create timing cache: " + timing_cache_path_);
       }
-      trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+      trt_config->setTimingCache(*timing_cache, force_timing_cache_);
       if (detailed_build_log_) {
         LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Deserialized timing cache from " + timing_cache_path_;
       }
