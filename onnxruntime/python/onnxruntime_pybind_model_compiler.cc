@@ -15,6 +15,17 @@
 namespace onnxruntime {
 namespace python {
 
+/// <summary>
+/// This function is called by ORT to allow the user to handle where every initializer is stored (i.e., externally or internally).
+/// This function wraps (and calls) the actual Python function provided by the user.
+/// </summary>
+/// <param name="state">Opaque state that holds a pointer to the user's Python function.</param>
+/// <param name="initializer_name">The name of the initializer to handle.</param>
+/// <param name="initializer_value">The OrtValue with the initializer's data, type, and shape.</param>
+/// <param name="external_info">The original external location of the initializer, if any. May be null.</param>
+/// <param name="new_external_info">Output parameter set to the initializer's new external location. Function may
+/// return NULL if the initializer should be stored within the compiled ONNX model.</param>
+/// <returns>A status indicating success or an error.</returns>
 static OrtStatus* ORT_API_CALL PyHandleInitializerFuncWrapper(void* state, const char* initializer_name,
                                                               const OrtValue* initializer_value,
                                                               const OrtExternalInitializerInfo* external_info,
@@ -23,7 +34,7 @@ static OrtStatus* ORT_API_CALL PyHandleInitializerFuncWrapper(void* state, const
   OrtStatus* status = nullptr;
   std::shared_ptr<const OrtExternalInitializerInfo> py_new_external_info = nullptr;
 
-  // Call the Python write function and convert any exceptions to a status.
+  // Call the Python function and convert any exceptions to a status.
   ORT_TRY {
     py_new_external_info = (*py_func)(initializer_name, *initializer_value, external_info);
   }
@@ -34,6 +45,8 @@ static OrtStatus* ORT_API_CALL PyHandleInitializerFuncWrapper(void* state, const
   }
 
   if (py_new_external_info) {
+    // ORT expects to take ownership of the new external info, so make a copy because other Python code
+    // may be holding a reference to the `py_new_external_info`.
     auto py_result_copy = std::make_unique<OrtExternalInitializerInfo>(*py_new_external_info.get());
     *new_external_info = py_result_copy.release();
   } else {
@@ -115,16 +128,14 @@ onnxruntime::Status PyModelCompiler::CompileToBytes(std::string& output_buffer) 
   return Status::OK();
 }
 
-/**
- * Calls the user's Python PyOutStreamWriteFunc function and converts the results to a form that can be used
- * by ORT to write out a compiled ONNX model.
- *
- * @param stream_state Opaque state that holds a pointer to the user's Python function.
- * @param buffer The buffer to write out. Contains a portion of the compiled ONNX model's bytes.
- * @param buffer_num_bytes The number of bytes to write out.
- *
- * @return nullptr OrtStatus* to indicate success.
- */
+/// <summary>
+/// Function called by ORT to allow the user to write out the compiled ONNX model bytes to a custom output stream.
+/// This function wraps (and calls) the actual Python function provided by the user.
+/// </summary>
+/// <param name="stream_state">Opaque state that holds a pointer to the user's Python function.</param>
+/// <param name="buffer">The buffer to write out. Contains a portion of the compiled ONNX model's bytes.</param>
+/// <param name="buffer_num_bytes">The number of bytes in the buffer.</param>
+/// <returns>A status indicating success or an error.</returns>
 static OrtStatus* ORT_API_CALL PyOutStreamWriteFuncWrapper(void* stream_state, const void* buffer,
                                                            size_t buffer_num_bytes) {
   PyOutStreamWriteFunc* py_write_func = reinterpret_cast<PyOutStreamWriteFunc*>(stream_state);

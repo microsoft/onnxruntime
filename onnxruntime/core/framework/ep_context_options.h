@@ -3,10 +3,7 @@
 
 #pragma once
 
-#include <array>
 #include <filesystem>
-#include <streambuf>
-#include <string>
 #include <variant>
 #include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
@@ -96,33 +93,6 @@ struct ModelGenOptions {
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
   const InitializerHandler* TryGetInitializerHandler() const;
 };
-
-#if !defined(ORT_MINIMAL_BUILD)
-// Class that wraps the user's OrtBufferWriteFunc function to enable use with
-// C++'s std::ostream.
-// Example:
-//    BufferWriteFuncHolder write_func_holder{write_func, stream_state};
-//    std::unique_ptr<OutStreamBuf> out_stream_buf = std::make_unique<OutStreamBuf>(write_func_holder);
-//    std::ostream out_stream(out_stream_buf.get());
-class OutStreamBuf : public std::streambuf {
- public:
-  explicit OutStreamBuf(BufferWriteFuncHolder write_func_holder);
-  ~OutStreamBuf();
-
-  const Status& GetStatus() const {
-    return last_status_;
-  }
-
- protected:
-  int_type overflow(int_type ch) override;
-  int sync() override;
-
- private:
-  BufferWriteFuncHolder write_func_holder_{};
-  std::vector<char> buffer_;
-  Status last_status_{};
-};
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace epctx
 }  // namespace onnxruntime

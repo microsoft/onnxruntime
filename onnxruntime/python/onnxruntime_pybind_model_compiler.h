@@ -14,9 +14,9 @@ class Environment;
 
 namespace python {
 // Type of the function provided by Python code that is called by ORT to write out the compiled model.
-// Returns the number of bytes written to the underlying stream.
 using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
 
+// Type of the function provided by Python code that is called by ORT to handle every initializer.
 using PyHandleInitializerFunc = std::function<std::shared_ptr<const OrtExternalInitializerInfo>(const std::string& initializer_name,
                                                                                                 const OrtValue& initializer_value,
                                                                                                 const OrtExternalInitializerInfo* external_info)>;

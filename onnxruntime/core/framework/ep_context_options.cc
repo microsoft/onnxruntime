@@ -7,7 +7,6 @@
 #include <utility>
 #include "core/common/common.h"
 #include "core/framework/ep_context_options.h"
-#include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
@@ -65,73 +64,6 @@ const ExternalInitializerFileInfo* ModelGenOptions::TryGetExternalInitializerFil
 const InitializerHandler* ModelGenOptions::TryGetInitializerHandler() const {
   return std::get_if<InitializerHandler>(&initializers_location);
 }
-
-#if !defined(ORT_MINIMAL_BUILD)
-// class OutStreamBuf
-
-OutStreamBuf::OutStreamBuf(BufferWriteFuncHolder write_func_holder)
-    : write_func_holder_(write_func_holder), buffer_(65536) {
-  setp(buffer_.data(), buffer_.data() + buffer_.size());
-}
-
-OutStreamBuf::~OutStreamBuf() {
-  sync();
-}
-
-// Called when the buffer_ is full. Flushes the buffer_ (via sync()) and then writes the overflow character to buffer_.
-std::streambuf::int_type OutStreamBuf::overflow(std::streambuf::int_type ch) {
-  if (sync() == -1) {
-    return traits_type::eof();
-  }
-
-  if (ch != traits_type::eof()) {
-    *pptr() = static_cast<char>(ch);
-    pbump(1);
-  }
-
-  return ch;
-}
-
-// Flushes the entire buffer_ to the user's write function.
-int OutStreamBuf::sync() {
-  if (!last_status_.IsOK()) {
-    return -1;
-  }
-
-  std::ptrdiff_t num_bytes = pptr() - pbase();
-  if (num_bytes == 0) {
-    return 0;
-  }
-
-  // Can only call pbump() with an int, so can only write at most (2^31 - 1) bytes.
-  if (num_bytes > std::numeric_limits<int>::max()) {
-    num_bytes = std::numeric_limits<int>::max();
-  }
-
-  char* ptr = pbase();
-
-  Status status = Status::OK();
-
-  ORT_TRY {
-    status = ToStatusAndRelease(write_func_holder_.write_func(write_func_holder_.stream_state,
-                                                              ptr, num_bytes));
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Caught exception while calling user's OrtOutStreamWriteFunc callback: ", e.what());
-    });
-  }
-
-  if (!status.IsOK()) {
-    last_status_ = std::move(status);
-    return -1;
-  }
-
-  pbump(-static_cast<int>(num_bytes));  // Reset internal pointer to point to the beginning of the buffer_
-  return 0;
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace epctx
 }  // namespace onnxruntime

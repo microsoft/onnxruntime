@@ -10,7 +10,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/ep_context_options.h"
+#include "core/framework/ep_context_utils.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/func_kernel.h"
 #include "core/framework/kernel_lookup.h"
@@ -22,7 +22,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/graph/model_saving_options.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
@@ -769,6 +768,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 }
 
 // Validate the ep_context_path to make sure it is file path and check whether the file exist already
+// TODO: Move function to ep_context_utils.h/cc
 static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
                                         const std::filesystem::path& model_path,
                                         std::filesystem::path& context_cache_path,
@@ -797,48 +797,7 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
   return Status::OK();
 }
 
-// Serialize an EPContext model into a onnx::ModelProto.
-static Status EpContextModelToProto(const onnxruntime::Model& ep_context_model,
-                                    const std::filesystem::path& validated_model_path,
-                                    const epctx::ModelGenOptions& ep_context_gen_options,
-                                    /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
-  // Handle case where initializers are stored inline within the ONNX model.
-  if (ep_context_gen_options.AreInitializersEmbeddedInOutputModel()) {
-    // if no external ini file specified, set force_embed_external_ini to true to avoid intermediate file creation
-    // and force all initializers embed into the ONNX file.
-    ModelSavingOptions model_saving_options{/*size_threshold*/ SIZE_MAX};
-    model_saving_options.force_embed_external_ini = true;
-
-    model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(std::filesystem::path{},
-                                                                        validated_model_path,
-                                                                        model_saving_options);
-    return Status::OK();
-  }
-
-  // Handle case where initializers (with size > threshold) are stored in an external file.
-  if (const epctx::ExternalInitializerFileInfo* ext_info = ep_context_gen_options.TryGetExternalInitializerFileInfo();
-      ext_info != nullptr) {
-    ModelSavingOptions model_saving_options{ext_info->size_threshold};
-
-    model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(ext_info->file_path,
-                                                                        validated_model_path,
-                                                                        model_saving_options);
-    return Status::OK();
-  }
-
-  // Handle case where user specified a custom handler function that determines how each initializer is saved.
-  if (const epctx::InitializerHandler* custom_handler = ep_context_gen_options.TryGetInitializerHandler();
-      custom_handler != nullptr) {
-    ORT_RETURN_IF_ERROR(ep_context_model.ToGraphProtoWithInitializerHandler(custom_handler->handle_initializer_func,
-                                                                            custom_handler->state,
-                                                                            model_proto));
-    return Status::OK();
-  }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected location for initializers while generating ",
-                         validated_model_path);
-}
-
+// TODO: Move function to ep_context_utils.h/cc
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
