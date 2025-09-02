@@ -799,7 +799,7 @@ void LaunchAddBiasTranspose<BFloat16>(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const BFloat16* input, const BFloat16* biases, BFloat16* output,
-    bool enable_bf162, const int v_head_size,
+    bool /*enable_half4*/, const int v_head_size,
     BFloat16* qkv_add_bias, int total_matrix_count,
     bool do_rotary, int rotary_embedding, int past_sequence_length) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
