@@ -652,3 +652,4 @@ MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
 #endif
 
 #endif
+

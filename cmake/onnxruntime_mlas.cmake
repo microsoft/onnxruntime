@@ -434,7 +434,7 @@ else()
         )
         
         # Conditionally add the SVE implementation if compiler supports it
-        if (USE_SVE)
+        if (onnxruntime_USE_SVE AND HAS_ARM64_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")

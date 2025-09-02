@@ -22,10 +22,6 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include <iostream>
-#ifdef USE_SVE
-#include "sve/mlasi_sve.h"
-#endif
 //
 // Bundles the constants for use by kernels written in assembly.
 //
@@ -264,13 +260,9 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(USE_SVE)
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
 #else 
-    #ifdef USE_SVE
-        MlasSveErfKernel(Input, Output, N);
-    #else
-        MlasErfKernel(Input, Output, N);
-    #endif
+    MlasErfKernel(Input, Output, N);
 #endif
 }

@@ -21,9 +21,6 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#ifdef USE_SVE
-#include "sve/mlasi_sve.h"
-#endif
 
 //
 // Bundles the floating point constants for use by kernels written in assembly.
@@ -184,13 +181,9 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(USE_SVE)
     GetMlasPlatform().LogisticKernelRoutine(Input, Output, N);
 #else
-    #ifdef USE_SVE
-        MlasSveLogisticKernel(Input, Output, N);
-    #else
-        MlasLogisticKernel(Input, Output, N);
-    #endif
+    MlasLogisticKernel(Input, Output, N);
 #endif
 }

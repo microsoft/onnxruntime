@@ -94,17 +94,6 @@ if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
     set(onnxruntime_USE_SVE OFF CACHE BOOL "" FORCE)
 endif()
 
-# Detect SVE support in AArch64 (ARM 64-bit)
-if(onnxruntime_USE_SVE)
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-      message(STATUS "Compiler supports SVE!")
-      # Include module to check compiler flags
-      include(CheckCXXCompilerFlag)
-      # Test if the compiler supports SVE
-      check_cxx_compiler_flag("-march=armv8.2-a+sve+fp16" USE_SVE)
-  endif()
-endif()
-
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 # iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
 if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
@@ -630,6 +619,23 @@ else()
      message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
    endif()
   endif()
+
+  if(onnxruntime_USE_SVE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+      execute_process(
+          COMMAND lscpu
+          OUTPUT_VARIABLE LSCPU_OUTPUT
+          OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+      if(LSCPU_OUTPUT MATCHES "sve")
+          message(STATUS "Host CPU supports SVE!")
+          set(HAS_ARM64_SVE "ON")
+      else()
+          message(STATUS "Host CPU does NOT support SVE!")
+      endif()
+    endif()
+  endif()
+
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
@@ -1066,7 +1072,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
-    if (onnxruntime_USE_SVE)
+    if (HAS_ARM64_SVE)
       target_compile_definitions(${target_name} PRIVATE USE_SVE)
     endif()
 
