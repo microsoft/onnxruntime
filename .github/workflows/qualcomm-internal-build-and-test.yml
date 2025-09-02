@@ -8,7 +8,7 @@ on:
       do_all:
         type: boolean
         default: true
-      do_linux:
+      do_linux_x86_64:
         type: boolean
         default: false
       # If true, build with NIGHTLY_BUILD=1, etc. to enable --nightly_build
@@ -40,7 +40,7 @@ jobs:
             ${{ github.workspace }}/build/onnxruntime-tests-android-aarch64.zip
 
   build-linux-x86_64:
-    if: ${{ inputs.do_all || inputs.do_linux }}
+    if: ${{ inputs.do_all || inputs.do_linux_x86_64 }}
     runs-on: ["self-hosted", "X64", "Linux", "Build"]
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +62,18 @@ jobs:
           name: ORT Linux x86_64 Python Wheel
           path: |
             ${{ github.workspace }}/build/linux-x86_64/Release/dist/onnxruntime_qnn*.whl
+
+  build-linux-aarch64-oe-gcc11_2:
+    if: ${{ inputs.do_all || inputs.do_linux_x86_64 }}
+    runs-on: ["self-hosted", "X64", "Linux", "Build"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build Linux AArch64 OE GCC 11.2
+        run: |
+          python3 qcom/build_and_test.py build_ort_linux_aarch64_oe_gcc11_2
 
   build-windows-arm64:
     if: ${{ inputs.do_all }}
@@ -177,7 +189,7 @@ jobs:
 
   # Intentionally not "test-linux-x86_64" to avoid breaking required PR checks
   test-linux:
-    if: ${{ inputs.do_all || inputs.do_linux }}
+    if: ${{ inputs.do_all || inputs.do_linux_x86_64 }}
     runs-on: ["self-hosted", "Linux", "X64", "Build"]
     needs: [build-linux-x86_64]
     steps:

@@ -139,7 +139,7 @@ five VMs, four of which we actually wanted. In case it comes up again, here's th
 * Memory Size (GBs): `32`
 * Data Drive Size (GBs): `100`
 * Number of Servers: up to you
-* Server Name 1: `ort-ep-win-XX`
+* Server Name 1: `ort-ep-lin-XX`
 * Lease Duration (months): `12 months` (or more if possible)
 * Backup: `No Backup`
 * Admin Contact Group: `ort-qnn-ep-ci-admin-contacts`

@@ -69,6 +69,10 @@ function get_java_bindir() {
   fi
 }
 
+function get_linux_oe_gcc112_toolchain_root() {
+    get_package_contentdir "linux_oe_gcc112_toolchain"
+}
+
 #
 # Get the directory containing ninja, installing it if necessary.
 #

@@ -94,8 +94,7 @@ test_runner=
 case "${target_platform}" in
   linux)
     qnn_args=(--use_qnn --qnn_home "${qairt_sdk_root}")
-    platform_args=(--build_shared_lib
-                   --build_wheel)
+    platform_args=(--build_shared_lib)
 
     test_runner="${REPO_ROOT}/qcom/scripts/linux/run_tests.sh"
 
@@ -104,6 +103,20 @@ case "${target_platform}" in
         action_args+=("--build")
         if [ -n "${build_is_dirty}" ]; then
           action_args+=("--update")
+        fi
+        if [ "${target_arch}" == "aarch64-oe-gcc11.2" ]; then
+          toolchain_root="$(get_linux_oe_gcc112_toolchain_root)"
+          toolchain_cmake="${REPO_ROOT}/qcom/scripts/linux/linux-aarch64-gcc11.toolchain.cmake"
+
+          # We need $toolchain_root from the toolchain.cmake, but the toolchain.cmake is sometimes
+          # evaluated without the project's CMakeCache.txt entries. Pass it through the environment :-/
+          export ORT_BUILD_LINUX_TOOLCHAIN_ROOT="${toolchain_root}"
+
+          platform_args+=(--cmake_extra_defines
+                          CMAKE_TOOLCHAIN_FILE:FILEPATH="${toolchain_cmake}"
+                          ARM64:BOOL=TRUE)
+        else
+          platform_args+=(--build_wheel)
         fi
         ;;
       test)

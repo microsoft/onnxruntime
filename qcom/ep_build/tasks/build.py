@@ -20,7 +20,7 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
         group_name: str | None,
         venv: Path | None,
         target_platform: Literal["android", "linux"],
-        target_arch: Literal["aarch64", "x86_64"],
+        target_arch: Literal["aarch64", "aarch64-oe-gcc11.2", "x86_64"],
         qairt_sdk_root: Path | None,
         mode: str,
     ) -> None:

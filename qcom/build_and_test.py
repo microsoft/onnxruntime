@@ -281,6 +281,20 @@ class TaskLibrary:
             raise NotImplementedError("Building for Android on this host is not supported.")
 
     @task
+    @depends(["create_venv"])
+    def build_ort_linux_aarch64_oe_gcc11_2(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpLinuxTask(
+                "Building ONNX Runtime for Linux on AArch64 OE GCC 11.2",
+                self.__venv_path,
+                "linux",
+                "aarch64-oe-gcc11.2",
+                self.__qairt_sdk_root,
+                "build",
+            )
+        )
+
+    @task
     @depends(["build_ort_linux_x86_64"])
     def build_ort_linux_host(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
@@ -290,7 +304,7 @@ class TaskLibrary:
     def build_ort_linux_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpLinuxTask(
-                "Building ONNX Runtime for Linux",
+                "Building ONNX Runtime for Linux on x86_64",
                 self.__venv_path,
                 "linux",
                 "x86_64",

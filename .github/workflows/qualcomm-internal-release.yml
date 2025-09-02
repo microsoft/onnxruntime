@@ -16,7 +16,7 @@ jobs:
     secrets: inherit
     with:
       do_all: false
-      do_linux: true
+      do_linux_x86_64: true
       nightly_build: true
 
   publish-wheel-workflow:

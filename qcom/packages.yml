@@ -50,6 +50,11 @@ cmake_windows_x86_64:
   sha256: ab1c7f46a1b1314f9fcb766c2573148679af599d94c5566bc12b8b35bb563362
   content_root: cmake-{version}-windows-x86_64
   bindir: bin
+linux_oe_gcc112_toolchain:
+  # This package comes from AI Hub, which in turn copies it from the QAIRT build.
+  version: 20250402d
+  url: http://ort-ep-win-01:8000/linux-oe-aarch64-gcc11.2-toolchain/linux-oe-aarch64-gcc11.2-toolchain-1-universal-{version}.tar.gz
+  sha256: 1031825247827ad60189323aa5530490deae61547f4d9794ef9e0645e9207266
 java_linux:
   major_version: 21
   version: 21.0.5
