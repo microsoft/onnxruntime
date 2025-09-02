@@ -144,12 +144,6 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
   // Test CPU execution provider (always available)
   // Skip CPU test if FC3 weights are provided since CPU doesn't support FC3
   if (fc3_experts_weights.empty()) {
-    // Ensure CPU EP is available before running CPU tests
-    auto cpu_ep = DefaultCpuExecutionProvider();
-    if (!cpu_ep) {
-      return;  // Skip CPU test if CPU EP is not available
-    }
-
     OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
     cpu_tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
     cpu_tester.AddAttribute<std::string>("activation_type", activation_type);
@@ -1329,13 +1323,6 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 
 // CPU-specific QMoE tests
 TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
-#ifdef USE_MLAS
-  // Skip this test if we're not testing CPU execution provider
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  if (!cpu_ep) {
-    GTEST_SKIP() << "CPU execution provider not available";
-  }
-
   int num_rows = 2;
   int num_experts = 2;
   int hidden_size = 32;
@@ -1400,19 +1387,9 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
-#else
-  GTEST_SKIP() << "Skipping CPU QMoE test";
-#endif
 }
 
 TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
-#ifdef USE_MLAS
-  // Skip this test if we're not testing CPU execution provider
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  if (!cpu_ep) {
-    GTEST_SKIP() << "CPU execution provider not available";
-  }
-
   // Test CPU implementation with 8-bit quantization - CPU ONLY
   int num_rows = 1;
   int num_experts = 2;
@@ -1469,19 +1446,9 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
-#else
-  GTEST_SKIP() << "Skipping CPU QMoE test";
-#endif
 }
 
 TEST(MoETest, QMoETest_CPU_FC3_Error) {
-#ifdef USE_MLAS
-  // Skip this test if we're not testing CPU execution provider
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  if (!cpu_ep) {
-    GTEST_SKIP() << "CPU execution provider not available";
-  }
-
   // Test that CPU throws error when FC3 gating is provided - CPU ONLY
   int num_rows = 1;
   int num_experts = 2;
@@ -1539,19 +1506,9 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
 
   // Expect this to fail with FC3 not implemented error
   cpu_tester.Run(OpTester::ExpectResult::kExpectFailure, "FC3 gating is not yet implemented", {}, nullptr, &cpu_execution_providers);
-#else
-  GTEST_SKIP() << "Skipping CPU QMoE test";
-#endif
 }
 
 TEST(MoETest, QMoETest_CPU_SwiGLU_Int4) {
-#ifdef USE_MLAS
-  // Skip this test if we're not testing CPU execution provider
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  if (!cpu_ep) {
-    GTEST_SKIP() << "CPU execution provider not available";
-  }
-
   // Test CPU implementation with 4-bit quantization and SwiGLU activation
   int num_rows = 2;
   int num_experts = 2;
@@ -1616,18 +1573,9 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int4) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
-#else
-  GTEST_SKIP() << "Skipping CPU QMoE test";
-#endif
 }
 
 TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
-#ifdef USE_MLAS
-  // Skip this test if we're not testing CPU execution provider
-  auto cpu_ep = DefaultCpuExecutionProvider();
-  if (!cpu_ep) {
-    GTEST_SKIP() << "CPU execution provider not available";
-  }
   // Test CPU implementation with 8-bit quantization and SwiGLU activation
   int num_rows = 1;
   int num_experts = 2;
@@ -1685,9 +1633,6 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
-#else
-  GTEST_SKIP() << "Skipping CPU QMoE test";
-#endif
 }
 
 #endif

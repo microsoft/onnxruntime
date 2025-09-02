@@ -10,7 +10,6 @@ include(node_helper.cmake)
 
 # setup ARCH
 if (APPLE)
-    list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
     if (CMAKE_OSX_ARCHITECTURES_LEN GREATER 1)
         message(FATAL_ERROR "CMake.js does not support multi-architecture for macOS")
     endif()

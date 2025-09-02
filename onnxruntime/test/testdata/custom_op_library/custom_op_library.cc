@@ -26,7 +26,7 @@ static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
 }
 
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
-  Ort::InitApi(api->GetApi(ORT_API_VERSION));
+  Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
   OrtStatus* result = nullptr;
 
   ORT_TRY {

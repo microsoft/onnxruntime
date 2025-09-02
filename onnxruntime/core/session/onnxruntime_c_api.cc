@@ -3036,7 +3036,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetTensorAttributeAsOrtValue, _In_ const OrtOpAttr* attribute, _Outptr_result_maybenull_ OrtValue** attr_tensor) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute, _Outptr_result_maybenull_ OrtValue** attr_tensor) {
   API_IMPL_BEGIN
   if (attr_tensor == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attr_tensor argument is null");
@@ -3045,39 +3045,7 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetTensorAttributeAsOrtValue, _In_ const Ort
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
   }
 
-  const auto* attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attribute);
-
-  if (attr_proto->type() != onnx::AttributeProto::TENSOR) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "This OrtOpAttr instance is not a 'TENSOR' attribute");
-  }
-
-  const auto& tensor_proto = attr_proto->t();
-
-  // Check that TensorProto is valid.
-  if (!utils::HasDataType(tensor_proto)) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Tensor proto doesn't have data type.");
-  }
-
-  if (!ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_proto.data_type())) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Tensor proto has invalid data type.");
-  }
-
-  if (utils::HasExternalData(tensor_proto)) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
-                                 "Tensor proto with external data for value attribute is not supported.");
-  }
-
-  // Initialize OrtValue for tensor attribute.
-  auto tensor_attribute_value = std::make_unique<OrtValue>();
-  AllocatorPtr tensor_attribute_allocator = CPUAllocator::DefaultInstance();
-  // The tensor in the 'Tensor' attribute's TensorProto is stored inline, not in an external file.
-  // Therefore, the 'model_path' passed to TensorProtoToOrtValue() may be an empty path.
-  std::filesystem::path model_path;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(utils::TensorProtoToOrtValue(Env::Default(), model_path, tensor_proto,
-                                                               tensor_attribute_allocator, *tensor_attribute_value));
-
-  *attr_tensor = tensor_attribute_value.release();
-
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetTensorAttributeAsOrtValue(attribute, *attr_tensor));
   return nullptr;
   API_IMPL_END
 }
@@ -4166,7 +4134,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetNumAttributes,
     &OrtApis::Node_GetAttributes,
     &OrtApis::Node_GetAttributeByName,
-    &OrtApis::OpAttr_GetTensorAttributeAsOrtValue,
+    &OrtApis::Node_GetTensorAttributeAsOrtValue,
     &OrtApis::OpAttr_GetType,
     &OrtApis::OpAttr_GetName,
     &OrtApis::Node_GetNumSubgraphs,

@@ -20,7 +20,6 @@ constexpr const char* kDeviceId = "device_id";
 constexpr const char* kMemLimit = "npu_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kEnableCannGraph = "enable_cann_graph";
-constexpr const char* kEnableCannSubGraph = "enable_cann_subgraph";
 constexpr const char* kDumpGraphs = "dump_graphs";
 constexpr const char* kDumpOmModel = "dump_om_model";
 constexpr const char* kPrecisionMode = "precision_mode";
@@ -59,7 +58,6 @@ CANNExecutionProviderInfo CANNExecutionProviderInfo::FromProviderOptions(const P
               cann::provider_option_names::kArenaExtendStrategy,
               arena_extend_strategy_mapping, info.arena_extend_strategy)
           .AddAssignmentToReference(cann::provider_option_names::kEnableCannGraph, info.enable_cann_graph)
-          .AddAssignmentToReference(cann::provider_option_names::kEnableCannSubGraph, info.enable_cann_subgraph)
           .AddAssignmentToReference(cann::provider_option_names::kDumpGraphs, info.dump_graphs)
           .AddAssignmentToReference(cann::provider_option_names::kDumpOmModel, info.dump_om_model)
           .AddAssignmentToReference(cann::provider_option_names::kPrecisionMode, info.precision_mode)
@@ -76,7 +74,6 @@ ProviderOptions CANNExecutionProviderInfo::ToProviderOptions(const CANNExecution
       {cann::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cann::provider_option_names::kEnableCannGraph, MakeStringWithClassicLocale(info.enable_cann_graph)},
-      {cann::provider_option_names::kEnableCannSubGraph, MakeStringWithClassicLocale(info.enable_cann_subgraph)},
       {cann::provider_option_names::kDumpGraphs, MakeStringWithClassicLocale(info.dump_graphs)},
       {cann::provider_option_names::kDumpOmModel, MakeStringWithClassicLocale(info.dump_om_model)},
       {cann::provider_option_names::kPrecisionMode, MakeStringWithClassicLocale(info.precision_mode)},
@@ -92,7 +89,6 @@ ProviderOptions CANNExecutionProviderInfo::ToProviderOptions(const OrtCANNProvid
       {cann::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, ArenaExtendStrategy(info.arena_extend_strategy))},
       {cann::provider_option_names::kEnableCannGraph, MakeStringWithClassicLocale(info.enable_cann_graph)},
-      {cann::provider_option_names::kEnableCannSubGraph, MakeStringWithClassicLocale(info.enable_cann_subgraph)},
       {cann::provider_option_names::kDumpGraphs, MakeStringWithClassicLocale(info.dump_graphs)},
       {cann::provider_option_names::kDumpOmModel, MakeStringWithClassicLocale(info.dump_om_model)},
       {cann::provider_option_names::kPrecisionMode, MakeStringWithClassicLocale(info.precision_mode)},

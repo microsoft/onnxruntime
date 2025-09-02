@@ -183,6 +183,9 @@ struct EpNode : public OrtNode {
   // Gets the node's attributes.
   Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const override;
 
+  Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attribute,
+                                      OrtValue*& attr_tensor) const override;
+
   // Gets the number of subgraphs contained by this node.
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 

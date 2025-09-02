@@ -21,10 +21,7 @@ limitations under the License.
 #include <mutex>
 #include <set>
 
-#define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
-
 #include "ep_allocator.h"
 #include "example_plugin_ep_utils.h"
 

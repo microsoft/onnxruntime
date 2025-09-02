@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
@@ -8,6 +8,7 @@ package ai.onnxruntime;
 import ai.onnxruntime.providers.CoreMLFlags;
 import ai.onnxruntime.providers.NNAPIFlags;
 import ai.onnxruntime.providers.OrtCUDAProviderOptions;
+import ai.onnxruntime.providers.OrtFlags;
 import ai.onnxruntime.providers.OrtTensorRTProviderOptions;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -623,10 +624,6 @@ public class OrtSession implements AutoCloseable {
    * <p>Used to set the number of threads, optimisation level, computation backend and other
    * options.
    *
-   * <p>The order execution providers are added to an options instance is the order they will be
-   * considered for op node assignment, with the EP added first having priority. The CPU EP is a
-   * fallback and added by default.
-   *
    * <p>Modifying this after the session has been constructed will have no effect.
    *
    * <p>The SessionOptions object must not be closed until all sessions which use it are closed, as
@@ -733,7 +730,7 @@ public class OrtSession implements AutoCloseable {
     @Override
     public void close() {
       if (!closed) {
-        if (!customLibraryHandles.isEmpty()) {
+        if (customLibraryHandles.size() > 0) {
           long[] longArray = new long[customLibraryHandles.size()];
           for (int i = 0; i < customLibraryHandles.size(); i++) {
             longArray[i] = customLibraryHandles.get(i);
@@ -920,10 +917,10 @@ public class OrtSession implements AutoCloseable {
      *
      * <p>&emsp;OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
      *
-     * <p>See <a href="https://onnxruntime.ai/docs/reference/operators/add-custom-op.html">Add
-     * Custom Op</a> for more information on custom ops. See an example of a custom op library
-     * registration function <a
-     * href="https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115">here</a>.
+     * <p>See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more
+     * information on custom ops. See
+     * https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
+     * for an example of a custom op library registration function.
      *
      * @param registrationFuncName The name of the registration function to call.
      * @throws OrtException If there was an error finding or calling the registration function.
@@ -1277,45 +1274,8 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds the specified execution provider and device tuples as an execution backend.
-     *
-     * <p>Execution provider priority is in the order added, i.e., the first provider added to a
-     * session options will be used first for op node assignment.
-     *
-     * @param devices The EP and device tuples. Each element must use the same EP, though they can
-     *     use different devices.
-     * @param providerOptions Configuration options for the execution provider. Refer to the
-     *     specific execution provider's documentation.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addExecutionProvider(List<OrtEpDevice> devices, Map<String, String> providerOptions)
-        throws OrtException {
-      checkClosed();
-      if (devices.isEmpty()) {
-        throw new IllegalArgumentException("Must supply at least one OrtEpDevice");
-      }
-      long[] deviceHandles = new long[devices.size()];
-      for (int i = 0; i < devices.size(); i++) {
-        deviceHandles[i] = devices.get(i).getNativeHandle();
-      }
-      String[][] optsArray = OrtUtil.unpackMap(providerOptions);
-      // This is valid as the environment must have been created to create the OrtEpDevice list.
-      long envHandle = OrtEnvironment.getEnvironment().getNativeHandle();
-      addExecutionProvider(
-          OnnxRuntime.ortApiHandle,
-          envHandle,
-          nativeHandle,
-          deviceHandles,
-          optsArray[0],
-          optsArray[1]);
-    }
-
-    /**
      * Adds the named execution provider (backend) as an execution backend. This generic function
      * only allows a subset of execution providers.
-     *
-     * <p>Execution provider priority is in the order added, i.e., the first provider added to a
-     * session options will be used first for op node assignment.
      *
      * @param providerName The name of the execution provider.
      * @param providerOptions Configuration options for the execution provider. Refer to the
@@ -1325,9 +1285,20 @@ public class OrtSession implements AutoCloseable {
     private void addExecutionProvider(String providerName, Map<String, String> providerOptions)
         throws OrtException {
       checkClosed();
-      String[][] optsArray = OrtUtil.unpackMap(providerOptions);
+      String[] providerOptionKey = new String[providerOptions.size()];
+      String[] providerOptionVal = new String[providerOptions.size()];
+      int i = 0;
+      for (Map.Entry<String, String> entry : providerOptions.entrySet()) {
+        providerOptionKey[i] = entry.getKey();
+        providerOptionVal[i] = entry.getValue();
+        i++;
+      }
       addExecutionProvider(
-          OnnxRuntime.ortApiHandle, nativeHandle, providerName, optsArray[0], optsArray[1]);
+          OnnxRuntime.ortApiHandle,
+          nativeHandle,
+          providerName,
+          providerOptionKey,
+          providerOptionVal);
     }
 
     /**
@@ -1510,15 +1481,6 @@ public class OrtSession implements AutoCloseable {
         long apiHandle,
         long nativeHandle,
         String epName,
-        String[] providerOptionKey,
-        String[] providerOptionVal)
-        throws OrtException;
-
-    private native void addExecutionProvider(
-        long apiHandle,
-        long envHandle,
-        long nativeHandle,
-        long[] deviceHandles,
         String[] providerOptionKey,
         String[] providerOptionVal)
         throws OrtException;

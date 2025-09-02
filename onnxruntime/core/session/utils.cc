@@ -421,14 +421,13 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
                      << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
 
   // create EpLibraryPlugin to ensure CreateEpFactories and ReleaseEpFactory are available
-  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, resolved_library_path);
+  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, std::move(resolved_library_path));
   ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
 
   if (is_provider_bridge) {
     // wrap the EpLibraryPlugin with EpLibraryProviderBridge to add to directly create an IExecutionProvider
     auto ep_library_provider_bridge = std::make_unique<EpLibraryProviderBridge>(std::move(provider_library),
-                                                                                std::move(ep_library_plugin),
-                                                                                resolved_library_path);
+                                                                                std::move(ep_library_plugin));
     ORT_RETURN_IF_ERROR(ep_library_provider_bridge->Load());
     internal_factories = ep_library_provider_bridge->GetInternalFactories();
     ep_library = std::move(ep_library_provider_bridge);

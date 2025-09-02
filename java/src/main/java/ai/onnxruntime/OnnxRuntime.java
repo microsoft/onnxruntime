@@ -42,8 +42,6 @@ final class OnnxRuntime {
   private static final int ORT_API_VERSION_13 = 13;
   // Post 1.13 builds of the ORT API
   private static final int ORT_API_VERSION_14 = 14;
-  // Post 1.22 builds of the ORT API
-  private static final int ORT_API_VERSION_23 = 23;
 
   // The initial release of the ORT training API.
   private static final int ORT_TRAINING_API_VERSION_1 = 1;
@@ -104,9 +102,6 @@ final class OnnxRuntime {
 
   /** The Training API handle. */
   static long ortTrainingApiHandle;
-
-  /** The Compile API handle. */
-  static long ortCompileApiHandle;
 
   /** Is training enabled in the native library */
   static boolean trainingEnabled;
@@ -181,13 +176,12 @@ final class OnnxRuntime {
       }
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
 
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_23);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
       if (ortApiHandle == 0L) {
         throw new IllegalStateException(
             "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");
       }
-      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_23);
-      ortCompileApiHandle = initialiseCompileAPIBase(ortApiHandle);
+      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_14);
       trainingEnabled = ortTrainingApiHandle != 0L;
       providers = initialiseProviders(ortApiHandle);
       version = initialiseVersion();
@@ -504,14 +498,6 @@ final class OnnxRuntime {
    * @return A pointer to the training API struct.
    */
   private static native long initialiseTrainingAPIBase(long apiHandle, int apiVersionNumber);
-
-  /**
-   * Get a reference to the compile API struct.
-   *
-   * @param apiHandle The ORT API struct pointer.
-   * @return A pointer to the compile API struct.
-   */
-  private static native long initialiseCompileAPIBase(long apiHandle);
 
   /**
    * Gets the array of available providers.
