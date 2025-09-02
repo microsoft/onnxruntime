@@ -806,13 +806,13 @@ void LaunchAddBiasTranspose<BFloat16>(
   if ((qk_head_size % 2 == 0) &&
       (v_head_size == -1 || (v_head_size % 2 == 0)) &&
       !do_rotary) {
-    const int H   = qk_head_size / 2;
+    const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
 
-    const __nv_bfloat162* input2       = reinterpret_cast<const __nv_bfloat162*>(input);
-    const __nv_bfloat162* biases2      = reinterpret_cast<const __nv_bfloat162*>(biases);
-    __nv_bfloat162*       output2      = reinterpret_cast<__nv_bfloat162*>(output);
-    __nv_bfloat162*       qkv_add_bias2= reinterpret_cast<__nv_bfloat162*>(qkv_add_bias);
+    const __nv_bfloat162* input2 = reinterpret_cast<const __nv_bfloat162*>(input);
+    const __nv_bfloat162* biases2 = reinterpret_cast<const __nv_bfloat162*>(biases);
+    __nv_bfloat162* output2 = reinterpret_cast<__nv_bfloat162*>(output);
+    __nv_bfloat162* qkv_add_bias2 = reinterpret_cast<__nv_bfloat162*>(qkv_add_bias);
 
     InvokeAddBiasTranspose<__nv_bfloat162>(
         stream, num_matrices, format, max_threads_per_block,
@@ -1105,13 +1105,12 @@ void LaunchAddBias<BFloat16>(
     const int num_heads, const int head_size, const int v_head_size,
     const BFloat16* biases, const BFloat16* query, const BFloat16* key, const BFloat16* value,
     BFloat16* q, BFloat16* k, BFloat16* v) {
-
   if ((head_size % 2 == 0) && (v_head_size % 2 == 0)) {
-    const int H   = head_size / 2;
+    const int H = head_size / 2;
     const int H_v = v_head_size / 2;
-    const __nv_bfloat162* query2  = reinterpret_cast<const __nv_bfloat162*>(query);
-    const __nv_bfloat162* key2    = reinterpret_cast<const __nv_bfloat162*>(key);
-    const __nv_bfloat162* value2  = reinterpret_cast<const __nv_bfloat162*>(value);
+    const __nv_bfloat162* query2 = reinterpret_cast<const __nv_bfloat162*>(query);
+    const __nv_bfloat162* key2 = reinterpret_cast<const __nv_bfloat162*>(key);
+    const __nv_bfloat162* value2 = reinterpret_cast<const __nv_bfloat162*>(value);
     const __nv_bfloat162* biases2 = reinterpret_cast<const __nv_bfloat162*>(biases);
     __nv_bfloat162* q2 = reinterpret_cast<__nv_bfloat162*>(q);
     __nv_bfloat162* k2 = reinterpret_cast<__nv_bfloat162*>(k);
@@ -1213,12 +1212,11 @@ void LaunchAddBias<BFloat16>(
     const int batch_size, const int sequence_length,
     const int num_heads, const int head_size,
     const BFloat16* biases, const BFloat16* query, BFloat16* q) {
-
   if ((head_size % 2) == 0) {
     const int H = head_size / 2;
-    const __nv_bfloat162* query2  = reinterpret_cast<const __nv_bfloat162*>(query);
+    const __nv_bfloat162* query2 = reinterpret_cast<const __nv_bfloat162*>(query);
     const __nv_bfloat162* biases2 = reinterpret_cast<const __nv_bfloat162*>(biases);
-    __nv_bfloat162* q2            = reinterpret_cast<__nv_bfloat162*>(q);
+    __nv_bfloat162* q2 = reinterpret_cast<__nv_bfloat162*>(q);
 
     InvokeAddBias<__nv_bfloat162>(
         stream, max_threads_per_block,

@@ -506,7 +506,7 @@ struct T2<half> {
   using Type = half2;
 };
 
-template<>
+template <>
 struct T2<BFloat16> {
   using Type = __nv_bfloat162;
 };

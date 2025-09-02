@@ -359,8 +359,8 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
   // Using float2 keeps the same 8-byte vector width as the FP16 path.
   if ((head_size % 4) == 0) {
     const int H = head_size / 4;
-    const float2* input2  = reinterpret_cast<const float2*>(input);
-    float2* output2       = reinterpret_cast<float2*>(output);
+    const float2* input2 = reinterpret_cast<const float2*>(input);
+    float2* output2 = reinterpret_cast<float2*>(output);
 
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
@@ -370,11 +370,11 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       TransposeQKVLarge<float2><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
     }
 
-  // When head_size is even (but not divisible by 4), move 2x16-bit elements per thread (4 bytes).
+    // When head_size is even (but not divisible by 4), move 2x16-bit elements per thread (4 bytes).
   } else if ((head_size & 1) == 0) {
     const int H = head_size / 2;
     const nv_bfloat162* input2 = reinterpret_cast<const nv_bfloat162*>(input);
-    nv_bfloat162* output2      = reinterpret_cast<nv_bfloat162*>(output);
+    nv_bfloat162* output2 = reinterpret_cast<nv_bfloat162*>(output);
 
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
@@ -384,7 +384,7 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       TransposeQKVLarge<nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
     }
 
-  // Odd head_size: scalar 16-bit BF16 path.
+    // Odd head_size: scalar 16-bit BF16 path.
   } else {
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
