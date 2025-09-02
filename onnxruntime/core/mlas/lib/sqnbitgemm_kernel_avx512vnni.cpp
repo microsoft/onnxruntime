@@ -27,6 +27,7 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen32.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
+#include "sqnbitgemm_bitnet_kernel_avx2.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -462,6 +463,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
 
     d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
     d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
+    d.Q2BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<2>;
+
+    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512vnni;
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum512vnni;
@@ -476,5 +480,6 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
 
+    d.SQ2BitGemmKernel_CompInt8 = SQ2BitGemmKernel_CompInt8_avx2;
     return d;
 }();

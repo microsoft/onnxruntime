@@ -102,6 +102,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
+    Q4BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
+
     /** Gets size of packed quantized B data containing 8-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
     typedef size_t(Q8BitGemmPackQuantBDataSize_Fn)(
         size_t N,
@@ -126,6 +128,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
     Q4BitGemmPackQuantBData_Fn* HQ4BitGemmPackQuantBData = nullptr;
+    Q4BitGemmPackQuantBData_Fn* SQ2BitGemmPackQuantBData = nullptr;
 
     typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
         size_t N,
@@ -444,6 +447,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
+    SQ4BitGemmKernel_CompInt8_Fn* SQ2BitGemmKernel_CompInt8 = nullptr;
 
     /**
      * @brief Whether to use SQ4BitGemmKernel_Packed_CompInt8 for this problem.

@@ -142,20 +142,36 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
           const float b_scale = QuantBScale[n * BlockCountK + k_blk];
 
-          static_assert(BlkBitWidth == 4, "only implemented for 4-bit quantized B");
+          uint8_t b_zp = 0;
+          if constexpr (BlkBitWidth == 4) {
+            b_zp = 8;
+          } else if constexpr (BlkBitWidth == 2) {
+            b_zp = 2;
+          }
 
-          uint8_t b_zp = 8;
+          int pack_size = 8 / BlkBitWidth;
           if (QuantBZeroPoint != nullptr) {
-            const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 1) / 2) + k_blk / 2];
-            b_zp = (k_blk & 1) ? (b_zp_byte >> 4) : (b_zp_byte & 0x0F);
+            if constexpr (BlkBitWidth == 4) {
+              const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 1) / pack_size) + k_blk / pack_size];
+              b_zp = (k_blk & 1) ? (b_zp_byte >> 4) : (b_zp_byte & 0x0F);
+            } else if constexpr (BlkBitWidth == 2) {
+              const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 3) / pack_size) + k_blk / pack_size];
+              int shift = (k_blk & 3) * 2;
+              b_zp = (b_zp_byte >> shift) & 0x03;
+            }
           }
 
           int32_t qsum = 0;
 
           for (size_t kk = 0; kk < k_blk_len; ++kk) {
             const int8_t qa = QuantAData[m * BlockCountK * BlkLen + k + kk];
-            const uint8_t qb_byte = QuantBData[(n * BlockCountK * BlkLen + k + kk) / 2];
-            const int8_t qb = ((kk & 1) == 1 ? (qb_byte >> 4) : (qb_byte & 0x0F)) - b_zp;
+            const uint8_t qb_byte = QuantBData[(n * BlockCountK * BlkLen + k + kk) / pack_size];
+            int8_t qb = 0;
+            if constexpr (BlkBitWidth == 4) {
+              qb = ((kk & 1) == 1 ? (qb_byte >> 4) : (qb_byte & 0x0F)) - b_zp;
+            } else if constexpr (BlkBitWidth == 2) {
+              qb = ((qb_byte >> ((kk & 3) * 2)) & 0x03) - b_zp;
+            }
             qsum += qa * qb;
           }
 
@@ -379,6 +395,11 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
     for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {SQNBIT_CompFp32, SQNBIT_CompInt8}) {
       for (bool WithThreadpool : {false, true}) {
         for (bool Symmetric : {false, true}) {
+          if constexpr (BlkBitWidth == 2) {
+            if (SQNBIT_CompFp32 == ComputeType) {
+              continue;
+            }
+          }
           for (size_t b = 1; b < 16; b++) {
             tests_registered += RegisterSingleTest(b, b, b, ComputeType, WithThreadpool, Symmetric, false);
             tests_registered += RegisterSingleTest(b, b, b, ComputeType, WithThreadpool, Symmetric, true);
@@ -422,13 +443,18 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
+  // TODO: enable these test for 2bit development.
+  //count += SQNBitGemmShortExecuteTest<2, 16>::RegisterShortExecuteTests();
+  //count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
+  //count += SQNBitGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
+  //count += SQNBitGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
+  //count += SQNBitGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
 
   count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 256>::RegisterShortExecuteTests();
-
   return count;
 }
 
