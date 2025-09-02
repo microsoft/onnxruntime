@@ -350,8 +350,19 @@ if (winml_is_inbox)
   endif()
 endif()
 
-# Assemble the Apple static framework (iOS and macOS)
+# Assemble the Apple static framework
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS|visionOS|tvOS")
+    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
+  endif()
+
+  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
+  if (CMAKE_OSX_ARCHITECTURES_LEN GREATER 1)
+    # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
+    # but that would not work for universal static libraries
+    message(FATAL_ERROR "universal binary is not supported for apple framework")
+  endif()
+
   # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,
   # we specify as `-macabi` in the name of the output static apple framework directory.
   if (PLATFORM_NAME STREQUAL "macabi")

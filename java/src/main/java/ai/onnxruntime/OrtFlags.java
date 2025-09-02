@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
-package ai.onnxruntime.providers;
+package ai.onnxruntime;
 
 import java.util.EnumSet;
 
