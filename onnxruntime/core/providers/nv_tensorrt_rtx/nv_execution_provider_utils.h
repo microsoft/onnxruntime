@@ -697,4 +697,36 @@ static bool checkTrtTensorIsDynamic(nvinfer1::ITensor* tensor) {
     return checkTrtDimIsDynamic(tensor->getDimensions());
   }
 }
+
+/*
+ * Load timing cache from file
+ */
+inline std::vector<char> loadTimingCacheFile(const std::string inFileName) {
+  std::ifstream iFile(inFileName, std::ios::in | std::ios::binary);
+  if (!iFile) {
+    // Use a simple approach for warnings since LOGS_DEFAULT may not be available in utils header
+    return std::vector<char>();
+  }
+  iFile.seekg(0, std::ifstream::end);
+  size_t fsize = iFile.tellg();
+  iFile.seekg(0, std::ifstream::beg);
+  std::vector<char> content(fsize);
+  iFile.read(content.data(), fsize);
+  iFile.close();
+  return content;
+}
+
+/*
+ * Save timing cache to file
+ */
+inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::IHostMemory* blob) {
+  std::ofstream oFile(outFileName, std::ios::out | std::ios::binary);
+  if (!oFile) {
+    // Use a simple approach for warnings since LOGS_DEFAULT may not be available in utils header
+    return;
+  }
+  oFile.write((char*)blob->data(), blob->size());
+  oFile.close();
+}
+
 }  // namespace onnxruntime

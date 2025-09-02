@@ -2460,7 +2460,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 #if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 1)
   if (builder_optimization_level_ != 3) {
     if (builder_optimization_level_ < 0 || builder_optimization_level_ > 5) {
-      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Invalid builder optimization level " << builder_optimization_level_ 
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Invalid builder optimization level " << builder_optimization_level_
                            << ". Valid range is [0-5]. Using default level 3.";
     } else {
       trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
@@ -2664,6 +2664,22 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   }
   {
     auto lock = GetApiLock();
+
+    // Load timing cache from file if enabled
+    std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+    if (timing_cache_enable_ && !timing_cache_path_.empty()) {
+      std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path_);
+      timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+      if (timing_cache == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "NvTensorRTRTX EP could not create timing cache: " + timing_cache_path_);
+      }
+      trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+      if (detailed_build_log_) {
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Deserialized timing cache from " + timing_cache_path_;
+      }
+    }
+
     // Build engine
     std::chrono::steady_clock::time_point engine_build_start;
     if (detailed_build_log_) {
@@ -2674,6 +2690,21 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP failed to create engine from network for fused node: " + fused_node.Name());
     }
+
+    // Save timing cache to file if enabled
+    if (timing_cache_enable_ && !timing_cache_path_.empty()) {
+      auto timing_cache = trt_config->getTimingCache();
+      std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+      if (timingCacheHostData == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "NvTensorRTRTX EP could not serialize timing cache: " + timing_cache_path_);
+      }
+      saveTimingCacheFile(timing_cache_path_, timingCacheHostData.get());
+      if (detailed_build_log_) {
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Serialized timing cache " + timing_cache_path_;
+      }
+    }
+
     trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
