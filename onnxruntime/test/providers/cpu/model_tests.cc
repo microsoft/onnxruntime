@@ -88,8 +88,7 @@ static const std::unordered_set<std::string> VERIFIED_PUBLIC_MODELS = {
     "SSD",
     "VGG 19-caffe2",
     "YOLOv3",
-    "ZFNet-512"
-};
+    "ZFNet-512"};
 
 // All ONNX Model Zoo models (always safe as they're public)
 // Total: 158 models from https://github.com/onnx/models
@@ -115,7 +114,6 @@ static const std::unordered_set<std::string> ONNX_ZOO_MODELS = {
     "VGG 19-caffe2",
     "YOLOv3",
     "ZFNet-512",
-    
     // Additional Zoo-only models (138)
     "AlexNet-int8",
     "BERT-Squad-int8",
@@ -211,12 +209,11 @@ static const std::unordered_set<std::string> ONNX_ZOO_MODELS = {
     "YOLOv3-12-int8",
     "YOLOv4",
     "ZFNet-512-int8",
-    "ZFNet-512-qdq"
-};
+    "ZFNet-512-qdq"};
 
 // Helper function to check if a model is allowed
 inline bool IsModelAllowed(const std::string& model_name) {
-    return ONNX_ZOO_MODELS.count(model_name) > 0;
+  return ONNX_ZOO_MODELS.count(model_name) > 0;
 }
 
 // parameter is provider_name + "_" + model_path
