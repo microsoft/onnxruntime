@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param tile_size
+#param use_indirect_dispatch
 
 // Inputs are splits of the GQA output, split into num_total_seq_length_tiles
 // rows. This shader needs to add these splits across the row dimension to
@@ -23,8 +24,12 @@ $MAIN {
   var value = output_value_t(0);
   let local_row = u32(local_idx / tile_size);
   let local_col = local_idx % tile_size;
+  #if use_indirect_dispatch
   let total_sequence_length = u32(seqlens_k[0]) + 1u;
   let num_total_seq_length_tile = (total_sequence_length + 63u) / 64u;
+  #else
+  let num_total_seq_length_tile = uniforms.num_total_seq_length_tile;
+  #endif
 
   if (head_size_offset + local_col < uniforms.head_size_vec) {
     for (var r = 0u; r < num_total_seq_length_tile; r += tile_size) {

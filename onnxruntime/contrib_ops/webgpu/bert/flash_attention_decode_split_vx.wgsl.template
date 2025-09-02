@@ -5,6 +5,7 @@
 #param head_size_vec
 #param tile_size_k_vec
 #param sub_tile_count
+#param use_indirect_dispatch
 
 // Note that this shader adopts similar algorithm with dp4a generation shader.
 //
@@ -40,7 +41,11 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
+  #if use_indirect_dispatch
   let total_sequence_length = u32(seqlens_k[0]) + 1u;
+  #else
+  let total_sequence_length = uniforms.total_sequence_length;
+  #endif
   let num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
   let total_seq_offset = (workgroup_idx % num_total_seq_length_tile) * tile_size;
   let head_idx = u32(workgroup_idx / num_total_seq_length_tile);
