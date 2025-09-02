@@ -7233,7 +7233,7 @@ struct OrtCompileApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
-                  size_t flags);
+                  uint32_t flags);
 
   /** Sets information related to EP context binary file.
    *

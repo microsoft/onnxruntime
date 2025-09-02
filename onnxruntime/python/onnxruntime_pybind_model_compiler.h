@@ -48,7 +48,7 @@ class PyModelCompiler {
                                     bool embed_compiled_data_into_model = false,
                                     const std::string& external_initializers_file_path = {},
                                     size_t external_initializers_size_threshold = 1024,
-                                    size_t flags = 0,
+                                    uint32_t flags = 0,
                                     GraphOptimizationLevel graph_opt_level = GraphOptimizationLevel::ORT_DISABLE_ALL);
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from

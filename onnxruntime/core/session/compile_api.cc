@@ -231,7 +231,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode
 }
 
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetFlags,
-                    _In_ OrtModelCompilationOptions* ort_model_compile_options, size_t flags) {
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options, uint32_t flags) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);

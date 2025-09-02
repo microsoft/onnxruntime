@@ -95,7 +95,7 @@ class ModelCompilationOptions {
   /// </summary>
   /// <param name="flags">unsigned integer set to the bitwise OR of enabled flags.</param>
   /// <returns>Status indicating success or an error</returns>
-  Status SetFlags(size_t flags);
+  Status SetFlags(uint32_t flags);
 
   /// <summary>
   /// Returns a reference to the session options object.

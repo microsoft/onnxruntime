@@ -137,7 +137,7 @@ Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_m
   return Status::OK();
 }
 
-Status ModelCompilationOptions::SetFlags(size_t flags) {
+Status ModelCompilationOptions::SetFlags(uint32_t flags) {
   EpContextModelGenerationOptions& options = session_options_.value.ep_context_gen_options;
   options.error_if_output_file_exists = flags & OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
   options.action_if_no_compiled_nodes =
