@@ -20,7 +20,7 @@ WinML offers several advantages for Windows developers:
 
 The WinML API is a WinRT API that shipped inside the Windows OS starting with build 1809 (RS5) in the Windows.AI.MachineLearning namespace. It embedded a version of the ONNX Runtime.
 
-In addition to using the in-box version of WinML, WinML can also be installed as an application re-distributable package. For legacy scenarios or specific DirectML requirements, see the [DirectML Execution Provider](../execution-providers/DirectML-ExecutionProvider) documentation (note: DirectML is in sustained engineering mode).
+In addition to using the in-box version of WinML, WinML can also be installed as an application re-distributable package. For legacy scenarios or specific DirectML requirements, see the [DirectML Execution Provider](../execution-providers/DirectML-ExecutionProvider) documentation (note: DirectML is in sustained engineering).
 
 ## Contents
 {: .no_toc }
@@ -31,7 +31,7 @@ In addition to using the in-box version of WinML, WinML can also be installed as
 
 ## Windows OS integration
 
-ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Microsoft.Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support (note: DirectML is in sustained engineering mode - WinML is the preferred approach).
+ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Microsoft.Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support (note: DirectML is in sustained engineering - WinML is the preferred approach).
 
 **Version Support:**
 - **Windows 10 (1809+) & Windows 11 (before 24H2)**: ONNX Runtime works, but you need to manually select and manage models and execution providers yourself

@@ -57,7 +57,7 @@ pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackag
 
 ### Install ONNX Runtime GPU (DirectML) - Sustained Engineering Mode
 
-**Note**: DirectML is in sustained engineering mode. For new Windows projects, consider [WinML](#winml-recommended-for-windows) instead.
+**Note**: DirectML is in sustained engineering. For new Windows projects, consider [WinML](#winml-recommended-for-windows) instead.
 
 ```bash
 pip install onnxruntime-directml
@@ -171,13 +171,13 @@ dotnet add package Microsoft.ML.OnnxRuntime.Gpu
 Note: You don't need --interactive every time. dotnet will prompt you to add --interactive if it needs updated
 credentials.
 
-#### DirectML (sustained engineering mode - use WinML for new projects)
+#### DirectML (sustained engineering - use WinML for new projects)
 
 ```bash
 dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 ```
 
-**Note**: DirectML is in sustained engineering mode. For new Windows projects, use WinML instead:
+**Note**: DirectML is in sustained engineering. For new Windows projects, use WinML instead:
 
 #### WinML (recommended for Windows)
 
@@ -446,13 +446,13 @@ below:
 | Python       | If using pip, run `pip install --upgrade pip` prior to downloading.                                                                               |                                                                                                                                               |                                                                                                |
 |              | CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)                                                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime/overview)                    |                                                                                                |
 |              | GPU (CUDA/TensorRT) for CUDA 12.x: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu)                                                              | [onnxruntime-gpu (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
-|              | GPU (DirectML) **sustained engineering mode**: [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/)                                                        | [onnxruntime-directml (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-directml/overview/) | [View](../execution-providers/DirectML-ExecutionProvider.md#requirements)                      |
+|              | GPU (DirectML) **sustained engineering**: [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/)                                                        | [onnxruntime-directml (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-directml/overview/) | [View](../execution-providers/DirectML-ExecutionProvider.md#requirements)                      |
 |              | OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*                                         |                                                                                                                                               | [View](../build/eps.md#openvino)                                                               |
 |              | TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*                                                |                                                                                                                                               |                                                                                                |
 |              | Azure (Cloud): [**onnxruntime-azure**](https://pypi.org/project/onnxruntime-azure/)                                                               |                                                                                                                                               |                                                                                                |
 | C#/C/C++     | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      |                                                                                                |
 |              | GPU (CUDA/TensorRT): [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)                              | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      | [View](../execution-providers/CUDA-ExecutionProvider)                                          |
-|              | GPU (DirectML) **sustained engineering mode**: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)                         | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview)           | [View](../execution-providers/DirectML-ExecutionProvider)                                      |
+|              | GPU (DirectML) **sustained engineering**: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)                         | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview)           | [View](../execution-providers/DirectML-ExecutionProvider)                                      |
 | WinML **recommended for Windows**        | [**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)                                                   | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/NuGet/Microsoft.AI.MachineLearning/overview)  | [View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites) |
 | Java         | CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)                         |                                                                                                                                               | [View](../api/java)                                                                            |
 |              | GPU (CUDA/TensorRT): [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) |                                                                                                                                               | [View](../api/java)                                                                            |
