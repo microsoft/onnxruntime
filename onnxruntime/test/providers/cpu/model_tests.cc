@@ -906,53 +906,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
         // Check if model is in the public whitelist
         std::string model_name_str = ToUTF8String(test_case_name);
         if (!IsModelAllowed(model_name_str)) {
-            // Try alternative names for known models
-            if (model_name_str == "bvlc_alexnet") {
-                model_name_str = "AlexNet";
-            } else if (model_name_str == "BERT_Squad" || model_name_str == "bertsquad8") {
-                model_name_str = "BERT-Squad";
-            } else if (model_name_str == "bvlc_reference_caffenet") {
-                model_name_str = "CaffeNet";
-            } else if (model_name_str == "densenet121") {
-                model_name_str = "DenseNet-121";
-            } else if (model_name_str == "emotion_ferplus") {
-                model_name_str = "Emotion FERPlus";
-            } else if (model_name_str == "faster_rcnn") {
-                model_name_str = "Faster R-CNN R-50-FPN";
-            } else if (model_name_str == "bvlc_googlenet") {
-                model_name_str = "GoogleNet";
-            } else if (model_name_str == "inception_v1") {
-                model_name_str = "Inception-1";
-            } else if (model_name_str == "inception_v2") {
-                model_name_str = "Inception-2";
-            } else if (model_name_str == "mask_rcnn") {
-                model_name_str = "Mask R-CNN R-50-FPN";
-            } else if (model_name_str == "mnist") {
-                model_name_str = "MNIST";
-            } else if (model_name_str == "mobilenetv2-1.0") {
-                model_name_str = "MobileNet v2-7";
-            } else if (model_name_str == "bvlc_reference_rcnn_ilsvrc13") {
-                model_name_str = "R-CNN ILSVRC13";
-            } else if (model_name_str == "shufflenet") {
-                model_name_str = "ShuffleNet-v1";
-            } else if (model_name_str == "squeezenet") {
-                model_name_str = "SqueezeNet 1.0";
-            } else if (model_name_str == "squeezenet1.1") {
-                model_name_str = "SqueezeNet 1.1";
-            } else if (model_name_str == "ssd") {
-                model_name_str = "SSD";
-            } else if (model_name_str == "vgg19") {
-                model_name_str = "VGG 19-caffe2";
-            } else if (model_name_str == "yolov3") {
-                model_name_str = "YOLOv3";
-            } else if (model_name_str == "zfnet512") {
-                model_name_str = "ZFNet-512";
-            }
-            
-            // Check again with mapped name
-            if (!IsModelAllowed(model_name_str)) {
-                continue;  // Skip models not in whitelist
-            }
+            continue;  // Skip models not in whitelist
         }
 
         if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
