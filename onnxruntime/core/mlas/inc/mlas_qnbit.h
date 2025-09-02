@@ -32,6 +32,7 @@ typedef enum {
     BHQNBIT_CompBf16,     /*!< input bf16, accumulator fp32 */
     SQNBIT_CompInt8,      /*!< input int8, accumulator int32, input fp32 */
     HQNBIT_CompInt8,      /*!< input int8, accumulator int32, input fp16 */
+    TMAC
 } MLAS_QNBIT_GEMM_COMPUTE_TYPE;
 
 /**
@@ -221,3 +222,25 @@ MlasQNBitGemmScalesPacked(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     bool HasZeroPoint
 );
+
+/**
+ * @brief Determines whether the TMAC LUT optimization path is available on the current platform
+ *        for the provided quantization parameters.
+ *
+ * This API is used by higher-level ops to choose the TMAC path. It complements
+ * MlasIsQNBitGemmAvailable by querying availability of the LUT-based strategy.
+ */
+bool MLASCALL
+MlasIsTMACAvailable(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
+/**
+ * @brief Initializes any global tables required by TMAC LUT kernels.
+ *
+ * Returns true if initialization succeeded or was unnecessary.
+ */
+bool MLASCALL
+MlasTmacInitializeTable();

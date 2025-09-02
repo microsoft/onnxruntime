@@ -55,6 +55,10 @@ GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
     return SQNBIT_CompInt8;
   }
 
+  if (accuracy_level_attr == static_cast<int64_t>(Level5) && MlasIsTMACAvailable(nbits, block_size, SQNBIT_CompInt8)) {
+    return TMAC;
+  }
+
   return SQNBIT_CompFp32;
 }
 
@@ -320,6 +324,10 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   // TODO: add the logic for generating lookup table here -- for now we can assume that
   // 2 bits + acc level 4 = use look up table but in the future adapt so that we use a mamtulnbits attr to decide
   // if we want to do lut generation
+  if (compute_type_ == TMAC) {
+    // call lut gen somehow
+    MlasTmacInitializeTable();
+  }
 
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
