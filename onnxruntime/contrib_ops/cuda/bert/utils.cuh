@@ -145,7 +145,7 @@ struct Vec_t<Half4> {
 
 template <>
 struct Vec_t<onnxruntime::BFloat16> {
-  using Type = uint32_t;   // packs 2×bf16
+  using Type = uint32_t;          // packs 2×bf16
   static constexpr int size = 2;  // two 16-bit elements
 };
 
