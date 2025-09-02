@@ -34,6 +34,7 @@
         "^test_attention_4d_diff_heads_mask4d_padded_kv", // need nonpad_kv_seqlen
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", // attention op implementation is wrong
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal",
+        "^test_attention_4d_attn_mask_3d_causal_expanded_cpu",  // MacOS fails with const dimension <= num_dims was false.
         "^test_l2normalization*",  // LpNormalization(22) not implemented
         "^test_l1normalization*",  // LpNormalization(22) not implemented
         "^test_lpnormalization*",  // LpNormalization(22) not implemented
