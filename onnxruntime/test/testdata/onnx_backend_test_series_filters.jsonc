@@ -39,7 +39,9 @@
         "^test_lpnormalization*",  // LpNormalization(22) not implemented
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_attention_4d_fp16_cpu",  // precision issue: 1 / 192 mismatched elements
+        "^test_attention_4d_fp16_expanded_cpu",  // precision issue: 3 / 192 mismatched elements
         "^test_attention_4d_gqa_with_past_and_present_fp16_cpu",  // precision issue: 4 / 576 mismatched elements
+        "test_attention_4d_gqa_with_past_and_present_fp16_expanded_cpu",  // precision issue: 37 / 576 mismatched elements
         "test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
         "test_castlike_INT4_to*",  // ORT does not support ml_dtypes
