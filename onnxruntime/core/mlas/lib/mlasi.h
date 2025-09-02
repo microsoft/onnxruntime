@@ -2280,7 +2280,7 @@ MLAS_FLOAT32X4
 MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FLOAT32X4 Vector3)
 {
 #if defined(MLAS_NEON_INTRINSICS)
-    return vmlaq_f32(Vector3, Vector1, Vector2);
+    return vfmaq_f32(Vector3, Vector1, Vector2);
 #elif defined(MLAS_FMA3_INTRINSICS)
     return _mm_fmadd_ps(Vector1, Vector2, Vector3);
 #elif defined(MLAS_SSE2_INTRINSICS)
