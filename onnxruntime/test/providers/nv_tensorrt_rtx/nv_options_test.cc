@@ -20,6 +20,9 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 
 namespace test {
+size_t countFilesInDirectory(const std::string& dir_path) {
+  return std::distance(std::filesystem::directory_iterator(dir_path), std::filesystem::directory_iterator{});
+}
 
 TEST(NvExecutionProviderTest, RuntimeCaching) {
   PathString model_name = ORT_TSTR("nv_execution_provider_runtime_caching.onnx");
@@ -28,9 +31,9 @@ TEST(NvExecutionProviderTest, RuntimeCaching) {
   clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, 3, 2};
-  std::string runtime_cache_name = "runtime_cache.trt";
+  std::string runtime_cache_name = "./runtime_cache/";
   if (std::filesystem::exists(runtime_cache_name)) {
-    std::filesystem::remove(runtime_cache_name);
+    std::filesystem::remove_all(runtime_cache_name);
   }
   CreateBaseModel(model_name, graph_name, dims);
   // AOT time
@@ -47,6 +50,7 @@ TEST(NvExecutionProviderTest, RuntimeCaching) {
   }
   // the cache will be dumped to disk upon session destruction
   ASSERT_TRUE(std::filesystem::exists(runtime_cache_name.c_str()));
+  ASSERT_TRUE(1 == countFilesInDirectory(runtime_cache_name));
 
   // use existing cache
   {
@@ -55,35 +59,23 @@ TEST(NvExecutionProviderTest, RuntimeCaching) {
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_runtime_cache_path", runtime_cache_name.c_str()}});
     Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
   }
+  ASSERT_TRUE(1 == countFilesInDirectory(runtime_cache_name));
 
   // create new cache
   {
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    std::string new_cache_name = "runtime_cache_new.trt";
+    std::string new_cache_name = "/tmp/runtime_cache_new/";
+    if (std::filesystem::exists(new_cache_name)) {
+      std::filesystem::remove_all(new_cache_name);
+    }
     so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_runtime_cache_path", new_cache_name.c_str()}});
     {
       Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
     }
     // the cache will be dumped to disk upon session destruction
     ASSERT_TRUE(std::filesystem::exists(new_cache_name.c_str()));
-  }
-
-  // overwrite corrupted cache
-  {
-    Ort::SessionOptions so;
-    Ort::RunOptions run_options;
-    // we assume the ONNX file as cache would should fail deserialization and overwrite the model
-    std::string new_cache_name = PathToUTF8(model_name);
-    auto file_size_old = std::filesystem::file_size(new_cache_name);
-    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {{"nv_runtime_cache_path", new_cache_name.c_str()}});
-    {
-      Ort::Session session_object(*ort_env, model_name_ctx.c_str(), so);
-    }
-    auto file_size_new = std::filesystem::file_size(new_cache_name);
-    // the cache will be dumped to disk upon session destruction
-    ASSERT_TRUE(std::filesystem::exists(new_cache_name.c_str()));
-    ASSERT_TRUE(file_size_old != file_size_new);
+    ASSERT_TRUE(1 == countFilesInDirectory(new_cache_name));
   }
 }
 }  // namespace test

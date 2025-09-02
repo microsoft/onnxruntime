@@ -48,30 +48,5 @@ inline void WriteFile(const std::string& path, const void* data, size_t size) {
 
 inline void WriteFile(const std::string& path, const std::vector<char>& data) { WriteFile(path, data.data(), data.size()); }
 
-inline std::string VerifyPathAndMakeAbsolute(const std::string& path) {
-  std::filesystem::path p(path);
-  std::filesystem::path abs_path = std::filesystem::absolute(p);
-
-  if (std::filesystem::exists(abs_path)) {
-    // Path exists, check if it's writable
-    std::ofstream test(abs_path.string(), std::ios::app | std::ios::binary);
-    if (test.is_open()) {
-      return abs_path.string();
-    }
-  } else {
-    // Path does not exist, check if parent directory is writable
-    auto parent = abs_path.parent_path();
-    if (parent.empty()) parent = std::filesystem::current_path();
-    std::ofstream test(abs_path.string(), std::ios::out | std::ios::binary | std::ios::trunc);
-    if (test.is_open()) {
-      test.close();
-      std::filesystem::remove(abs_path);  // Clean up test file
-      return abs_path.string();
-    }
-  }
-  LOGS_DEFAULT(INFO) << "TensorRT RTX the given path '" << path << "' could no be verified and written to as absolute path: '" << abs_path.string() << "'" << std::endl;
-  return "";
-}
-
 }  // namespace file_utils
 }  // namespace onnxruntime

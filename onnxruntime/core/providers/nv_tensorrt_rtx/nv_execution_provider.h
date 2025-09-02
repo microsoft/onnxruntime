@@ -378,7 +378,7 @@ class NvExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   bool multi_profile_enable_ = false;
-  std::string runtime_cache_;
+  std::filesystem::path runtime_cache_;
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
   int nv_profile_index_ = 0;

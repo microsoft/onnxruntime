@@ -871,7 +871,20 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   max_shared_mem_size_ = info.max_shared_mem_size;
   dump_subgraphs_ = info.dump_subgraphs;
   weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
-  runtime_cache_ = file_utils::VerifyPathAndMakeAbsolute(info.runtime_cache_path);
+  // make runtime cache path absolute and create directory if it doesn't exist
+  if (!info.runtime_cache_path.empty()) {
+    std::filesystem::path p(info.runtime_cache_path);
+    std::filesystem::path abs_path = std::filesystem::absolute(p);
+    const auto& env = GetDefaultEnv();
+    auto status = env.CreateFolder(abs_path.string());
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] The runtime cache directory could not be created at: " << abs_path
+                            << ". Runtime cache is disabled.";
+    } else {
+      runtime_cache_ = abs_path;
+    }
+  }
+
   onnx_model_folder_path_ = info.onnx_model_folder_path;
   onnx_model_bytestream_ = info.onnx_bytestream;
   onnx_model_bytestream_size_ = info.onnx_bytestream_size;
@@ -2637,6 +2650,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   tensorrt_ptr::unique_pointer_exec_ctx trt_context;
   std::unique_ptr<nvinfer1::IRuntimeCache> trt_runtime_cache;
   std::unique_ptr<nvinfer1::IRuntimeConfig> trt_runtime_config;
+  std::string runtime_cache_file = "";
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
@@ -2666,8 +2680,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
     trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
     if (!runtime_cache_.empty()) {
+      runtime_cache_file = (runtime_cache_ / fused_node.Name()).string();
       trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
-      auto cache_data = file_utils::ReadFile(runtime_cache_);
+      auto cache_data = file_utils::ReadFile(runtime_cache_file);
       if (!trt_runtime_cache->deserialize(cache_data.data(), cache_data.size())) {
         trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
         LOGS_DEFAULT(INFO) << "TensorRT RTX failed to deserialize the runtime cache, will overwrite with new one" << std::endl;
@@ -2738,7 +2753,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   trt_context = tensorrt_ptr::unique_pointer_exec_ctx(
       trt_engine->createExecutionContext(trt_runtime_config.get()),
-      tensorrt_ptr::IExecutionContextDeleter(runtime_cache_, std::move(trt_runtime_cache)));
+      tensorrt_ptr::IExecutionContextDeleter(runtime_cache_file, std::move(trt_runtime_cache)));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "NvTensorRTRTX EP could not build execution context for fused node: " + fused_node.Name());
@@ -3047,9 +3062,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
   }
   trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
+  std::string runtime_cache_file = "";
   if (!runtime_cache_.empty()) {
+    runtime_cache_file = (runtime_cache_ / graph_body_viewer.GetNode(node_idx)->Name()).string();
     trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
-    auto cache_data = file_utils::ReadFile(runtime_cache_);
+    auto cache_data = file_utils::ReadFile(runtime_cache_file);
     if (!trt_runtime_cache->deserialize(cache_data.data(), cache_data.size())) {
       trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
       LOGS_DEFAULT(INFO) << "TensorRT RTX failed to deserialize the runtime cache, will overwrite with new one" << std::endl;
@@ -3065,7 +3082,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   trt_context = tensorrt_ptr::unique_pointer_exec_ctx(
       trt_engine->createExecutionContext(trt_runtime_config.get()),
-      tensorrt_ptr::IExecutionContextDeleter(runtime_cache_, std::move(trt_runtime_cache)));
+      tensorrt_ptr::IExecutionContextDeleter(runtime_cache_file, std::move(trt_runtime_cache)));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "NvTensorRTRTX EP could not build execution context for fused node: " + fused_node.Name());
