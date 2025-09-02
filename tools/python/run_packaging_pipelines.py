@@ -277,7 +277,9 @@ def filter_pipelines(pipelines: list[dict], token: str, branch: str, is_pr_build
             if result:
                 filtered_results.append(result)
 
-    print(f"\nFound {len(filtered_results)} pipelines to trigger.")
+    print(f"\nFound {len(filtered_results)} pipelines to trigger:")
+    for result in filtered_results:
+        print(f"  - {result['pipeline']['name']}")
     return filtered_results
 
 
@@ -453,6 +455,14 @@ def main():
             nightly_override = "0"
             release_override = "true"
 
+        # If pre-release flags are used, it implies a release build.
+        if args.pre_release_suffix_string:
+            print("Pre-release suffix provided. Forcing 'release' build mode.")
+            if args.build_mode and args.build_mode != "release":
+                print(f"Warning: --build-mode={args.build_mode} is overridden by pre-release flags.")
+            nightly_override = "0"
+            release_override = "true"
+
         for result in pipelines_to_trigger:
             pipeline = result["pipeline"]
             packaging_type = result["packaging_type"]
@@ -479,3 +489,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
