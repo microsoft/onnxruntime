@@ -39,10 +39,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   std::vector<int64_t> a_shape;
   std::vector<int64_t> b_shape;
-  std::vector<int64_t> output_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[a_idx], a_shape, logger), "Can not get shape of A");
   ORT_RETURN_IF_NOT(GetShape(*input_defs[b_idx], b_shape, logger), "Can not get shape of B");
-  ORT_RETURN_IF_NOT(GetShape(*node.OutputDefs()[0], output_shape, logger), "Can not get output shape");
 
   emscripten::val a = model_builder.GetOperand(node.InputDefs()[a_idx]->Name());
   emscripten::val b = model_builder.GetOperand(node.InputDefs()[b_idx]->Name());
@@ -51,16 +49,19 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // MatMul and MatMulInteger in ONNX allow 1-D inputs while matmul in WebNN only supports at least 2-D inputs.
   // We can support 1-D inputs by reshaping them to 2-D. We don't care Gemm here because it only provides 2-D inputs.
+  const auto a_rank = a_shape.size();
+  const auto b_rank = b_shape.size();
+  const bool is_input_1d = (a_rank == 1 || b_rank == 1);
 
   // If the input A is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
-  if (a_shape.size() == 1) {
+  if (a_rank == 1) {
     a_shape.insert(a_shape.begin(), 1);
     emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(a_shape));
     common_options.set("label", node.Name() + "_reshape_a");
     a = model_builder.GetBuilder().call<emscripten::val>("reshape", a, a_shape_arr, common_options);
   }
   // If the input B is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
-  if (b_shape.size() == 1) {
+  if (b_rank == 1) {
     b_shape.push_back(1);
     emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(b_shape));
     common_options.set("label", node.Name() + "_reshape_b");
@@ -70,36 +71,93 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (op_type == "MatMul") {
     common_options.set("label", node.Name());
     output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b, common_options);
-
-    // If A or B input is 1-D, we need to reshape the output back to its original shape.
-    if (a_shape.size() == 1 || b_shape.size() == 1) {
-      common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
-      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                                output,
-                                                                output_shape_arr,
-                                                                common_options);
-    }
   } else if (op_type == "MatMulInteger") {
     // WebNN doesn't provide a dedicated op for MatMulInteger, it can be simply decomposed by
     // DequantizeLinear A, B -> MatMul -> Cast (to int32)
     int32_t a_type;
     ORT_RETURN_IF_NOT(GetType(*input_defs[0], a_type, logger), "Cannot get data type of input A");
 
+    // The WebNN dequantizeLinear op requires the scale and zero_point tensors to have the
+    // same rank as the input tensor. So we need to reshape the zero_point tensors
+    // to match the input rank.
     emscripten::val a_zero_point, b_zero_point, a_scale, b_scale;
-    if (TensorExists(input_defs, 2)) {
+    // Initially set target zero point shape to [1, 1, ..., 1].
+    std::vector<uint32_t> target_a_zero_point_shape(a_shape.size(), 1);
+    std::vector<uint32_t> target_b_zero_point_shape(b_shape.size(), 1);
+    if (TensorExists(input_defs, 2)) {  // a_zero_point
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
       std::vector<int64_t> a_zero_point_shape;
       ORT_RETURN_IF_NOT(GetShape(*input_defs[2], a_zero_point_shape, logger), "Cannot get shape of a_zero_point");
-      // Scale is not used by MatMulInteger but required by DequantizeLinear. So set it to default value 1.0f.
+
+      // Adjust a_zero_point shape based on its rank and the rank of input A.
+      if (a_zero_point_shape.size() == 1) {
+        const uint32_t safe_a_zero_point = SafeInt<uint32_t>(a_zero_point_shape[0]);
+        if (a_rank == 1) {
+          // Input A is 1-D, reshaped to [1, K]. Prepend 1 to a_zero_point shape.
+          target_a_zero_point_shape.back() = safe_a_zero_point;
+        } else {
+          // Input A is at least 2-D. Append 1s to a_zero_point shape.
+          target_a_zero_point_shape[0] = safe_a_zero_point;
+        }
+      }
+
+      if (a_zero_point_shape.size() != target_a_zero_point_shape.size()) {
+        // Need to reshape a_zero_point to the target shape.
+        common_options.set("label", node.Name() + "_reshape_a_zero_point");
+        a_zero_point = model_builder.GetBuilder().call<emscripten::val>(
+            "reshape", a_zero_point, emscripten::val::array(target_a_zero_point_shape), common_options);
+      } else {
+        // a_zero_point will have the same rank as input A, no need to reshape it.
+        // Set target_a_zero_point_shape to the actual shape of a_zero_point.
+        target_a_zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(a_zero_point_shape);
+      }
+      // Scale is not used by MatMulInteger but required by WebNN's dequantizeLinear. So set it to default value 1.0f.
       // The scale input should have the same shape as the zero point input.
       a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                          1.0f,
-                                                         GetNarrowedIntFromInt64<uint32_t>(a_zero_point_shape));
+                                                         target_a_zero_point_shape);
     } else {
-      // If a_zero_point is not provided, create default scalar for zero_point and scale inputs.
-      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
-      a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
+      // If a_zero_point is not provided, create default zero_point and scale inputs with the same rank as input A.
+      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0, target_a_zero_point_shape);
+      a_scale = model_builder.CreateOrGetConstant<float>(
+          ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_a_zero_point_shape);
+    }
+
+    if (TensorExists(input_defs, 3)) {  // b_zero_point
+      b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
+      std::vector<int64_t> b_zero_point_shape;
+      ORT_RETURN_IF_NOT(GetShape(*input_defs[3], b_zero_point_shape, logger), "Cannot get shape of b_zero_point");
+
+      // Adjust b_zero_point shape based on its rank and the rank of input B.
+      if (b_zero_point_shape.size() == 1) {
+        const uint32_t safe_b_zero_point = SafeInt<uint32_t>(b_zero_point_shape[0]);
+        if (b_rank == 1) {
+          // Input B is 1-D, reshaped to [K, 1]. Append 1 to b_zero_point shape.
+          target_b_zero_point_shape[0] = safe_b_zero_point;
+        } else {
+          // Input B is at least 2-D. Prepend 1s to b_zero_point shape.
+          target_b_zero_point_shape.back() = safe_b_zero_point;
+        }
+      }
+
+      if (b_zero_point_shape.size() != target_b_zero_point_shape.size()) {
+        // Need to reshape b_zero_point to the target shape.
+        common_options.set("label", node.Name() + "_reshape_b_zero_point");
+        b_zero_point = model_builder.GetBuilder().call<emscripten::val>(
+            "reshape", b_zero_point, emscripten::val::array(target_b_zero_point_shape), common_options);
+      } else {
+        // b_zero_point will have the same rank as input B, no need to reshape it.
+        // Set target_b_zero_point_shape to the actual shape of b_zero_point.
+        target_b_zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(b_zero_point_shape);
+      }
+
+      b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                         1.0f,
+                                                         target_b_zero_point_shape);
+    } else {
+      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0, target_b_zero_point_shape);
+      b_scale = model_builder.CreateOrGetConstant<float>(
+          ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_b_zero_point_shape);
     }
 
     // Dequantize A to Float32
@@ -109,18 +167,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                                                                      a_scale,
                                                                                      a_zero_point,
                                                                                      common_options);
-    if (TensorExists(input_defs, 3)) {
-      b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
-      std::vector<int64_t> b_zero_point_shape;
-      ORT_RETURN_IF_NOT(GetShape(*input_defs[3], b_zero_point_shape, logger), "Cannot get shape of b_zero_point");
-      b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                         1.0f,
-                                                         GetNarrowedIntFromInt64<uint32_t>(b_zero_point_shape));
-    } else {
-      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
-      b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
-    }
-
     // Dequantize B to Float32
     common_options.set("label", node.Name() + "_dequantized_b");
     emscripten::val dequantized_b = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear",
@@ -140,15 +186,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                                               matmul_dequantized_ab,
                                                               emscripten::val("int32"),
                                                               common_options);
-    // If A or B input is 1-D, we need to reshape the output back to its original shape.
-    if (a_shape.size() == 1 || b_shape.size() == 1) {
-      common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
-      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                                output,
-                                                                output_shape_arr,
-                                                                common_options);
-    }
   } else {  // Gemm
     NodeAttrHelper helper(node);
     const auto transA = helper.Get("transA", 0);
@@ -167,6 +204,19 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     common_options.set("label", node.Name());
     output = model_builder.GetBuilder().call<emscripten::val>("gemm", a, b, common_options);
+  }
+
+  // For MatMul or MatMulInteger, if either the A or B input is 1-D,
+  // we need to reshape the output back to its original shape.
+  if (is_input_1d && (op_type == "MatMul" || op_type == "MatMulInteger")) {
+    std::vector<int64_t> output_shape;
+    ORT_RETURN_IF_NOT(GetShape(*node.OutputDefs()[0], output_shape, logger), "Can not get output shape");
+    common_options.set("label", node.Name() + "_reshape_output");
+    emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
+    output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                              output,
+                                                              output_shape_arr,
+                                                              common_options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));

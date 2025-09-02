@@ -30,7 +30,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Cos | ai.onnx(7+) | cos | |
 | CumSum | ai.onnx(11-13, 14+) | cumulativeSum | 'axis' input should be a constant |
 | Div | ai.onnx(7-12, 13, 14+) | div | |
-| DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear | The shape of x_scale should be a subsample of the shape of input |
+| DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear, reshape | |
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | Only supports test mode |
 | DynamicQuantizeLinear | ai.onnx(11+) | cast, clamp, div, div, max, min, quantizeLinear, reduceMax, reduceMin, reshape, roundEven, sub | |
 | Einsum | ai.onnx(12+) | reshape, transpose, matmul, reduceSum, mul, triangular | |
@@ -79,7 +79,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Pad | ai.onnx(7-10, 11-12, 13-17, 18, 19-20, 21+) | pad | modes == 'wrap' is not supported |
 | Pow | ai.onnx(7-11, 12, 13-14, 15+) | pow | |
 | PRelu | ai.onnx(7-8, 9-15, 16+) | prelu | |
-| QuantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | quantizeLinear | The shape of x_scale should be a subsample of the shape of input |
+| QuantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | quantizeLinear, reshape | |
 | Reciprocal | ai.onnx(7-12, 13+) | reciprocal | |
 | Round | ai.onnx(11-21, 22+) | roundEven | |
 | ReduceL1 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL1 | Input 'axes' if present should be a constant |
