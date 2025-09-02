@@ -175,6 +175,7 @@ void ModelCompilationOptions::ResetInputModelSettings() {
 Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
   switch (graph_optimization_level) {
     case ORT_DISABLE_ALL:
+      // TransformerLevel::Default means that we only run required transformers.
       session_options_.value.graph_optimization_level = onnxruntime::TransformerLevel::Default;
       break;
     case ORT_ENABLE_BASIC:
@@ -191,7 +192,9 @@ Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "graph_optimization_level with value ",
-                             static_cast<int>(graph_optimization_level), " is invalid");
+                             static_cast<int>(graph_optimization_level), " is invalid. Valid values are: ",
+                             "ORT_DISABLE_ALL (0), ORT_ENABLE_BASIC (1), ORT_ENABLE_EXTENDED (2), ",
+                             "ORT_ENABLE_LAYOUT (3), and ORT_ENABLE_ALL (99).");
   }
 
   return Status::OK();
