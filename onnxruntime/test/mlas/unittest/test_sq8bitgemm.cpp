@@ -31,11 +31,11 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   std::uniform_real_distribution<float> distrib_f32_;
   MatrixGuardBuffer<uint8_t> inputB_, inputZp_, refB_, packedBuffer_;
   MatrixGuardBuffer<float> inputScale_, refScale_;
-  MatrixGuardBuffer<float> inputBlkSum_, refBlkSum_, refBlkSum2_;
+  MatrixGuardBuffer<float> inputBlkSum_, refBlkSum_, refBlkUnsignedQuantAZeroPointCorrection_;
 
 #ifdef MLAS_TARGET_ARM64
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
-  void PrepackB(const uint8_t* src, uint8_t* dst, float* blkSum2) {
+  void PrepackB(const uint8_t* src, uint8_t* dst, float* refBlkUnsignedQuantAZeroPointCorrection) {
     constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     size_t n = 0;
@@ -45,8 +45,8 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         size_t dst_idx = n / 8 * 8 * ldb + k / 4 * 4 * 8 + (n % 8) * 4 + k % 4;
         size_t blkSum_idx = n / 16 * 16 * BlkCount + k / BlkLen * 16 + n % 16;
         dst[dst_idx] = src[src_idx];
-        if (blkSum2) {
-          blkSum2[blkSum_idx] += src[src_idx];
+        if (refBlkUnsignedQuantAZeroPointCorrection) {
+          refBlkUnsignedQuantAZeroPointCorrection[blkSum_idx] += src[src_idx];
         }
       }
     }
@@ -56,8 +56,8 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         size_t dst_idx = n / 4 * 4 * ldb + k / 4 * 4 * 4 + (n % 4) * 4 + k % 4;
         size_t blkSum_idx = n / 16 * 16 * BlkCount + k / BlkLen * 16 + n % 16;
         dst[dst_idx] = src[src_idx];
-        if (blkSum2) {
-          blkSum2[blkSum_idx] += src[src_idx];
+        if (refBlkUnsignedQuantAZeroPointCorrection) {
+          refBlkUnsignedQuantAZeroPointCorrection[blkSum_idx] += src[src_idx];
         }
       }
     }
@@ -67,15 +67,15 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         size_t dst_idx = n * ldb + k;
         size_t blkSum_idx = n / 16 * 16 * BlkCount + k / BlkLen * 16 + n % 16;
         dst[dst_idx] = src[src_idx];
-        if (blkSum2) {
-          blkSum2[blkSum_idx] += src[src_idx];
+        if (refBlkUnsignedQuantAZeroPointCorrection) {
+          refBlkUnsignedQuantAZeroPointCorrection[blkSum_idx] += src[src_idx];
         }
       }
     }
   }
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
-  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* blkSum2) {
+  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* refBlkUnsignedQuantAZeroPointCorrection) {
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     size_t n = 0;
     for (; n - n % 8 + 8 <= N; ++n) {
@@ -87,9 +87,9 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         float vSum = -scale[src_idx] * zp_val;
         packedScale[scale_dst_idx] = scale[src_idx];
         blkSum[sum_dst_idx] = vSum;
-        if (blkSum2) {
-          float vSum2 = -blkSum2[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
-          blkSum2[sum_dst_idx] = vSum2 * scale[src_idx];
+        if (refBlkUnsignedQuantAZeroPointCorrection) {
+          float vSum2 = -refBlkUnsignedQuantAZeroPointCorrection[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
+          refBlkUnsignedQuantAZeroPointCorrection[sum_dst_idx] = vSum2 * scale[src_idx];
         }
       }
     }
@@ -102,9 +102,9 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         float vSum = -scale[src_idx] * zp_val;
         packedScale[scale_dst_idx] = scale[src_idx];
         blkSum[sum_dst_idx] = vSum;
-        if (blkSum2) {
-          float vSum2 = -blkSum2[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
-          blkSum2[sum_dst_idx] = vSum2 * scale[src_idx];
+        if (refBlkUnsignedQuantAZeroPointCorrection) {
+          float vSum2 = -refBlkUnsignedQuantAZeroPointCorrection[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
+          refBlkUnsignedQuantAZeroPointCorrection[sum_dst_idx] = vSum2 * scale[src_idx];
         }
       }
     }
@@ -117,9 +117,9 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         float vSum = -scale[src_idx] * zp_val;
         packedScale[scale_dst_idx] = scale[src_idx];
         blkSum[sum_dst_idx] = vSum;
-        if (blkSum2) {
-          float vSum2 = -blkSum2[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
-          blkSum2[sum_dst_idx] = vSum2 * scale[src_idx];
+        if (refBlkUnsignedQuantAZeroPointCorrection) {
+          float vSum2 = -refBlkUnsignedQuantAZeroPointCorrection[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
+          refBlkUnsignedQuantAZeroPointCorrection[sum_dst_idx] = vSum2 * scale[src_idx];
         }
       }
     }
@@ -178,8 +178,8 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   }
 #else  // not MLAS_TARGET_ARM64
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
-  void PrepackB(const uint8_t* src, uint8_t* dst, float* blkSum2) {
-    MLAS_UNREFERENCED_PARAMETER(blkSum2);
+  void PrepackB(const uint8_t* src, uint8_t* dst, float* blkUnsignedQuantAZeroPointCorrection) {
+    MLAS_UNREFERENCED_PARAMETER(blkUnsignedQuantAZeroPointCorrection);
 
     constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     size_t n = 0;
@@ -211,8 +211,8 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   }
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
-  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* blkSum2) {
-    MLAS_UNREFERENCED_PARAMETER(blkSum2);
+  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* blkUnsignedQuantAZeroPointCorrection) {
+    MLAS_UNREFERENCED_PARAMETER(blkUnsignedQuantAZeroPointCorrection);
 
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     constexpr size_t BlkPerSubBlk = SubBlkLen > BlkLen ? SubBlkLen / BlkLen : 1;
@@ -351,7 +351,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     constexpr size_t PackBCount = N * Ldb;
     constexpr size_t ScaleCount = BlkCount * N;
     const size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
-    const bool quantAUnsigned = GetMlasPlatform().ArmNeonQuantAUnsigned;
+    const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
 
     const auto* inputB = inputB_.GetFilledBuffer(PackBCount, [this](uint8_t* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
@@ -376,9 +376,9 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     auto* refB = refB_.GetBuffer(PackBCount, true);
     auto* refScale = refScale_.GetBuffer(ScaleCount, true);
     auto* refBlkSum = refBlkSum_.GetBuffer(((N + 15) & (~15)) * BlkCount, true);
-    auto* refBlkSum2 = quantAUnsigned ? refBlkSum2_.GetBuffer(((N + 15) & (~15)) * BlkCount, true) : nullptr;
+    auto* refBlkUnsignedQuantAZeroPointCorrection = isQuantAUnsigned ? refBlkUnsignedQuantAZeroPointCorrection_.GetBuffer(((N + 15) & (~15)) * BlkCount, true) : nullptr;
 
-    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, quantAUnsigned);
+    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, isQuantAUnsigned);
 
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
@@ -390,13 +390,13 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         nullptr, hasZp, inputZp, nullptr);
 
-    PrepackB<K, N, BlkLen, SubBlkLen>(inputB, refB, refBlkSum2);
-    PrepackBlkSumAndScale<K, N, BlkLen, SubBlkLen>(inputScale, inputZp, refScale, refBlkSum, refBlkSum2);
+    PrepackB<K, N, BlkLen, SubBlkLen>(inputB, refB, refBlkUnsignedQuantAZeroPointCorrection);
+    PrepackBlkSumAndScale<K, N, BlkLen, SubBlkLen>(inputScale, inputZp, refScale, refBlkSum, refBlkUnsignedQuantAZeroPointCorrection);
 
     CheckB<K, N, BlkLen, SubBlkLen>(reinterpret_cast<const uint8_t*>(packedQuantB.PackedQuantBData), refB);
     CheckScale<K, N, BlkLen, SubBlkLen>(packedQuantB.PackedQuantBScale, refScale);
     CheckBlkSum<K, N, BlkLen, SubBlkLen>(packedQuantB.QuantBBlkSum, refBlkSum);
-    CheckBlkSum<K, N, BlkLen, SubBlkLen>(packedQuantB.QuantBBlkSum2, refBlkSum2);
+    CheckBlkSum<K, N, BlkLen, SubBlkLen>(packedQuantB.BlkUnsignedQuantAZeroPointCorrection, refBlkUnsignedQuantAZeroPointCorrection);
   }
 
  public:
@@ -574,7 +574,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     constexpr size_t PackACount = M * Lda;
     constexpr size_t ScaleCount = M * BlkCount;
     const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, true, SQNBIT_CompInt8);
-    const bool quantAUnsigned = GetMlasPlatform().ArmNeonQuantAUnsigned;
+    const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
 
     const auto* inputA = inputA_.GetFilledBuffer(M * K, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
@@ -597,7 +597,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
       dispatch->QuantizeARowComputeBlkSum_CompInt8(BlkLen, inputA + i * K, K, quantAPtr + i * Lda, scaleAPtr + i * BlkCount, blkSumAPtr + i * BlkCount);
     }
 
-    QuantA<M, K, BlkLen>(inputA, refQuantA, refScale, refBlkSum, quantAUnsigned);
+    QuantA<M, K, BlkLen>(inputA, refQuantA, refScale, refBlkSum, isQuantAUnsigned);
     CheckQuantA<M, K, BlkLen>(reinterpret_cast<uint8_t*>(quantAPtr), refQuantA);
     CheckScale<M, K, BlkLen>(scaleAPtr, refScale);
     CheckScale<M, K, BlkLen>(blkSumAPtr, refBlkSum);
@@ -745,13 +745,12 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
     auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
 
-    // Models the packing calls from MatmulNBits operator - we will have 3 separate calls
+    // Models the packing calls from MatmulNBits operator - we will have 2 separate calls
     // for 3 different inputs in the Prepack() function
+    // The first call prepacks the quantized weights and the scales.
+    // The second call prepacks the zero point (uses it to compute block sums).
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        nullptr, HasZp, nullptr, nullptr);
-    MlasQNBitGemmPackQuantBData(
-        N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         inputScale, HasZp, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,

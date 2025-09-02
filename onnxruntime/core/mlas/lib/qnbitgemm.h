@@ -68,11 +68,11 @@ struct PackedQuantBDataStruct {
         QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
 
         if (QuantAUnsigned) {
-            QuantBBlkSum2 = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
-            QuantBBlkSum2 = (T*)MlasAlignAddress(QuantBBlkSum2, MlasQNBitQuantBBlkSumAlignment());
-            PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum2 + BlkSumSize);
+            BlkUnsignedQuantAZeroPointCorrection = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
+            BlkUnsignedQuantAZeroPointCorrection =   (T*)MlasAlignAddress(BlkUnsignedQuantAZeroPointCorrection, MlasQNBitQuantBBlkSumAlignment());
+            PackedQuantBScale = (T*)((std::byte*)BlkUnsignedQuantAZeroPointCorrection + BlkSumSize);
         } else {
-            QuantBBlkSum2 = nullptr;
+            BlkUnsignedQuantAZeroPointCorrection = nullptr;
             PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
         }
     }
@@ -80,7 +80,7 @@ struct PackedQuantBDataStruct {
     std::byte* PackedQuantBData;
     T* PackedQuantBScale;
     T* QuantBBlkSum;
-    T* QuantBBlkSum2;
+    T* BlkUnsignedQuantAZeroPointCorrection;
 
     void* QuantBWorkspace_;
     size_t N_, BlockCountK_, BlkLen_;
@@ -389,21 +389,22 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @brief Multiply quantized 8-bit integer matrix A with quantized 8-bit integer matrix B.
      *        A and B are block quantized and B is column major.
      *
-     * @param       BlkLen              Number of values in a block.
-     * @param       QuantA              Supplies the quantized A matrix.
-                                        Binary data containing block quantized int8 data and scale values.
-     * @param       QuantBData          Supplies the quantized B matrix block data.
-     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
-     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
-     * @param[out]  C                   Supplies the output C matrix.
-     * @param       CountN              Number of columns of B and C.
-     * @param       CountK              Number of columns of A and rows of B.
-     * @param       BlockCountK         Number of blocks between adjacent columns of the quantized B matrix.
-     * @param       Bias                Bias vector of length N.
-     * @param       ldc                 Number of elements between adjacent rows of C..
-     * @param       ABlockSum           Supplies the blksum of A.
-     * @param       QuantBBlkSum        Supplies the blksum of B.
-     * @param       QuantBBlkSum2       Supplies the blksum2 of B (i.e.) scale * accumulate(quant - zp) per block when quant A is converted to uint8.
+     * @param       BlkLen                                 Number of values in a block.
+     * @param       QuantA                                 Supplies the quantized A matrix.
+                                                           Binary data containing block quantized int8 data and scale values.
+     * @param       QuantBData                             Supplies the quantized B matrix block data.
+     * @param       QuantBScale                            Supplies the quantized B matrix block scale values.
+     * @param       QuantBZeroPoint                        Supplies the quantized B matrix block zero point values. Optional.
+     * @param[out]  C                                      Supplies the output C matrix.
+     * @param       CountN                                 Number of columns of B and C.
+     * @param       CountK                                 Number of columns of A and rows of B.
+     * @param       BlockCountK                            Number of blocks between adjacent columns of the quantized B matrix.
+     * @param       Bias                                   Bias vector of length N.
+     * @param       ldc                                    Number of elements between adjacent rows of C..
+     * @param       ABlockSum                              Supplies the blksum of A.
+     * @param       QuantBBlkSum                           Supplies the blksum of B.
+     * @param       BlkUnsignedQuantAZeroPointCorrection   Supplies the optional input to de-bias the Gemm output to account for the +128 bias 
+                                                           addition when the activation input A is quantized to uint8.
      */
     typedef size_t(SQ8BitGemmKernel_BlkSum_CompInt8_Fn)(
         size_t BlkLen,
@@ -421,7 +422,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         size_t ldc,
         const float* ABlockSum,
         const float* QuantBBlkSum,
-        const float* QuantBBlkSum2
+        const float* BlkUnsignedQuantAZeroPointCorrection
     );
 
     SQ8BitGemmKernel_BlkSum_CompInt8_Fn* SQ8BitGemmKernel_BlkSum_CompInt8 = nullptr;

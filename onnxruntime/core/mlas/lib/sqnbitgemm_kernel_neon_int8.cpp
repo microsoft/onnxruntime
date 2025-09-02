@@ -211,21 +211,21 @@ float32x4_t LoadFloat32x4(const float* src, size_t count)
     }
 }
 
-template <bool QuantAUnsigned>
-using I16VecType = typename std::conditional<QuantAUnsigned, uint16x8_t, int16x8_t>::type;
+template <bool IsQuantAUnsigned>
+using I16VecType = typename std::conditional<IsQuantAUnsigned , uint16x8_t, int16x8_t>::type;
 
-template <bool QuantAUnsigned>
-I16VecType<QuantAUnsigned> MLAS_FORCEINLINE
+template <bool IsQuantAUnsigned>
+I16VecType<IsQuantAUnsigned> MLAS_FORCEINLINE
 PrepareZeroI16()
 {
-    if constexpr (QuantAUnsigned) {
+    if constexpr (IsQuantAUnsigned) {
         return vdupq_n_u16(0);
     } else {
         return vdupq_n_s16(0);
     }
 }
 
-template <bool QuantAUnsigned>
+template <bool IsQuantAUnsigned>
 void MLASCALL
 QuantizeARowComputeBlkSum_CompInt8(
     size_t BlkLen,
@@ -245,7 +245,7 @@ QuantizeARowComputeBlkSum_CompInt8(
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     };
     const int16x8_t v128 = vdupq_n_s16(128);
-    QuantAType<QuantAUnsigned>* blob = reinterpret_cast<QuantAType<QuantAUnsigned>*>(QuantA);
+    QuantAType<IsQuantAUnsigned>* blob = reinterpret_cast<QuantAType<IsQuantAUnsigned>*>(QuantA);
     float* scale_ptr = QuantAScale;
     size_t k = 0;
     for (; k + BlkLen <= CountK; k += BlkLen) {
@@ -275,8 +275,8 @@ QuantizeARowComputeBlkSum_CompInt8(
         const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
         const float32x4_t mul = vdupq_n_f32(inverse_scale);
 
-        I16VecType<QuantAUnsigned> sum_8_i16_0 = PrepareZeroI16<QuantAUnsigned>();
-        I16VecType<QuantAUnsigned> sum_8_i16_1 = PrepareZeroI16<QuantAUnsigned>();
+        I16VecType<IsQuantAUnsigned> sum_8_i16_0 = PrepareZeroI16<IsQuantAUnsigned>();
+        I16VecType<IsQuantAUnsigned> sum_8_i16_1 = PrepareZeroI16<IsQuantAUnsigned>();
 
         for (size_t kk = 0; kk < BlkLen; kk += 16) {
             const float32x4_t vfp32_0 = LoadFloat32x4(A + k + kk, 4);
@@ -297,7 +297,7 @@ QuantizeARowComputeBlkSum_CompInt8(
             const int16x8_t v_8_i16_0 = vcombine_s16(vqmovn_s32(i0), vqmovn_s32(i1));
             const int16x8_t v_8_i16_1 = vcombine_s16(vqmovn_s32(i2), vqmovn_s32(i3));
 
-            if constexpr (QuantAUnsigned) {
+            if constexpr (IsQuantAUnsigned) {
                 const uint16x8_t v_8_u16_0 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16_0, v128));
                 const uint16x8_t v_8_u16_1 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16_1, v128));
                 const uint8x16_t v_16_u8 = vcombine_u8(vqmovn_u16(v_8_u16_0), vqmovn_u16(v_8_u16_1));
@@ -313,16 +313,14 @@ QuantizeARowComputeBlkSum_CompInt8(
                 vst1q_s8(blob + k + kk, v_16_i8);
 
                 // accumulate Sum(a_i)
-                const int16x8_t i_8_i16_0 = vmovl_s8(vget_low_s8(v_16_i8));
-                const int16x8_t i_8_i16_1 = vmovl_high_s8(v_16_i8);
-                sum_8_i16_0 = vaddq_s16(sum_8_i16_0, i_8_i16_0);
-                sum_8_i16_1 = vaddq_s16(sum_8_i16_1, i_8_i16_1);
+                sum_8_i16_0 = vaddq_s16(sum_8_i16_0, v_8_i16_0);
+                sum_8_i16_1 = vaddq_s16(sum_8_i16_1, v_8_i16_1);
             }
         }
 
         float qsum;
 
-        if constexpr (QuantAUnsigned) {
+        if constexpr (IsQuantAUnsigned) {
             const uint16x8_t sum_8_u16 = vaddq_u16(sum_8_i16_0, sum_8_i16_1);
             qsum = static_cast<float>(vaddvq_u16(sum_8_u16));
         } else {
@@ -350,7 +348,7 @@ QuantizeARowComputeBlkSum_CompInt8(
         const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
         const float32x4_t mul = vdupq_n_f32(inverse_scale);
 
-        I16VecType<QuantAUnsigned> sum_8_i16 = PrepareZeroI16<QuantAUnsigned>();
+        I16VecType<IsQuantAUnsigned> sum_8_i16 = PrepareZeroI16<IsQuantAUnsigned>();
 
         for (size_t kk = k; kk < CountK; kk += 4) {
             size_t step = std::min(static_cast<size_t>(4), CountK - kk);
@@ -359,7 +357,7 @@ QuantizeARowComputeBlkSum_CompInt8(
             const int32x4_t v_i32 = vcvtnq_s32_f32(v_f32);
             const int16x8_t v_8_i16 = vcombine_s16(vqmovn_s32(v_i32), vdup_n_s16(0));
 
-            if constexpr (QuantAUnsigned) {
+            if constexpr (IsQuantAUnsigned) {
                 const uint16x8_t v_8_u16 = vreinterpretq_u16_s16(vaddq_s16(v_8_i16, v128));
                 uint8x8_t v_8_u8 = vqmovn_u16(v_8_u16);
                 vst1_lane_s32(reinterpret_cast<int32_t*>(blob + kk), vreinterpret_s32_u8(v_8_u8), 0);
@@ -373,14 +371,13 @@ QuantizeARowComputeBlkSum_CompInt8(
                 vst1_lane_s32(reinterpret_cast<int32_t*>(blob + kk), vreinterpret_s32_s8(v_8_i8), 0);
 
                 // accumulate Sum(a_i)
-                const int16x8_t i_8_i16 = vmovl_s8(v_8_i8);
-                sum_8_i16 = vaddq_s16(sum_8_i16, i_8_i16);
+                sum_8_i16 = vaddq_s16(sum_8_i16, v_8_i16);
             }
         }
 
         float qsum;
 
-        if constexpr (QuantAUnsigned) {
+        if constexpr (IsQuantAUnsigned) {
             qsum = static_cast<float>(vaddvq_u16(sum_8_i16));
         } else {
             qsum = static_cast<float>(vaddvq_s16(sum_8_i16));
@@ -1683,16 +1680,16 @@ Q8Int8GemmR2xC8DotProd(
 {
     constexpr size_t NCols4 = 4;
     constexpr size_t NCols8 = 8;
-    constexpr size_t NRows2 = 2;
+    constexpr size_t MRows2 = 2;
     constexpr size_t KStep16 = 16;
 
     const size_t lda = BlockCountK * BlkLen;
     const size_t StrideQuantBDataCol8 = BlockCountK * BlkLen * NCols8;
 
-    assert(CountM % NRows2 == 0);
+    assert(CountM % MRows2 == 0);
     assert(CountN % NCols8 == 0);
 
-    for (size_t m = 0; m < CountM; m += NRows2) {
+    for (size_t m = 0; m < CountM; m += MRows2) {
         const uint8_t* QuantBDataColPtr = QuantBData;
         const float* QuantBScaleColPtr = QuantBScale;
         const float* BiasPtr = Bias;
@@ -1763,10 +1760,10 @@ Q8Int8GemmR2xC8DotProd(
                     QuantBDataPtr += NCols8 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
-                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_u32(acc0_47));
-                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
-                accf1_47 = vmlaq_f32(accf1_47, scaleA1B47, vcvtq_f32_u32(acc1_47));
+                accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf0_47 = vfmaq_f32(accf0_47, scaleA0B47, vcvtq_f32_u32(acc0_47));
+                accf1_03 = vfmaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
+                accf1_47 = vfmaq_f32(accf1_47, scaleA1B47, vcvtq_f32_u32(acc1_47));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols8;
@@ -1874,8 +1871,8 @@ Q8Int8GemmR1xC8DotProd(
                     QuantBDataPtr += NCols8 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
-                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_u32(acc0_47));
+                accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf0_47 = vfmaq_f32(accf0_47, scaleA0B47, vcvtq_f32_u32(acc0_47));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols8;
@@ -1917,16 +1914,16 @@ Q8Int8GemmR2xC4DotProd(
 )
 {
     constexpr size_t NCols4 = 4;
-    constexpr size_t NRows2 = 2;
+    constexpr size_t MRows2 = 2;
     constexpr size_t KStep16 = 16;
 
     const size_t lda = BlockCountK * BlkLen;
     const size_t StrideQuantBDataCol4 = BlockCountK * BlkLen * NCols4;
 
-    assert(CountM % NRows2 == 0);
+    assert(CountM % MRows2 == 0);
     assert(CountN % NCols4 == 0);
 
-    for (size_t m = 0; m < CountM; m += NRows2) {
+    for (size_t m = 0; m < CountM; m += MRows2) {
         const uint8_t* QuantBDataColPtr = QuantBData;
         const float* QuantBScaleColPtr = QuantBScale;
         const float* BiasPtr = Bias;
@@ -1975,8 +1972,8 @@ Q8Int8GemmR2xC4DotProd(
                     QuantBDataPtr += NCols4 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
-                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
+                accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf1_03 = vfmaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols4;
@@ -2063,7 +2060,7 @@ Q8Int8GemmR1xC4DotProd(
                     QuantBDataPtr += NCols4 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols4;
@@ -2101,15 +2098,15 @@ Q8Int8GemmR2xC1DotProd(
     size_t ldc
 )
 {
-    constexpr size_t NRows2 = 2;
+    constexpr size_t MRows2 = 2;
     constexpr size_t KStep16 = 16;
 
     const size_t lda = BlockCountK * BlkLen;
     const size_t StrideQuantBDataCol = BlockCountK * BlkLen;
 
-    assert(CountM % NRows2 == 0);
+    assert(CountM % MRows2 == 0);
 
-    for (size_t m = 0; m < CountM; m += NRows2) {
+    for (size_t m = 0; m < CountM; m += MRows2) {
         const uint8_t* QuantBDataColPtr = QuantBData;
         const float* QuantBScaleColPtr = QuantBScale;
         const float* BiasPtr = Bias;
@@ -2148,8 +2145,8 @@ Q8Int8GemmR2xC1DotProd(
                     QuantBDataPtr += KStep16;
                 }
 
-                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_u32(acc0), scaleA0B);
-                accf1 = vmlaq_n_f32(accf1, vcvtq_f32_u32(acc1), scaleA1B);
+                accf0 = vfmaq_n_f32(accf0, vcvtq_f32_u32(acc0), scaleA0B);
+                accf1 = vfmaq_n_f32(accf1, vcvtq_f32_u32(acc1), scaleA1B);
 
                 ++QuantAScalePtr;
                 ++QuantBScalePtr;
@@ -2230,7 +2227,7 @@ Q8Int8GemmR1xC1DotProd(
                     QuantBDataPtr += KStep16;
                 }
 
-                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_u32(acc0), scaleA0B);
+                accf0 = vfmaq_n_f32(accf0, vcvtq_f32_u32(acc0), scaleA0B);
 
                 ++QuantAScalePtr;
                 ++QuantBScalePtr;
@@ -2273,7 +2270,7 @@ MlasQ8Int8GemmKernelNeon<true>(
     constexpr size_t BlkBitWidth = 8;
     constexpr size_t NCols8 = 8;
     constexpr size_t NCols4 = 4;
-    constexpr size_t NRows2 = 2;
+    constexpr size_t MRows2 = 2;
     const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
 
     const size_t lda = BlockCountK * BlkLen;
@@ -2281,7 +2278,7 @@ MlasQ8Int8GemmKernelNeon<true>(
     const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t StrideQuantBScale = BlockCountK;
 
-    size_t remainingRows = CountM % NRows2;
+    size_t remainingRows = CountM % MRows2;
     size_t multipleRows = CountM - remainingRows;
     size_t multipleCols8 = CountN & (~(NCols8 - 1));
     size_t multipleCols4 = CountN & (~(NCols4 - 1));

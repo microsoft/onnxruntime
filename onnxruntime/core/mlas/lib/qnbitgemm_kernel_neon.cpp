@@ -228,7 +228,7 @@ void
 Q8PackQuantB(
   const std::byte* QuantBDataBegin,
   std::byte* PackedQuantBDataBegin,
-  float* BlockSum2Begin,
+  float* BlkUnsignedQuantAZeroPointCorrectionBegin,
   MLAS_THREADPOOL* ThreadPool,
   const size_t N,
   const size_t K,
@@ -269,12 +269,12 @@ Q8PackQuantB(
                 }
             }
 
-            if (BlockSum2Begin) {
+            if (BlkUnsignedQuantAZeroPointCorrectionBegin) {
                 const int accu = std::accumulate(src8, src8 + std::min(BlkLen, K - r_blk * BlkLen), 0);
 
                 // for sgemmc
-                const size_t blksum2_dst_offset = ((c / 16) * BlkCountK + r_blk) * 16 + c % 16;
-                BlockSum2Begin[blksum2_dst_offset] = static_cast<float>(accu);
+                const size_t dst_offset = ((c / 16) * BlkCountK + r_blk) * 16 + c % 16;
+                BlkUnsignedQuantAZeroPointCorrectionBegin[dst_offset] = static_cast<float>(accu);
             }
         }
     );
@@ -329,7 +329,7 @@ Q8ComputePackBlkSum(
 
 /**
  * 4 rows x 8 cols pack together, along all K. Then 4 rows x 4 cols, along all K.
- * When rol < 4, keep original layout.
+ * When rows < 4, keep original layout.
  *
  * dotprod: vdotq_laneq_u32.
  * convert quant a from int8 to uint8. zp is 128.
@@ -356,7 +356,7 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
 
     // Pack the quantized weights
     if (QuantBDataBegin) {
-        Q8PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, PackedQuantB.QuantBBlkSum2, ThreadPool, N, K, BlkLen);
+        Q8PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, PackedQuantB.BlkUnsignedQuantAZeroPointCorrection, ThreadPool, N, K, BlkLen);
     }
 
     // Pack the block scales
@@ -364,9 +364,9 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
         std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
     }
 
-    // Pack the blksum (and blksum2 if applicable)
+    // Pack the blksum (and BlkUnsignedQuantAZeroPointCorrection if applicable)
     if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
-        Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.QuantBBlkSum2, ThreadPool);
+        Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.BlkUnsignedQuantAZeroPointCorrection, ThreadPool);
     }
 }
 
@@ -471,7 +471,7 @@ SQ8BitGemmKernel_BlkSum_CompInt8(
     size_t ldc,
     const float* ABlockSum,
     const float* QuantBBlkSum,
-    const float* QuantBBlkSum2
+    const float* BlkUnsignedQuantAZeroPointCorrection
 )
 {
     MlasQ8Int8GemmKernelNeon<QuantAUnsigned>(
@@ -505,9 +505,9 @@ SQ8BitGemmKernel_BlkSum_CompInt8(
 
     if constexpr (QuantAUnsigned) {
         {
-            assert(QuantBBlkSum2 != nullptr);
+            assert(BlkUnsignedQuantAZeroPointCorrection != nullptr);
             float* c_blk = C;
-            const float* b_blk_sum2 = QuantBBlkSum2;
+            const float* b_blk_sum2 = BlkUnsignedQuantAZeroPointCorrection;
 
             size_t RowsRemaining = CountM;
             const float* a_scale_row = QuantAScale;

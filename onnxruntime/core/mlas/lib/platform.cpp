@@ -606,7 +606,7 @@ Return Value:
 #endif
     }
 
-    this->ArmNeonQuantAUnsigned = HasI8MMInstructions ? false : true;
+    this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)

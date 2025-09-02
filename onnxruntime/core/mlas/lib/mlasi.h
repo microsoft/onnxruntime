@@ -1298,7 +1298,7 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
-    bool ArmNeonQuantAUnsigned = false;
+    bool ArmNeonIsQuantActivationsUnsigned = false;
 
     // Mlas overrides initialisation
     MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
