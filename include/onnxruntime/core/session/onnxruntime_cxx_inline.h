@@ -574,17 +574,17 @@ inline PrepackedWeightsContainer::PrepackedWeightsContainer() {
 namespace detail {
 
 template <typename T>
-inline const std::basic_string<ORTCHAR_T> ExternalInitializerInfoImpl<T>::GetFilePath() const {
+inline const std::basic_string<ORTCHAR_T> ConstExternalInitializerInfoImpl<T>::GetFilePath() const {
   return GetApi().ExternalInitializerInfo_GetFilePath(this->p_);
 }
 
 template <typename T>
-inline int64_t ExternalInitializerInfoImpl<T>::GetFileOffset() const {
+inline int64_t ConstExternalInitializerInfoImpl<T>::GetFileOffset() const {
   return GetApi().ExternalInitializerInfo_GetFileOffset(this->p_);
 }
 
 template <typename T>
-inline size_t ExternalInitializerInfoImpl<T>::GetByteSize() const {
+inline size_t ConstExternalInitializerInfoImpl<T>::GetByteSize() const {
   return GetApi().ExternalInitializerInfo_GetByteSize(this->p_);
 }
 }  // namespace detail
@@ -2597,9 +2597,7 @@ struct GetValueImpl<std::string> {
     auto status = CheckAttrType(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
     if (!status.IsOK()) return status;
 
-    size_t total_buffer_size = 0;
-    // Ignore status, we checked the type above so the error is due to the size.
-    status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, nullptr, 0, &total_buffer_size)};
+    size_t total_buffer_size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
 
     // Create a temporary buffer to hold the string data
     std::vector<char> buffer(total_buffer_size);
@@ -2635,10 +2633,8 @@ inline Status ConstOpAttrImpl<T>::GetValueArray(std::vector<R>& out) const {
 
 template <typename T>
 inline Status ConstOpAttrImpl<T>::GetTensorAttributeAsOrtValue(Value& out) const {
-  Status status = CheckAttrType(this->p_, OrtOpAttrType::ORT_OP_ATTR_TENSOR);
-  if (!status.IsOK()) return status;
   OrtValue* tensor_value = nullptr;
-  status = Status(GetApi().OpAttr_GetTensorAttributeAsOrtValue(this->p_, &tensor_value));
+  auto status = Status(GetApi().OpAttr_GetTensorAttributeAsOrtValue(this->p_, &tensor_value));
   if (!status.IsOK()) return status;
   out = Value{tensor_value};
   return status;
@@ -3459,7 +3455,7 @@ inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
 template <typename T>
 inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
   // Graph takes ownership of `initializer`
-  // XXX: Check we assume that on error the ownership is not transferred.
+  // On error the ownership is not transferred.
   ThrowOnError(GetModelEditorApi().AddInitializerToGraph(this->p_, name.c_str(), initializer, data_is_external));
   initializer.release();
 }

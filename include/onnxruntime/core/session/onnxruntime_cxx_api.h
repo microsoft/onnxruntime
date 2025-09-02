@@ -885,11 +885,9 @@ struct PrepackedWeightsContainer : detail::Base<OrtPrepackedWeightsContainer> {
   PrepackedWeightsContainer();
 };
 
-// 3) Add this implementation block (namespace Ort::detail), e.g. after other *Impl classes:
-
 namespace detail {
 template <typename T>
-struct ExternalInitializerInfoImpl : Base<T> {
+struct ConstExternalInitializerInfoImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
@@ -904,16 +902,15 @@ struct ExternalInitializerInfoImpl : Base<T> {
 
 // Const object holder that does not own the underlying object
 using ConstExternalInitializerInfo =
-    detail::ExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
+    detail::ConstExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
 
-// 4) Public owning wrapper around ::OrtExternalInitializerInfo
-struct ExternalInitializerInfo : detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
-  using Base = detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo>;
+struct ExternalInitializerInfo : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
+  using Base = detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>;
   using Base::Base;
 
   explicit ExternalInitializerInfo(std::nullptr_t) {}
   explicit ExternalInitializerInfo(OrtExternalInitializerInfo* p)
-      : detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}
+      : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}
 
   ConstExternalInitializerInfo GetConst() const { return ConstExternalInitializerInfo{this->p_}; }
 };
@@ -2480,7 +2477,7 @@ struct ConstOpAttrImpl : Base<T> {
 
   // Wraps OrtApi::ReadAttr for a single value
   // This does not support Tensor Attribute
-  // for that call Node API.
+  // Call GetTensorAttributeAsOrtValue() instead.
   template <typename R>
   Status GetValue(R& out) const;
 
@@ -3069,24 +3066,34 @@ struct ConstNodeImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
+  // <Wraps OrtApi::Node_GetId
   size_t GetId() const;
+  // <Wraps OrtApi::Node_GetName
   std::string GetName() const;
+  // <Wraps OrtApi::Node_GetOperatorType
   std::string GetOperatorType() const;
+  // <Wraps OrtApi::Node_GetDomain
   std::string GetDomain() const;
+  // <Wraps OrtApi::Node_GetSinceVersion
   int GetSinceVersion() const;
 
+  // <Wraps OrtApi::Node_Inputs
   std::vector<ConstValueInfo> GetInputs() const;
+  // <Wraps OrtApi::Node_Outputs
   std::vector<ConstValueInfo> GetOutputs() const;
+  // <Wraps OrtApi::Node_ImplicitInputs
   std::vector<ConstValueInfo> GetImplicitInputs() const;
-
+  // <Wraps OrtApi::Node_GetAttributes
   std::vector<ConstOpAttr> GetAttributes() const;
+  // <Wraps OrtApi::Node_GetAttributeByName
   // Please, read C API doc for details
   Status GetAttributeByName(const std::string& name, ConstOpAttr& attr) const;
-
+  // <Wraps OrtApi::Node_GetSubgraphs
   std::vector<AttrNameSubgraph> GetSubgraphs() const;
+  // <Wraps OrtApi::Node_GetGraph
   // ConstGraph is not available yet
   ConstGraphImpl<detail::Unowned<const OrtGraph>> GetGraph() const;
-
+  // <Wraps OrtApi::Node_GetEpName
   std::string GetEpName() const;
 };
 }  // namespace detail
@@ -3135,6 +3142,7 @@ struct ValueInfoConsumerProducerInfo {
   int64_t index;
 };
 
+// Represents a return value for Graph::GetOperatorSets()
 struct OperatorSet {
   std::string domain;
   int64_t version;
@@ -3146,17 +3154,27 @@ struct ConstGraphImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
+  // <Wraps OrtApi::Graph_GetName
   std::string GetName() const;
+  // <Wraps OrtApi::Graph_GetModelPath
   std::basic_string<ORTCHAR_T> GetModelPath() const;
+  // <Wraps OrtApi::Graph_GetOnnxIRVersion
   int64_t GetOnnxIRVersion() const;
+  // <Wraps OrtApi::Graph_GetOperatorSets
   std::vector<OperatorSet> GetOperatorSets() const;
+  // <Wraps OrtApi::Graph_Inputs
   std::vector<ConstValueInfo> GetInputs() const;
+  // <Wraps OrtApi::Graph_Outputs
   std::vector<ConstValueInfo> GetOutputs() const;
+  // <Wraps OrtApi::Graph_Initializers
   std::vector<ConstValueInfo> GetInitializers() const;
+  // <Wraps OrtApi::Graph_GetNodes
   std::vector<ConstNode> GetNodes() const;
+  // <Wraps OrtApi::Graph_GetParentGraph
   ConstNode GetParentNode() const;
+  // <Wraps OrtApi::Graph_GetGraphView
   Graph GetGraphView(const std::vector<ConstNode>& nodes) const;
-
+  // <Wraps OrtApi::Graph_GetModelMetadata
   ModelMetadata GetModelMetadata() const;  ///< Wraps OrtApi::Graph_GetModelMetadata
 };
 
@@ -3166,11 +3184,15 @@ struct GraphImpl : ConstGraphImpl<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().SetGraphInputs()
   void SetInputs(std::vector<ValueInfo>& inputs);
+  // <Wraps GetModelEditorApi().SetGraphOutputs()
   void SetOutputs(std::vector<ValueInfo>& outputs);
+  // <Wraps GetModelEditorApi().AddInitializerToGraph()
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
-  void AddNode(Node& node);                                                                 // Graph takes ownership of Node
-#endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().AddNodeToGraph()
+  void AddNode(Node& node);  // Graph takes ownership of Node
+#endif                       // !defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace detail
 
@@ -3190,6 +3212,7 @@ struct Graph : detail::GraphImpl<OrtGraph> {
   explicit Graph(std::nullptr_t) {}                        ///< No instance is created
   explicit Graph(OrtGraph* p) : GraphImpl<OrtGraph>{p} {}  ///< Take ownership of a pointer created by C API
 #if !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().CreateGraph()
   Graph();
 #endif
 };
@@ -3201,6 +3224,7 @@ struct ModelImpl : detail::Base<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().AddGraphToModel()
   void AddGraph(Graph& graph);
 #endif
 };
@@ -3219,6 +3243,7 @@ struct Model : detail::ModelImpl<OrtModel> {
   explicit Model(OrtModel* p) : ModelImpl<OrtModel>{p} {}  ///< Take ownership of a pointer created by C API
 
 #if !defined(ORT_MINIMAL_BUILD)
+  //< Wraps GetModelEditorApi().CreateModel()
   explicit Model(const std::vector<DomainOpsetPair>& opsets);
 #endif
 };
