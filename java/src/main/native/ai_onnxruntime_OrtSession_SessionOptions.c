@@ -718,11 +718,11 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROC
 }
 
 /*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Class::    ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addExecutionProvider
- * Signature: (JJLjava/lang/String;[Ljava/lang/String;[Ljava/lang/String;)V
+ * Signature: (JILjava/lang/String)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExecutionProvider__JJLjava_lang_String_2_3Ljava_lang_String_2_3Ljava_lang_String_2(
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExecutionProvider(
     JNIEnv* jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle,
     jstring jepName, jobjectArray configKeyArr, jobjectArray configValueArr) {
   (void)jobj;
@@ -755,51 +755,4 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   free((void*)valueArray);
   free((void*)jkeyArray);
   free((void*)jvalueArray);
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addExecutionProvider
- * Signature: (JJJ[J[Ljava/lang/String;[Ljava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExecutionProvider__JJJ_3J_3Ljava_lang_String_2_3Ljava_lang_String_2
-        (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong envHandle, jlong optionsHandle, jlongArray deviceHandleArr, jobjectArray configKeyArr, jobjectArray configValueArr) {
-    (void)jobj;
-
-    const OrtApi* api = (const OrtApi*)apiHandle;
-    OrtEnv* env = (OrtEnv*) envHandle;
-    OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-    jsize deviceCount = (*jniEnv)->GetArrayLength(jniEnv, deviceHandleArr);
-    jsize keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
-
-    const char** keyArray = (const char**)allocarray(keyCount, sizeof(const char*));
-    const char** valueArray = (const char**)allocarray(keyCount, sizeof(const char*));
-    jstring* jkeyArray = (jstring*)allocarray(keyCount, sizeof(jstring));
-    jstring* jvalueArray = (jstring*)allocarray(keyCount, sizeof(jstring));
-    const OrtEpDevice** devicePtrs = allocarray(deviceCount, sizeof(OrtEpDevice *));
-
-    jlong* deviceHandleElements = (*jniEnv)->GetLongArrayElements(jniEnv, deviceHandleArr, NULL);
-    for (jsize i = 0; i < deviceCount; i++) {
-        devicePtrs[i] = (OrtEpDevice*) deviceHandleElements[i];
-    }
-    (*jniEnv)->ReleaseLongArrayElements(jniEnv, deviceHandleArr, deviceHandleElements, JNI_ABORT);
-
-    for (jsize i = 0; i < keyCount; i++) {
-        jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
-        jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
-        keyArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkeyArray[i], NULL);
-        valueArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalueArray[i], NULL);
-    }
-
-    checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider_V2(options, env, devicePtrs, deviceCount, keyArray, valueArray, keyCount));
-
-    for (jsize i = 0; i < keyCount; i++) {
-        (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
-        (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
-    }
-    free((void*)devicePtrs);
-    free((void*)keyArray);
-    free((void*)valueArray);
-    free((void*)jkeyArray);
-    free((void*)jvalueArray);
 }

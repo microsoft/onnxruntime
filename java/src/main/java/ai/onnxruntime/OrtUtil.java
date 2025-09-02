@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
@@ -16,9 +16,6 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.logging.Logger;
 
 /** Util code for interacting with Java arrays. */
@@ -371,52 +368,6 @@ public final class OrtUtil {
       valid &= ((int) shape[i]) == shape[i];
     }
     return valid && shape.length <= TensorInfo.MAX_DIMENSIONS;
-  }
-
-  /**
-   * Converts the output of a OrtKeyValuePairs into a Java unmodifiable HashMap.
-   *
-   * @param zippedString The zipped keys and values.
-   * @return An unmodifiable Map.
-   */
-  static Map<String, String> convertToMap(String[][] zippedString) {
-    if (zippedString.length != 2) {
-      throw new IllegalArgumentException("Invalid zipped string, must have two arrays.");
-    } else if (zippedString[0].length != zippedString[1].length) {
-      throw new IllegalArgumentException(
-          "Invalid zipped string, must have two arrays of the same length.");
-    }
-    Map<String, String> map = new HashMap<>(capacityFromSize(zippedString[0].length));
-    for (int i = 0; i < zippedString[0].length; i++) {
-      map.put(zippedString[0][i], zippedString[1][i]);
-    }
-    return Collections.unmodifiableMap(map);
-  }
-
-  /**
-   * Converts a Java string map into a pair of arrays suitable for constructing a native
-   * OrtKeyValuePairs object.
-   *
-   * @param map A map from string to string, with no null keys or values.
-   * @return A pair of String arrays.
-   */
-  static String[][] unpackMap(Map<String, String> map) {
-    String[] keys = new String[map.size()];
-    String[] values = new String[map.size()];
-    int i = 0;
-    for (Map.Entry<String, String> entry : map.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException(
-            "Invalid map, keys and values must not be null, found key = "
-                + entry.getKey()
-                + ", value = "
-                + entry.getValue());
-      }
-      keys[i] = entry.getKey();
-      values[i] = entry.getValue();
-      i++;
-    }
-    return new String[][] {keys, values};
   }
 
   /**

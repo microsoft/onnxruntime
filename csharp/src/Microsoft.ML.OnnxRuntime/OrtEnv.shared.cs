@@ -8,21 +8,6 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Represents the compatibility status of a pre-compiled model with one or more execution provider devices.
-    /// </summary>
-    /// <remarks>
-    /// This enum is used to determine whether a pre-compiled model can be used with specific execution providers
-    /// and devices, or if recompilation is needed. 
-    /// </remarks>
-    public enum OrtCompiledModelCompatibility
-    {
-        EP_NOT_APPLICABLE = 0,
-        EP_SUPPORTED_OPTIMAL = 1,
-        EP_SUPPORTED_PREFER_RECOMPILATION = 2,
-        EP_UNSUPPORTED = 3,
-    }
-
-    /// <summary>
     /// Delegate for logging function callback.
     /// Supply your function and register it with the environment to receive logging callbacks via
     /// EnvironmentCreationOptions
@@ -374,31 +359,6 @@ namespace Microsoft.ML.OnnxRuntime
                 // If it does, it is BUG and we would like to propagate that to the user in the form of an exception
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtReleaseAvailableProviders(availableProvidersHandle, numProviders));
             }
-        }
-
-        /// <summary>
-        /// Validate a compiled model's compatibility information for one or more EP devices.
-        /// </summary>
-        /// <param name="epDevices">The list of EP devices to validate against.</param>
-        /// <param name="compatibilityInfo">The compatibility string from the precompiled model to validate.</param>
-        /// <returns>OrtCompiledModelCompatibility enum value denoting the compatibility status</returns>
-        public OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
-            IReadOnlyList<OrtEpDevice> epDevices, string compatibilityInfo)
-        {
-            if (epDevices == null || epDevices.Count == 0)
-                throw new ArgumentException("epDevices must be non-empty", nameof(epDevices));
-
-            var devicePtrs = new IntPtr[epDevices.Count];
-            for (int i = 0; i < epDevices.Count; ++i)
-            {
-                devicePtrs[i] = epDevices[i].Handle;
-            }
-
-            var infoUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(compatibilityInfo);
-            NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtGetModelCompatibilityForEpDevices(
-                    devicePtrs, (UIntPtr)devicePtrs.Length, infoUtf8, out int status));
-            return (OrtCompiledModelCompatibility)status;
         }
 
 

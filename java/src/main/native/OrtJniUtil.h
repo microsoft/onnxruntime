@@ -78,8 +78,6 @@ jobject createMapInfoFromValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator 
 
 jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* onnxValue);
 
-jobjectArray convertOrtKeyValuePairsToArrays(JNIEnv *jniEnv, const OrtApi * api, const OrtKeyValuePairs * kvp);
-
 jint throwOrtException(JNIEnv *env, int messageId, const char *message);
 
 jint convertErrorCode(OrtErrorCode code);

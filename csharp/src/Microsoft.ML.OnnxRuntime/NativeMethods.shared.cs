@@ -368,88 +368,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_Device;
         public IntPtr GetEpApi;
         public IntPtr GetTensorSizeInBytes;
-
-        public IntPtr AllocatorGetStats;
-
-        public IntPtr CreateMemoryInfo_V2;
-        public IntPtr MemoryInfoGetDeviceMemType;
-        public IntPtr MemoryInfoGetVendorId;
-
-        public IntPtr ValueInfo_GetValueProducer;
-        public IntPtr ValueInfo_GetValueNumConsumers;
-        public IntPtr ValueInfo_GetValueConsumers;
-        public IntPtr ValueInfo_GetInitializerValue;
-        public IntPtr ValueInfo_GetExternalInitializerInfo;
-        public IntPtr ValueInfo_IsRequiredGraphInput;
-        public IntPtr ValueInfo_IsOptionalGraphInput;
-        public IntPtr ValueInfo_IsGraphOutput;
-        public IntPtr ValueInfo_IsConstantInitializer;
-        public IntPtr ValueInfo_IsFromOuterScope;
-        public IntPtr Graph_GetName;
-        public IntPtr Graph_GetModelPath;
-        public IntPtr Graph_GetOnnxIRVersion;
-        public IntPtr Graph_GetNumOperatorSets;
-        public IntPtr Graph_GetOperatorSets;
-        public IntPtr Graph_GetNumInputs;
-        public IntPtr Graph_GetInputs;
-        public IntPtr Graph_GetNumOutputs;
-        public IntPtr Graph_GetOutputs;
-        public IntPtr Graph_GetNumInitializers;
-        public IntPtr Graph_GetInitializers;
-        public IntPtr Graph_GetNumNodes;
-        public IntPtr Graph_GetNodes;
-        public IntPtr Graph_GetParentNode;
-        public IntPtr Graph_GetGraphView;
-        public IntPtr Node_GetId;
-        public IntPtr Node_GetName;
-        public IntPtr Node_GetOperatorType;
-        public IntPtr Node_GetDomain;
-        public IntPtr Node_GetSinceVersion;
-        public IntPtr Node_GetNumInputs;
-        public IntPtr Node_GetInputs;
-        public IntPtr Node_GetNumOutputs;
-        public IntPtr Node_GetOutputs;
-        public IntPtr Node_GetNumImplicitInputs;
-        public IntPtr Node_GetImplicitInputs;
-        public IntPtr Node_GetNumAttributes;
-        public IntPtr Node_GetAttributes;
-        public IntPtr Node_GetAttributeByName;
-        public IntPtr Node_GetTensorAttributeAsOrtValue;
-        public IntPtr OpAttr_GetType;
-        public IntPtr OpAttr_GetName;
-        public IntPtr Node_GetNumSubgraphs;
-        public IntPtr Node_GetSubgraphs;
-        public IntPtr Node_GetGraph;
-        public IntPtr Node_GetEpName;
-        public IntPtr ReleaseExternalInitializerInfo;
-        public IntPtr ExternalInitializerInfo_GetFilePath;
-        public IntPtr ExternalInitializerInfo_GetFileOffset;
-        public IntPtr ExternalInitializerInfo_GetByteSize;
-
-        public IntPtr GetRunConfigEntry;
-
-        public IntPtr EpDevice_MemoryInfo;
-
-        public IntPtr CreateSharedAllocator;
-        public IntPtr GetSharedAllocator;
-        public IntPtr ReleaseSharedAllocator;
-
-        public IntPtr GetTensorData;
-
-        public IntPtr GetSessionOptionsConfigEntries;
-
-        public IntPtr SessionGetMemoryInfoForInputs;
-        public IntPtr SessionGetMemoryInfoForOutputs;
-        public IntPtr SessionGetEpDeviceForInputs;
-
-        public IntPtr CreateSyncStreamForEpDevice;
-        public IntPtr SyncStream_GetHandle;
-        public IntPtr ReleaseSyncStream;
-
-        public IntPtr CopyTensors;
-
-        public IntPtr Graph_GetModelMetadata;
-        public IntPtr GetModelCompatibilityForEpDevices;
     }
 
     internal static class NativeMethods
@@ -786,10 +704,6 @@ namespace Microsoft.ML.OnnxRuntime
                 (DSessionOptionsSetEpSelectionPolicyDelegate)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsSetEpSelectionPolicyDelegate,
                     typeof(DSessionOptionsSetEpSelectionPolicyDelegate));
-
-            OrtGetModelCompatibilityForEpDevices = (DOrtGetModelCompatibilityForEpDevices)Marshal.GetDelegateForFunctionPointer(
-                api_.GetModelCompatibilityForEpDevices,
-                typeof(DOrtGetModelCompatibilityForEpDevices));
         }
 
         internal class NativeLib
@@ -2541,18 +2455,6 @@ namespace Microsoft.ML.OnnxRuntime
             out UIntPtr /* size_t* */ num_ep_devices);
 
         public static DOrtGetEpDevices OrtGetEpDevices;
-
-        /// <summary>
-        /// Validate compiled model compatibility for the provided EP devices.
-        /// </summary>
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */ DOrtGetModelCompatibilityForEpDevices(
-            IntPtr[] /* const OrtEpDevice* const* */ ep_devices,
-            UIntPtr /* size_t */ num_ep_devices,
-            byte[] /* const char* */ compatibility_info,
-            out int /* OrtCompiledModelCompatibility */ out_status);
-
-        public static DOrtGetModelCompatibilityForEpDevices OrtGetModelCompatibilityForEpDevices;
 
         /// <summary>
         /// Add execution provider devices to the session options.

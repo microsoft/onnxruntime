@@ -24,7 +24,7 @@ std::once_flag init;
 }  // namespace
 
 void InitProviderOrtApi() {
-  std::call_once(init, []() { Ort::InitApi(Provider_GetHost()->OrtGetApiBase()->GetApi(ORT_API_VERSION)); });
+  std::call_once(init, []() { Ort::Global<void>::api_ = Provider_GetHost()->OrtGetApiBase()->GetApi(ORT_API_VERSION); });
 }
 
 }  // namespace onnxruntime

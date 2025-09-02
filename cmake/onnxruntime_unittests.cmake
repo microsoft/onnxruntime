@@ -1640,10 +1640,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
           add_custom_command(TARGET onnxruntime_providers_qnn POST_BUILD
               COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} ${JAVA_NATIVE_TEST_DIR})
         endif()
-	if (WIN32)
-          set(EXAMPLE_PLUGIN_EP_DST_FILE_NAME $<IF:$<BOOL:${WIN32}>,$<TARGET_FILE_NAME:example_plugin_ep>,$<TARGET_LINKER_FILE_NAME:example_plugin_ep>>)
-          add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:example_plugin_ep> ${JAVA_NATIVE_TEST_DIR}/${EXAMPLE_PLUGIN_EP_DST_FILE_NAME})
-	endif()
 
         # delegate to gradle's test runner
 
