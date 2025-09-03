@@ -449,7 +449,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
         /// <exception cref="ArgumentException">epDevices was empty.</exception>
         /// <see cref="OrtEnv.GetEpDevices" />
-        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices,
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
                                             IReadOnlyDictionary<string, string> epOptions)
         {
             if (epDevices == null || epDevices.Count == 0)
@@ -481,7 +481,7 @@ namespace Microsoft.ML.OnnxRuntime
                         env.Handle,
                         epDevicePtrs,
                         (UIntPtr)epDevices.Count,
-                        epOptionsKeys,
+                        epOptionsKeys,  
                         epOptionsValues,
                         epOptionsCount));
             }
@@ -659,7 +659,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
-                    handle,
+                    handle, 
                     funcPtr,
                     GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
         }

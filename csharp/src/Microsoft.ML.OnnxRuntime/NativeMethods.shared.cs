@@ -422,7 +422,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Node_GetGraph;
         public IntPtr Node_GetEpName;
         public IntPtr ReleaseExternalInitializerInfo;
-        public IntPtr CreateExternalInitializerInfo;
         public IntPtr ExternalInitializerInfo_GetFilePath;
         public IntPtr ExternalInitializerInfo_GetFileOffset;
         public IntPtr ExternalInitializerInfo_GetByteSize;
@@ -451,6 +450,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public IntPtr Graph_GetModelMetadata;
         public IntPtr GetModelCompatibilityForEpDevices;
+        public IntPtr CreateExternalInitializerInfo;
     }
 
     internal static class NativeMethods
@@ -793,11 +793,6 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.ReleaseExternalInitializerInfo,
                     typeof(DOrtReleaseExternalInitializerInfo));
 
-            OrtCreateExternalInitializerInfo =
-                (DOrtCreateExternalInitializerInfo)Marshal.GetDelegateForFunctionPointer(
-                    api_.CreateExternalInitializerInfo,
-                    typeof(DOrtCreateExternalInitializerInfo));
-
             OrtExternalInitializerInfo_GetFilePath =
                 (DOrtExternalInitializerInfo_GetFilePath)Marshal.GetDelegateForFunctionPointer(
                     api_.ExternalInitializerInfo_GetFilePath,
@@ -816,6 +811,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetModelCompatibilityForEpDevices = (DOrtGetModelCompatibilityForEpDevices)Marshal.GetDelegateForFunctionPointer(
                 api_.GetModelCompatibilityForEpDevices,
                 typeof(DOrtGetModelCompatibilityForEpDevices));
+
+            OrtCreateExternalInitializerInfo =
+                (DOrtCreateExternalInitializerInfo)Marshal.GetDelegateForFunctionPointer(
+                    api_.CreateExternalInitializerInfo,
+                    typeof(DOrtCreateExternalInitializerInfo));
+
         }
 
         internal class NativeLib

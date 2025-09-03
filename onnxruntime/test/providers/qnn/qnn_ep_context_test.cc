@@ -2164,49 +2164,54 @@ struct CustomInitializerHandlerState {
 
 static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
                                                              const char* initializer_name,
-                                                             const OrtValue* initializer_value,
-                                                             const OrtExternalInitializerInfo* /*external_info*/,
-                                                             OrtExternalInitializerInfo** new_external_info) {
-  const OrtApi& ort_api = Ort::GetApi();
-  CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
+                                                             const OrtValue* c_initializer_value,
+                                                             const OrtExternalInitializerInfo* /*c_external_info*/,
+                                                             OrtExternalInitializerInfo** c_new_external_info) {
+  Ort::Status final_status{nullptr};
 
-  if (std::string("constant") == initializer_name) {
-    // Keep a specific initializer in the model just to test both scenarios.
-    // A real implementation may check the byte size and keep small initializers in the model.
-    *new_external_info = nullptr;
-    return nullptr;
+  ORT_TRY {
+    const OrtApi& ort_api = Ort::GetApi();
+    CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
+
+    if (std::string("constant") == initializer_name) {
+      // Keep a specific initializer in the model just to test both scenarios.
+      // A real implementation may check the byte size and keep small initializers in the model.
+      *c_new_external_info = nullptr;
+      return nullptr;
+    }
+
+    //
+    // Store other initializers in an external file.
+    //
+    Ort::ConstValue value{c_initializer_value};
+    size_t byte_size = value.GetTensorSizeInBytes();
+    int64_t offset = custom_state->outfile->tellp();
+    const ORTCHAR_T* location = custom_state->external_file_path;
+
+    custom_state->outfile->write(static_cast<const char*>(value.GetTensorRawData()), byte_size);
+    custom_state->outfile->flush();
+
+    // Provide caller (ORT) with the new external info.
+    Ort::ExternalInitializerInfo new_external_info{nullptr};
+    if (Ort::Status status = Ort::ExternalInitializerInfo::Create(location, offset, byte_size, new_external_info);
+        !status.IsOK()) {
+      return status.release();
+    }
+
+    *c_new_external_info = new_external_info.release();
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status{ex};
+    }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status(ex.what(), ORT_FAIL);
+    }));
   }
 
-  //
-  // Store other initializers in an external file.
-  //
-
-  // Get initializer's byte size
-  size_t byte_size = 0;
-  if (OrtStatus* status = ort_api.GetTensorSizeInBytes(initializer_value, &byte_size); status != nullptr) {
-    return status;
-  }
-
-  // Get initializer's data.
-  const void* initializer_data = nullptr;
-  if (OrtStatus* status = ort_api.GetTensorData(initializer_value, &initializer_data); status != nullptr) {
-    return status;
-  }
-
-  // Write initializer data to some file.
-  int64_t offset = custom_state->outfile->tellp();
-  const ORTCHAR_T* location = custom_state->external_file_path;
-
-  custom_state->outfile->write(static_cast<const char*>(initializer_data), byte_size);
-  custom_state->outfile->flush();
-
-  // Provide caller (ORT) with the new external info.
-  if (OrtStatus* status = ort_api.CreateExternalInitializerInfo(location, offset, byte_size, new_external_info);
-      status != nullptr) {
-    return status;
-  }
-
-  return nullptr;
+  return final_status.release();
 }
 
 // Test using the CompileModel() API with settings:
@@ -2262,33 +2267,48 @@ static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
                                                          const OrtValue* /*initializer_value*/,
                                                          const OrtExternalInitializerInfo* external_info,
                                                          OrtExternalInitializerInfo** new_external_info) {
-  // If the original initializer was stored in an external file, keep it there (just for testing).
-  if (external_info != nullptr) {
-    Ort::ConstExternalInitializerInfo info(external_info);
-    auto location = info.GetFilePath();
-    int64_t offset = info.GetFileOffset();
-    size_t byte_size = info.GetByteSize();
+  Ort::Status final_status{nullptr};
 
-    Ort::ExternalInitializerInfo new_info(nullptr);
-    Ort::Status status = Ort::ExternalInitializerInfo::Create(location.c_str(), offset, byte_size, new_info);
-    if (!status.IsOK()) {
-      return status.release();
+  ORT_TRY {
+    // If the original initializer was stored in an external file, keep it there (just for testing).
+    if (external_info != nullptr) {
+      Ort::ConstExternalInitializerInfo info(external_info);
+      auto location = info.GetFilePath();
+      int64_t offset = info.GetFileOffset();
+      size_t byte_size = info.GetByteSize();
+
+      Ort::ExternalInitializerInfo new_info(nullptr);
+      Ort::Status status = Ort::ExternalInitializerInfo::Create(location.c_str(), offset, byte_size, new_info);
+      if (!status.IsOK()) {
+        return status.release();
+      }
+
+      *new_external_info = new_info.release();
+
+      // Keep track of number of reused external initializers so that we can assert
+      // that we reused the expected number of initializers.
+      // THIS IS TEST CODE. An application would not do this.
+      size_t* num_reused_ext_initializers = reinterpret_cast<size_t*>(state);
+      *num_reused_ext_initializers += 1;
+
+      return nullptr;
     }
 
-    *new_external_info = new_info.release();
-
-    // Keep track of number of reused external initializers so that we can assert
-    // that we reused the expected number of initializers.
-    // THIS IS TEST CODE. An application would not do this.
-    size_t* num_reused_ext_initializers = reinterpret_cast<size_t*>(state);
-    *num_reused_ext_initializers += 1;
-
-    return nullptr;
+    // If not originally external, save it within the generated compiled model
+    *new_external_info = nullptr;
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status{ex};
+    }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status(ex.what(), ORT_FAIL);
+    }));
   }
 
-  // If not originally external, save it within the generated compiled model
-  *new_external_info = nullptr;
-  return nullptr;
+  return final_status.release();
 }
 
 // Test using the CompileModel() API with settings:

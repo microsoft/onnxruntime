@@ -4191,7 +4191,6 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetGraph,
     &OrtApis::Node_GetEpName,
     &OrtApis::ReleaseExternalInitializerInfo,
-    &OrtApis::CreateExternalInitializerInfo,
     &OrtApis::ExternalInitializerInfo_GetFilePath,
     &OrtApis::ExternalInitializerInfo_GetFileOffset,
     &OrtApis::ExternalInitializerInfo_GetByteSize,
@@ -4220,6 +4219,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::Graph_GetModelMetadata,
     &OrtApis::GetModelCompatibilityForEpDevices,
+    &OrtApis::CreateExternalInitializerInfo,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

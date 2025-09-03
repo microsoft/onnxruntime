@@ -4358,14 +4358,23 @@ Status Graph::RegenerateInitializersAndReplaceInMemory(gsl::span<const Initializ
   return Status::OK();
 }
 
-Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const {
-  for (const auto& node : Nodes()) {
+// Struct that holds the return value from GetSubgraphsWithMatchingGraphProtos;
+// Pairs a onnxruntime::Graph with its matching onnx::GraphProto.
+struct SubgraphWithMutableProto {
+  ONNX_NAMESPACE::GraphProto* subgraph_proto = nullptr;
+  const Graph* subgraph = nullptr;
+};
+
+static Status GetSubgraphsWithMatchingGraphProtos(const GraphNodes& nodes,
+                                                  ONNX_NAMESPACE::GraphProto& graph_proto,
+                                                  std::vector<SubgraphWithMutableProto>& subgraphs) {
+  for (const auto& node : nodes) {
     if (node.ContainsSubgraph()) {
       // Let's find this node in the output_graph_proto
       // The node name is optional, so we may need to check by the output value name
       // given that they can only assigned once.
-      auto hit = std::find_if(output_graph_proto.mutable_node()->begin(),
-                              output_graph_proto.mutable_node()->end(),
+      auto hit = std::find_if(graph_proto.mutable_node()->begin(),
+                              graph_proto.mutable_node()->end(),
                               [&node](const ONNX_NAMESPACE::NodeProto& proto) {
                                 const auto& node_name = node.Name();
                                 if (!node_name.empty())
@@ -4373,7 +4382,7 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
                                 return (proto.output_size() > 0 &&
                                         proto.output(0) == node.OutputDefs()[0]->Name());
                               });
-      ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
+      ORT_RETURN_IF_NOT(hit != graph_proto.mutable_node()->end(), "Node ", node.Name(),
                         " not found in output_graph_proto");
       auto& result_node = *hit;
       for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
@@ -4388,9 +4397,25 @@ Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_gr
         ORT_RETURN_IF_NOT(sub_hit != result_node.mutable_attribute()->end() && utils::HasGraph(*sub_hit),
                           "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
                           node.Name(), " while attempting to recurse into it.");
-        auto& result_subgraph = *sub_hit->mutable_g();
-        ORT_RETURN_IF_ERROR(subgraph->ProcessSubgraphsInMemoryData(result_subgraph));
+        SubgraphWithMutableProto subgraph_result{sub_hit->mutable_g(), subgraph};
+        subgraphs.emplace_back(subgraph_result);
       }
+    }
+  }
+
+  return Status::OK();
+}
+
+Status Graph::ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const {
+  // Process subgraphs recursively (bottom-up).
+  {
+    std::vector<SubgraphWithMutableProto> subgraphs;
+    ORT_RETURN_IF_ERROR(GetSubgraphsWithMatchingGraphProtos(Nodes(), output_graph_proto, subgraphs));
+
+    for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
+      gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
+      gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
+      ORT_RETURN_IF_ERROR(subgraph->ProcessSubgraphsInMemoryData(*subgraph_proto));
     }
   }
 
@@ -4445,44 +4470,19 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
   // Process initializers in a subgraph, check their size and
   // write to an external file. This function also saves pre-packed
   // blobs for the initializer being saved to disk, if the initializer has any pre-packs.
-  // This function is invoked by ToGraphProtoWithExternalInitiallizers() and processes subgraphs
+  // This function is invoked by ToGraphProtoWithExternalInitializers() and processes subgraphs
   // bottom up.
-  for (const auto& node : Nodes()) {
-    if (node.ContainsSubgraph()) {
-      // Let's find this node in the output_graph_proto
-      // The node name is optional, so we may need to check by the output value name
-      // given that they can only assigned once.
-      auto hit = std::find_if(output_graph_proto.mutable_node()->begin(),
-                              output_graph_proto.mutable_node()->end(),
-                              [&node](const ONNX_NAMESPACE::NodeProto& proto) {
-                                const auto& node_name = node.Name();
-                                if (!node_name.empty())
-                                  return proto.name() == node_name;
-                                return (proto.output_size() > 0 &&
-                                        proto.output(0) == node.OutputDefs()[0]->Name());
-                              });
-      ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
-                        " not found in output_graph_proto");
-      auto& result_node = *hit;
-      for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
-        const auto& name = e.first;
-        const auto& subgraph = e.second;
-        // Lets find this subgraph in the result_node
-        auto sub_hit = std::find_if(result_node.mutable_attribute()->begin(),
-                                    result_node.mutable_attribute()->end(),
-                                    [&name](const ONNX_NAMESPACE::AttributeProto& proto) {
-                                      return proto.name() == name;
-                                    });
-        ORT_RETURN_IF_NOT(sub_hit != result_node.mutable_attribute()->end() && utils::HasGraph(*sub_hit),
-                          "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
-                          node.Name(), " while attempting to recurse into it.");
-        auto& result_subgraph = *sub_hit->mutable_g();
-        ORT_RETURN_IF_ERROR(subgraph->AddExternalInitializersToGraphProtoImpl(
-            model_path, external_file_path,
-            model_external_file_path, model_saving_options,
-            result_subgraph,
-            external_stream, external_offset));
-      }
+  {
+    std::vector<SubgraphWithMutableProto> subgraphs;
+    ORT_RETURN_IF_ERROR(GetSubgraphsWithMatchingGraphProtos(Nodes(), output_graph_proto, subgraphs));
+
+    for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
+      gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
+      gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
+      ORT_RETURN_IF_ERROR(subgraph->AddExternalInitializersToGraphProtoImpl(
+          model_path, external_file_path,
+          model_external_file_path, model_saving_options,
+          *subgraph_proto, external_stream, external_offset));
     }
   }
 
@@ -4648,44 +4648,20 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
                                                      void* state,
                                                      /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const {
   // This loop processes subgraphs bottom up.
-  for (const auto& node : Nodes()) {
-    if (node.ContainsSubgraph()) {
-      // Let's find this node in the output_graph_proto
-      // The node name is optional, so we may need to check by the output value name
-      // given that they can only assigned once.
-      auto hit = std::find_if(output_graph_proto.mutable_node()->begin(),
-                              output_graph_proto.mutable_node()->end(),
-                              [&node](const ONNX_NAMESPACE::NodeProto& proto) {
-                                const auto& node_name = node.Name();
-                                if (!node_name.empty())
-                                  return proto.name() == node_name;
-                                return (proto.output_size() > 0 &&
-                                        proto.output(0) == node.OutputDefs()[0]->Name());
-                              });
-      ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
-                        " not found in output_graph_proto");
-      auto& result_node = *hit;
-      for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
-        const auto& name = e.first;
-        const auto& subgraph = e.second;
-        // Lets find this subgraph in the result_node
-        auto sub_hit = std::find_if(result_node.mutable_attribute()->begin(),
-                                    result_node.mutable_attribute()->end(),
-                                    [&name](const ONNX_NAMESPACE::AttributeProto& proto) {
-                                      return proto.name() == name;
-                                    });
-        ORT_RETURN_IF_NOT(sub_hit != result_node.mutable_attribute()->end() && utils::HasGraph(*sub_hit),
-                          "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
-                          node.Name(), " while attempting to recurse into it.");
-        auto& result_subgraph = *sub_hit->mutable_g();
-        ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithInitializerHandlerImpl(handle_initializer_func,
-                                                                             state, result_subgraph));
-      }
+  {
+    std::vector<SubgraphWithMutableProto> subgraphs;
+    ORT_RETURN_IF_ERROR(GetSubgraphsWithMatchingGraphProtos(Nodes(), output_graph_proto, subgraphs));
+
+    for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
+      gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
+      gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
+      ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithInitializerHandlerImpl(handle_initializer_func,
+                                                                           state, *subgraph_proto));
     }
   }
 
   // Create a sorted std::vector of initializers so that we always process them in a deterministic order.
-  std::vector<const ONNX_NAMESPACE::TensorProto*> initializers;
+  InlinedVector<const ONNX_NAMESPACE::TensorProto*> initializers;
   initializers.reserve(GetAllInitializedTensors().size());
 
   for (const auto& [name, initializer_tp] : GetAllInitializedTensors()) {
@@ -4704,8 +4680,7 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
     if (IsSparseInitializer(initializer->name())) {
       // Sparse tensors are added to the ONNX file directly.
       auto& sparse_initializer = *output_graph_proto.add_sparse_initializer();
-      auto status = utils::DenseTensorToSparseTensorProto(*initializer, ModelPath(), sparse_initializer);
-      ORT_RETURN_IF_NOT(status.IsOK(), "Failed to convert dense initializer to sparse");
+      ORT_RETURN_IF_ERROR(utils::DenseTensorToSparseTensorProto(*initializer, ModelPath(), sparse_initializer));
     } else {
 #endif
       TensorProto* output_proto = output_graph_proto.add_initializer();

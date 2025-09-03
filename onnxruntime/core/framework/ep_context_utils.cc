@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include <limits>
+#include <utility>
 #include "core/framework/ep_context_utils.h"
 #include "core/framework/error_code_helper.h"
 #include "core/graph/model_saving_options.h"

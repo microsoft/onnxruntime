@@ -577,11 +577,12 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtHandleInitializerDataFunc)(_In_ void* state,
-                                                               _In_ const char* initializer_name,
-                                                               _In_ const OrtValue* initializer_value,
-                                                               _In_opt_ const OrtExternalInitializerInfo* external_info,
-                                                               _Outptr_result_maybenull_ OrtExternalInitializerInfo** new_external_info);
+typedef OrtStatus*(ORT_API_CALL* OrtHandleInitializerDataFunc)(
+    _In_ void* state,
+    _In_ const char* initializer_name,
+    _In_ const OrtValue* initializer_value,
+    _In_opt_ const OrtExternalInitializerInfo* external_info,
+    _Outptr_result_maybenull_ OrtExternalInitializerInfo** new_external_info);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -6236,21 +6237,6 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(ExternalInitializerInfo);
 
-  /** \brief Creates an OrtExternalInitializerInfo instance.
-   *
-   * \param[in] filepath The relative path to the file that stores the initializer's data. ORT copies this path string.
-   * \param[in] file_offset The byte offset where the initializer's data is stored within the file.
-   * \param[in] byte_size The size in bytes of the initializer's data within the file.
-   * \param[out] out Output parameter set to the new OrtExternalInitializerInfo instance.
-   *                 Must be released by calling ReleaseExternalInitializerInfo().
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath, _In_ int64_t file_offset,
-                  _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out);
-
   /** \brief Get the relative path to the file that stores the initializer's data.
    *
    * \note The path is relative to the filesystem directory where the ONNX model was stored.
@@ -6572,6 +6558,26 @@ struct OrtApi {
                   _In_ size_t num_ep_devices,
                   _In_ const char* compatibility_info,
                   _Out_ OrtCompiledModelCompatibility* out_status);
+
+  /// \name OrtExternalInitializerInfo
+  /// @{
+
+  /** \brief Creates an OrtExternalInitializerInfo instance.
+   *
+   * \param[in] filepath The relative path to the file that stores the initializer's data. ORT copies this path string.
+   * \param[in] file_offset The byte offset where the initializer's data is stored within the file.
+   * \param[in] byte_size The size in bytes of the initializer's data within the file.
+   * \param[out] out Output parameter set to the new OrtExternalInitializerInfo instance.
+   *                 Must be released by calling ReleaseExternalInitializerInfo().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath, _In_ int64_t file_offset,
+                  _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out);
+
+  /// @}
 };
 
 /*

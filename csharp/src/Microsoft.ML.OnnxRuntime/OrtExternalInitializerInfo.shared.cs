@@ -5,6 +5,7 @@
 namespace Microsoft.ML.OnnxRuntime
 {
     using System;
+    using System.Diagnostics;
     using System.Runtime.InteropServices;
 
     /// <summary>
@@ -13,7 +14,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// <see cref="OrtModelCompilationOptions.HandleInitializerDelegate"/>
     public class OrtExternalInitializerInfo : SafeHandle, IReadOnlyExternalInitializerInfo
     {
-        // Set to true when constructed with an externally managed constant handle owned by ORT.
+        // Set to false when constructed with an externally managed constant handle owned by ORT.
         private readonly bool _ownsHandle = true;
 
         /// <summary>
@@ -37,14 +38,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="constHandle">Native OrtExternalInitializerInfo handle.</param>
         /// <param name="ownsHandle">True if the OrtExternalInitializerInfo instance owns the native handle.
         /// Defaults to false.</param>
-        /// <exception cref="InvalidOperationException"></exception>
         internal OrtExternalInitializerInfo(IntPtr constHandle, bool ownsHandle = false)
             : base(IntPtr.Zero, ownsHandle)
         {
-            if (constHandle == IntPtr.Zero)
-            {
-                throw new InvalidOperationException($"{nameof(OrtExternalInitializerInfo)}: Invalid instance.");
-            }
+            Debug.Assert(constHandle != IntPtr.Zero);
             SetHandle(constHandle);
             _ownsHandle = ownsHandle;
         }

@@ -17,9 +17,10 @@ namespace python {
 using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
 
 // Type of the function provided by Python code that is called by ORT to handle every initializer.
-using PyHandleInitializerFunc = std::function<std::shared_ptr<const OrtExternalInitializerInfo>(const std::string& initializer_name,
-                                                                                                const OrtValue& initializer_value,
-                                                                                                const OrtExternalInitializerInfo* external_info)>;
+using PyHandleInitializerFunc = std::function<std::shared_ptr<const OrtExternalInitializerInfo>(
+    const std::string& initializer_name,
+    const OrtValue& initializer_value,
+    const OrtExternalInitializerInfo* external_info)>;
 
 /// <summary>
 /// Class exposed to Python that enables compiling ONNX models.

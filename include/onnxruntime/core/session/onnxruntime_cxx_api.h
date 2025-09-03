@@ -884,6 +884,46 @@ struct PrepackedWeightsContainer : detail::Base<OrtPrepackedWeightsContainer> {
 
 namespace detail {
 template <typename T>
+struct ConstExternalInitializerInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  // Wraps OrtApi::ExternalInitializerInfo_GetFilePath
+  const std::basic_string<ORTCHAR_T> GetFilePath() const;
+  // Wraps OrtApi::ExternalInitializerInfo_GetFileOffset
+  int64_t GetFileOffset() const;
+  // Wraps OrtApi::ExternalInitializerInfo_GetByteSize
+  size_t GetByteSize() const;
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstExternalInitializerInfo =
+    detail::ConstExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
+
+/** \brief Wrapper around ::OrtExternalInitializerInfo
+ *
+ */
+struct ExternalInitializerInfo : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
+  using Base = detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>;
+  using Base::Base;
+
+  explicit ExternalInitializerInfo(std::nullptr_t) {}
+  explicit ExternalInitializerInfo(OrtExternalInitializerInfo* p)
+      : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}
+
+  ConstExternalInitializerInfo GetConst() const { return ConstExternalInitializerInfo{this->p_}; }
+
+  ///< Wraps OrtApi::CreateExternalInitializerInfo
+  ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size);
+
+  ///< Wrapper around CreateExternalInitializerInfo that does not throw an exception.
+  static Status Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
+                       /*out*/ ExternalInitializerInfo& out);
+};
+
+namespace detail {
+template <typename T>
 struct KeyValuePairsImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
@@ -3064,41 +3104,5 @@ struct Model : detail::ModelImpl<OrtModel> {
 
   ConstModel GetConst() const { return ConstModel{this->p_}; }
 };
-
-namespace detail {
-template <typename T>
-struct ExternalInitializerInfoImpl : Base<T> {
-  using B = Base<T>;
-  using B::B;
-
-  std::basic_string<ORTCHAR_T> GetFilePath() const;  ///< Wraps ExternalInitializerInfo_GetFilePath
-  int64_t GetFileOffset() const;                     ///< Wraps ExternalInitializerInfo_GetFileOffset
-  size_t GetByteSize() const;                        ///< Wraps ExternalInitializerInfo_GetByteSize
-};
-}  // namespace detail
-
-// Wrapper around an unowned ::OrtExternalInitializerInfo.
-using UnownedExternalInitializerInfo = detail::ExternalInitializerInfoImpl<detail::Unowned<OrtExternalInitializerInfo>>;
-
-// Wrapper around a constant and unowned ::OrtExternalInitializerInfo.
-using ConstExternalInitializerInfo = detail::ExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
-
-/** \brief Wrapper around ::OrtExternalInitializerInfo
- *
- */
-struct ExternalInitializerInfo : detail::ExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
-  explicit ExternalInitializerInfo(std::nullptr_t) {}  ///< No instance is created
-
-  explicit ExternalInitializerInfo(OrtExternalInitializerInfo* p)
-      : ExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}  ///< Take ownership of a pointer created by the C API
-
-  ///< Wrapper around CreateExternalInitializerInfo that does not throw an exception.
-  static Status Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
-                       /*out*/ ExternalInitializerInfo& out);
-
-  ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size);  ///< Wrapper around CreateExternalInitializerInfo
-  ConstExternalInitializerInfo GetConst() const;
-};
-
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"
