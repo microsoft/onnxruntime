@@ -238,7 +238,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_ARM64
 }
 
-return Status::OK();
+  return Status::OK();
 }
 
 #if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || !defined(MLAS_TARGET_ARM64)
