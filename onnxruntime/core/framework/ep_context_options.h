@@ -39,7 +39,7 @@ struct ExternalInitializerFileInfo {
 /// Holds function and state provided by user to handle initializer data (i.e., write to stream or embed in model).
 /// </summary>
 struct InitializerHandler {
-  OrtHandleInitializerDataFunc handle_initializer_func = nullptr;
+  OrtGetInitializerLocationFunc handle_initializer_func = nullptr;
   void* state = nullptr;
 };
 

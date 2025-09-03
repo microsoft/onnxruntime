@@ -577,7 +577,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtHandleInitializerDataFunc)(
+typedef OrtStatus*(ORT_API_CALL* OrtGetInitializerLocationFunc)(
     _In_ void* state,
     _In_ const char* initializer_name,
     _In_ const OrtValue* initializer_value,
@@ -7358,20 +7358,21 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ OrtWriteBufferFunc write_func, _In_ void* state);
 
-  /** \brief Sets a OrtHandleInitializerDataFunc function that is called by ORT for every initializer in the generated
+  /** \brief Sets a OrtGetInitializerLocationFunc function that is called by ORT for every initializer in the generated
    * model. Allows implementer to specify whether initializers should be stored within the model or externally.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] write_func The OrtHandleInitializerDataFunc function called by ORT when writing out an initializer.
-   * \param[in] state Opaque state passed as the first argument to OrtHandleInitializerDataFunc. Can be NULL.
+   * \param[in] get_initializer_location_func The OrtGetInitializerLocationFunc function called by ORT when
+   *                                          to determine the location of the initializer.
+   * \param[in] state Opaque state passed as the first argument to OrtGetInitializerLocationFunc. Can be NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
-                  _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state);
+                  _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
 };
 
 /*

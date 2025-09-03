@@ -38,8 +38,8 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetGraphOptimizationLevel,
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelWriteFunc,
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ OrtWriteBufferFunc write_func, _In_ void* state);
-ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
                     _In_ OrtModelCompilationOptions* model_compile_options,
-                    _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state);
+                    _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
 
 }  // namespace OrtCompileAPI

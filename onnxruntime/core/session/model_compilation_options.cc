@@ -112,10 +112,10 @@ void ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_f
   };
 }
 
-void ModelCompilationOptions::SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func,
-                                                                  void* state) {
+void ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
+    OrtGetInitializerLocationFunc get_initializer_location_func, void* state) {
   session_options_.value.ep_context_gen_options.initializers_location = epctx::InitializerHandler{
-      handle_initializer_func,
+      get_initializer_location_func,
       state,
   };
 }

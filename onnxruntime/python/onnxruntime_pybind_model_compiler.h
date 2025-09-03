@@ -17,7 +17,7 @@ namespace python {
 using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
 
 // Type of the function provided by Python code that is called by ORT to handle every initializer.
-using PyHandleInitializerFunc = std::function<std::shared_ptr<const OrtExternalInitializerInfo>(
+using PyGetInitializerLocationFunc = std::function<std::shared_ptr<const OrtExternalInitializerInfo>(
     const std::string& initializer_name,
     const OrtValue& initializer_value,
     const OrtExternalInitializerInfo* external_info)>;
@@ -52,7 +52,7 @@ class PyModelCompiler {
   /// <param name="flags">Flags from OrtCompileApiFlags</param>
   /// <param name="graph_opt_level">Optimization level for graph transformations on the model.
   /// Defaults to ORT_DISABLE_ALL to allow EP to get the original loaded model.</param>
-  /// <param name="py_handle_initializer_func">User's function to handle saving of initializers.</param>
+  /// <param name="py_get_initializer_location_func">User's function to handle saving of initializers.</param>
   /// <returns>A Status indicating error or success.</returns>
   static onnxruntime::Status Create(/*out*/ std::unique_ptr<PyModelCompiler>& out,
                                     onnxruntime::Environment& env,
@@ -63,12 +63,12 @@ class PyModelCompiler {
                                     size_t external_initializers_size_threshold = 1024,
                                     uint32_t flags = 0,
                                     GraphOptimizationLevel graph_opt_level = GraphOptimizationLevel::ORT_DISABLE_ALL,
-                                    const PyHandleInitializerFunc& py_handle_initializer_func = nullptr);
+                                    const PyGetInitializerLocationFunc& py_get_initializer_location_func = nullptr);
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
   PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
-                  const PyHandleInitializerFunc& py_handle_initializer_func,
+                  const PyGetInitializerLocationFunc& py_get_initializer_location_func,
                   PrivateConstructorTag);
 
   /// <summary>
@@ -99,7 +99,7 @@ class PyModelCompiler {
   onnxruntime::Environment& env_;
   onnxruntime::ModelCompilationOptions model_compile_options_;
   std::string input_model_bytes_;
-  PyHandleInitializerFunc py_handle_initializer_func_;
+  PyGetInitializerLocationFunc py_get_initializer_location_func_;
 #endif  // defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace python

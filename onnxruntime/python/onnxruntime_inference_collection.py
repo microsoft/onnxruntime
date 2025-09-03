@@ -620,11 +620,11 @@ class InferenceSession(Session):
                 C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
-def make_handle_initializer_func_wrapper(
-    handle_initializer_func: InitializerHandlerFunc,
-) -> InitializerHandlerWrapperFunc:
+def make_get_initializer_location_func_wrapper(
+    get_initializer_location_func: GetInitializerLocationFunc,
+) -> GetInitializerLocationWrapperFunc:
     """
-    Wraps a user's "initializer handler" function. The returned wrapper function adheres to the
+    Wraps a user's "get initializer location" function. The returned wrapper function adheres to the
     signature expected by ORT.
 
     Need this wrapper to:
@@ -633,12 +633,12 @@ def make_handle_initializer_func_wrapper(
       - Allow the user's function to return the original `external_info` parameter (this wrapper makes a copy)
     """
 
-    def handle_initializer_func_wrapper(
+    def get_initializer_location_func_wrapper(
         initializer_name: str,
         initializer_value: C.OrtValue,
         external_info: C.OrtExternalInitializerInfo | None,
     ) -> C.OrtExternalInitializerInfo | None:
-        ret_val: C.OrtExternalInitializerInfo | None = handle_initializer_func(
+        ret_val: C.OrtExternalInitializerInfo | None = get_initializer_location_func(
             initializer_name, OrtValue(initializer_value), external_info
         )
         if ret_val is not None and ret_val == external_info:
@@ -647,7 +647,7 @@ def make_handle_initializer_func_wrapper(
             ret_val = C.OrtExternalInitializerInfo(ret_val.filepath, ret_val.file_offset, ret_val.byte_size)
         return ret_val
 
-    return handle_initializer_func_wrapper
+    return get_initializer_location_func_wrapper
 
 
 class ModelCompiler:
@@ -678,7 +678,7 @@ class ModelCompiler:
         external_initializers_size_threshold: int = 1024,
         flags: int = C.OrtCompileApiFlags.NONE,
         graph_optimization_level: C.GraphOptimizationLevel = C.GraphOptimizationLevel.ORT_DISABLE_ALL,
-        handle_initializer_func: InitializerHandlerFunc | None = None,
+        get_initializer_location_func: GetInitializerLocationFunc | None = None,
     ):
         """
         Creates a ModelCompiler instance.
@@ -697,8 +697,25 @@ class ModelCompiler:
             flags in onnxruntime.OrtCompileApiFlags.
         :param graph_optimization_level: The graph optimization level.
             Defaults to onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL.
-        :param handle_initializer_func: Optional function called for every initializer to allow user to specify
-            whether an initializer should be stored within the model or externally.
+        :param get_initializer_location_func: Optional function called for every initializer to allow user to specify
+            whether an initializer should be stored within the model or externally. Example:
+            ```
+                def get_initializer_location(
+                    initializer_name: str,
+                    initializer_value: onnxrt.OrtValue,
+                    external_info: onnxrt.OrtExternalInitializerInfo | None,
+                ) -> onnxrt.OrtExternalInitializerInfo | None:
+                    byte_size = initializer_value.tensor_size_in_bytes()
+
+                    if byte_size < 64:
+                        return None  # Store small initializer within compiled model.
+
+                    # Else, write initializer to new external file.
+                    value_np = initializer_value.numpy()
+                    file_offset = ext_init_file.tell()
+                    ext_init_file.write(value_np.tobytes())
+                    return onnxrt.OrtExternalInitializerInfo(initializer_file_path, file_offset, byte_size)
+            ```
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
@@ -721,15 +738,17 @@ class ModelCompiler:
         else:
             external_initializers_file_path = ""
 
-        if handle_initializer_func is not None:
+        if get_initializer_location_func is not None:
             if external_initializers_file_path:
                 raise ValueError(
                     "Cannot initialize ModelCompiler with both `external_initializers_file_path` "
-                    "and `handle_initializer_func`"
+                    "and `get_initializer_location_func`"
                 )
-            self.handle_initializer_func_wrapper = make_handle_initializer_func_wrapper(handle_initializer_func)
+            self.get_initializer_location_func_wrapper = make_get_initializer_location_func_wrapper(
+                get_initializer_location_func
+            )
         else:
-            self.handle_initializer_func_wrapper = None
+            self.get_initializer_location_func_wrapper = None
 
         if input_model_path:
             self._model_compiler = C.ModelCompiler(
@@ -741,7 +760,7 @@ class ModelCompiler:
                 external_initializers_size_threshold,
                 flags,
                 graph_optimization_level,
-                self.handle_initializer_func_wrapper,
+                self.get_initializer_location_func_wrapper,
             )
         else:
             self._model_compiler = C.ModelCompiler(
@@ -753,7 +772,7 @@ class ModelCompiler:
                 external_initializers_size_threshold,
                 flags,
                 graph_optimization_level,
-                self.handle_initializer_func_wrapper,
+                self.get_initializer_location_func_wrapper,
             )
 
     def compile_to_file(self, output_model_path: str | None = None):
@@ -1353,12 +1372,12 @@ class SparseTensor:
         return self._tensor.device_name().lower()
 
 
-# Type hint for user-specified function that handles initializers when compiling a model.
-InitializerHandlerFunc = Callable[
+# Type hint for user-specified function that allows the user to specify initializer locations when compiling a model.
+GetInitializerLocationFunc = Callable[
     [str, OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
 ]
 
 # Type hint that adheres to the signature expected by ORT.
-InitializerHandlerWrapperFunc = Callable[
+GetInitializerLocationWrapperFunc = Callable[
     [str, C.OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
 ]

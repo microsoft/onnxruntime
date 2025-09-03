@@ -4644,9 +4644,10 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
   return result;
 }
 
-Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFunc handle_initializer_func,
-                                                     void* state,
-                                                     /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const {
+Status Graph::ToGraphProtoWithCustomInitializerHandlingImpl(
+    OrtGetInitializerLocationFunc handle_initializer_func,
+    void* state,
+    /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const {
   // This loop processes subgraphs bottom up.
   {
     std::vector<SubgraphWithMutableProto> subgraphs;
@@ -4655,8 +4656,8 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
     for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
       gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
       gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
-      ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithInitializerHandlerImpl(handle_initializer_func,
-                                                                           state, *subgraph_proto));
+      ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithCustomInitializerHandlingImpl(handle_initializer_func,
+                                                                                  state, *subgraph_proto));
     }
   }
 
@@ -4721,7 +4722,7 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
 
       ORT_RETURN_IF(new_external_info != nullptr &&
                         new_external_info == static_cast<OrtExternalInitializerInfo*>(original_ext_data_info.get()),
-                    "User's OrtHandleInitializerDataFunc must not return the external_info parameter.",
+                    "User's OrtGetInitializerLocationFunc must not return the external_info parameter.",
                     "Return a copy instead.");
       std::unique_ptr<OrtExternalInitializerInfo> new_external_info_holder(new_external_info);  // Take ownership
       ORT_RETURN_IF_ERROR(status);
@@ -4742,11 +4743,11 @@ Status Graph::ToGraphProtoWithInitializerHandlerImpl(OrtHandleInitializerDataFun
   return Status::OK();
 }
 
-Status Graph::ToGraphProtoWithInitializerHandler(OrtHandleInitializerDataFunc handle_initializer_func,
-                                                 void* state,
-                                                 /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const {
+Status Graph::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                        void* state,
+                                                        /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const {
   ToGraphProtoInternal(graph_proto);
-  ORT_RETURN_IF_ERROR(ToGraphProtoWithInitializerHandlerImpl(handle_initializer_func, state, graph_proto));
+  ORT_RETURN_IF_ERROR(ToGraphProtoWithCustomInitializerHandlingImpl(handle_initializer_func, state, graph_proto));
   return Status::OK();
 }
 

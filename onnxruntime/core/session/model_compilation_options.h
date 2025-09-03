@@ -83,9 +83,10 @@ class ModelCompilationOptions {
   /// <summary>
   /// Sets a user-provided function to handle serialization of ONNX initializers.
   /// </summary>
-  /// <param name="handle_initializer_func">The user-provided function called for every initializer</param>
+  /// <param name="get_initializer_location_func">The user-provided function called for every initializer</param>
   /// <param name="state">The user's state.</param>
-  void SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func, void* state);
+  void SetOutputModelGetInitializerLocationFunc(OrtGetInitializerLocationFunc get_initializer_location_func,
+                                                void* state);
 
   /// <summary>
   /// Sets information relate to EP context binary file.

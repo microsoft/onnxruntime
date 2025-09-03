@@ -2772,7 +2772,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        size_t external_initializers_size_threshold = 1024,
                        uint32_t flags = OrtCompileApiFlags_NONE,
                        GraphOptimizationLevel graph_optimization_level = GraphOptimizationLevel::ORT_DISABLE_ALL,
-                       const PyHandleInitializerFunc& py_handle_initializer_func = nullptr) {
+                       const PyGetInitializerLocationFunc& py_get_initializer_location_func = nullptr) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;
         OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
@@ -2781,7 +2781,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                                       external_initializers_file_path,
                                                       external_initializers_size_threshold,
                                                       flags, graph_optimization_level,
-                                                      py_handle_initializer_func));
+                                                      py_get_initializer_location_func));
         return result;
 #else
         ORT_UNUSED_PARAMETER(sess_options);
@@ -2792,7 +2792,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
         ORT_UNUSED_PARAMETER(flags);
         ORT_UNUSED_PARAMETER(graph_optimization_level);
-        ORT_UNUSED_PARAMETER(py_handle_initializer_func);
+        ORT_UNUSED_PARAMETER(py_get_initializer_location_func);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))

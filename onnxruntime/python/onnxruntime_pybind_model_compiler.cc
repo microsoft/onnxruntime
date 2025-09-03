@@ -16,8 +16,9 @@ namespace onnxruntime {
 namespace python {
 
 /// <summary>
-/// This function is called by ORT to allow the user to handle where every initializer is stored (i.e., externally or internally).
-/// This function wraps (and calls) the actual Python function provided by the user.
+/// This function is called by ORT to allow the user to handle where every initializer is stored
+/// (i.e., externally or internally). This function wraps (and calls) the actual Python function
+/// provided by the user.
 /// </summary>
 /// <param name="state">Opaque state that holds a pointer to the user's Python function.</param>
 /// <param name="initializer_name">The name of the initializer to handle.</param>
@@ -26,11 +27,13 @@ namespace python {
 /// <param name="new_external_info">Output parameter set to the initializer's new external location. Function may
 /// return NULL if the initializer should be stored within the compiled ONNX model.</param>
 /// <returns>A status indicating success or an error.</returns>
-static OrtStatus* ORT_API_CALL PyHandleInitializerFuncWrapper(void* state, const char* initializer_name,
-                                                              const OrtValue* initializer_value,
-                                                              const OrtExternalInitializerInfo* external_info,
-                                                              /*out*/ OrtExternalInitializerInfo** new_external_info) {
-  PyHandleInitializerFunc* py_func = reinterpret_cast<PyHandleInitializerFunc*>(state);
+static OrtStatus* ORT_API_CALL PyGetInitializerLocationFuncWrapper(
+    void* state,
+    const char* initializer_name,
+    const OrtValue* initializer_value,
+    const OrtExternalInitializerInfo* external_info,
+    /*out*/ OrtExternalInitializerInfo** new_external_info) {
+  PyGetInitializerLocationFunc* py_func = reinterpret_cast<PyGetInitializerLocationFunc*>(state);
   OrtStatus* status = nullptr;
   std::shared_ptr<const OrtExternalInitializerInfo> py_new_external_info = nullptr;
 
@@ -65,8 +68,8 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
                                             size_t external_initializers_size_threshold,
                                             uint32_t flags,
                                             GraphOptimizationLevel graph_optimization_level,
-                                            const PyHandleInitializerFunc& py_handle_initializer_func) {
-  auto model_compiler = std::make_unique<PyModelCompiler>(env, sess_options, py_handle_initializer_func,
+                                            const PyGetInitializerLocationFunc& py_get_initializer_location_func) {
+  auto model_compiler = std::make_unique<PyModelCompiler>(env, sess_options, py_get_initializer_location_func,
                                                           PrivateConstructorTag{});
   ModelCompilationOptions& compile_options = model_compiler->model_compile_options_;
 
@@ -91,10 +94,10 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
 
   ORT_RETURN_IF_ERROR(compile_options.SetGraphOptimizationLevel(graph_optimization_level));
 
-  if (model_compiler->py_handle_initializer_func_) {
-    compile_options.SetOutputModelHandleInitializerFunc(
-        PyHandleInitializerFuncWrapper,
-        reinterpret_cast<void*>(&model_compiler->py_handle_initializer_func_));
+  if (model_compiler->py_get_initializer_location_func_) {
+    compile_options.SetOutputModelGetInitializerLocationFunc(
+        PyGetInitializerLocationFuncWrapper,
+        reinterpret_cast<void*>(&model_compiler->py_get_initializer_location_func_));
   }
 
   out = std::move(model_compiler);
@@ -166,9 +169,11 @@ onnxruntime::Status PyModelCompiler::CompileToOutStream(PyOutStreamWriteFunc& wr
 }
 
 PyModelCompiler::PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
-                                 const PyHandleInitializerFunc& py_handle_initializer_func,
+                                 const PyGetInitializerLocationFunc& py_get_initializer_location_func,
                                  PrivateConstructorTag)
-    : env_(env), model_compile_options_(env, sess_options), py_handle_initializer_func_(py_handle_initializer_func) {
+    : env_(env),
+      model_compile_options_(env, sess_options),
+      py_get_initializer_location_func_(py_get_initializer_location_func) {
 }
 }  // namespace python
 }  // namespace onnxruntime

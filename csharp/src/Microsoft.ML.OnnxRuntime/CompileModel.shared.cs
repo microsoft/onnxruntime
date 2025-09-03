@@ -207,8 +207,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>A new OrtExternalInitializerInfo indicating the new location of the initializer.
         /// Returns null if the initializer should be stored within the generated compiled model.</returns>
         /// <remarks>The return value may be null.</remarks>
-        /// <see cref="OrtModelCompilationOptions.SetOutputModelGetInitializerDestinationDelegate"/>
-        public delegate OrtExternalInitializerInfo GetInitializerDestinationDelegate(
+        /// <see cref="OrtModelCompilationOptions.SetOutputModelGetInitializerLocationDelegate"/>
+        public delegate OrtExternalInitializerInfo GetInitializerLocationDelegate(
             string initializerName,
             IReadOnlyOrtValue initializerValue,
             IReadOnlyExternalInitializerInfo originalInitializerLocation);
@@ -220,8 +220,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// implementation is responsible for writing the initializer data to a file.
         /// </summary>
         /// <param name="getInitializerLocationDelegate">The delegate called by ORT for every initializer.</param>
-        public void SetOutputModelGetInitializerDestinationDelegate(
-            GetInitializerDestinationDelegate getInitializerLocationDelegate)
+        public void SetOutputModelGetInitializerLocationDelegate(
+            GetInitializerLocationDelegate getInitializerLocationDelegate)
         {
             _getInitializerLocationDelegateState?.Dispose();
             _getInitializerLocationDelegateState =
@@ -229,7 +229,7 @@ namespace Microsoft.ML.OnnxRuntime
                                       NativeMethods.DOrtGetInitializerLocationDelegate>(
                     new GetInitializerLocationConnector(getInitializerLocationDelegate),
                     new NativeMethods.DOrtGetInitializerLocationDelegate(
-                        GetInitializerLocationConnector.GetInitializerDestinationDelegateWrapper));
+                        GetInitializerLocationConnector.GetInitializerLocationDelegateWrapper));
 
             IntPtr funcPtr = _getInitializerLocationDelegateState.GetFunctionPointerForDelegate();
 
@@ -291,14 +291,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         private class GetInitializerLocationConnector
         {
-            private readonly GetInitializerDestinationDelegate _userDelegate;
+            private readonly GetInitializerLocationDelegate _userDelegate;
 
-            internal GetInitializerLocationConnector(GetInitializerDestinationDelegate getInitializerLocationDelegate)
+            internal GetInitializerLocationConnector(GetInitializerLocationDelegate getInitializerLocationDelegate)
             {
                 _userDelegate = getInitializerLocationDelegate;
             }
 
-            public static IntPtr GetInitializerDestinationDelegateWrapper(
+            public static IntPtr GetInitializerLocationDelegateWrapper(
                 IntPtr /* void* */ state,
                 IntPtr /* const char* */ initializerName,
                 IntPtr /* const OrtValue* */ initializerValue,

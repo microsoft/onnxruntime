@@ -157,7 +157,7 @@ public class CompileApiTests
     }
 
     [Fact]
-    public void HandleInitializersDelegate()
+    public void BasicGetInitializerLocationDelegate()
     {
         var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
         var outputModelFilePath = "squeezenet_handle_initializer_delegate_ctx.onnx";
@@ -195,7 +195,7 @@ public class CompileApiTests
                 // Compile and generate an output model.
                 compileOptions.SetInputModelFromBuffer(model);
                 compileOptions.SetOutputModelPath(outputModelFilePath);
-                compileOptions.SetOutputModelGetInitializerDestinationDelegate(BasicHandleInitializer);
+                compileOptions.SetOutputModelGetInitializerLocationDelegate(BasicHandleInitializer);
                 compileOptions.CompileModel();
                 Assert.True(File.Exists(outputModelFilePath));
             }
@@ -211,7 +211,7 @@ public class CompileApiTests
     }
 
     [Fact]
-    public void HandleInitializersDelegateWithReuse()
+    public void GetInitializerLocationDelegateThatReusesExternalInitializers()
     {
         var model = TestDataLoader.LoadModelFromEmbeddedResource("conv_qdq_external_ini.onnx");
         var outputModelFilePath = "conv_qdq_external_ini.reuse.ctx.onnx";
@@ -251,7 +251,7 @@ public class CompileApiTests
                 // Compile and generate an output model.
                 compileOptions.SetInputModelFromBuffer(model);
                 compileOptions.SetOutputModelPath(outputModelFilePath);
-                compileOptions.SetOutputModelGetInitializerDestinationDelegate(ReuseExternalInitializers);
+                compileOptions.SetOutputModelGetInitializerLocationDelegate(ReuseExternalInitializers);
                 compileOptions.CompileModel();
 
                 Assert.True(File.Exists(outputModelFilePath));

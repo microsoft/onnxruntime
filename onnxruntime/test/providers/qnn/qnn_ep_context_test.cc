@@ -2254,8 +2254,8 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
-  compile_options.SetOutputModelHandleInitializerFunc(TestHandleInitializerDataFunc,
-                                                      reinterpret_cast<void*>(&custom_state));
+  compile_options.SetOutputModelGetInitializerLocationFunc(TestHandleInitializerDataFunc,
+                                                           reinterpret_cast<void*>(&custom_state));
   compile_options.SetEpContextEmbedMode(true);
   compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
@@ -2336,8 +2336,8 @@ TEST_F(QnnHTPBackendTests, CompileApi_InitializerHandler_ReuseExternalInitialize
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
-  compile_options.SetOutputModelHandleInitializerFunc(ReuseExternalInitializers,
-                                                      reinterpret_cast<void*>(&num_reused_ext_initializers));
+  compile_options.SetOutputModelGetInitializerLocationFunc(ReuseExternalInitializers,
+                                                           reinterpret_cast<void*>(&num_reused_ext_initializers));
   compile_options.SetEpContextEmbedMode(true);
 
   // Compile the model.

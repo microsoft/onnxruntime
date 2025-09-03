@@ -43,9 +43,10 @@ Status EpContextModelToProto(const onnxruntime::Model& ep_context_model,
   // Handle case where user specified a custom handler function that determines how each initializer is saved.
   if (const epctx::InitializerHandler* custom_handler = ep_context_gen_options.TryGetInitializerHandler();
       custom_handler != nullptr) {
-    ORT_RETURN_IF_ERROR(ep_context_model.ToGraphProtoWithInitializerHandler(custom_handler->handle_initializer_func,
-                                                                            custom_handler->state,
-                                                                            model_proto));
+    ORT_RETURN_IF_ERROR(ep_context_model.ToGraphProtoWithCustomInitializerHandling(
+        custom_handler->handle_initializer_func,
+        custom_handler->state,
+        model_proto));
     return Status::OK();
   }
 

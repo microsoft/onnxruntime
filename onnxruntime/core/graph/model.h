@@ -218,9 +218,9 @@ class Model {
   /// <param name="state">Opaque user state passed to the handle_initializer_func.</param>
   /// <param name="model_proto">Output parameter set to the serialized onnx::ModelProto.</param>
   /// <returns>A status indicating success or an error.</returns>
-  common::Status ToGraphProtoWithInitializerHandler(OrtHandleInitializerDataFunc handle_initializer_func,
-                                                    void* state,
-                                                    /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) const;
+  common::Status ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                           void* state,
+                                                           /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) const;
 
   static common::Status Save(Model& model, const PathString& file_path);
 

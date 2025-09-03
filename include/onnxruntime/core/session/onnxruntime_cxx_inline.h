@@ -1040,11 +1040,12 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalI
 }
 
 inline ModelCompilationOptions&
-ModelCompilationOptions::SetOutputModelHandleInitializerFunc(OrtHandleInitializerDataFunc handle_initializer_func,
-                                                             void* state) {
-  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelHandleInitializerFunc(this->p_,
-                                                                                                handle_initializer_func,
-                                                                                                state));
+ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
+    OrtGetInitializerLocationFunc get_initializer_location_func, void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc(
+      this->p_,
+      get_initializer_location_func,
+      state));
   return *this;
 }
 

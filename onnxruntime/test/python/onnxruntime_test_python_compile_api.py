@@ -334,7 +334,7 @@ class TestCompileApi(AutoEpTestCase):
             model_compiler.compile_to_stream(my_write_func)
         self.assertIn(test_py_error_message, str(context.exception))
 
-    def test_compile_with_initializer_handler(self):
+    def test_compile_with_basic_initializer_location_func(self):
         """
         Tests compiling a model using a custom initializer handler that stores initializers
         in an external file.
@@ -351,7 +351,7 @@ class TestCompileApi(AutoEpTestCase):
 
         with open(initializer_file_path, "wb") as ext_init_file:
 
-            def handle_initializers(
+            def store_large_initializer_externally(
                 initializer_name: str,
                 initializer_value: onnxrt.OrtValue,
                 external_info: onnxrt.OrtExternalInitializerInfo | None,
@@ -374,14 +374,14 @@ class TestCompileApi(AutoEpTestCase):
                 input_model_path,
                 embed_compiled_data_into_model=True,
                 external_initializers_file_path=None,
-                handle_initializer_func=handle_initializers,
+                get_initializer_location_func=store_large_initializer_externally,
             )
             model_compiler.compile_to_file(output_model_path)
 
         self.assertTrue(os.path.exists(output_model_path))
         self.assertTrue(os.path.exists(initializer_file_path))
 
-    def test_compile_with_initializer_handler_that_reuses(self):
+    def test_compile_with_initializer_func_that_reuses(self):
         """
         Tests compiling a model using a custom initializer handler that reuses external initializer files.
         """
@@ -413,7 +413,7 @@ class TestCompileApi(AutoEpTestCase):
             input_model_path,
             embed_compiled_data_into_model=True,
             external_initializers_file_path=None,
-            handle_initializer_func=reuse_external_initializers,
+            get_initializer_location_func=reuse_external_initializers,
         )
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))

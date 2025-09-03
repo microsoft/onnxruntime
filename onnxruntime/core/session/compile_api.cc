@@ -236,23 +236,23 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelWriteFu
 #endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
-ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
-                    _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state) {
+                    _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 
-  if (handle_initializer_func == nullptr) {
+  if (get_initializer_location_func == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "OrtHandleInitializerDataFunc function for output model is null");
+                                 "OrtGetInitializerLocationFunc function for output model is null");
   }
 
-  model_compile_options->SetOutputModelHandleInitializerFunc(handle_initializer_func, state);
+  model_compile_options->SetOutputModelGetInitializerLocationFunc(get_initializer_location_func, state);
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
-  ORT_UNUSED_PARAMETER(handle_initializer_func);
+  ORT_UNUSED_PARAMETER(get_initializer_location_func);
   ORT_UNUSED_PARAMETER(state);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -341,7 +341,7 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextBinaryInformation,
     &OrtCompileAPI::ModelCompilationOptions_SetGraphOptimizationLevel,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelWriteFunc,
-    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
