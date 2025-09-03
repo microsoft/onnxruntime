@@ -30,6 +30,7 @@ public class CompileApiTests
 
             compileOptions.SetOutputModelExternalInitializersFile("external_data.bin", 512);
             compileOptions.SetEpContextEmbedMode(true);
+            compileOptions.SetGraphOptimizationLevel(GraphOptimizationLevel.ORT_ENABLE_BASIC);
 
         }
 

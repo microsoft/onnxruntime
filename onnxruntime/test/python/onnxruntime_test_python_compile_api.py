@@ -225,6 +225,56 @@ class TestCompileApi(AutoEpTestCase):
         self.assertTrue(isinstance(output_model_bytes, bytes))
         self.assertGreater(len(output_model_bytes), 0)
 
+    def test_compile_graph_optimization_level(self):
+        """
+        Tests compiling a model with no optimizations (default) vs all optimizations.
+        """
+        input_model_path = get_name("test_cast_back_to_back_non_const_mixed_types_origin.onnx")
+        output_model_path_0 = os.path.join(self._tmp_dir_path, "cast.disable_all.compiled.onnx")
+        output_model_path_1 = os.path.join(self._tmp_dir_path, "cast.enable_all.compiled.onnx")
+
+        # Local function that compiles a model with a given graph optimization level and returns
+        # the count of operator types in the compiled model.
+        def compile_and_get_op_counts(
+            output_model_path: str,
+            graph_opt_level: onnxrt.GraphOptimizationLevel | None,
+        ) -> dict[str, int]:
+            session_options = onnxrt.SessionOptions()
+            if graph_opt_level is not None:
+                model_compiler = onnxrt.ModelCompiler(
+                    session_options,
+                    input_model_path,
+                    graph_optimization_level=graph_opt_level,
+                )
+            else:
+                # graph optimization level defaults to ORT_DISABLE_ALL if not provided.
+                model_compiler = onnxrt.ModelCompiler(session_options, input_model_path)
+
+            model_compiler.compile_to_file(output_model_path)
+            self.assertTrue(os.path.exists(output_model_path))
+
+            model: onnx.ModelProto = onnx.load(get_name(output_model_path))
+            op_counts = {}
+            for node in model.graph.node:
+                if node.op_type not in op_counts:
+                    op_counts[node.op_type] = 1
+                else:
+                    op_counts[node.op_type] += 1
+
+            return op_counts
+
+        # Compile model on CPU with no graph optimizations (default).
+        # Model should have 9 Casts
+        op_counts_0 = compile_and_get_op_counts(output_model_path_0, graph_opt_level=None)
+        self.assertEqual(op_counts_0["Cast"], 9)
+
+        # Compile model on CPU with ALL graph optimizations.
+        # Model should have less casts (optimized out)
+        op_counts_1 = compile_and_get_op_counts(
+            output_model_path_1, graph_opt_level=onnxrt.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        )
+        self.assertEqual(op_counts_1["Cast"], 8)
+
     def test_compile_from_file_to_stream(self):
         """
         Tests compiling a model (from files) to an output stream using a custom write functor.

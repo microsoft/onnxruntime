@@ -63,7 +63,8 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
                                             bool embed_compiled_data_into_model,
                                             const std::string& external_initializers_file_path,
                                             size_t external_initializers_size_threshold,
-                                            size_t flags,
+                                            uint32_t flags,
+                                            GraphOptimizationLevel graph_optimization_level,
                                             const PyHandleInitializerFunc& py_handle_initializer_func) {
   auto model_compiler = std::make_unique<PyModelCompiler>(env, sess_options, py_handle_initializer_func,
                                                           PrivateConstructorTag{});
@@ -87,6 +88,8 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
   if (flags != 0) {
     ORT_RETURN_IF_ERROR(compile_options.SetFlags(flags));
   }
+
+  ORT_RETURN_IF_ERROR(compile_options.SetGraphOptimizationLevel(graph_optimization_level));
 
   if (model_compiler->py_handle_initializer_func_) {
     compile_options.SetOutputModelHandleInitializerFunc(

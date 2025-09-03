@@ -111,7 +111,7 @@ class ModelCompilationOptions {
   /// </summary>
   /// <param name="flags">unsigned integer set to the bitwise OR of enabled flags.</param>
   /// <returns>Status indicating success or an error</returns>
-  Status SetFlags(size_t flags);
+  Status SetFlags(uint32_t flags);
 
   /// <summary>
   /// Returns a reference to the session options object.
@@ -144,6 +144,13 @@ class ModelCompilationOptions {
   /// </summary>
   /// <returns>input model buffer's size in bytes</returns>
   size_t GetInputModelDataSize() const;
+
+  /// <summary>
+  /// Sets the graph optimization level for the underlying session that compiles the model.
+  /// </summary>
+  /// <param name="graph_optimization_level">The optimization level</param>
+  /// <returns></returns>
+  Status SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   /// <summary>
   /// Checks if the compilation options described by this object are valid.
