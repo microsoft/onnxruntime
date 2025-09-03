@@ -357,16 +357,31 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     // Pack the quantized weights
     if (QuantBDataBegin) {
         Q8PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, PackedQuantB.BlkUnsignedQuantAZeroPointCorrection, ThreadPool, N, K, BlkLen);
-    }
+    } else {
+        // We ignore the scales and zero points if they are provided when pre-packing the weights as there is
+        // some "state" associated with 'BlkUnsignedQuantAZeroPointCorrection'.
 
-    // Pack the block scales
-    if (QuantBScaleBegin) {
-        std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
-    }
+        // We accumulate the block sum into 'BlkUnsignedQuantAZeroPointCorrection' while packing the weights
+        // in the previous step. If we were to use 'scales' while pre-packing the weights and if there were no
+        // zero points, then we would enter 'Q8ComputePackBlkSum' twice - once while pre-packing the weights
+        // and once while pre-packing the scales which would lead to erroneous 'BlkUnsignedQuantAZeroPointCorrection'
+        // computation as the buffer is "used" in-place for the "block sum" temporary values (obtained while pre-packing
+        // the weights) and the actual 'BlkUnsignedQuantAZeroPointCorrection' which will use the scales.
+        // Hence, to ensure that the piece of logic to calculate 'BlkUnsignedQuantAZeroPointCorrection' is only invoked
+        // once, we do it while we are pre-packing the scales and ignore any provided 'scales' and 'zero points' while
+        // pre-packing the weights.
+        // The flip side is that the user has to ensure that this function is called once each for 'weights',
+        // 'scales', and 'zero points'. This is a reasonable expectation and hence we go with that design.
 
-    // Pack the blksum (and BlkUnsignedQuantAZeroPointCorrection if applicable)
-    if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
-        Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.BlkUnsignedQuantAZeroPointCorrection, ThreadPool);
+        // Pack the block scales
+        if (QuantBScaleBegin) {
+            std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
+        }
+
+        // Pack the blksum (and BlkUnsignedQuantAZeroPointCorrection if applicable)
+        if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
+            Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.BlkUnsignedQuantAZeroPointCorrection, ThreadPool);
+        }    
     }
 }
 

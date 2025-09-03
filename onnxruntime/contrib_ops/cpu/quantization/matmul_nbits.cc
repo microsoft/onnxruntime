@@ -193,13 +193,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     auto qptr = tensor.DataRaw();
     auto scale_ptr = scales ? scales->DataRaw() : nullptr;
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-#if defined(MLAS_TARGET_ARM64)
-    MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), nbits_ == 4 ? scale_ptr : nullptr,
-                                has_zp_input_, nullptr, nullptr);
-#else
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
                                 has_zp_input_, nullptr, nullptr);
-#endif
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
     // Packing scales and zero points
@@ -207,7 +202,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
 #else
-      // On ARM64, the weight prepacking call will also pack the constant scales
       return (nbits_ == 8);
 #endif
     }();
