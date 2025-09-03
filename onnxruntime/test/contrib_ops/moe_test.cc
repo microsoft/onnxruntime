@@ -1690,6 +1690,97 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
 #endif
 }
 
+// Test for CPU MoE implementation
+static void RunMoECpuTest(const std::vector<float>& input, const std::vector<float>& router_probs,
+                          const std::vector<float>& fc1_experts_weights, const std::vector<float>& fc2_experts_weights,
+                          const std::vector<float>& fc3_experts_weights, const std::vector<float>& fc1_experts_bias,
+                          const std::vector<float>& fc2_experts_bias, const std::vector<float>& output_data, int num_rows,
+                          int num_experts, int hidden_size, int inter_size, std::string activation_type,
+                          int normalize_routing_weights = 0, int top_k = 1) {
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
+  tester.AddAttribute<std::string>("activation_type", activation_type);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", static_cast<int64_t>(normalize_routing_weights));
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+
+  // Adjust FC1 dimensions for SwiGLU
+  bool is_swiglu = (activation_type == "swiglu");
+  int64_t fc1_output_size = is_swiglu ? (2 * inter_size) : inter_size;
+
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, fc1_output_size};  // Legacy format
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};       // Legacy format (matches CUDA)
+  std::vector<int64_t> fc3_experts_weights_dims = fc1_experts_weights_dims;
+  std::vector<int64_t> fc1_experts_bias_dims = {num_experts, fc1_output_size};
+  std::vector<int64_t> fc2_experts_bias_dims = {num_experts, hidden_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  tester.AddInput<float>("input", input_dims, input);
+  tester.AddInput<float>("router_probs", router_probs_dims, router_probs);
+  tester.AddInput<float>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  if (!fc1_experts_bias.empty()) {
+    tester.AddInput<float>("fc1_experts_bias", fc1_experts_bias_dims, fc1_experts_bias);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  tester.AddInput<float>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  if (!fc2_experts_bias.empty()) {
+    tester.AddInput<float>("fc2_experts_bias", fc2_experts_bias_dims, fc2_experts_bias);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  if (!fc3_experts_weights.empty()) {
+    tester.AddInput<float>("fc3_experts_weights", fc3_experts_weights_dims, fc3_experts_weights);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  tester.AddOptionalInputEdge<float>();  // fc3_experts_bias
+
+  tester.AddOutput<float>("output", output_dims, output_data);
+  tester.SetOutputTolerance(0.05f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, MoECpuTest_BasicSwiGLU) {
+  int num_rows = 2;
+  int num_experts = 2;
+  int hidden_size = 4;
+  int inter_size = 8;
+
+  // Simple test data
+  const std::vector<float> input = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  const std::vector<float> router_probs = {
+      0.8f, 0.2f,
+      0.3f, 0.7f};
+
+  // For SwiGLU: FC1 produces 2 * inter_size outputs (gate + linear values)
+  // FC1 weights [num_experts, hidden_size, 2 * inter_size] - Legacy format for SwiGLU
+  const std::vector<float> fc1_experts_weights(num_experts * hidden_size * (2 * inter_size), 0.1f);
+
+  // Simple FC2 weights [num_experts, inter_size, hidden_size] - Legacy format (matches CUDA)
+  const std::vector<float> fc2_experts_weights(num_experts * inter_size * hidden_size, 0.1f);
+
+  const std::vector<float> fc3_experts_weights = {};  // No FC3
+  const std::vector<float> fc1_experts_bias = {};     // No bias
+  const std::vector<float> fc2_experts_bias = {};     // No bias
+
+  // Expected output for SwiGLU (simplified calculation)
+  const std::vector<float> output_data = {
+      8.0f, 8.0f, 8.0f, 8.0f,
+      12.0f, 12.0f, 12.0f, 12.0f};
+
+  RunMoECpuTest(input, router_probs, fc1_experts_weights, fc2_experts_weights,
+                fc3_experts_weights, fc1_experts_bias, fc2_experts_bias, output_data,
+                num_rows, num_experts, hidden_size, inter_size, "swiglu");
+}
+
 #endif
 
 }  // namespace test
