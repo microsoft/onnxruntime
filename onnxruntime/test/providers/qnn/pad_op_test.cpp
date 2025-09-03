@@ -196,7 +196,7 @@ TEST_F(QnnCPUBackendTests, PadModeReflectNeg) {
   RunPadOpTest(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
                TestInputDef<int64_t>({4}, true, {0, 1, -1, 0}),
                TestInputDef<float>({1}, true, {0.0f}),
-               {utils::MakeAttribute("mode", "reflect")},  // reflect mode doesn't support negnative padding value.
+               {utils::MakeAttribute("mode", "reflect")},  // reflect mode doesn't support negative padding value.
                ExpectedEPNodeAssignment::None,
                has_constant_value);
 }
@@ -438,7 +438,7 @@ TEST_F(QnnHTPBackendTests, PadReflectModeNeg) {
                            TestInputDef<int64_t>({4}, true, {0, -1, -1, 0}),
                            TestInputDef<float>({1}, true, {0.0f}),
                            {utils::MakeAttribute("mode", "reflect")},
-                           ExpectedEPNodeAssignment::None,  // reflect mode doesn't support negnative padding value.
+                           ExpectedEPNodeAssignment::None,  // reflect mode doesn't support negative padding value.
                            has_constant_value_input);
 }
 

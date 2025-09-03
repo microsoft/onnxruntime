@@ -191,12 +191,10 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   bool has_negative = std::any_of(tensor_data, tensor_data + size, [](int64_t item) { return item < 0; });
   bool has_positive = std::any_of(tensor_data, tensor_data + size, [](int64_t item) { return item > 0; });
 
+  // Zero padding value gives 3110 error on QNN.
   if (!has_positive && !has_negative) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got invalid zero only padding value.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got QNN invalid zero only padding value.");
   }
-
-  std::vector<int64_t> pad_amount_int64;
-  pad_amount_int64.insert(pad_amount_int64.end(), tensor_data, tensor_data + size);
 
   std::vector<uint32_t> pad_amount;
   std::transform(tensor_data, tensor_data + size, std::back_inserter(pad_amount),
