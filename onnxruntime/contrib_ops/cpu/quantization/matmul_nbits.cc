@@ -230,11 +230,11 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     }
 
 #if defined(MLAS_TARGET_ARM64)
-  if (input_idx == InputIndex::scales && packed_b_ != nullptr &&
-      MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
-    scales_are_packed_ = true;
-    is_packed = true;
-  }
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr &&
+        MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
+      scales_are_packed_ = true;
+      is_packed = true;
+    }
 #endif  // MLAS_TARGET_ARM64
 }
 
