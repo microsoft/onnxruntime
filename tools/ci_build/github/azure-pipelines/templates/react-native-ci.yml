@@ -68,6 +68,7 @@ stages:
       value: PublishPipelineArtifact@1
   jobs:
   - job: ReactNative_CI_iOS_build
+
     ${{ if eq(parameters.is1ES, false) }}:
       pool:
         vmImage: 'macOS-14'
@@ -128,6 +129,8 @@ stages:
       displayName: Publish React Native iOS pod files
 
   - job: ReactNative_CI_iOS_test
+    dependsOn: 'ReactNative_CI_iOS_build'
+
     ${{ if eq(parameters.is1ES, false) }}:
       pool:
         vmImage: 'macOS-14'
