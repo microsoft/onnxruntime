@@ -94,33 +94,34 @@ void PrintCommonStats(const T* data, size_t count, TensorStatisticsData& tensor_
   }
 }
 
-#define DEF_PRINT_COMMON_STATS_INT4(INT4_TYPE)                      \
-  template <>                                                       \
-  inline void PrintCommonStats<INT4_TYPE>(                          \
-      const INT4_TYPE* data, size_t count, TensorStatisticsData&) { \
-    using UnpackedType = typename INT4_TYPE::UnpackedType;          \
-    UnpackedType min = data[0].GetElem(0);                          \
-    UnpackedType max = min;                                         \
-    for (size_t i = 1; i < count; i++) {                            \
-      auto indices = INT4_TYPE::GetTensorElemIndices(i);            \
-      auto value = data[indices.first].GetElem(indices.second);     \
-      if (value > max) {                                            \
-        max = value;                                                \
-      }                                                             \
-      if (value < min) {                                            \
-        min = value;                                                \
-      }                                                             \
-    }                                                               \
-                                                                    \
-    std::cout << "Min=";                                            \
-    PrintValue(min);                                                \
-                                                                    \
-    std::cout << ",Max=";                                           \
-    PrintValue(max);                                                \
+#define DEF_PRINT_COMMON_STATS_4BIT(FOUR_BIT_TYPE)                      \
+  template <>                                                           \
+  inline void PrintCommonStats<FOUR_BIT_TYPE>(                          \
+      const FOUR_BIT_TYPE* data, size_t count, TensorStatisticsData&) { \
+    using UnpackedType = typename FOUR_BIT_TYPE::UnpackedType;          \
+    UnpackedType min = data[0].GetElem(0);                              \
+    UnpackedType max = min;                                             \
+    for (size_t i = 1; i < count; i++) {                                \
+      auto indices = FOUR_BIT_TYPE::GetTensorElemIndices(i);            \
+      auto value = data[indices.first].GetElem(indices.second);         \
+      if (value > max) {                                                \
+        max = value;                                                    \
+      }                                                                 \
+      if (value < min) {                                                \
+        min = value;                                                    \
+      }                                                                 \
+    }                                                                   \
+                                                                        \
+    std::cout << "Min=";                                                \
+    PrintValue(min);                                                    \
+                                                                        \
+    std::cout << ",Max=";                                               \
+    PrintValue(max);                                                    \
   }
 
-DEF_PRINT_COMMON_STATS_INT4(Int4x2)
-DEF_PRINT_COMMON_STATS_INT4(UInt4x2)
+DEF_PRINT_COMMON_STATS_4BIT(Int4x2)
+DEF_PRINT_COMMON_STATS_4BIT(UInt4x2)
+DEF_PRINT_COMMON_STATS_4BIT(Float4E2M1x2)
 
 template <typename T>
 void PrintHalfStats(const T* data, size_t count) {
