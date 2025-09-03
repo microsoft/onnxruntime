@@ -1878,6 +1878,7 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   /* Iterate all the nodes and exclude the node if:
    *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible.
    *   2. It's a DDS op.
+   *   3. It has unsupported data types.
    */
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
@@ -1910,6 +1911,16 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
         return true;
       };
       supported_node = supported_control_flow_op(node);
+    }
+
+    // Check data types and print warnings for unsupported types
+    if (supported_node) {
+      if (!CheckNodeDataTypes(node, true)) {
+        supported_node = false;
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                          << "' (OpType: " << node->OpType()
+                          << ") excluded due to unsupported data types";
+      }
     }
 
     // Exclude any ops, if applicable
@@ -2045,6 +2056,23 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   const size_t number_of_subgraphs = supported_nodes_vector.size();
+
+    // Provide summary of data type compatibility
+  int nodes_with_unsupported_data_types = 0;
+  for (size_t i = 0; i < number_of_ort_nodes; ++i) {
+    const auto& node = graph.GetNode(node_index[i]);
+    if (!CheckNodeDataTypes(node, false)) {  // Don't print warnings again, just count
+      nodes_with_unsupported_data_types++;
+    }
+  }
+
+  if (nodes_with_unsupported_data_types > 0) {
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] " << nodes_with_unsupported_data_types
+                       << " out of " << number_of_ort_nodes
+                       << " nodes were excluded due to unsupported data types. "
+                       << "Supported data types: FLOAT, FLOAT16, BFLOAT16, BOOL, INT8, UINT8, INT32, INT64";
+  }
+
   if (number_of_trt_nodes == 0) {
     LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] No graph will run on Nv execution provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
@@ -3373,6 +3401,91 @@ OrtDevice NvExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const 
     return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
                      default_device_.Id());
   return default_device_;
+}
+
+// Helper function to check if a data type is supported by NvTensorRTRTX EP
+bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Helper function to get data type name as string
+std::string GetDataTypeName(ONNXTensorElementDataType data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return "FLOAT";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return "FLOAT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: return "BFLOAT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: return "BOOL";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return "INT8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return "UINT8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return "INT32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return "INT64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return "DOUBLE";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: return "STRING";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return "UINT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return "UINT32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return "UINT64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return "INT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64: return "COMPLEX64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: return "COMPLEX128";
+    default: return "UNKNOWN(" + std::to_string(static_cast<int>(data_type)) + ")";
+  }
+}
+
+// Helper function to check if a node has supported data types
+bool CheckNodeDataTypes(const Node* node, bool print_warnings = true) {
+  bool all_types_supported = true;
+
+  // Check input data types
+  for (const auto* input_def : node->InputDefs()) {
+    if (input_def->Exists()) {
+      const auto* type_proto = input_def->TypeAsProto();
+      if (type_proto && type_proto->has_tensor_type()) {
+        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        if (!IsSupportedDataType(data_type)) {
+          all_types_supported = false;
+          if (print_warnings) {
+            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                  << "' (OpType: " << node->OpType()
+                                  << ") has unsupported input data type: " << GetDataTypeName(data_type)
+                                  << " for input '" << input_def->Name() << "'";
+          }
+        }
+      }
+    }
+  }
+
+  // Check output data types
+  for (const auto* output_def : node->OutputDefs()) {
+    if (output_def->Exists()) {
+      const auto* type_proto = output_def->TypeAsProto();
+      if (type_proto && type_proto->has_tensor_type()) {
+        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        if (!IsSupportedDataType(data_type)) {
+          all_types_supported = false;
+          if (print_warnings) {
+            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                  << "' (OpType: " << node->OpType()
+                                  << ") has unsupported output data type: " << GetDataTypeName(data_type)
+                                  << " for output '" << output_def->Name() << "'";
+          }
+        }
+      }
+    }
+  }
+
+  return all_types_supported;
 }
 
 }  // namespace onnxruntime
