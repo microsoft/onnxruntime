@@ -91,7 +91,7 @@ template <typename ab_type, typename out_type>
 void TestGemmFloat8WithFloat8(int64_t dtype) {
   int min_cuda_architecture = 11080;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support Matrix Multiplication for FLOAT8";
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support Matrix Multiplication for FLOAT8";
     return;
   }
   OpTester test("GemmFloat8", 1, onnxruntime::kMSDomain);
@@ -101,10 +101,10 @@ void TestGemmFloat8WithFloat8(int64_t dtype) {
   test.AddAttribute("beta", 1.0f);
   test.AddAttribute("activation", "NONE");
   test.AddAttribute("dtype", dtype);
-  test.AddInput<ab_type>("A", {2, 4}, _TypeCvt<ap_type>(std::vector<float>({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f})));
-  test.AddInput<ab_type>("B", {3, 4}, _TypeCvt<ap_type>(std::vector<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
-  test.AddInput<out_type>("C", {2, 3}, _TypeCvt<out_type>(std::vector<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
-  test.AddOutput<MLFloat16>("Y", {2, 3}, _TypeCvt<out_type>(std::vector<float>({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f})));
+  test.AddInput<ab_type>("A", {2, 4}, _TypedCvt<ab_type>(std::vector<float>({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f})));
+  test.AddInput<ab_type>("B", {3, 4}, _TypedCvt<ab_type>(std::vector<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+  test.AddInput<out_type>("C", {2, 3}, _TypedCvt<out_type>(std::vector<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+  test.AddOutput<out_type>("Y", {2, 3}, _TypedCvt<out_type>(std::vector<float>({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f})));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

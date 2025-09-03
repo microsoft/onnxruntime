@@ -35,7 +35,263 @@ namespace utils {
 // Invoking DataTypeImpl::GetType<T>() for switching on input types is discouraged and should be avoided.
 // Every primitive type carries with it an integer constant that can be used for quick switching on types.
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT8_TYPES) && !defined(DISABLE_FLOAT4_TYPES)
+
+#define DispatchOnTensorType(tensor_type, function, ...)          \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:              \
+      function<float>(__VA_ARGS__);                               \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:               \
+      function<bool>(__VA_ARGS__);                                \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:             \
+      function<double>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:             \
+      function<std::string>(__VA_ARGS__);                         \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:               \
+      function<int8_t>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:              \
+      function<uint8_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:              \
+      function<int16_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:             \
+      function<uint16_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:              \
+      function<int32_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:             \
+      function<uint32_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:              \
+      function<int64_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:             \
+      function<uint64_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:            \
+      function<MLFloat16>(__VA_ARGS__);                           \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:           \
+      function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:       \
+      function<Float8E4M3FN>(__VA_ARGS__);                        \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:     \
+      function<Float8E4M3FNUZ>(__VA_ARGS__);                      \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:         \
+      function<Float8E5M2>(__VA_ARGS__);                          \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:     \
+      function<Float8E5M2FNUZ>(__VA_ARGS__);                      \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1:         \
+      function<Float4E2M1x2>(__VA_ARGS__);                        \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:               \
+      function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:              \
+      function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                      \
+    default:                                                      \
+      ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type); \
+  }
+
+#define DispatchOnTensorTypeWithReturn(tensor_type, retval, function, ...) \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {             \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                       \
+      retval = function<float>(__VA_ARGS__);                               \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:                        \
+      retval = function<bool>(__VA_ARGS__);                                \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:                      \
+      retval = function<double>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:                      \
+      retval = function<std::string>(__VA_ARGS__);                         \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:                        \
+      retval = function<int8_t>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:                       \
+      retval = function<uint8_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:                      \
+      retval = function<uint16_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:                       \
+      retval = function<int16_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:                       \
+      retval = function<int32_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:                      \
+      retval = function<uint32_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:                       \
+      retval = function<int64_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:                      \
+      retval = function<uint64_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                     \
+      retval = function<MLFloat16>(__VA_ARGS__);                           \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:                    \
+      retval = function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:                \
+      retval = function<Float8E4M3FN>(__VA_ARGS__);                        \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:              \
+      retval = function<Float8E4M3FNUZ>(__VA_ARGS__);                      \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:                  \
+      retval = function<Float8E5M2>(__VA_ARGS__);                          \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:              \
+      retval = function<Float8E5M2FNUZ>(__VA_ARGS__);                      \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1:                  \
+      retval = function<Float4E2M1x2>(__VA_ARGS__);                        \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:                        \
+      retval = function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:                       \
+      retval = function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                               \
+    default:                                                               \
+      ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
+  }
+
+#elif !defined(DISABLE_FLOAT4_TYPES)
+
+#define DispatchOnTensorType(tensor_type, function, ...)          \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:              \
+      function<float>(__VA_ARGS__);                               \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:               \
+      function<bool>(__VA_ARGS__);                                \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:             \
+      function<double>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:             \
+      function<std::string>(__VA_ARGS__);                         \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:               \
+      function<int8_t>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:              \
+      function<uint8_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:              \
+      function<int16_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:             \
+      function<uint16_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:              \
+      function<int32_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:             \
+      function<uint32_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:              \
+      function<int64_t>(__VA_ARGS__);                             \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:             \
+      function<uint64_t>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:            \
+      function<MLFloat16>(__VA_ARGS__);                           \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:           \
+      function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1:         \
+      function<Float4E2M1x2>(__VA_ARGS__);                        \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:               \
+      function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:              \
+      function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                      \
+    default:                                                      \
+      ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type); \
+  }
+
+#define DispatchOnTensorTypeWithReturn(tensor_type, retval, function, ...) \
+  switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {             \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                       \
+      retval = function<float>(__VA_ARGS__);                               \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:                        \
+      retval = function<bool>(__VA_ARGS__);                                \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:                      \
+      retval = function<double>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_STRING:                      \
+      retval = function<std::string>(__VA_ARGS__);                         \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:                        \
+      retval = function<int8_t>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:                       \
+      retval = function<uint8_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:                      \
+      retval = function<uint16_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:                       \
+      retval = function<int16_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:                       \
+      retval = function<int32_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:                      \
+      retval = function<uint32_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:                       \
+      retval = function<int64_t>(__VA_ARGS__);                             \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:                      \
+      retval = function<uint64_t>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                     \
+      retval = function<MLFloat16>(__VA_ARGS__);                           \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:                    \
+      retval = function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1:                  \
+      retval = function<Float4E2M1x2>(__VA_ARGS__);                        \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:                        \
+      retval = function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:                       \
+      retval = function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                               \
+    default:                                                               \
+      ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
+  }
+
+#elif !defined(DISABLE_FLOAT8_TYPES)
 
 #define DispatchOnTensorType(tensor_type, function, ...)          \
   switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
