@@ -206,7 +206,9 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
   // Int4 types were introduced in ONNX 1.16. See https://onnx.ai/onnx/technical/int4.html
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,  // maps to a pair of packed uint4 values (size == 1 byte)
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4    // maps to a pair of packed int4 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,   // maps to a pair of packed int4 values (size == 1 byte)
+  // Float4 types were introduced in ONNX 1.18. See https://onnx.ai/onnx/technical/float4.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1,  // maps to a pair of packed float4 values (size == 1 byte)
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -7074,6 +7076,9 @@ struct OrtCompileApi {
    * ReleaseOrtModelCompilationsOptions must be called to free the OrtModelCompilationOptions after calling
    * CompileModel.
    *
+   * \note By default, the GraphOptimizationLevel is set to ORT_DISABLE_ALL. Use
+   * ModelCompilationOptions_SetGraphOptimizationLevel to enable graph optimizations.
+   *
    * \param[in] env OrtEnv object.
    * \param[in] session_options The OrtSessionOptions instance from which to create the OrtModelCompilationOptions.
    * \param[out] out The created OrtModelCompilationOptions instance.
@@ -7230,7 +7235,7 @@ struct OrtCompileApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
-                  size_t flags);
+                  uint32_t flags);
 
   /** Sets information related to EP context binary file.
    *
@@ -7249,6 +7254,19 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const ORTCHAR_T* output_directory,
                   _In_ const ORTCHAR_T* model_name);
+
+  /** Set the graph optimization level.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] graph_optimization_level The graph optimization level.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetGraphOptimizationLevel,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ GraphOptimizationLevel graph_optimization_level);
 };
 
 /*

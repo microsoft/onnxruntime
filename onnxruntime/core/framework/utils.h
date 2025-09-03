@@ -229,6 +229,13 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
 }
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float4E2M1x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1;
+}
+#endif
+
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
 #ifdef ENABLE_TRAINING

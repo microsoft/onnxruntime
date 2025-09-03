@@ -27,6 +27,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Create a new OrtModelCompilationOptions object from SessionOptions.
         /// </summary>
+        /// <remarks>By default, the GraphOptimizationLevel is set to ORT_DISABLE_ALL. Use SetGraphOptimizationLevel()
+        /// to enable graph optimizations.</remarks>
         /// <param name="sessionOptions">SessionOptions instance to read settings from.</param>
         public OrtModelCompilationOptions(SessionOptions sessionOptions)
             : base(IntPtr.Zero, true)
@@ -128,6 +130,33 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetFlags(handle, (uint)flags));
+        }
+
+        /// <summary>
+        /// Sets information related to EP context binary file. The Ep uses this information to decide the
+        /// location and context binary file name when compiling with both the input and output models
+        /// stored in buffers.
+        /// </summary>
+        /// <param name="outputDirectory">Path to the model directory.</param>
+        /// <param name="modelName">The name of the model.</param>
+        public void SetEpContextBinaryInformation(string outputDirectory, string modelName)
+        {
+            var platformOutputDirectory = NativeOnnxValueHelper.GetPlatformSerializedString(outputDirectory);
+            var platformModelName = NativeOnnxValueHelper.GetPlatformSerializedString(modelName);
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextBinaryInformation(
+                    handle, platformOutputDirectory, platformModelName));
+        }
+
+        /// <summary>
+        /// Sets the graph optimization level. Defaults to ORT_DISABLE_ALL if not specified.
+        /// </summary>
+        /// <param name="graphOptimizationLevel">The graph optimization level to set.</param>
+        public void SetGraphOptimizationLevel(GraphOptimizationLevel graphOptimizationLevel)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetGraphOptimizationLevel(
+                    handle, graphOptimizationLevel));
         }
 
         internal IntPtr Handle => handle;
