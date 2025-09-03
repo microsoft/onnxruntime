@@ -166,7 +166,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   struct CreateComputePipelineContext {
     wgpu::ComputePipeline& pipeline;
     Status status;
-  } create_pipeline_context{compute_pipeline};
+  } create_pipeline_context{compute_pipeline, {}};
 
   ORT_RETURN_IF_ERROR(
       webgpu_context_.Wait(
