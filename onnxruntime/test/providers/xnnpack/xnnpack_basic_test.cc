@@ -25,7 +25,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
-#include "test/optimizer/qdq_test_utils.h"
+#include "test/util/include/qdq_test_utils.h"
 #endif
 
 #include "gtest/gtest.h"

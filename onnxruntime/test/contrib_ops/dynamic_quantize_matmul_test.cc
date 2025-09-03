@@ -6,9 +6,9 @@
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/graph_transform_test_builder.h"
 #include "core/util/qmath.h"
 
 #include <chrono>
@@ -50,7 +50,7 @@ static void CalculateDynamicQuantizeMatMul(const int64_t M, const int64_t N, con
   min = std::min(min, 0.0f);
 
   float scale = static_cast<float>(max - min) / (qmax - qmin);
-  T zeroPoint = std::round(std::clamp(qmin - min / scale, qmin, qmax));
+  T zeroPoint = static_cast<T>(std::round(std::clamp(qmin - min / scale, qmin, qmax)));
 
   A_scale.push_back(scale);
   A_zero_point.push_back(zeroPoint);

@@ -61,13 +61,15 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
                                   std::vector<EpFactoryInternal*>& internal_factories);
 
 // Creates an IExecutionProviderFactory instance for a list of OrtEpDevices that all refer to the same EP.
-// Adds all provider options to the OrtSessionOptions configuration.
 Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
-                                                   SessionOptions& session_options,
                                                    gsl::span<const OrtEpDevice* const> ep_devices,
-                                                   gsl::span<const char* const> ep_options_keys,
-                                                   gsl::span<const char* const> ep_options_vals,
                                                    /*output*/ std::unique_ptr<IExecutionProviderFactory>& out);
+
+// Adds provider options to the OrtSessionOptions configuration.
+Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
+                                    gsl::span<const char* const> ep_options_keys,
+                                    gsl::span<const char* const> ep_options_vals,
+                                    SessionOptions& session_options);
 
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

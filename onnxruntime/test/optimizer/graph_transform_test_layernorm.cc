@@ -21,9 +21,9 @@
 
 #include "test/capturing_sink.h"
 #include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/graph_transform_test_builder.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
