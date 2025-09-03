@@ -8,11 +8,15 @@
 #if defined(ENABLE_FP8) && !defined(DISABLE_FLOAT8_TYPES)
 #include <cuda_fp8.h>
 #endif
+#if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
+#include <cuda_fp4.h>
+#endif
 #include <type_traits>
 #include <cstdint>
 #include "core/framework/int4.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/float4.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -85,6 +89,13 @@ struct OrtToCudaType<Float8E5M2FNUZ> {
   static type FromFloat(float f) {
     return type(f);
   }
+};
+#endif
+
+#if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
+template <>
+struct OrtToCudaType<Float4E2M1x2> {
+  using type = Float4E2M1x2::PackedCudaType;
 };
 #endif
 
