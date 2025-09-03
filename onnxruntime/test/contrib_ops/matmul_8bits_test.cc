@@ -27,7 +27,7 @@
 
 #if ((defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)) &&    \
      !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || \
-     defined(USE_CUDA) || defined(USE_WEBGPU)
+    defined(USE_CUDA) || defined(USE_WEBGPU)
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
