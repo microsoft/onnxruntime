@@ -1019,8 +1019,15 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
   return *this;
 }
 
-inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(size_t flags) {
+inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(uint32_t flags) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetFlags(this->p_, flags));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetGraphOptimizationLevel(
+    GraphOptimizationLevel graph_optimization_level) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetGraphOptimizationLevel(this->p_,
+                                                                                      graph_optimization_level));
   return *this;
 }
 
