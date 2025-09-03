@@ -30,13 +30,6 @@ parameters:
   type: boolean
   default: false
 
-variables:
-  - name: publishPipelineArtifactTask
-    ${{ if eq(parameters.is1ES, true) }}:
-      value: 1ES.PublishPipelineArtifact@1
-    ${{ else }}:
-      value: PublishPipelineArtifact@1
-
 stages:
 - stage: Build_Android_Packages
   displayName: Build_Android_Packages
@@ -67,6 +60,12 @@ stages:
 - stage: ReactNative_CI_iOS
   displayName: ReactNative_CI_iOS
   dependsOn: '${{parameters.InitialStageDependsOn}}'
+  variables:
+  - name: publishPipelineArtifactTask
+    ${{ if eq(parameters.is1ES, true) }}:
+      value: 1ES.PublishPipelineArtifact@1
+    ${{ else }}:
+      value: PublishPipelineArtifact@1
   jobs:
   - job: ReactNative_CI_iOS_build
     ${{ if eq(parameters.is1ES, false) }}:
