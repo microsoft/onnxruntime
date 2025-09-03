@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param has_attention_bias
+#param head_size_vec
 #param tile_size
 #param tile_size_k_vec
 #param sub_tile_count
@@ -32,6 +33,8 @@
 var<workgroup> tile_q: array<q_value_t, tile_size_k_vec>;
 var<workgroup> inner_qk_values: array<array<q_element_t, tile_size_k_vec>, tile_size>;
 var<workgroup> tile_qk: array<q_element_t, tile_size>;
+var<workgroup> tile_output: array<present_value_value_t, head_size_vec>;
+var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, sub_tile_count>;
 
 #if has_attention_bias
   fn loadAttentionBias(idx: u32) -> q_element_t
@@ -50,34 +53,33 @@ $MAIN {
   let local_col = local_idx % tile_size_k_vec;
   let total_seq_offset = (workgroup_idx % uniforms.num_total_seq_length_tile) * tile_size;
   let head_idx = u32(workgroup_idx / uniforms.num_total_seq_length_tile);
-  let q_offset = head_idx * uniforms.head_size_vec;
+  let q_offset = head_idx * head_size_vec;
   var total_sequence_length = uniforms.total_sequence_length;
-  let present_offset = u32(head_idx / uniforms.n_reps) * uniforms.present_sequence_length * uniforms.head_size_vec;
-  for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
-    if (local_idx < tile_size_k_vec && k + local_idx < uniforms.head_size_vec) {
+  let present_offset = u32(head_idx / uniforms.n_reps) * uniforms.present_sequence_length * head_size_vec;
+  for (var k: u32 = 0u; k < head_size_vec; k += tile_size_k_vec) {
+    if (local_idx < tile_size_k_vec && k + local_idx < head_size_vec) {
       tile_q[local_idx] = q[q_offset + k + local_idx];
     }
     workgroupBarrier();
     let q_data = tile_q[local_col] * q_element_t(uniforms.alpha);
-    if (k + local_col < uniforms.head_size_vec) {
+    if (k + local_col < head_size_vec) {
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         if (total_seq_offset + row_offset + local_row < total_sequence_length) {
-          inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col], q_data);
+          inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * head_size_vec + k + local_col], q_data);
         }
       }
     }
     workgroupBarrier();
   }
 
+  var sum = q_element_t(0);
   if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length && head_idx < uniforms.num_heads) {
-    var sum = q_element_t(0);
     for (var i = 0u; i < tile_size_k_vec; i++) {
       sum += inner_qk_values[local_idx][i];
     }
 
     sum = sum + loadAttentionBias(head_idx * total_sequence_length + total_seq_offset + local_idx);
     tile_qk[local_idx] = sum;
-    output[head_idx * uniforms.present_sequence_length + total_seq_offset + local_idx] = sum;
   }
   workgroupBarrier();
 
@@ -85,17 +87,53 @@ $MAIN {
     return;
   }
 
+   // Calculate the max and sum in current split.
+  var l_max = f32(-3.402823e+38f);
+  for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
+    l_max = max(l_max, f32(tile_qk[i]));
+  }
+  var l_sum = f32(0);
+  for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
+    l_sum += exp(f32(tile_qk[i]) - l_max);
+  }
   if (local_idx == 0u) {
-    // Calculate the max and sum in current split.
-    var l_max = f32(-3.402823e+38f);
-    var l_sum = f32(0);
-    for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
-      l_max = max(l_max, f32(tile_qk[i]));
-    }
-    for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
-      l_sum += exp(f32(tile_qk[i]) - l_max);
-    }
     let meta_offset = head_idx * uniforms.num_present_sequence_length_tile + workgroup_idx % uniforms.num_total_seq_length_tile;
     metadata[meta_offset] = metadata_value_t(l_max, l_sum);
+  }
+
+  tile_qk[local_idx] = q_element_t(exp(f32(sum) - l_max) / l_sum);
+  workgroupBarrier();
+
+  for (var k: u32 = 0u; k < head_size_vec; k += tile_size_k_vec) {
+    var value = present_value_value_t(0);
+    qkv_values[local_row][local_col] = present_value_value_t(0);
+    workgroupBarrier();
+
+    if (k + local_col < head_size_vec) {
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
+        if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+          value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * head_size_vec + k + local_col] * tile_qk[row_offset + local_row];
+        }
+      }
+    }
+
+    qkv_values[local_row][local_col] = value;
+    workgroupBarrier();
+
+    if (local_idx < tile_size_k_vec) {
+      for (var i = 0u; i < sub_tile_count; i++) {
+        tile_output[k + local_idx] += qkv_values[i][local_idx];
+      }
+    }
+    workgroupBarrier();
+  }
+
+  if (head_idx >= uniforms.num_heads) {
+    return;
+  }
+
+  for (var i = local_idx; i < head_size_vec; i += workgroup_size_x) {
+    let out_offset = head_idx * uniforms.num_present_sequence_length_tile * head_size_vec + (workgroup_idx % uniforms.num_total_seq_length_tile) * head_size_vec + i;
+    out_split_vx[out_offset] = tile_output[i];
   }
 }
