@@ -151,7 +151,10 @@ stages:
     - script: |
         set -e
         DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
-        xcrun simctl create iPhoneRNTest com.apple.CoreSimulator.SimDeviceType.iPhone-13 > "${DEVICE_ID_FILE}"
+        xcrun simctl create iPhoneRNTest \
+          com.apple.CoreSimulator.SimDeviceType.iPhone-15 \
+          com.apple.CoreSimulator.SimRuntime.iOS-17-4 \
+          > "${DEVICE_ID_FILE}"
       displayName: Start iOS Simulator
 
     - task: Xcode@5
@@ -163,7 +166,7 @@ stages:
         scheme: 'OnnxruntimeModuleTest'
         packageApp: false
         destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 15,OS=17.4'
+        destinationSimulators: 'iPhoneRNTest'
         workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
         xcprettyArgs: '--output build/reports/test-results.xml'
         publishJUnitResults: true
