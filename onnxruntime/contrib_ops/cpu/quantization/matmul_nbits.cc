@@ -200,7 +200,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     // Packing scales and zero points
     bool should_pack_scale_and_zp_inputs = [&]() {
 #if defined(MLAS_TARGET_AMD64_IX86)
-             return true;
+      return true;
 #else
              // On ARM64, the weight prepacking call will also pack the constant scales
             return (nbits_ == 8);
