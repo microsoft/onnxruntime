@@ -25,7 +25,7 @@ Pod::Spec.new do |spec|
 
   spec.xcconfig = {
     'OTHER_CPLUSPLUSFLAGS' => '-Wall -Wextra',
-    'CLANG_CXX_LANGUAGE_STANDARD' => 'C++17',
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
   }
 
   if (File.exist?(File.join(root_dir, 'package.json')))
