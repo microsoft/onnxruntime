@@ -150,41 +150,68 @@ stages:
     #
     - script: |
         set -e
+
         DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
+
         xcrun simctl create iPhoneRNTest \
           com.apple.CoreSimulator.SimDeviceType.iPhone-15 \
           com.apple.CoreSimulator.SimRuntime.iOS-17-4 \
           > "${DEVICE_ID_FILE}"
+
+        DEVICE_ID=$(cat "$DEVICE_ID_FILE")
+
+        echo "Created simulator device with id: ${DEVICE_ID}"
+
+        xcrun simctl boot $DEVICE_ID
+        xcrun simctl bootstatus $DEVICE_ID
       displayName: Start iOS Simulator
 
-    - task: Xcode@5
-      inputs:
-        actions: 'test'
-        configuration: 'Debug'
-        sdk: 'iphonesimulator'
-        xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace'
-        scheme: 'OnnxruntimeModuleTest'
-        packageApp: false
-        destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 15,OS=17.4'
-        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
-        xcprettyArgs: '--output build/reports/test-results.xml'
-        publishJUnitResults: true
-        testRunTitle: 'React Native iOS Instrumented Test Results'
+    - script: |
+        set -e -x
+
+        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
+        DEVICE_ID="$(cat "${DEVICE_ID_FILE}")"
+
+        xcrun xcodebuild -sdk iphonesimulator \
+          -configuration Debug \
+          -workspace "$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace" \
+          -scheme OnnxruntimeModuleTest \
+          -destination "platform=iOS Simulator,id=${DEVICE_ID}" \
+          test \
+          CODE_SIGNING_ALLOWED=NO
+
       displayName: Run React Native iOS Instrumented Tests
 
-    - task: PublishTestResults@2
-      inputs:
-        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
-        failTaskOnFailedTests: true
-        testRunTitle: 'React Native iOS Instrumented Test results'
-      condition: succeededOrFailed()
-      displayName: Publish React Native iOS Instrumented Test Results
+    # - task: PublishTestResults@2
+    #   inputs:
+    #     testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+    #     failTaskOnFailedTests: true
+    #     testRunTitle: 'React Native iOS Instrumented Test results'
+    #   condition: succeededOrFailed()
+    #   displayName: Publish React Native iOS Instrumented Test Results
+
+    # - script: |
+    #     xcrun simctl list devices
+    #   displayName: List iOS Simulators
+    #   continueOnError: true
 
     - script: |
-        xcrun simctl list devices
-      displayName: List iOS Simulators
-      continueOnError: true
+        set -e -x
+
+        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
+        DEVICE_ID="$(cat "${DEVICE_ID_FILE}")"
+
+        DETOX_CONFIG_FILE="$(Build.SourcesDirectory)/js/react_native/e2e/.detoxrc.json"
+        jq --arg device_id "${DEVICE_ID}" '(.devices|.simulator|.device) = {id: $device_id}' \
+          < "${DETOX_CONFIG_FILE}" \
+          > "${DETOX_CONFIG_FILE}.updated"
+
+        mv "${DETOX_CONFIG_FILE}.updated" "${DETOX_CONFIG_FILE}"
+
+        echo "Updated ${DETOX_CONFIG_FILE} with simulator device ID"
+        cat "${DETOX_CONFIG_FILE}"
+
+      displayName: Update .detoxrc.json with simulator device
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
@@ -199,7 +226,8 @@ stages:
         set -e
         DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
         if [[ -f "${DEVICE_ID_FILE}" ]]; then
-          xcrun simctl delete "$(cat "${DEVICE_ID_FILE}")"
+          DEVICE_ID="$(cat "${DEVICE_ID_FILE}")"
+          xcrun simctl delete "${DEVICE_ID}"
           rm "${DEVICE_ID_FILE}"
         fi
       displayName: Stop iOS Simulator
