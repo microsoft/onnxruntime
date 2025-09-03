@@ -24,7 +24,7 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
         public IntPtr ModelCompilationOptions_SetEpContextBinaryInformation;
         public IntPtr ModelCompilationOptions_SetGraphOptimizationLevel;
         public IntPtr ModelCompilationOptions_SetOutputModelWriteFunc;
-        public IntPtr ModelCompilationOptions_SetOutputModelHandleInitializerFunc;
+        public IntPtr ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc;
     }
 
     internal class NativeMethods
@@ -129,12 +129,12 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
                         OrtModelCompilationOptions_SetOutputModelWriteFunc;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc(
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc(
             IntPtr /* OrtModelCompilationOptions* */ options,
             IntPtr /* DOrtHandleInitializerDataDelegate */ handleInitializerFunc,
             IntPtr /* void* */ state);
-        public DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc
-                        OrtModelCompilationOptions_SetOutputModelHandleInitializerFunc;
+        public DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc
+                        OrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc;
 
         internal NativeMethods(OnnxRuntime.NativeMethods.DOrtGetCompileApi getCompileApi)
         {
@@ -211,10 +211,11 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
                     _compileApi.ModelCompilationOptions_SetOutputModelWriteFunc,
                     typeof(DOrtModelCompilationOptions_SetOutputModelWriteFunc));
 
-            OrtModelCompilationOptions_SetOutputModelHandleInitializerFunc =
-                (DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc)Marshal.GetDelegateForFunctionPointer(
-                    _compileApi.ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
-                    typeof(DOrtModelCompilationOptions_SetOutputModelHandleInitializerFunc));
+            OrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc =
+                (DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc)Marshal.
+                GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
+                    typeof(DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc));
 
         }
     }

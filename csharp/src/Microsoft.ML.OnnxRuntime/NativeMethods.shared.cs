@@ -2418,7 +2418,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="bufferNumBytes">The size of the buffer in bytes.</param>
         /// <returns>OrtStatus*</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */ DOrtWriteBufferDelegate(
+        public delegate IntPtr /* OrtStatus* */ DOrtWriteBufferToDestinationDelegate(
             IntPtr /* void* */ state,
             IntPtr /* const void* */ buffer,
             UIntPtr /* size_t */ bufferNumBytes
@@ -2438,7 +2438,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// implementation sets `newExternalInfo` to NULL, ORT stores the initializer within the generated model.</param>
         /// <returns></returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */ DOrtHandleInitializerDataDelegate(
+        public delegate IntPtr /* OrtStatus* */ DOrtGetInitializerLocationDelegate(
             IntPtr /* void* */ state,
             IntPtr /* const char* */ initializerName,
             IntPtr /* const OrtValue* */ initializerValue,
