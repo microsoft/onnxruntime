@@ -58,7 +58,6 @@ Phi-3 Medium 4k ONNX Models:
 
 Phi-3 Medium 128k ONNX Models:
 - [microsoft/Phi-3-medium-128k-instruct-onnx-cpu](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu)
-- [microsoft/Phi-3-medium-128k-instruct-onnx-cuda](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda)
 - [microsoft/Phi-3-medium-128k-instruct-onnx-directml](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml)
 
 

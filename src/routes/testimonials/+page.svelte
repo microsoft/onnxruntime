@@ -293,8 +293,8 @@
 		{
 			title: 'Unreal Engine',
 			quote:
-				"We selected ONNX Runtime as the backend of Unreal Engine's Neural Network Interface (NNI) plugin inference system because of its extensibility to support the platforms that Unreal Engine runs on, while enabling ML practitioners to develop ML models in the frameworks of their choice. NNI evaluates neural networks in real time in Unreal Engine and acts as the foundation for game developers to use and deploy ML models to solve many development challenges, including animation, ML-based AI, camera tracking, and more.",
-			author: 'Francisco Vicente Carrasco, Research Engineering Lead, Epic Games',
+				"MetaHuman Animator is a state-of-the-art solution to the performance-driven facial animation of digital characters. It leverages the power of the ONNX Runtime to execute models that are trained to translate an actor's voice into a high-fidelity mouth and tongue animation on MetaHuman characters, making it easy for creators to produce high-fidelity, rich storytelling experiences.",
+			author: 'MetaHuman Animator team, Epic Games',
 			imgsrc: unrealengineLogo,
 			imgalt: 'Unreal Engine logo'
 		},
