@@ -794,6 +794,31 @@ template void __global__ masked_multihead_attention_kernel<uint16_t, half, 128, 
 template void __global__ masked_multihead_attention_kernel<uint16_t, half, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParameters params);
 template void __global__ masked_multihead_attention_kernel<uint16_t, half, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParameters params);
 
+// QK BFloat16 templates
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 32, 4, 8, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 32, 2, 8, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 32, 1, 8, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 32, 4, 4, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 32, 2, 4, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 32, 1, 4, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 64, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 64, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 64, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 64, 4, 8, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 64, 2, 8, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 64, 1, 8, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 128, 4, 32, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 128, 2, 32, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 128, 1, 32, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 128, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
