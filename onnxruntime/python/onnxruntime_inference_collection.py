@@ -647,6 +647,7 @@ class ModelCompiler:
         external_initializers_file_path: str | os.PathLike | None = None,
         external_initializers_size_threshold: int = 1024,
         flags: int = C.OrtCompileApiFlags.NONE,
+        graph_optimization_level: C.GraphOptimizationLevel = C.GraphOptimizationLevel.ORT_DISABLE_ALL,
     ):
         """
         Creates a ModelCompiler instance.
@@ -663,6 +664,8 @@ class ModelCompiler:
             is None or empty. Initializers larger than this threshold are stored in the external initializers file.
         :param flags: Additional boolean options to enable. Set this parameter to a bitwise OR of
             flags in onnxruntime.OrtCompileApiFlags.
+        :param graph_optimization_level: The graph optimization level.
+            Defaults to onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL.
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
@@ -694,6 +697,7 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                graph_optimization_level,
             )
         else:
             self._model_compiler = C.ModelCompiler(
@@ -704,6 +708,7 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                graph_optimization_level,
             )
 
     def compile_to_file(self, output_model_path: str | None = None):

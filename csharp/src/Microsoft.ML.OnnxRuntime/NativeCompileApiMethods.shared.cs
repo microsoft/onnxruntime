@@ -21,6 +21,8 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
         public IntPtr ModelCompilationOptions_SetEpContextEmbedMode;
         public IntPtr CompileModel;
         public IntPtr ModelCompilationOptions_SetFlags;
+        public IntPtr ModelCompilationOptions_SetEpContextBinaryInformation;
+        public IntPtr ModelCompilationOptions_SetGraphOptimizationLevel;
     }
 
     internal class NativeMethods
@@ -101,6 +103,21 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
             uint flags);
         public DOrtModelCompilationOptions_SetFlags OrtModelCompilationOptions_SetFlags;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetEpContextBinaryInformation(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            byte[] /* const ORTCHAR_T* */ outputDirectory,
+            byte[] /* const ORTCHAR_T* */ modelName);
+        public DOrtModelCompilationOptions_SetEpContextBinaryInformation
+                        OrtModelCompilationOptions_SetEpContextBinaryInformation;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetGraphOptimizationLevel(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            GraphOptimizationLevel graphOptimizationLevel);
+        public DOrtModelCompilationOptions_SetGraphOptimizationLevel
+            OrtModelCompilationOptions_SetGraphOptimizationLevel;
+
         internal NativeMethods(OnnxRuntime.NativeMethods.DOrtGetCompileApi getCompileApi)
         {
 
@@ -160,6 +177,16 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
                 (DOrtModelCompilationOptions_SetFlags)Marshal.GetDelegateForFunctionPointer(
                     _compileApi.ModelCompilationOptions_SetFlags,
                     typeof(DOrtModelCompilationOptions_SetFlags));
+
+            OrtModelCompilationOptions_SetEpContextBinaryInformation =
+                (DOrtModelCompilationOptions_SetEpContextBinaryInformation)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetEpContextBinaryInformation,
+                    typeof(DOrtModelCompilationOptions_SetEpContextBinaryInformation));
+
+            OrtModelCompilationOptions_SetGraphOptimizationLevel =
+                (DOrtModelCompilationOptions_SetGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetGraphOptimizationLevel,
+                    typeof(DOrtModelCompilationOptions_SetGraphOptimizationLevel));
 
         }
     }

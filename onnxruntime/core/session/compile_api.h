@@ -29,8 +29,11 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModel
                     bool embed_ep_context_in_model);
 ORT_API_STATUS_IMPL(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_options,
-                    size_t flags);
+                    uint32_t flags);
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextBinaryInformation, _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ const ORTCHAR_T* output_dir, _In_ const ORTCHAR_T* model_name);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetGraphOptimizationLevel,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ GraphOptimizationLevel graph_optimization_level);
 
 }  // namespace OrtCompileAPI
