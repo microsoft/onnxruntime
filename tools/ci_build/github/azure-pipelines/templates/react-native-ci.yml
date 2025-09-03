@@ -162,8 +162,11 @@ stages:
 
         echo "Created simulator device with id: ${DEVICE_ID}"
 
-        xcrun simctl boot $DEVICE_ID
-        xcrun simctl bootstatus $DEVICE_ID
+        xcrun simctl boot "${DEVICE_ID}"
+
+        xcrun simctl bootstatus "${DEVICE_ID}"
+
+        open -a Simulator --args -CurrentDeviceUDID "${DEVICE_ID}"
       displayName: Start iOS Simulator
 
     - script: |
