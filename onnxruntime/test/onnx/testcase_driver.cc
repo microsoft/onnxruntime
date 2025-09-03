@@ -5,8 +5,10 @@
 #include "testcase_driver.h"
 #include "testcase_request.h"
 #include "testenv.h"
+#include "utils/macros.h"
 
 #include <core/common/logging/logging.h>
+#include <sstream>
 
 namespace onnxruntime {
 namespace test {
@@ -37,7 +39,7 @@ std::vector<std::shared_ptr<TestCaseResult>> TestCaseDriver::RunParallel(const T
                                                                          size_t concurrent_runs, bool inference_mode) {
   assert(parallel_models > 1);
   parallel_models = std::min(parallel_models, test_env.GetTests().size());
-  LOGF_DEFAULT(ERROR, "Running tests in parallel: at most %u models at any time", static_cast<unsigned int>(parallel_models));
+  TEST_LOG_VERBOSE("Running tests in parallel: at most " << static_cast<unsigned>(parallel_models) << " models at any time");
   TestCaseDriver driver(test_env, concurrent_runs, inference_mode);
   driver.RunModelsAsync(parallel_models);
   auto results = driver.TakeResults();
@@ -59,7 +61,7 @@ void TestCaseDriver::RunModelsAsync(size_t parallel_models) {
   // This thread is not on a threadpool so we are not using it
   // to run anything. Just wait.
   Wait();
-  LOGF_DEFAULT(ERROR, "Running tests finished. Generating report");
+  TEST_LOG_VERBOSE("Running tests finished. Generating report");
 }
 
 void TestCaseDriver::OnTestCaseComplete(size_t test_case_id, std::shared_ptr<TestCaseResult> result) {

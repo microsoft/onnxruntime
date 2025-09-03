@@ -1049,6 +1049,11 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
       target_compile_definitions(${target_name} PRIVATE -DDISABLE_CUSPARSE_DEPRECATED)
     endif()
+
+    if (onnxruntime_BUILD_SHARED_LIB)
+      target_compile_definitions(${target_name} PRIVATE BUILD_SHARED_LIB)
+    endif()
+
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")

@@ -17,7 +17,7 @@
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
-#include "strings_helper.h"
+#include "test/onnx/utils/strings_helper.h"
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
 #include <cuda_runtime.h>
@@ -76,7 +76,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     if (!performance_test_config.selected_ep_device_indices.empty()) {
       std::vector<int> device_list;
       device_list.reserve(performance_test_config.selected_ep_device_indices.size());
-      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
+      test::utils::ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
       for (auto index : device_list) {
         if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
           fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
@@ -91,8 +91,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
             fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
           }
         } else {
+          std::string ep_list_string;
+          for (size_t i = 0; i < ep_list.size(); ++i) {
+            ep_list_string += ep_list[i];
+            if (i + 1 < ep_list.size()) {
+              ep_list_string += ", ";
+            }
+          }
           std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
-                                performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
+                                ep_list_string + ". Will skip adding this device.\n";
           fprintf(stderr, "%s", err_msg.c_str());
         }
       }
@@ -115,7 +122,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     // EP's associated provider option lists
     std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
-    ParseEpOptions(ep_option_string, ep_options_list);
+    test::utils::ParseEpOptions(ep_option_string, ep_options_list);
 
     // If user only provide the EPs' provider option lists for the first several EPs,
     // add empty provider option lists for the rest EPs.
@@ -156,7 +163,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     int num_threads = 0;
-    ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"});
+    test::utils::ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"});
     for (const auto& provider_option : provider_options) {
       if (provider_option.first == "num_of_threads") {
         std::stringstream sstream(provider_option.second);
@@ -199,7 +206,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 
-    ParseSessionConfigs(ov_string, provider_options);
+    test::utils::ParseSessionConfigs(ov_string, provider_options);
     cuda_options.Update(provider_options);
 
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
@@ -220,7 +227,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(ov_string, provider_options);
+    test::utils::ParseSessionConfigs(ov_string, provider_options);
     tensorrt_options.Update(provider_options);
     session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 
@@ -252,13 +259,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(option_string, provider_options,
-                        {"backend_type", "backend_path", "profiling_file_path", "profiling_level",
-                         "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "op_packages",
-                         "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
-                         "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
-                         "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
-                         "json_qnn_graph_dir"});
+    test::utils::ParseSessionConfigs(option_string, provider_options,
+                                     {"backend_type", "backend_path", "profiling_file_path", "profiling_level",
+                                      "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "op_packages",
+                                      "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
+                                      "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
+                                      "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
+                                      "json_qnn_graph_dir"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -345,7 +352,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"});
+    test::utils::ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"});
     for (const auto& provider_option : provider_options) {
       if (key == "runtime") {
         std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
@@ -421,7 +428,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                                                                    kCoremlProviderOption_ProfileComputePlan,
                                                                    kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
                                                                    kCoremlProviderOption_ModelCacheDirectory};
-    ParseSessionConfigs(ov_string, provider_options, available_keys);
+    test::utils::ParseSessionConfigs(ov_string, provider_options, available_keys);
 
     std::unordered_map<std::string, std::string> available_options = {
         {"CPUAndNeuralEngine", "1"},
@@ -464,9 +471,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(ov_string, provider_options,
-                        {"device_filter", "performance_preference", "disable_metacommands",
-                         "enable_graph_capture", "enable_graph_serialization"});
+    test::utils::ParseSessionConfigs(ov_string, provider_options,
+                                     {"device_filter", "performance_preference", "disable_metacommands",
+                                      "enable_graph_capture", "enable_graph_serialization"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -537,7 +544,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     bool enable_fast_math = false;
-    ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
+    test::utils::ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -601,7 +608,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    ParseSessionConfigs(option_string, provider_options);
+    test::utils::ParseSessionConfigs(option_string, provider_options);
 
     session_options.AppendExecutionProvider_VitisAI(provider_options);
 #else
