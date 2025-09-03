@@ -10,6 +10,7 @@
 
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -22,7 +23,7 @@ ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeli
 Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
   ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
 
-  auto limit_per_dimension = limits_.maxComputeWorkgroupsPerDimension;
+  auto limit_per_dimension = webgpu_context_.DeviceLimits().maxComputeWorkgroupsPerDimension;
   if (x > limit_per_dimension || y > limit_per_dimension || z > limit_per_dimension) {
     double size = static_cast<double>(x) * static_cast<double>(y) * static_cast<double>(z);
     double dispatch_avg = std::ceil(std::sqrt(size));
@@ -48,10 +49,11 @@ Status ProgramManager::Build(const ProgramBase& program,
                              uint32_t normalized_dispatch_z,
                              wgpu::ComputePipeline& compute_pipeline,
                              std::vector<int>& shape_uniform_ranks) const {
+  auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
-                             device_,
-                             limits_,
+                             device,
+                             webgpu_context_.DeviceLimits(),
                              normalized_dispatch_x,
                              normalized_dispatch_y,
                              normalized_dispatch_z};
@@ -85,7 +87,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   wgpu::ShaderModuleDescriptor descriptor{};
   descriptor.nextInChain = &wgsl_source;
 
-  auto shader_module = device_.CreateShaderModule(&descriptor);
+  auto shader_module = device.CreateShaderModule(&descriptor);
 
   // TODO: a new cache hierarchy for constants.
   //
@@ -161,9 +163,26 @@ Status ProgramManager::Build(const ProgramBase& program,
   pipeline_descriptor.label = program.Name().c_str();
 #endif
 
-  compute_pipeline = device_.CreateComputePipeline(&pipeline_descriptor);
+  struct CreateComputePipelineContext {
+    wgpu::ComputePipeline& pipeline;
+    Status status;
+  } create_pipeline_context{compute_pipeline};
 
-  return Status();
+  ORT_RETURN_IF_ERROR(
+      webgpu_context_.Wait(
+          device.CreateComputePipelineAsync(
+              &pipeline_descriptor,
+              wgpu::CallbackMode::WaitAnyOnly,
+              [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message, CreateComputePipelineContext* context) {
+                if (status == wgpu::CreatePipelineAsyncStatus::Success) {
+                  context->pipeline = std::move(pipeline);
+                } else {
+                  context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ", std::string_view{message});
+                }
+              },
+              &create_pipeline_context)));
+
+  return create_pipeline_context.status;
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
