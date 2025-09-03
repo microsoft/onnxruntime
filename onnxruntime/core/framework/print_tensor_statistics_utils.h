@@ -121,7 +121,9 @@ void PrintCommonStats(const T* data, size_t count, TensorStatisticsData& tensor_
 
 DEF_PRINT_COMMON_STATS_4BIT(Int4x2)
 DEF_PRINT_COMMON_STATS_4BIT(UInt4x2)
+#if !defined(DISABLE_FLOAT4_TYPES)
 DEF_PRINT_COMMON_STATS_4BIT(Float4E2M1x2)
+#endif
 
 template <typename T>
 void PrintHalfStats(const T* data, size_t count) {

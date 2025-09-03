@@ -96,7 +96,9 @@ void PrintCpuTensorSnippet(const T* tensor, int64_t dim0, int64_t dim1, int64_t 
 
 DEF_PRINT_CPU_TENSOR_SNIPPET_2D_4BIT(Int4x2)
 DEF_PRINT_CPU_TENSOR_SNIPPET_2D_4BIT(UInt4x2)
+#if !defined(DISABLE_FLOAT4_TYPES)
 DEF_PRINT_CPU_TENSOR_SNIPPET_2D_4BIT(Float4E2M1x2)
+#endif
 
 // Print snippet of 3D tensor with shape (dim0, dim1, dim2)
 template <typename T>
@@ -144,7 +146,9 @@ void PrintCpuTensorSnippet(const T* tensor, int64_t dim0, int64_t dim1, int64_t 
 
 DEF_PRINT_CPU_TENSOR_SNIPPET_3D_4BIT(Int4x2)
 DEF_PRINT_CPU_TENSOR_SNIPPET_3D_4BIT(UInt4x2)
+#if !defined(DISABLE_FLOAT4_TYPES)
 DEF_PRINT_CPU_TENSOR_SNIPPET_3D_4BIT(Float4E2M1x2)
+#endif
 
 // Print 2D tensor
 template <typename T>
@@ -179,7 +183,9 @@ void PrintCpuTensorFull(const T* tensor, int64_t dim0, int64_t dim1) {
 
 DEF_PRINT_CPU_TENSOR_FULL_2D_4BIT(Int4x2)
 DEF_PRINT_CPU_TENSOR_FULL_2D_4BIT(UInt4x2)
+#if !defined(DISABLE_FLOAT4_TYPES)
 DEF_PRINT_CPU_TENSOR_FULL_2D_4BIT(Float4E2M1x2)
+#endif
 
 // Print 3D tensor
 template <typename T>
@@ -220,7 +226,9 @@ void PrintCpuTensorFull(const T* tensor, int64_t dim0, int64_t dim1, int64_t dim
 
 DEF_PRINT_CPU_TENSOR_FULL_3D_4BIT(Int4x2)
 DEF_PRINT_CPU_TENSOR_FULL_3D_4BIT(UInt4x2)
+#if !defined(DISABLE_FLOAT4_TYPES)
 DEF_PRINT_CPU_TENSOR_FULL_3D_4BIT(Float4E2M1x2)
+#endif
 
 template <typename T>
 void PrintCpuTensor(const onnxruntime::Tensor& tensor,
