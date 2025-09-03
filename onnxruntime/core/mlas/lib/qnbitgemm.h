@@ -69,7 +69,7 @@ struct PackedQuantBDataStruct {
 
         if (QuantAUnsigned) {
             BlkUnsignedQuantAZeroPointCorrection = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
-            BlkUnsignedQuantAZeroPointCorrection =   (T*)MlasAlignAddress(BlkUnsignedQuantAZeroPointCorrection, MlasQNBitQuantBBlkSumAlignment());
+            BlkUnsignedQuantAZeroPointCorrection = (T*)MlasAlignAddress(BlkUnsignedQuantAZeroPointCorrection, MlasQNBitQuantBBlkSumAlignment());
             PackedQuantBScale = (T*)((std::byte*)BlkUnsignedQuantAZeroPointCorrection + BlkSumSize);
         } else {
             BlkUnsignedQuantAZeroPointCorrection = nullptr;

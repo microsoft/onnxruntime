@@ -50,9 +50,9 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
     const T* QuantBBlkSum = nullptr;            ///< optional address of scale * zp, one per block
 
     /// <summary>
-    /// Optional address of scale * accumulate(quant - zp), one per block. Used when QuantA is uint8.
-    /// When converting the activation input (A) to uint8, the algorithm is to first convert to int8
-    /// and then add a "bias" of +128 to convert h range of values from [-128, +127] to [0, +255].
+    /// Optional address of scale * accumulate(quant - zp), one per block. Used when A is quantized is uint8.
+    /// When converting the activation input (A) to uint8, we first convert the values first convert to
+    /// int8 and then add a "bias" of +128 to convert the range of values from [-128, +127] to [0, +255].
     /// This optional input helps to "de-bias" the output of the +128 bias added to the activation input.
     /// </summary>
     const T* BlkUnsignedQuantAZeroPointCorrection = nullptr;
