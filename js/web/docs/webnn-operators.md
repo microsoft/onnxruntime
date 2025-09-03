@@ -32,6 +32,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Div | ai.onnx(7-12, 13, 14+) | div | |
 | DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear | The shape of x_scale should be a subsample of the shape of input |
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | Only supports test mode |
+| DynamicQuantizeLinear | ai.onnx(11+) | cast, clamp, div, div, max, min, quantizeLinear, reduceMax, reduceMin, reshape, roundEven, sub | |
 | Einsum | ai.onnx(12+) | reshape, transpose, matmul, reduceSum, mul, triangular | |
 | Elu | ai.onnx(7+) | elu | |
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | |
