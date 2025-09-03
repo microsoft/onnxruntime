@@ -16,6 +16,17 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <iostream>
+
+// Debugging constants: to enable local debug, set kQmoeDebugEnabled=true.
+// We intentionally do NOT read environment variables here to avoid runtime
+// dependencies in test/CI environments.
+static constexpr bool kQmoeDebugEnabled = true;
+// Debug caps to prevent excessive logging when enabled.
+static constexpr int kQmoeDebugMaxRowsDump = 4;  // max rows (output features) to print
+static constexpr int kQmoeDebugMaxVecDump = 8;   // max elements of per-token output to print
+// Auto-detect mode: prints debug info for all selected experts without requiring specific indices
+static constexpr bool kQmoeDebugAutoDetect = true;
 
 namespace onnxruntime {
 namespace contrib {
@@ -23,19 +34,32 @@ namespace contrib {
 // Helper function to dequantize weights. Supports 4-bit and 8-bit symmetric quantization.
 // The source quantized weights are stored as a row-major representation of the transposed
 // logical weight matrix (W^T). This function dequantizes it into a float row-major W^T matrix.
+//
+// Block-wise quantization: When block_size > 0, weights are quantized in blocks of consecutive
+// elements within each row. Each block has its own scale factor.
+// Row-wise quantization: When block_size == 0, each entire row shares one scale factor.
 template <typename TScale>
 void DequantizeBlock(const uint8_t* quantized_data,
                      const TScale* scales,
-                     int64_t /*block_size*/,
+                     int64_t block_size,
                      int64_t num_bits,
                      int64_t rows,
                      int64_t cols,
                      float* dequantized_data) {
   const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
+
+  // Determine the number of blocks per row using ceiling division
+  // This handles cases where cols is not perfectly divisible by block_size
+  const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+
   if (num_bits == 8) {
     for (int64_t r = 0; r < rows; ++r) {
-      const float scale = static_cast<float>(scales[r]);
       for (int64_t c = 0; c < cols; ++c) {
+        // Calculate which block this column belongs to
+        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
+        const int64_t scale_idx = r * blocks_per_row + block_idx;
+        const float scale = static_cast<float>(scales[scale_idx]);
+
         // Symmetric quantization: dequantized_value = scale * (quantized_value - zero_point)
         dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_data[r * cols + c]) - zero_point);
       }
@@ -43,8 +67,12 @@ void DequantizeBlock(const uint8_t* quantized_data,
   } else if (num_bits == 4) {
     const int64_t packed_cols = (cols + 1) / 2;
     for (int64_t r = 0; r < rows; ++r) {
-      const float scale = static_cast<float>(scales[r]);
       for (int64_t c = 0; c < cols; ++c) {
+        // Calculate which block this column belongs to
+        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
+        const int64_t scale_idx = r * blocks_per_row + block_idx;
+        const float scale = static_cast<float>(scales[scale_idx]);
+
         const uint8_t packed_val = quantized_data[r * packed_cols + c / 2];
         // Unpack the 4-bit value. Low nibble for even columns, high nibble for odd columns.
         const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
@@ -63,6 +91,13 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 4 or 8.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
+
+  // Validate block_size according to QMoE specification
+  if (block_size_ > 0) {
+    ORT_ENFORCE(block_size_ >= 16, "block_size must be >= 16 when provided.");
+    // Check if block_size is a power of 2
+    ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
+  }
 }
 
 template <typename T>
@@ -87,7 +122,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias, fc2_scales,
       fc3_experts_weights, fc3_experts_bias, fc3_scales,
       expert_weight_bits_ == 4 ? 2 : 1,
-      true));
+      true,
+      block_size_));
 
   if (fc3_experts_weights || fc3_experts_bias || fc3_scales) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
@@ -99,6 +135,9 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
   const int64_t fc1_out_features = inter_size * (swiglu_fusion_ > 0 ? 2 : 1);
+
+  // Block-wise quantization is supported even when dimensions are not perfectly divisible by block_size
+  // The DequantizeBlock function handles partial blocks correctly
 
   auto* output = context->Output(0, input_shape);
   auto* tp = context->GetOperatorThreadPool();
@@ -271,10 +310,48 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       // --- FC1 GEMM (X * W1^T) ---
-      DequantizeBlock(fc1_experts_weights->Data<uint8_t>() + expert_idx * fc1_out_features * (hidden_size / (8 / expert_weight_bits_)),
-                      fc1_scales->Data<T>() + expert_idx * fc1_out_features * (block_size_ > 0 ? hidden_size / block_size_ : 1),
+      // Calculate scale pointer for FC1.
+      // When block_size > 0: scales shape is (num_experts, fc1_out_features, blocks_per_row)
+      // When block_size == 0: scales shape is (num_experts, fc1_out_features)
+      const T* fc1_scales_ptr;
+      if (block_size_ > 0) {
+        const int64_t fc1_blocks_per_row = (hidden_size + block_size_ - 1) / block_size_;
+        fc1_scales_ptr = fc1_scales->Data<T>() + expert_idx * fc1_out_features * fc1_blocks_per_row;
+      } else {
+        fc1_scales_ptr = fc1_scales->Data<T>() + expert_idx * fc1_out_features;
+      }
+
+      // Compute packed columns per (logical) row for the quantized weights (ceil division)
+      const int64_t pack_unit = (8 / expert_weight_bits_);
+      const int64_t fc1_packed_cols = (hidden_size + pack_unit - 1) / pack_unit;
+
+      DequantizeBlock(fc1_experts_weights->Data<uint8_t>() + expert_idx * fc1_out_features * fc1_packed_cols,
+                      fc1_scales_ptr,
                       block_size_, expert_weight_bits_,
                       fc1_out_features, hidden_size, B1_dequant);
+
+      if (kQmoeDebugEnabled && !routes.empty()) {
+        const int64_t blocks_per_row = (hidden_size + block_size_ - 1) / (block_size_ > 0 ? block_size_ : hidden_size);
+        std::cerr << "[QMoE DEBUG] FC1 expert=" << expert_idx << " num_tokens=" << routes.size() << "\n";
+
+        if (kQmoeDebugAutoDetect) {
+          // Print all experts briefly for overview
+          std::cerr << " FC1 first few weights and scales:\n";
+          const int64_t cols_to_show = std::min<int64_t>(hidden_size, 8);
+          for (int64_t r = 0; r < std::min<int64_t>(fc1_out_features, 2); ++r) {
+            std::cerr << "  row=" << r << ":";
+            for (int64_t c = 0; c < cols_to_show; ++c) {
+              const int64_t block_idx = (block_size_ > 0) ? std::min(c / block_size_, blocks_per_row - 1) : 0;
+              const int64_t scale_idx = r * blocks_per_row + block_idx;
+              const float scale = static_cast<float>(fc1_scales_ptr[scale_idx]);
+              const uint8_t packed_val = fc1_experts_weights->Data<uint8_t>()[expert_idx * fc1_out_features * fc1_packed_cols + r * fc1_packed_cols + c / 2];
+              const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
+              std::cerr << " c" << c << "=" << static_cast<int>(quantized_val) << "@" << scale;
+            }
+            std::cerr << "\n";
+          }
+        }
+      }
 
       MlasGemm(CblasNoTrans, CblasTrans,
                static_cast<size_t>(num_expert_tokens), static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size),
@@ -305,10 +382,47 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       // --- FC2 GEMM (A2 * W2^T) ---
-      DequantizeBlock(fc2_experts_weights->Data<uint8_t>() + expert_idx * hidden_size * (inter_size / (8 / expert_weight_bits_)),
-                      fc2_scales->Data<T>() + expert_idx * hidden_size * (block_size_ > 0 ? inter_size / block_size_ : 1),
+      // Calculate scale pointer for FC2.
+      // When block_size > 0: scales shape is (num_experts, hidden_size, blocks_per_row)
+      // When block_size == 0: scales shape is (num_experts, hidden_size)
+      const T* fc2_scales_ptr;
+      if (block_size_ > 0) {
+        const int64_t fc2_blocks_per_row = (inter_size + block_size_ - 1) / block_size_;
+        fc2_scales_ptr = fc2_scales->Data<T>() + expert_idx * hidden_size * fc2_blocks_per_row;
+      } else {
+        fc2_scales_ptr = fc2_scales->Data<T>() + expert_idx * hidden_size;
+      }
+
+      const int64_t pack_unit2 = (8 / expert_weight_bits_);
+      const int64_t fc2_packed_cols = (inter_size + pack_unit2 - 1) / pack_unit2;
+
+      DequantizeBlock(fc2_experts_weights->Data<uint8_t>() + expert_idx * hidden_size * fc2_packed_cols,
+                      fc2_scales_ptr,
                       block_size_, expert_weight_bits_,
                       hidden_size, inter_size, B2_dequant);
+
+      if (kQmoeDebugEnabled && !routes.empty()) {
+        const int64_t blocks_per_row = (inter_size + block_size_ - 1) / (block_size_ > 0 ? block_size_ : inter_size);
+        std::cerr << "[QMoE DEBUG] FC2 expert=" << expert_idx << " num_tokens=" << routes.size() << "\n";
+
+        if (kQmoeDebugAutoDetect) {
+          // Print brief FC2 weight overview
+          std::cerr << " FC2 first few weights and scales:\n";
+          const int64_t cols_to_show = std::min<int64_t>(inter_size, 8);
+          for (int64_t r = 0; r < std::min<int64_t>(hidden_size, 2); ++r) {
+            std::cerr << "  row=" << r << ":";
+            for (int64_t c = 0; c < cols_to_show; ++c) {
+              const int64_t block_idx = (block_size_ > 0) ? std::min(c / block_size_, blocks_per_row - 1) : 0;
+              const int64_t scale_idx = r * blocks_per_row + block_idx;
+              const float scale = static_cast<float>(fc2_scales_ptr[scale_idx]);
+              const uint8_t packed_val = fc2_experts_weights->Data<uint8_t>()[expert_idx * hidden_size * fc2_packed_cols + r * fc2_packed_cols + c / 2];
+              const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
+              std::cerr << " c" << c << "=" << static_cast<int>(quantized_val) << "@" << scale;
+            }
+            std::cerr << "\n";
+          }
+        }
+      }
 
       MlasGemm(CblasNoTrans, CblasTrans,
                static_cast<size_t>(num_expert_tokens), static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size),
@@ -316,6 +430,36 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                B2_dequant, static_cast<size_t>(inter_size),
                0.0f, C2, static_cast<size_t>(hidden_size),
                nullptr);
+
+      // Debug: Print C2 output sample after FC2 GEMM
+      if (kQmoeDebugEnabled && !routes.empty()) {
+        const int64_t first_token_pos = routes[0] / k_;
+        std::cerr << " [QMoE DEBUG] Sample C2 output for expert=" << expert_idx << " first_token_pos=" << first_token_pos << "\n";
+
+        if (kQmoeDebugAutoDetect) {
+          // Print first few output values and look for obviously wrong ones
+          const int64_t vec_len = std::min<int64_t>(hidden_size, kQmoeDebugMaxVecDump);
+          const float* sample_C2 = C2;  // C2[0] is first token
+          std::cerr << "  First " << vec_len << " C2 values:";
+          for (int64_t v = 0; v < vec_len; ++v) {
+            std::cerr << " [" << v << "]=" << sample_C2[v];
+            // Flag potentially problematic values
+            if (std::abs(sample_C2[v]) > 1000.0f || std::isnan(sample_C2[v]) || std::isinf(sample_C2[v])) {
+              std::cerr << "(!!)";
+            }
+          }
+          std::cerr << "\n";
+
+          // Also show a few values around typical problem areas (if in range)
+          if (hidden_size > 50) {
+            std::cerr << "  C2 values around idx 50:";
+            for (int64_t v = 47; v <= 53 && v < hidden_size; ++v) {
+              std::cerr << " [" << v << "]=" << sample_C2[v];
+            }
+            std::cerr << "\n";
+          }
+        }
+      }
 
       const T* B2_bias = (fc2_experts_bias) ? fc2_experts_bias->Data<T>() + expert_idx * hidden_size : nullptr;
       if (B2_bias) {

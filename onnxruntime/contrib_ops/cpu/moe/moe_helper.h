@@ -49,7 +49,8 @@ Status CheckInputs(MoEParameters& parameters,
                    const Tensor* fc3_experts_bias,     // optional
                    const Tensor* fc3_experts_scales,   // required for qMoE; NULL for MOE
                    const int64_t pack_size,            // number of weights packed together (like 2 for uint4 packed to uint8)
-                   const bool is_fused_swiglu) {
+                   const bool is_fused_swiglu,
+                   const int64_t block_size = 0) {  // block size for block-wise quantization
   // Check dimensions of input to avoid input_dims index out of range. CHECK_TENSOR_SHAPE will verify each tensor later.
   ASSERT_TENSOR_2D_OR_3D(input);
   ASSERT_TENSOR_3D(fc1_experts_weights);
@@ -90,9 +91,24 @@ Status CheckInputs(MoEParameters& parameters,
   CHECK_TENSOR_SHAPE(fc2_experts_bias, num_experts, hidden_size);
   CHECK_TENSOR_SHAPE(fc3_experts_bias, num_experts, inter_size);
 
-  CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
-  CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
-  CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
+  // Validate scale tensors: 2D for row-wise quantization, 3D for block-wise quantization
+  if (block_size > 0) {
+    // Block-wise quantization: 3D scale tensors
+    // For block-wise quantization, we calculate the number of blocks using ceiling division
+    // to handle cases where the dimension is not perfectly divisible by block_size
+    const int64_t fc1_blocks_per_row = (hidden_size + block_size - 1) / block_size;
+    const int64_t fc2_blocks_per_row = (inter_size + block_size - 1) / block_size;
+    const int64_t fc3_blocks_per_row = (hidden_size + block_size - 1) / block_size;
+
+    CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size, fc1_blocks_per_row);
+    CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, fc2_blocks_per_row);
+    CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, fc3_blocks_per_row);
+  } else {
+    // Row-wise quantization: 2D scale tensors
+    CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
+    CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
+    CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
+  }
 
   if (fc3_experts_weights == nullptr) {
     ORT_ENFORCE(fc3_experts_bias == nullptr && fc3_experts_scales == nullptr);
