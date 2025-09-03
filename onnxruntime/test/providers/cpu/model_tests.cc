@@ -904,7 +904,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
         std::string model_name_str = ToUTF8String(test_case_name);
         if (!IsModelAllowed(model_name_str)) {
           continue;  // Skip models not in whitelist
-      }
+        }
 
         if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
           continue;
