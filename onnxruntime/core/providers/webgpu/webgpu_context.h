@@ -9,7 +9,6 @@
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
-#include "core/framework/library_handles.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
@@ -226,8 +225,6 @@ class WebGpuContext final {
   friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
-
-  LibraryHandles modules_;
 
   wgpu::Instance instance_;
   wgpu::Device device_;
