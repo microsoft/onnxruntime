@@ -205,23 +205,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
              // On ARM64, the weight prepacking call will also pack the constant scales
             return (nbits_ == 8);
 #endif
-      }();
+    }();
 
-      if (should_pack_scale_and_zp_inputs) {
-            if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
-              auto sptr = tensor.Data<float>();
-              MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
-                                          has_zp_input_, nullptr, nullptr);
-              is_packed = false;
-            }
-
-            // Packing zero_point
-            if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
-              auto zptr = tensor.Data<uint8_t>();
-              MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), nullptr,
-                                          has_zp_input_, zptr, nullptr);
-              is_packed = false;
-            }      
+    if (should_pack_scale_and_zp_inputs) {
+      if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+        auto sptr = tensor.Data<float>();
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
+                                    has_zp_input_, nullptr, nullptr);
+        is_packed = false;
       }
 #if defined(MLAS_TARGET_ARM64)
 
