@@ -85,6 +85,91 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
+// Helper function to check if a data type is supported by NvTensorRTRTX EP
+static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Helper function to get data type name as string
+static std::string GetDataTypeName(ONNXTensorElementDataType data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return "FLOAT";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return "FLOAT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: return "BFLOAT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: return "BOOL";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return "INT8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return "UINT8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return "INT32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return "INT64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return "DOUBLE";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: return "STRING";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return "UINT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return "UINT32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return "UINT64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return "INT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64: return "COMPLEX64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: return "COMPLEX128";
+    default: return "UNKNOWN(" + std::to_string(static_cast<int>(data_type)) + ")";
+  }
+}
+
+// Helper function to check if a node has supported data types
+static bool CheckNodeDataTypes(const Node* node, bool print_warnings = true) {
+  bool all_types_supported = true;
+
+  // Check input data types
+  for (const auto* input_def : node->InputDefs()) {
+    if (input_def->Exists()) {
+      const auto* type_proto = input_def->TypeAsProto();
+      if (type_proto && type_proto->has_tensor_type()) {
+        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        if (!IsSupportedDataType(data_type)) {
+          all_types_supported = false;
+          if (print_warnings) {
+            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                  << "' (OpType: " << node->OpType()
+                                  << ") has unsupported input data type: " << GetDataTypeName(data_type)
+                                  << " for input '" << input_def->Name() << "'";
+          }
+        }
+      }
+    }
+  }
+
+  // Check output data types
+  for (const auto* output_def : node->OutputDefs()) {
+    if (output_def->Exists()) {
+      const auto* type_proto = output_def->TypeAsProto();
+      if (type_proto && type_proto->has_tensor_type()) {
+        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        if (!IsSupportedDataType(data_type)) {
+          all_types_supported = false;
+          if (print_warnings) {
+            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                  << "' (OpType: " << node->OpType()
+                                  << ") has unsupported output data type: " << GetDataTypeName(data_type)
+                                  << " for output '" << output_def->Name() << "'";
+          }
+        }
+      }
+    }
+  }
+
+  return all_types_supported;
+}
+
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
                                              uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
@@ -3401,91 +3486,6 @@ OrtDevice NvExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const 
     return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
                      default_device_.Id());
   return default_device_;
-}
-
-// Helper function to check if a data type is supported by NvTensorRTRTX EP
-bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
-  switch (data_type) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      return true;
-    default:
-      return false;
-  }
-}
-
-// Helper function to get data type name as string
-std::string GetDataTypeName(ONNXTensorElementDataType data_type) {
-  switch (data_type) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return "FLOAT";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return "FLOAT16";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: return "BFLOAT16";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: return "BOOL";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return "INT8";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return "UINT8";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return "INT32";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return "INT64";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return "DOUBLE";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: return "STRING";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return "UINT16";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return "UINT32";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return "UINT64";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return "INT16";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64: return "COMPLEX64";
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: return "COMPLEX128";
-    default: return "UNKNOWN(" + std::to_string(static_cast<int>(data_type)) + ")";
-  }
-}
-
-// Helper function to check if a node has supported data types
-bool CheckNodeDataTypes(const Node* node, bool print_warnings = true) {
-  bool all_types_supported = true;
-
-  // Check input data types
-  for (const auto* input_def : node->InputDefs()) {
-    if (input_def->Exists()) {
-      const auto* type_proto = input_def->TypeAsProto();
-      if (type_proto && type_proto->has_tensor_type()) {
-        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
-        if (!IsSupportedDataType(data_type)) {
-          all_types_supported = false;
-          if (print_warnings) {
-            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
-                                  << "' (OpType: " << node->OpType()
-                                  << ") has unsupported input data type: " << GetDataTypeName(data_type)
-                                  << " for input '" << input_def->Name() << "'";
-          }
-        }
-      }
-    }
-  }
-
-  // Check output data types
-  for (const auto* output_def : node->OutputDefs()) {
-    if (output_def->Exists()) {
-      const auto* type_proto = output_def->TypeAsProto();
-      if (type_proto && type_proto->has_tensor_type()) {
-        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
-        if (!IsSupportedDataType(data_type)) {
-          all_types_supported = false;
-          if (print_warnings) {
-            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
-                                  << "' (OpType: " << node->OpType()
-                                  << ") has unsupported output data type: " << GetDataTypeName(data_type)
-                                  << " for output '" << output_def->Name() << "'";
-          }
-        }
-      }
-    }
-  }
-
-  return all_types_supported;
 }
 
 }  // namespace onnxruntime
