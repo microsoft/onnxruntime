@@ -236,7 +236,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       is_packed = true;
     }
 #endif  // MLAS_TARGET_ARM64
-}
+  }
 
   return Status::OK();
 }
