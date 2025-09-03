@@ -2170,7 +2170,6 @@ static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
   Ort::Status final_status{nullptr};
 
   ORT_TRY {
-    const OrtApi& ort_api = Ort::GetApi();
     CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
 
     if (std::string("constant") == initializer_name) {
