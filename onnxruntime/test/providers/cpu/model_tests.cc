@@ -906,8 +906,8 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
           continue;  // Skip models not in whitelist
       }
 
-      if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
-        continue;
+        if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
+          continue;
 
 #ifdef DISABLE_ML_OPS
         auto starts_with = [](const std::basic_string<PATH_CHAR_TYPE>& find_in,
