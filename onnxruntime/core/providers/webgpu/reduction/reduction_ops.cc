@@ -12,31 +12,31 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define REGISTER_REDUCE_VERSIONED_KERNEL(ReduceOp, begin, end)                                 \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                           \
-      ReduceOp,                                                                                \
-      kOnnxDomain,                                                                             \
-      begin, end,                                                                              \
-      kWebGpuExecutionProvider,                                                                \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypesExtended()), \
+#define REGISTER_REDUCE_VERSIONED_KERNEL(ReduceOp, begin, end)                         \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                   \
+      ReduceOp,                                                                        \
+      kOnnxDomain,                                                                     \
+      begin, end,                                                                      \
+      kWebGpuExecutionProvider,                                                        \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()), \
       ReduceOp);
 
-#define REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceOp, begin, end)                                                     \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                                  \
-      ReduceOp,                                                                                                                       \
-      kOnnxDomain,                                                                                                                    \
-      begin, end,                                                                                                                     \
-      kWebGpuExecutionProvider,                                                                                                       \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypesExtended()).InputMemoryType(OrtMemTypeCPUInput, 1), \
+#define REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceOp, begin, end)                                             \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                          \
+      ReduceOp,                                                                                                               \
+      kOnnxDomain,                                                                                                            \
+      begin, end,                                                                                                             \
+      kWebGpuExecutionProvider,                                                                                               \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       ReduceOp);
 
-#define REGISTER_REDUCE_KERNEL(ReduceOp, version)                                                                                     \
-  ONNX_OPERATOR_KERNEL_EX(                                                                                                            \
-      ReduceOp,                                                                                                                       \
-      kOnnxDomain,                                                                                                                    \
-      version,                                                                                                                        \
-      kWebGpuExecutionProvider,                                                                                                       \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypesExtended()).InputMemoryType(OrtMemTypeCPUInput, 1), \
+#define REGISTER_REDUCE_KERNEL(ReduceOp, version)                                                                             \
+  ONNX_OPERATOR_KERNEL_EX(                                                                                                    \
+      ReduceOp,                                                                                                               \
+      kOnnxDomain,                                                                                                            \
+      version,                                                                                                                \
+      kWebGpuExecutionProvider,                                                                                               \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedNumberTypes()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       ReduceOp);
 
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMean, 1, 10);

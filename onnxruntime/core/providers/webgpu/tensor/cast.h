@@ -10,7 +10,7 @@ namespace webgpu {
 
 class CastProgram final : public Program<CastProgram> {
  public:
-  CastProgram(int32_t to, bool is_from_int64) : Program{"Cast"}, to_{to}, is_from_int64_{is_from_int64} {}
+  CastProgram(int32_t to) : Program{"Cast"}, to_{to} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -18,7 +18,6 @@ class CastProgram final : public Program<CastProgram> {
 
  private:
   int32_t to_;
-  bool is_from_int64_;
 };
 
 class Cast final : public WebGpuKernel {
