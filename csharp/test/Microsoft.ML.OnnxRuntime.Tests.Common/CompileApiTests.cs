@@ -30,6 +30,7 @@ public class CompileApiTests
 
             compileOptions.SetOutputModelExternalInitializersFile("external_data.bin", 512);
             compileOptions.SetEpContextEmbedMode(true);
+            compileOptions.SetGraphOptimizationLevel(GraphOptimizationLevel.ORT_ENABLE_BASIC);
 
         }
 
@@ -45,6 +46,7 @@ public class CompileApiTests
             UIntPtr bytesSize = new UIntPtr();
             var allocator = OrtAllocator.DefaultInstance;
             compileOptions.SetOutputModelBuffer(allocator, ref bytePtr, ref bytesSize);
+            compileOptions.SetEpContextBinaryInformation("./", "squeezenet.onnx");
 
             compileOptions.CompileModel();
 

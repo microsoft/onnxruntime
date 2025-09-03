@@ -5,48 +5,33 @@
 
 #include <string>
 
-OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessionOptions& session_options,
+OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& /* ort_api */, const OrtSessionOptions& session_options,
                                           const char* config_key, const std::string& default_val,
                                           /*out*/ std::string& config_val) {
-  int has_config = 0;
-  RETURN_IF_ERROR(ort_api.HasSessionConfigEntry(&session_options, config_key, &has_config));
-
-  if (has_config != 1) {
-    config_val = default_val;
-    return nullptr;
+  try {
+    Ort::ConstSessionOptions sess_opt{&session_options};
+    config_val = sess_opt.GetConfigEntryOrDefault(config_key, default_val);
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
   }
-
-  size_t size = 0;
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, nullptr, &size));
-
-  config_val.resize(size);
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, config_val.data(), &size));
-  config_val.resize(size - 1);  // remove the terminating '\0'
 
   return nullptr;
 }
 
-OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result) {
+void IsFloatTensor(Ort::ConstValueInfo value_info, bool& result) {
   result = false;
 
-  const OrtTypeInfo* type_info = nullptr;
-  RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(value_info, &type_info));
-
-  ONNXType onnx_type = ONNX_TYPE_UNKNOWN;
-  RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(type_info, &onnx_type));
+  auto type_info = value_info.TypeInfo();
+  ONNXType onnx_type = type_info.GetONNXType();
   if (onnx_type != ONNX_TYPE_TENSOR) {
-    return nullptr;
+    return;
   }
 
-  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
-
-  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
+  auto type_shape = type_info.GetTensorTypeAndShapeInfo();
+  ONNXTensorElementDataType elem_type = type_shape.GetElementType();
   if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    return nullptr;
+    return;
   }
-
   result = true;
-  return nullptr;
 }
