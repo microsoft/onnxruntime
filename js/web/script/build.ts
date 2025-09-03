@@ -488,31 +488,42 @@ async function postProcess() {
 
 async function validate() {
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
-  for (const file of files) {
-    // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
-    if ((file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.')) {
-      const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
-      const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
+  // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
+  const validateFiles = files.filter(file => (file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.'));
+  
+  for (const file of validateFiles) {
+    const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
+    const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
 
-      if (isMinified) {
-        // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
-        //
-        // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
-        // this case, we should fix the build script (this file).
-        //
-        if (content.includes('BUILD_DEFS')) {
-          throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
-        }
-      }
-
-      // all files should contain the webpack magic comment to ignore dynamic import calls.
+    if (isMinified) {
+      // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
       //
-      if (!file.includes('.webgl.') && !file.includes('.bundle.')) {
-        const contentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
-        if (!content.includes(contentToSearch)) {
-          throw new Error(`Validation failed: "${file}" does not contain webpack magic comment.`);
-        }
+      // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
+      // this case, we should fix the build script (this file).
+      //
+      if (content.includes('BUILD_DEFS')) {
+        throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
       }
+    }
+
+    if (file.includes('.webgl.') || file.includes('.bundle.')) {
+      // no further validation required.
+      //
+      continue;
+    }
+
+    // all files should contain the webpack magic comment to ignore dynamic import calls.
+    //
+    const webpackContentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
+    if (!content.includes(webpackContentToSearch)) {
+      throw new Error(`Validation failed: "${file}" does not contain webpack magic comment.`);
+    }
+
+    // all files should contain the vite magic comment to suppress dynamic import call warnings.
+    //
+    const viteContentToSearch = isMinified ? '/*@vite-ignore*/' : '/* @vite-ignore */';
+    if (!content.includes(viteContentToSearch)) {
+      throw new Error(`Validation failed: "${file}" does not contain vite magic comment.`);
     }
   }
 }
