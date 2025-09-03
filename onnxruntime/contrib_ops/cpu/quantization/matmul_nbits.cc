@@ -224,6 +224,15 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         is_packed = false;
       }
     }
+
+      // Packing zero_point
+      if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+        auto zptr = tensor.Data<uint8_t>();
+        MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), nullptr,
+                                    has_zp_input_, zptr, nullptr);
+        is_packed = false;
+      }
+    }
     if (input_idx == InputIndex::scales && packed_b_ != nullptr &&
         MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
       scales_are_packed_ = true;
