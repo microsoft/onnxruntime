@@ -951,6 +951,12 @@ void replace_bf16_with_fp16(qdq_scales_fix::CustomGraph& gen_graph) {
     }
   }
 
+  for (auto& node : gen_graph.original_graph.Nodes()) {
+    for (auto& input_def : node->InputDefs()) {
+      ORT_THROW_IF_ERROR(graph_utils::ConvertInMemoryDataToInline(gen_graph.original_graph, input_def->Name()));
+    }
+  }
+
   const auto& init_set = gen_graph.original_graph.GetAllInitializedTensors();
   for (auto& [key, const_tensor_proto] : init_set) {
     auto tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(const_tensor_proto);
