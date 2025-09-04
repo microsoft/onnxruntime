@@ -140,6 +140,8 @@ stages:
         image: 'macOS-14'
         os: 'macOS'
 
+    timeoutInMinutes: 90
+
     steps:
     - task: DownloadPipelineArtifact@2
       inputs:
