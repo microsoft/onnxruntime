@@ -120,11 +120,18 @@ Q8Int8GemmR2xC8I8MM(
                     QuantBDataPtr += NCols8 * KStep16;
                 }
 
+                // Android armeabi-v7a ABI doesn't have vfmaq_f32()
+#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
+                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_s32(acc0_47));
+                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_s32(acc1_03));
+                accf1_47 = vmlaq_f32(accf1_47, scaleA1B47, vcvtq_f32_s32(acc1_47));
+#else
                 accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
                 accf0_47 = vfmaq_f32(accf0_47, scaleA0B47, vcvtq_f32_s32(acc0_47));
                 accf1_03 = vfmaq_f32(accf1_03, scaleA1B03, vcvtq_f32_s32(acc1_03));
                 accf1_47 = vfmaq_f32(accf1_47, scaleA1B47, vcvtq_f32_s32(acc1_47));
-
+#endif
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols8;
             }
@@ -231,9 +238,14 @@ Q8Int8GemmR1xC8I8MM(
                     QuantBDataPtr += NCols8 * KStep16;
                 }
 
+                // Android armeabi-v7a ABI doesn't have vfmaq_f32()
+#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
+                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_s32(acc0_47));
+#else
                 accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
                 accf0_47 = vfmaq_f32(accf0_47, scaleA0B47, vcvtq_f32_s32(acc0_47));
-
+#endif
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols8;
             }
@@ -332,8 +344,15 @@ Q8Int8GemmR2xC4I8MM(
                     QuantBDataPtr += NCols4 * KStep16;
                 }
 
+                // Android armeabi-v7a ABI doesn't have vfmaq_f32()
+#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
+                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_s32(acc1_03));
+
+#else
                 accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
                 accf1_03 = vfmaq_f32(accf1_03, scaleA1B03, vcvtq_f32_s32(acc1_03));
+#endif
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols4;
@@ -420,8 +439,12 @@ Q8Int8GemmR1xC4I8MM(
                     QuantBDataPtr += NCols4 * KStep16;
                 }
 
+                // Android armeabi-v7a ABI doesn't have vfmaq_f32()
+#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
+#else
                 accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
-
+#endif
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols4;
             }
@@ -505,9 +528,14 @@ Q8Int8GemmR2xC1I8MM(
                     QuantBDataPtr += KStep16;
                 }
 
+                // Android armeabi-v7a ABI doesn't have vfmaq_n_f32()
+#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
+                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_s32(acc0), scaleA0B);
+                accf1 = vmlaq_n_f32(accf1, vcvtq_f32_s32(acc1), scaleA1B);
+#else
                 accf0 = vfmaq_n_f32(accf0, vcvtq_f32_s32(acc0), scaleA0B);
                 accf1 = vfmaq_n_f32(accf1, vcvtq_f32_s32(acc1), scaleA1B);
-
+#endif
                 ++QuantAScalePtr;
                 ++QuantBScalePtr;
             }
@@ -587,8 +615,12 @@ Q8Int8GemmR1xC1I8MM(
                     QuantBDataPtr += KStep16;
                 }
 
+                // Android armeabi-v7a ABI doesn't have vfmaq_n_f32()
+#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
+                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_s32(acc0), scaleA0B);
+#else
                 accf0 = vfmaq_n_f32(accf0, vcvtq_f32_s32(acc0), scaleA0B);
-
+#endif
                 ++QuantAScalePtr;
                 ++QuantBScalePtr;
             }

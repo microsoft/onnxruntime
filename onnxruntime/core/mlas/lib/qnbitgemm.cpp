@@ -762,7 +762,7 @@ SQ8BitGemm_CompInt8(
 
         if (GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8 != nullptr) {
             const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-            const float* b_blk_sum2 = BlkUnsignedQuantAZeroPointCorrection ? 
+            const float* blk_unsigned_quant_A_zp_correction = BlkUnsignedQuantAZeroPointCorrection ?
                 BlkUnsignedQuantAZeroPointCorrection + n * k_blks : nullptr;
             GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8(
                 BlkLen,
@@ -780,7 +780,7 @@ SQ8BitGemm_CompInt8(
                 ldc,
                 ABlockSum,
                 b_blk_sum,
-                b_blk_sum2
+                blk_unsigned_quant_A_zp_correction
             );
 
             if (DataParams->PostProcessor != nullptr) {
