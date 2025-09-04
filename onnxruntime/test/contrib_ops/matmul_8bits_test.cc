@@ -25,7 +25,9 @@
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
 
-#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
+#if ((defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)) &&    \
+     !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || \
+    defined(USE_CUDA) || defined(USE_WEBGPU)
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -275,6 +277,7 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   GTEST_SKIP() << "Skipping test on Android x86_64 (emulator).";
 #endif
   TestMatMul8BitsTyped<float, 1, 1, 16, 16, 4>();
+  TestMatMul8BitsTyped<float, 1, 8, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 2, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 4, 32, 16, 4>();
