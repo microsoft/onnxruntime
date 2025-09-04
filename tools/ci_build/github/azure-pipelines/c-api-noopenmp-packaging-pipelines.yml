@@ -139,6 +139,8 @@ extends:
         BuildId: ${{ parameters.BuildId }}
         QnnSDKVersion: ${{ parameters.QnnSdk }}
         is1ES: true
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
     - template: stages/java-cuda-packaging-stage.yml
       parameters:
