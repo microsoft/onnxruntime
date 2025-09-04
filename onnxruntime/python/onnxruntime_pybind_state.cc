@@ -1787,6 +1787,10 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("CPU", OrtMemTypeCPU)
       .value("DEFAULT", OrtMemTypeDefault);
 
+  py::enum_<OrtDeviceMemoryType>(m, "OrtDeviceMemoryType")
+      .value("DEFAULT", OrtDeviceMemoryType_DEFAULT)
+      .value("HOST_ACCESSIBLE", OrtDeviceMemoryType_HOST_ACCESSIBLE);
+
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device information.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::VendorId, OrtDevice::DeviceId>())
       .def(py::init([](OrtDevice::DeviceType type,
@@ -1815,6 +1819,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def("vendor_id", &OrtDevice::Vendor, R"pbdoc(Vendor Id.)pbdoc")
+      .def("mem_type", &OrtDevice::MemType, R"pbdoc(Device Memory Type.)pbdoc")
       // generic device types that are typically used with a vendor id.
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("gpu", []() { return OrtDevice::GPU; })
@@ -1870,30 +1875,37 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 for model inference.)pbdoc");
   py_ep_device.def_property_readonly(
                   "ep_name",
-                  [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
+                  [](const OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
                   R"pbdoc(The execution provider's name.)pbdoc")
       .def_property_readonly(
           "ep_vendor",
-          [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
+          [](const OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
           R"pbdoc(The execution provider's vendor name.)pbdoc")
       .def_property_readonly(
           "ep_metadata",
-          [](OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
+          [](const OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
             return ep_device->ep_metadata.Entries();
           },
           R"pbdoc(The execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "ep_options",
-          [](OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
+          [](const OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
             return ep_device->ep_options.Entries();
           },
           R"pbdoc(The execution provider's options used to configure the provider to use the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "device",
-          [](OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
+          [](const OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
             return *ep_device->device;
           },
           R"pbdoc(The OrtHardwareDevice instance for the OrtEpDevice.)pbdoc",
+          py::return_value_policy::reference_internal)
+      .def(
+          "memory_info",
+          [](const OrtEpDevice* ep_device, OrtDeviceMemoryType memory_type) -> const OrtMemoryInfo* {
+            return Ort::GetApi().EpDevice_MemoryInfo(ep_device, memory_type);
+          },
+          R"pbdoc(The OrtMemoryInfo instance for the OrtEpDevice specific to the device memory type.)pbdoc",
           py::return_value_policy::reference_internal);
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
@@ -1957,8 +1969,13 @@ for model inference.)pbdoc");
           mem_type);
     } else {
       throw std::runtime_error("Specified device is not supported.");
-    }
-  }));
+    } }))
+      .def_property_readonly("name", [](const OrtMemoryInfo* mem_info) -> const char* { return mem_info->name; })
+      .def_property_readonly("id", [](const OrtMemoryInfo* mem_info) -> int { return mem_info->device.Id(); }, R"pbdoc(Device Id.)pbdoc")
+      .def_property_readonly("mem_type", [](const OrtMemoryInfo* mem_info) -> OrtMemType { return mem_info->mem_type; }, R"pbdoc(OrtMemoryInfo memory type.)pbdoc")
+      .def_property_readonly("allocator_type", [](const OrtMemoryInfo* mem_info) -> OrtAllocatorType { return mem_info->alloc_type; })
+      .def_property_readonly("device_mem_type", [](const OrtMemoryInfo* mem_info) -> int { return mem_info->device.MemType(); }, R"pbdoc(Device memory type.)pbdoc")
+      .def_property_readonly("vendor_id", [](const OrtMemoryInfo* mem_info) -> uint32_t { return mem_info->device.Vendor(); });
 
   py::class_<PySessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");

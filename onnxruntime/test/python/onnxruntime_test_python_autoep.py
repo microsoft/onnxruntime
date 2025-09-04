@@ -226,6 +226,9 @@ class TestAutoEP(AutoEpTestCase):
         hw_metadata = hw_device.metadata
         self.assertGreater(len(hw_metadata), 0)  # Should have at least SPDRP_HARDWAREID on Windows
 
+        test_mem_info = test_ep_device.memory_info(onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertIsNotNone(test_mem_info)
+
         # Add EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()
         sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})

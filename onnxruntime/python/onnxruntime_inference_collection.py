@@ -1116,6 +1116,9 @@ class OrtDevice:
     def device_vendor_id(self):
         return self._ort_device.vendor_id()
 
+    def device_mem_type(self):
+        return self._ort_device.mem_type()
+
 
 class SparseTensor:
     """

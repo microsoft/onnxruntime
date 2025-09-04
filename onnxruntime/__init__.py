@@ -31,6 +31,7 @@ try:
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
         OrtCompileApiFlags,  # noqa: F401
+        OrtDeviceMemoryType,  # noqa: F401
         OrtEpDevice,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
         OrtHardwareDevice,  # noqa: F401

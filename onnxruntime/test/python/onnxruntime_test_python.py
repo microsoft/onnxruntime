@@ -1584,6 +1584,27 @@ class TestInferenceSession(unittest.TestCase):
             for _iteration in range(100000):
                 session.run(output_names=["output"], input_feed={"shape": shape})
 
+    def test_ort_device(self):
+        cpu_device = onnxrt.OrtDevice.make("cpu", 0)
+        self.assertEqual(cpu_device.device_id(), 0)
+        self.assertEqual(cpu_device.device_type(), 0)
+        self.assertEqual(cpu_device.device_vendor_id(), 0)
+        self.assertEqual(cpu_device.device_mem_type(), 0)
+
+    def test_ort_memory_info(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo(
+            "Cpu",
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+            0,
+            onnxrt.OrtMemType.DEFAULT,
+        )
+        self.assertEqual(cpu_memory_info.name, "Cpu")
+        self.assertEqual(cpu_memory_info.id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, 0)
+        self.assertEqual(cpu_memory_info.vendor_id, 0)
+
     def test_shared_allocator_using_create_and_register_allocator(self):
         # Create and register an arena based allocator
 
