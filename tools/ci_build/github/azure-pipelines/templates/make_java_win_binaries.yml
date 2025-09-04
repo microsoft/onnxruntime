@@ -30,6 +30,7 @@ steps:
         "--sources-dir", "$(Build.SourcesDirectory)",
         "--binaries-dir", "$(Build.BinariesDirectory)",
         "--platform", "${{ parameters.msbuildPlatform }}",
+        "--build-config", "RelWithDebInfo",
         "--java-artifact-id", "${{ parameters.java_artifact_id }}",
         "--pre-release-version-suffix-string", "${{ parameters.PreReleaseVersionSuffixString }}",
         "--pre-release-version-suffix-number", "${{ parameters.PreReleaseVersionSuffixNumber }}",

@@ -107,6 +107,8 @@ def main():
     parser.add_argument("--binaries-dir", required=True, type=Path, help="Path to the build binaries directory.")
     parser.add_argument("--platform", required=True, help="Platform string (e.g., x64).")
     parser.add_argument("--java-artifact-id", required=True, help="The Java artifact ID.")
+    parser.add_argument("--build-config", choices=['Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel'],
+                        default='RelWithDebInfo', help="The CMake build configuration type.")
     parser.add_argument("--pre-release-version-suffix-string", choices=['alpha', 'beta', 'rc', 'none'], default='none', help="The pre-release version suffix string.")
     parser.add_argument("--pre-release-version-suffix-number", type=int, default=0, help="The pre-release version suffix number.")
     parser.add_argument("--commit-hash", required=True, help="The git commit hash.")
@@ -140,10 +142,12 @@ def main():
 
     logging.info(f"Using full version: {full_version}")
 
-    java_working_dir = args.sources_dir / 'java'
+    # Use the java subdirectory of the repository root as the working directory for Gradle
+    java_working_dir = repo_root / 'java'
     update_pom_versions(java_working_dir, full_version)
 
-    cmake_build_dir_arg = f"-DcmakeBuildDir={args.binaries_dir / 'RelWithDebInfo'}"
+    build_config_dir = args.binaries_dir / args.build_config
+    cmake_build_dir_arg = f"-DcmakeBuildDir={build_config_dir}"
     gradle_executable = 'gradlew.bat' if sys.platform == 'win32' else './gradlew'
 
     if args.build_only:
@@ -166,7 +170,7 @@ def main():
         stage_dir.mkdir(parents=True, exist_ok=True)
         native_folder.mkdir(parents=True, exist_ok=True)
 
-        source_jar_path = next((args.binaries_dir / "RelWithDebInfo" / "java" / "build" / "libs").glob("*.jar"))
+        source_jar_path = next((build_config_dir / "java" / "build" / "libs").glob("*.jar"))
         shutil.copy2(source_jar_path, platform_dir)
 
         pom_archive_path = f"META-INF/maven/com.microsoft.onnxruntime/{args.java_artifact_id}/pom.xml"
@@ -176,8 +180,14 @@ def main():
         (platform_dir / pom_archive_path).rename(final_pom_path)
         shutil.rmtree(platform_dir / "META-INF")
 
-        shutil.copy2(args.binaries_dir / "RelWithDebInfo" / "onnxruntime.pdb", native_folder)
-        shutil.copy2(args.binaries_dir / "RelWithDebInfo" / "onnxruntime4j_jni.pdb", native_folder)
+        # PDB files are only generated for Debug and RelWithDebInfo builds.
+        if args.build_config in ['Debug', 'RelWithDebInfo']:
+            logging.info("Copying PDB files...")
+            shutil.copy2(build_config_dir / "onnxruntime.pdb", native_folder)
+            shutil.copy2(build_config_dir / "onnxruntime4j_jni.pdb", native_folder)
+        else:
+            logging.info(f"Skipping PDB copy for '{args.build_config}' build config.")
+        
         shutil.copy2(args.sources_dir / "docs" / "Privacy.md", stage_dir)
         shutil.copy2(args.sources_dir / "ThirdPartyNotices.txt", stage_dir)
         (stage_dir / "GIT_COMMIT_ID").write_text(args.commit_hash, encoding="utf-8")
