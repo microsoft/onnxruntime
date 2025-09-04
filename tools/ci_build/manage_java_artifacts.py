@@ -23,33 +23,6 @@ def run_command(command: list, working_dir: Path):
         logging.error(f"Command failed with exit code {e.returncode}")
         raise
 
-def update_pom_versions(java_source_dir: Path, new_version: str):
-    """Finds all pom.xml files and updates their version tag before the build."""
-    logging.info(f"Updating all pom.xml files to version '{new_version}'...")
-    pom_files = list(java_source_dir.rglob('pom.xml'))
-    if not pom_files:
-        logging.warning("No pom.xml files found to update.")
-        return
-
-    namespace = {'mvn': 'http://maven.apache.org/POM/4.0.0'}
-    ET.register_namespace('', namespace['mvn'])
-
-    for pom_file in pom_files:
-        try:
-            logging.info(f"Processing '{pom_file}'...")
-            tree = ET.parse(pom_file)
-            root = tree.getroot()
-            version_element = root.find('mvn:version', namespace)
-
-            if version_element is not None:
-                version_element.text = new_version
-                tree.write(pom_file, encoding='utf-8', xml_declaration=True)
-            else:
-                logging.warning(f"  Could not find <version> tag in '{pom_file}'.")
-        except Exception as e:
-            logging.error(f"An error occurred while processing '{pom_file}': {e}")
-
-
 def create_zip_from_directory(zip_file_path: Path, source_dir: Path):
     """Creates a zip file from the contents of a source directory."""
     logging.info(f"Creating archive '{zip_file_path}' from directory '{source_dir}'...")
@@ -144,20 +117,24 @@ def main():
 
     # Use the java subdirectory of the repository root as the working directory for Gradle
     java_working_dir = repo_root / 'java'
-    update_pom_versions(java_working_dir, full_version)
 
     build_config_dir = args.binaries_dir / args.build_config
     cmake_build_dir_arg = f"-DcmakeBuildDir={build_config_dir}"
-    gradle_executable = 'gradlew.bat' if sys.platform == 'win32' else './gradlew'
+    version_property_arg = f"-Pversion={full_version}"
+    
+    # Construct the absolute path to the Gradle wrapper
+    gradle_executable_name = 'gradlew.bat' if sys.platform == 'win32' else 'gradlew'
+    gradle_executable_path = java_working_dir / gradle_executable_name
 
     if args.build_only:
-        run_command([gradle_executable, "testClasses", cmake_build_dir_arg], working_dir=java_working_dir)
+        run_command([str(gradle_executable_path), "testClasses", cmake_build_dir_arg, version_property_arg], 
+                    working_dir=java_working_dir)
 
-    run_command([gradle_executable, "cmakeCheck", "-x", "test", cmake_build_dir_arg, "--warning-mode", "all"],
+    run_command([str(gradle_executable_path), "cmakeCheck", "-x", "test", cmake_build_dir_arg, "--warning-mode", "all", version_property_arg],
                 working_dir=java_working_dir)
 
     # --- 2. Path Definitions ---
-    platform_dir = args.binaries-dir / f"onnxruntime-java-win-{args.platform}"
+    platform_dir = args.binaries_dir / f"onnxruntime-java-win-{args.platform}"
     stage_dir = platform_dir / "stage"
     native_folder = stage_dir / "ai" / "onnxruntime" / "native" / f"win-{args.platform}"
     main_jar_name = f"onnxruntime-{full_version}.jar"
