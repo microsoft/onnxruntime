@@ -4,6 +4,14 @@
 #include <exception>
 #include <functional>
 #include <string>
+#include <filesystem>
+#include <fstream>
+#include <cstdio>
+
+// Additional includes for platform-specific temporary file creation
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
@@ -240,44 +248,83 @@ TEST_F(LoggingTestsFixture, TestVLog) {
 #endif
 }
 
+// A cross-platform RAII helper for creating and managing a temporary file securely.
+// The file is automatically deleted when this object goes out of scope.
+struct ScopedTempFile {
+  ScopedTempFile() {
 #ifdef _WIN32
-class CTestSink : public WOStreamSink {
- public:
-  CTestSink(std::wostringstream& stream) : WOStreamSink(stream, /*flush*/ true) {
-  }
-};
+    // tmpfile_s is the secure way to create a temporary file on Windows.
+    // The file is automatically deleted upon closing.
+    if (tmpfile_s(&fp_) != 0) {
+      fp_ = nullptr;
+    }
 #else
-class CTestSink : public OStreamSink {
- public:
-  CTestSink(std::ostringstream& stream) : OStreamSink(stream, /*flush*/ true) {
-  }
-};
+    // On POSIX, mkstemp creates a unique file and returns a file descriptor.
+    char temp_name_template[] = "/tmp/ort-test-XXXXXX";
+    int fd = mkstemp(temp_name_template);
+    if (fd != -1) {
+      // Immediately unlink the file. It will persist as long as we have the
+      // file descriptor open and be automatically cleaned up on close.
+      unlink(temp_name_template);
+      fp_ = fdopen(fd, "w+");
+      if (!fp_) {
+        close(fd);
+      }
+    }
 #endif
+  }
+
+  ~ScopedTempFile() {
+    if (fp_) {
+      fclose(fp_);
+    }
+  }
+
+  // Disable copy and move semantics
+  ScopedTempFile(const ScopedTempFile&) = delete;
+  ScopedTempFile& operator=(const ScopedTempFile&) = delete;
+
+  FILE* get() { return fp_; }
+
+ private:
+  FILE* fp_{};
+};
 
 TEST_F(LoggingTestsFixture, TestTruncation) {
-  const std::string logger_id{"TestTruncation"};
-  const Severity min_log_level = Severity::kVERBOSE;
-  constexpr bool filter_user_data = false;
+  // Create a secure temporary file.
+  ScopedTempFile temp_file;
+  FILE* file_handle = temp_file.get();
+  ASSERT_NE(file_handle, nullptr);
 
-#ifdef _WIN32
-  std::wostringstream out;
-#else
-  std::ostringstream out;
-#endif
-  auto* sink_ptr = new CTestSink{out};
+  // This scope ensures the LoggingManager is destroyed, which in turn
+  // destroys the sink, flushes all output, and allows us to read the file.
+  {
+    const std::string logger_id{"TestTruncation"};
+    const auto min_log_level = onnxruntime::logging::Severity::kVERBOSE;
+    constexpr bool filter_user_data = false;
 
-  LoggingManager manager{std::unique_ptr<ISink>(sink_ptr), min_log_level, filter_user_data,
-                         InstanceType::Temporal};
+    onnxruntime::logging::LoggingManager manager{
+        std::make_unique<onnxruntime::logging::OStreamSink>(file_handle, /*flush=*/true),
+        min_log_level,
+        filter_user_data,
+        onnxruntime::logging::LoggingManager::InstanceType::Temporal};
 
-  auto logger = manager.CreateLogger(logger_id);
+    auto logger = manager.CreateLogger(logger_id);
 
-  // attempt to print string longer than hard-coded 2K buffer limit
-  LOGF(*logger, ERROR, "%s", std::string(4096, 'a').c_str());
-#ifdef _WIN32
-  EXPECT_THAT(out.str(), HasSubstr(L"[...truncated...]"));
-#else
-  EXPECT_THAT(out.str(), HasSubstr("[...truncated...]"));
-#endif
+    // Attempt to print string longer than hard-coded 2K buffer limit
+    LOGF(*logger, ERROR, "%s", std::string(4096, 'a').c_str());
+  }
+
+  // Read the entire content from the temporary file.
+  rewind(file_handle);
+  std::string log_contents;
+  char buffer[256];
+  while (fgets(buffer, sizeof(buffer), file_handle) != nullptr) {
+    log_contents += buffer;
+  }
+
+  // 5. Verify that the truncation message is present in the output.
+  EXPECT_THAT(log_contents, testing::HasSubstr("[...truncated...]"));
 }
 
 TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStatement) {
