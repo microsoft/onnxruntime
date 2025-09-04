@@ -201,7 +201,6 @@ stages:
             java_artifact_id: ${{ parameters.java_artifact_id }}
             PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
             PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
-
             ${{ if or(contains(parameters.buildparameter, 'use_cuda'), contains(parameters.buildparameter, 'use_tensorrt')) }}:
             # When it is a GPU build, we only assemble the java binaries, testing will be done in the later stage with GPU machine
               buildOnly: true
