@@ -233,8 +233,7 @@ MlasQNBitGemmScalesPacked(
 bool MLASCALL
 MlasIsTMACAvailable(
     size_t BlkBitWidth,
-    size_t BlkLen,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    size_t BlkLen
 );
 
 /**
@@ -243,4 +242,8 @@ MlasIsTMACAvailable(
  * Returns true if initialization succeeded or was unnecessary.
  */
 bool MLASCALL
-MlasTmacInitializeTable();
+MlasTmacInitializeTable(size_t BlkLen, 
+                        const void* QuantBData,     // B in MLFloat16 (per your layout)
+                        const float* QuantBScale,        // scale(s) in float
+                        void* qlut                       // destination LUT buffer (int8 data)
+);

@@ -55,7 +55,7 @@ GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
     return SQNBIT_CompInt8;
   }
 
-  if (accuracy_level_attr == static_cast<int64_t>(Level5) && MlasIsTMACAvailable(nbits, block_size, SQNBIT_CompInt8)) {
+  if (accuracy_level_attr == static_cast<int64_t>(Level5) && MlasIsTMACAvailable(nbits, block_size)) {
     return TMAC;
   }
 
@@ -321,12 +321,14 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
   auto* y_data = y->MutableData<T1>();
 
+  IAllocatorUniquePtr<std::byte> lut{};
+
   // TODO: add the logic for generating lookup table here -- for now we can assume that
   // 2 bits + acc level 4 = use look up table but in the future adapt so that we use a mamtulnbits attr to decide
   // if we want to do lut generation
   if (compute_type_ == TMAC) {
     // call lut gen somehow
-    MlasTmacInitializeTable();
+    MlasTmacInitializeTable(block_size_, packed_b_.get(), scales_data, lut.get());
   }
 
   const size_t batch_count = helper.OutputOffsets().size();

@@ -26,16 +26,14 @@ size_t
 Q2BitGemmPackQuantBDataSize(
     size_t N,
     size_t K,
-    size_t BlkLen,
+    size_t /*BlkLen*/,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
   // TODO: This code shall change according to T-Mac.
     MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
-    constexpr size_t BlkBitWidth = 2;
 
-    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-    const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t PackedQuantBDataSize = N * K / 8;
     return PackedQuantBDataSize;
 }
 
@@ -447,10 +445,30 @@ GenerateLUT_avx2(
 
         // Store 8 lanes x 4 rows for this 32-wide block
         int32_t* qlut_i32 = reinterpret_cast<int32_t*>(lut);
-        for (int lane = 0; lane < 8; ++lane) {
-            for (int g = 0; g < 4; ++g) {
-                qlut_i32[kblk * 32 + lane * 4 + g] = _mm256_extract_epi32(vec_qlut[g], lane);
-            }
+
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 0 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 0);
+        }
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 1 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 1);
+        }
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 2 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 2);
+        }
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 3 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 3);
+        }
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 4 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 4);
+        }
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 5 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 5);
+        }
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 6 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 6);
+        }
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[kblk * 32 + 7 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 7);
         }
     }
 
