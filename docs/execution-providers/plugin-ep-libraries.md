@@ -28,7 +28,7 @@ The ONNX Runtime repository includes a [sample plugin EP library](https://github
 ### Defining an OrtEp
 An `OrtEp` represents an instance of an EP that is used by an ONNX Runtime session to identify and execute the model operations supported by the EP.
 
-The following table lists the **required** varibles and functions that an implementer must define for an `OrtEp`.
+The following table lists the **required** variables and functions that an implementer must define for an `OrtEp`.
 
 <table>
 <tr>
@@ -105,7 +105,7 @@ Implementation of this function is optional. If an EP prefers a non-default data
 <td>SetDynamicOptions</td>
 <td>
 Set dynamic options on this EP. Dynamic options can be set by the application at any time after session creation with <a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#ab1117a51683e4fbb42687c9db6e8d5fb"><code>OrtApi::SetEpDynamicOptions()</code></a>.<br/><br/>
-Implementation of this function is optional. An EP should only impliment this function if it needs to handle any dynamic options.
+Implementation of this function is optional. An EP should only implement this function if it needs to handle any dynamic options.
 </td>
 <td></td>
 </tr>
@@ -114,7 +114,7 @@ Implementation of this function is optional. An EP should only impliment this fu
 <td>OnRunStart</td>
 <td>
 Called by ORT to notify the EP of the start of a run.<br/><br/>
-Implementation of this function is optional. An EP should only impliment this function if it needs to handle application-provided options at the start of a run.
+Implementation of this function is optional. An EP should only implement this function if it needs to handle application-provided options at the start of a run.
 </td>
 <td></td>
 </tr>
@@ -123,7 +123,7 @@ Implementation of this function is optional. An EP should only impliment this fu
 <td>OnRunEnd</td>
 <td>
 Called by ORT to notify the EP of the end of a run.<br/><br/>
-Implementation of this function is optional. An EP should only impliment this function if it needs to handle application-provided options at the end of a run.
+Implementation of this function is optional. An EP should only implement this function if it needs to handle application-provided options at the end of a run.
 </td>
 <td></td>
 </tr>
