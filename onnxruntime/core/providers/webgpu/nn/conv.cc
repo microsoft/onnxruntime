@@ -34,7 +34,7 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
   uint32_t dispatch_z = 1;
 
   // This temporary workaround addresses a significant performance bottleneck
-  // (10x slower) for the shape (3, 3, 2560, 1280) due to an issue with Intel's
+  // (~12x slower) for the shape (3, 3, 2560, 1280) due to an issue with Intel's
   // GPU drivers. We manually normalize the dispatch group size to restore
   // performance.
   //
