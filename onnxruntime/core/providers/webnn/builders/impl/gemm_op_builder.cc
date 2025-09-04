@@ -30,6 +30,72 @@ class GemmOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
 };
 
+// Helper function
+common::Status ProcessZeroPointAndScale(
+    const std::vector<int64_t>& input_shape,
+    const size_t zero_point_index,
+    emscripten::val& zero_point,
+    emscripten::val& scale,
+    ModelBuilder& model_builder,
+    const Node& node,
+    const int32_t zero_point_type,
+    const logging::Logger& logger) {
+  ORT_RETURN_IF_NOT((zero_point_index == 2 || zero_point_index == 3), "zero_point_index should be 2 or 3.");
+  // The WebNN dequantizeLinear op requires the scale and zero_point tensors to have the
+  // same rank as the input tensor. So we need to reshape the zero_point tensors
+  // to match the input rank.
+
+  // Initially set target zero point shape to [1, 1, ..., 1].
+  std::vector<uint32_t> target_zero_point_shape(input_shape.size(), 1);
+  if (TensorExists(node.InputDefs(), zero_point_index)) {
+    const auto& zero_point_arg = node.InputDefs()[zero_point_index];
+    const auto zero_point_name = zero_point_arg->Name();
+    zero_point = model_builder.GetOperand(zero_point_name);
+    std::vector<int64_t> zero_point_shape;
+    ORT_RETURN_IF_NOT(GetShape(*zero_point_arg, zero_point_shape, logger),
+                      "Cannot get shape of zero_point: " + zero_point_name);
+
+    // Assume zero_point shape has the same shape as input or is 1-D.
+    // Adjust zero_point shape only if it's 1-D to match the input shape.
+    const auto target_zero_point_rank = target_zero_point_shape.size();
+    const auto zero_point_rank = zero_point_shape.size();
+    if (zero_point_rank == 1 && zero_point_shape[0] != 1) {
+      // For a_zero_point, its shape may be:
+      // - [K] when the A input shape is [1, K], it should be reshaped to [1, K]
+      // - [M] when the A input shape is [M, K], it should be reshaped to [M, 1]
+      // For b_zero_point, its shape may be:
+      // - [K] when the B input shape is [K, 1], it should be reshaped to [K, 1]
+      // - [N] when the B input shape is [K, N], it should be reshaped to [1, N]
+      const uint32_t safe_zero_point_shape = SafeInt<uint32_t>(zero_point_shape[0]);
+      if (safe_zero_point_shape == input_shape[0]) {
+        target_zero_point_shape[0] = safe_zero_point_shape;
+      } else {
+        target_zero_point_shape.back() = safe_zero_point_shape;
+      }
+    }
+
+    if (zero_point_rank != target_zero_point_rank) {
+      // Reshape zero_point to the target shape.
+      emscripten::val common_options = emscripten::val::object();
+      common_options.set("label", node.Name() + "_reshape_zero_point_" + zero_point_name);
+      zero_point = model_builder.GetBuilder().call<emscripten::val>(
+          "reshape", zero_point, emscripten::val::array(target_zero_point_shape), common_options);
+    } else {
+      // Set target_zero_point_shape to the actual shape of zero_point.
+      target_zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(zero_point_shape);
+    }
+  } else {
+    // If zero_point is not provided, create default zero_point with the same rank as input.
+    zero_point = model_builder.CreateOrGetConstant<uint8_t>(zero_point_type, 0, target_zero_point_shape);
+  }
+
+  // Create scale with the same shape as the zero point.
+  scale = model_builder.CreateOrGetConstant<float>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_zero_point_shape);
+
+  return Status::OK();
+}
+
 // Add operator related.
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                             const logging::Logger& logger) const {
@@ -77,88 +143,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     int32_t a_type;
     ORT_RETURN_IF_NOT(GetType(*input_defs[0], a_type, logger), "Cannot get data type of input A");
 
-    // The WebNN dequantizeLinear op requires the scale and zero_point tensors to have the
-    // same rank as the input tensor. So we need to reshape the zero_point tensors
-    // to match the input rank.
     emscripten::val a_zero_point, b_zero_point, a_scale, b_scale;
-    // Initially set target zero point shape to [1, 1, ..., 1].
-    std::vector<uint32_t> target_a_zero_point_shape(a_shape.size(), 1);
-    std::vector<uint32_t> target_b_zero_point_shape(b_shape.size(), 1);
-    if (TensorExists(input_defs, 2)) {  // a_zero_point
-      a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
-      std::vector<int64_t> a_zero_point_shape;
-      ORT_RETURN_IF_NOT(GetShape(*input_defs[2], a_zero_point_shape, logger), "Cannot get shape of a_zero_point");
 
-      // Adjust a_zero_point shape based on its rank and the rank of input A.
-      if (a_zero_point_shape.size() == 1) {
-        const uint32_t safe_a_zero_point = SafeInt<uint32_t>(a_zero_point_shape[0]);
-        if (a_rank == 1) {
-          // Input A is 1-D, reshaped to [1, K]. Prepend 1 to a_zero_point shape.
-          target_a_zero_point_shape.back() = safe_a_zero_point;
-        } else {
-          // Input A is at least 2-D. Append 1s to a_zero_point shape.
-          target_a_zero_point_shape[0] = safe_a_zero_point;
-        }
-      }
-
-      if (a_zero_point_shape.size() != target_a_zero_point_shape.size()) {
-        // Need to reshape a_zero_point to the target shape.
-        common_options.set("label", node.Name() + "_reshape_a_zero_point");
-        a_zero_point = model_builder.GetBuilder().call<emscripten::val>(
-            "reshape", a_zero_point, emscripten::val::array(target_a_zero_point_shape), common_options);
-      } else {
-        // a_zero_point will have the same rank as input A, no need to reshape it.
-        // Set target_a_zero_point_shape to the actual shape of a_zero_point.
-        target_a_zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(a_zero_point_shape);
-      }
-      // Scale is not used by MatMulInteger but required by WebNN's dequantizeLinear. So set it to default value 1.0f.
-      // The scale input should have the same shape as the zero point input.
-      a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                         1.0f,
-                                                         target_a_zero_point_shape);
-    } else {
-      // If a_zero_point is not provided, create default zero_point and scale inputs with the same rank as input A.
-      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0, target_a_zero_point_shape);
-      a_scale = model_builder.CreateOrGetConstant<float>(
-          ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_a_zero_point_shape);
-    }
-
-    if (TensorExists(input_defs, 3)) {  // b_zero_point
-      b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
-      std::vector<int64_t> b_zero_point_shape;
-      ORT_RETURN_IF_NOT(GetShape(*input_defs[3], b_zero_point_shape, logger), "Cannot get shape of b_zero_point");
-
-      // Adjust b_zero_point shape based on its rank and the rank of input B.
-      if (b_zero_point_shape.size() == 1) {
-        const uint32_t safe_b_zero_point = SafeInt<uint32_t>(b_zero_point_shape[0]);
-        if (b_rank == 1) {
-          // Input B is 1-D, reshaped to [K, 1]. Append 1 to b_zero_point shape.
-          target_b_zero_point_shape[0] = safe_b_zero_point;
-        } else {
-          // Input B is at least 2-D. Prepend 1s to b_zero_point shape.
-          target_b_zero_point_shape.back() = safe_b_zero_point;
-        }
-      }
-
-      if (b_zero_point_shape.size() != target_b_zero_point_shape.size()) {
-        // Need to reshape b_zero_point to the target shape.
-        common_options.set("label", node.Name() + "_reshape_b_zero_point");
-        b_zero_point = model_builder.GetBuilder().call<emscripten::val>(
-            "reshape", b_zero_point, emscripten::val::array(target_b_zero_point_shape), common_options);
-      } else {
-        // b_zero_point will have the same rank as input B, no need to reshape it.
-        // Set target_b_zero_point_shape to the actual shape of b_zero_point.
-        target_b_zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(b_zero_point_shape);
-      }
-
-      b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                         1.0f,
-                                                         target_b_zero_point_shape);
-    } else {
-      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0, target_b_zero_point_shape);
-      b_scale = model_builder.CreateOrGetConstant<float>(
-          ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_b_zero_point_shape);
-    }
+    ORT_RETURN_IF_ERROR(
+        ProcessZeroPointAndScale(a_shape, 2, a_zero_point, a_scale, model_builder, node, a_type, logger));
+    ORT_RETURN_IF_ERROR(
+        ProcessZeroPointAndScale(b_shape, 3, b_zero_point, b_scale, model_builder, node, a_type, logger));
 
     // Dequantize A to Float32
     common_options.set("label", node.Name() + "_dequantized_a");
