@@ -383,12 +383,12 @@ namespace Microsoft.ML.OnnxRuntime
                 _delegateHandle = GCHandle.Alloc(_delegate);
             }
 
-            public IntPtr GetFunctionPointerForDelegate()
+            internal IntPtr GetFunctionPointerForDelegate()
             {
                 return Marshal.GetFunctionPointerForDelegate(_delegate);
             }
 
-            public IntPtr GetConnectorHandleAsPointer()
+            internal IntPtr GetConnectorHandleAsPointer()
             {
                 return GCHandle.ToIntPtr(_connectorHandle);
             }
@@ -438,8 +438,6 @@ namespace Microsoft.ML.OnnxRuntime
             private bool _disposed = false;
         }
         #endregion
-
-        internal IntPtr Handle => _handle;
 
         #region IDispose implementation
         /// <summary>
