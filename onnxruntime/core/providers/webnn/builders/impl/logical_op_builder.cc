@@ -25,13 +25,13 @@ class LogicalOpBuilder : public BaseOpBuilder {
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
-const std::unordered_set<std::string> UNARY_LOGICAL_OPS = {
+const std::unordered_set<std::string_view> UNARY_LOGICAL_OPS = {
     "IsInf",
     "IsNaN",
     "Not",
 };
 
-bool IsUnaryOp(const std::string& op_type) {
+bool IsUnaryOp(std::string_view op_type) {
   return UNARY_LOGICAL_OPS.count(op_type) > 0;
 }
 
@@ -146,7 +146,7 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& no
   if (!GetType(*input_defs[0], input0_type, logger))
     return false;
 
-  if (!IsUnaryOp(std::string(op_type))) {
+  if (!IsUnaryOp(op_type)) {
     if (!GetType(*input_defs[1], input1_type, logger))
       return false;
     std::array<int32_t, 2> input_types{input0_type, input1_type};
@@ -156,7 +156,7 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& no
   }
 
   const std::string_view webnn_input_name = GetWebNNOpFirstInputName(op_type);
-  std::string onnx_input_name = IsUnaryOp(std::string(op_type)) ? "X" : "A";
+  std::string onnx_input_name = IsUnaryOp(op_type) ? "X" : "A";
   return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, webnn_input_name, onnx_input_name, logger) &&
          IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
