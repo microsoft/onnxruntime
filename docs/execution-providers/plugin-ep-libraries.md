@@ -299,25 +299,23 @@ The sample application code below uses the following API functions to register a
  - [UnregisterExecutionProviderLibrary](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#acd4d148e149af2f2304a45b65891543f)
 
 ```cpp
-// Note: this snippet does not handle errors.
 const char* lib_registration_name = "ep_lib_name";
+Ort::Env env;
 
 // Register plugin EP library with ONNX Runtime.
-OrtStatus* status = ort_api->RegisterExecutionProviderLibrary(
-  ort_env,
-  lib_registration_name,  // Registration name can be anything the application chooses.
-  "ep_path.dll"           // Path to the plugin EP library
+env.RegisterExecutionProviderLibrary(
+  lib_registration_name,   // Registration name can be anything the application chooses.
+  ORT_TSTR("ep_path.dll")  // Path to the plugin EP library.
 );
 
-
 {
-  OrtSession* session = nullptr;
-  // Create an OrtSession and run a model ...
+  Ort::Session session(env, /*...*/);
+  // Run a model ...
 }
 
 // Unregister the library using the application-specified registration name.
 // Must only unregister a library after all sessions that use the library have been released.
-status = ort_api->UnregisterExecutionProviderLibrary(ort_env, lib_registration_name);
+env.UnregisterExecutionProviderLibrary(lib_registration_name);
 ```
 
 As shown in the following sequence diagram, registering a plugin EP library causes ONNX Runtime to load the library and
@@ -342,55 +340,35 @@ available to the application. Each `OrtEpDevice` represents a hardware device su
 The `SessionOptionsAppendExecutionProvider_V2` function takes an array of `OrtEpDevice` instances as input, where all `OrtEpDevice` instances refer to the same `OrtEpFactory`.
 
 ```cpp
-// NOTE: this snippet does not properly handle errors.
+Ort::Env env;
+env.RegisterExecutionProviderLibrary(/*...*/);
 
-// NOTE: Assume plugin EP library has been registered with RegisterExecutionProviderLibrary()
-OrtStatus* status = ort_api->RegisterExecutionProviderLibrary(/*...*/);
+{
+  std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
 
-size_t num_ep_devices = 0;
-const OrtEpDevice* const* ep_devices = nullptr;
-
-status = ort_api->GetEpDevices(ort_env, &ep_devices, &num_ep_devices);
-
-// Find the OrtEpDevice for "my_ep".
-std::array<const OrtEpDevice*, 1> desired_ep_devices = { nullptr };
-for (const OrtEpDevice* ep_device : ep_devices) {
-  if (std::strcmp(ort_api->EpDevice_EpName(ep_device), "my_ep") == 0) {
-    desired_ep_devices[0] = ep_device;
-    break;
+  // Find the Ort::EpDevice for "my_ep".
+  std::array<Ort::ConstEpDevice, 1> selected_ep_devices = { nullptr };
+  for (Ort::ConstEpDevice ep_device : ep_devices) {
+    if (std::strcmp(ep_device.GetName(), "my_ep") == 0) {
+      selected_ep_devices[0] = ep_device;
+      break;
+    }
   }
+
+  if (selected_ep_devices[0] == nullptr) {
+    // Did not find EP. Report application error ...
+  }
+
+  Ort::KeyValuePairs ep_options(/*...*/);  // Optional EP options.
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_V2(env, selected_ep_devices, ep_options);
+
+  Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
+
+  // Run model ...
 }
-assert(desired_ep_devices[0] != nullptr);  // Would normally handle this as an app error.
 
-OrtSessionOptions* session_options = nullptr;
-status = ort_api->CreateSessionOptions(&session_options);
-status = ort_api->SessionOptionsAppendExecutionProvider_V2(
-    session_options,
-    ort_env,
-    desired_ep_devices.data(),
-    desired_ep_devices.size(),
-    nullptr,  // ep_option_keys
-    nullptr,  // ep_option_vals
-    0         // num_ep_options
-);
-
-
-OrtSession* session = nullptr;
-status = ort_api->CreateSession(
-    ort_env,
-    ORT_TSTR("model.onnx"),
-    session_options,
-    &session
-);
-
-// Run model ...
-
-// Release resources
-ort_api->ReleaseStatus(status);
-ort_api->ReleaseSession(session);
-ort_api->ReleaseSessionOptions(session_options);
-
-status = ort_api->UnregisterExecutionProviderLibrary(/*...*/);
+env.UnregisterExecutionProviderLibrary(/*...*/);
 ```
 
 As shown in the following sequence diagram, ONNX Runtime calls `OrtEpFactory::CreateEp()` during session creation in order to create an instance of the plugin EP.
@@ -403,35 +381,19 @@ The application code below uses the API function [SessionOptionsSetEpSelectionPo
 If the plugin EP library registered with ONNX Runtime has a factory that supports NPU, then ONNX Runtime may select an EP from that factory to run the model.
 
 ```cpp
-// NOTE: this snippet does not properly handle errors.
+Ort::Env env;
+env.RegisterExecutionProviderLibrary(/*...*/);
 
-// NOTE: Assume plugin EP library has been registered and supports NPU
-OrtStatus* status = ort_api->RegisterExecutionProviderLibrary(/*...*/);
+{
+  Ort::SessionOptions session_options;
+  session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy::PREFER_NPU);
 
-OrtSessionOptions* session_options = nullptr;
-status = ort_api->CreateSessionOptions(&session_options);
-status = ort_api->SessionOptionsSetEpSelectionPolicy(
-    session_options,
-    OrtExecutionProviderDevicePolicy::PREFER_NPU,
-);
+  Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 
+  // Run model ...
+}
 
-OrtSession* session = nullptr;
-status = ort_api->CreateSession(
-    ort_env,
-    ORT_TSTR("model.onnx"),
-    session_options,
-    &session
-);
-
-// Run model ...
-
-// Release resources
-ort_api->ReleaseStatus(status);
-ort_api->ReleaseSession(session);
-ort_api->ReleaseSessionOptions(session_options);
-
-status = ort_api->UnregisterExecutionProviderLibrary(/*...*/);
+env.UnregisterExecutionProviderLibrary(/*...*/);
 ```
 
 <br/>
