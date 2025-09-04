@@ -123,6 +123,36 @@ QuantizeARow_CompInt8(
     std::byte* QuantA
 );
 
+template <bool QuantAUnsigned>
+void MLASCALL
+QuantizeARowComputeBlkSum_CompInt8(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum // scale_k * Sum_blklen(a_i)
+);
+
+template <bool QuantAUnsigned>
+using QuantAType = typename std::conditional<QuantAUnsigned, uint8_t, int8_t>::type;
+
+template <bool QuantAUnsigned>
+size_t
+MlasQ8Int8GemmKernelNeon(
+    const size_t BlkLen,
+    const QuantAType<QuantAUnsigned>* QuantA,
+    const float* QuantAScale,
+    const uint8_t* QuantBData,
+    const float * QuantBScale,
+    float* C,
+    const size_t CountM,
+    const size_t CountN,
+    const size_t CountK,
+    const float* Bias,
+    const size_t ldc
+);
+
 size_t
 SQ4BitGemmKernel_CompInt8(
     size_t BlkLen,
