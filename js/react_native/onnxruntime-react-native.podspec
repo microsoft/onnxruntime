@@ -25,7 +25,6 @@ Pod::Spec.new do |spec|
 
   spec.xcconfig = {
     'OTHER_CPLUSPLUSFLAGS' => '-Wall -Wextra',
-    'CLANG_CXX_LANGUAGE_STANDARD' => 'C++17',
   }
 
   if (File.exist?(File.join(root_dir, 'package.json')))
@@ -33,7 +32,9 @@ Pod::Spec.new do |spec|
     root_package = JSON.parse(File.read(File.join(root_dir, 'package.json')))
     if (root_package["onnxruntimeExtensionsEnabled"] == 'true')
       spec.dependency "onnxruntime-extensions-c"
-      spec.xcconfig['OTHER_CPLUSPLUSFLAGS'] += ' -DORT_ENABLE_EXTENSIONS=1'
+      spec.xcconfig = {
+        'OTHER_CPLUSPLUSFLAGS' => '-DORT_ENABLE_EXTENSIONS=1 -Wall -Wextra',
+      }
     end
   else
     puts "Could not find package.json file in the expected directory: #{root_dir}. ONNX Runtime Extensions will not be enabled."
