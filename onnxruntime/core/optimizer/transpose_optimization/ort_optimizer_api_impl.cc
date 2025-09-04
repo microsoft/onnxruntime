@@ -575,7 +575,9 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   TensorShape new_tensor_shape(new_tensor_shape_dims);
   Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
 
-  ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
+  if (new_tensor_shape.Size() > 0) {
+    ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
+  }
 
   auto& node_arg = *graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
