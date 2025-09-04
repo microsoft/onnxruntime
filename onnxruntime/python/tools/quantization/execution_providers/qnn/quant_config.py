@@ -341,14 +341,6 @@ class QnnCompatibilityOverrides:
             and node.input[2] not in self.overrides
         )
 
-        if has_weight_no_overrides or has_bias_no_overrides:
-            # TODO: Make bias input not per-channel. QNN needs it to be per-tensor, but quantizer
-            # tries to makes it per-channel if the weight is also per-channel.
-            raise ValueError(
-                "get_qnn_qdq_config() does not currently support the global per_channel option with LayerNormalization."
-                " Please try using custom overrides that make bias per-tensor quantized."
-            )
-
     def _process_sigmoid(self, node: onnx.NodeProto):
         """
         Overrides 16-bit Sigmoid's output scale and zero-point as per QNN requirements.
