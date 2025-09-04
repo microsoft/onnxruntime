@@ -389,3 +389,4 @@ Following ops are supported by the CANN Execution Provider in single-operator In
 Additional operator support and performance tuning will be added soon.
 
 * [Ascend](https://www.hiascend.com/en/)
+* [CANN](https://www.hiascend.com/cann)
