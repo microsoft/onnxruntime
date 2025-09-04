@@ -23,7 +23,7 @@ namespace contrib {
 template <typename T>
 MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info), MoEBaseCPU(op_kernel_info) {
   if (activation_type_ == ActivationType::SwiGLU && !swiglu_interleaved_) {
-    ORT_THROW("CPU MoE only supports interleaved SwiGLU format. Please set swiglu_interleaved=1.");
+    ORT_THROW("CPU MoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   }
 }
 

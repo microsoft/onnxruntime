@@ -54,7 +54,7 @@ class MoEBaseCPU {
     activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 1.0f);
     // Support legacy attribute name for interleaved layout used by some tests
     int64_t swiglu_interleaved_attr = op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_interleaved", 0);
-    swiglu_interleaved_ = (swiglu_interleaved_attr == 1);
+    swiglu_interleaved_ = (swiglu_fusion_ == 1) || (swiglu_interleaved_attr == 1);
   }
 
   bool normalize_routing_weights_;

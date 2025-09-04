@@ -1705,7 +1705,7 @@ static void RunMoECpuTest(const std::vector<float>& input, const std::vector<flo
   bool is_swiglu = (activation_type == "swiglu");
 
   if (is_swiglu) {
-    tester.AddAttribute<int64_t>("swiglu_interleaved", static_cast<int64_t>(1));
+    tester.AddAttribute<int64_t>("swiglu_fusion", static_cast<int64_t>(1));
     tester.AddAttribute<float>("activation_beta", 1.0f);
   }
 
