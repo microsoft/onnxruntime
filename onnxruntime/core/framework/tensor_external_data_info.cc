@@ -18,6 +18,13 @@ using ::google::protobuf::RepeatedPtrField;
 using ::ONNX_NAMESPACE::StringStringEntryProto;
 
 namespace onnxruntime {
+ExternalDataInfo::ExternalDataInfo() = default;
+
+#if !defined(ORT_MINIMAL_BUILD)
+ExternalDataInfo::ExternalDataInfo(const PathString& rel_path, OFFSET_TYPE offset, size_t length)
+    : rel_path_(rel_path), offset_(offset), length_(length) {}
+#endif
+
 Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& input,
                                 std::unique_ptr<ExternalDataInfo>& external_data_info_result) {
   auto external_data_info = std::make_unique<ExternalDataInfo>();

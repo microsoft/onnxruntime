@@ -210,6 +210,18 @@ class Model {
                                                                   const std::filesystem::path& file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
 
+  /// <summary>
+  /// Serialize the Model to a onnx::ModelProto. Caller provides a function that determines where each initializer
+  /// is stored (i.e., either in an external file or within the model).
+  /// </summary>
+  /// <param name="handle_initializer_func">Function called for every initializer.</param>
+  /// <param name="state">Opaque user state passed to the handle_initializer_func.</param>
+  /// <param name="model_proto">Output parameter set to the serialized onnx::ModelProto.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  common::Status ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                           void* state,
+                                                           /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) const;
+
   static common::Status Save(Model& model, const PathString& file_path);
 
   static common::Status Save(Model& model, int fd);

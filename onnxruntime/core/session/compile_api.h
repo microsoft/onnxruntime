@@ -35,5 +35,11 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextBinaryInformation, _In_ 
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetGraphOptimizationLevel,
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ GraphOptimizationLevel graph_optimization_level);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelWriteFunc,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ OrtWriteBufferFunc write_func, _In_ void* state);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
 
 }  // namespace OrtCompileAPI

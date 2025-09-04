@@ -9,7 +9,7 @@ import collections.abc
 import os
 import typing
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from onnxruntime.capi import _pybind_state as C
@@ -620,6 +620,36 @@ class InferenceSession(Session):
                 C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
+def make_get_initializer_location_func_wrapper(
+    get_initializer_location_func: GetInitializerLocationFunc,
+) -> GetInitializerLocationWrapperFunc:
+    """
+    Wraps a user's "get initializer location" function. The returned wrapper function adheres to the
+    signature expected by ORT.
+
+    Need this wrapper to:
+      - Convert the `initializer_value` parameter from `C.OrtValue` to `onnxruntime.OrtValue`, which is more
+        convenient for the user's function to use.
+      - Allow the user's function to return the original `external_info` parameter (this wrapper makes a copy)
+    """
+
+    def get_initializer_location_func_wrapper(
+        initializer_name: str,
+        initializer_value: C.OrtValue,
+        external_info: C.OrtExternalInitializerInfo | None,
+    ) -> C.OrtExternalInitializerInfo | None:
+        ret_val: C.OrtExternalInitializerInfo | None = get_initializer_location_func(
+            initializer_name, OrtValue(initializer_value), external_info
+        )
+        if ret_val is not None and ret_val == external_info:
+            # User returned `external_info` (const and owned by ORT). ORT expects the returned value to be
+            # a new instance (that it deletes), so make a copy.
+            ret_val = C.OrtExternalInitializerInfo(ret_val.filepath, ret_val.file_offset, ret_val.byte_size)
+        return ret_val
+
+    return get_initializer_location_func_wrapper
+
+
 class ModelCompiler:
     """
     This class is used to compile an ONNX model. A compiled ONNX model has EPContext nodes that each
@@ -648,6 +678,7 @@ class ModelCompiler:
         external_initializers_size_threshold: int = 1024,
         flags: int = C.OrtCompileApiFlags.NONE,
         graph_optimization_level: C.GraphOptimizationLevel = C.GraphOptimizationLevel.ORT_DISABLE_ALL,
+        get_initializer_location_func: GetInitializerLocationFunc | None = None,
     ):
         """
         Creates a ModelCompiler instance.
@@ -666,6 +697,25 @@ class ModelCompiler:
             flags in onnxruntime.OrtCompileApiFlags.
         :param graph_optimization_level: The graph optimization level.
             Defaults to onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL.
+        :param get_initializer_location_func: Optional function called for every initializer to allow user to specify
+            whether an initializer should be stored within the model or externally. Example:
+            ```
+                def get_initializer_location(
+                    initializer_name: str,
+                    initializer_value: onnxrt.OrtValue,
+                    external_info: onnxrt.OrtExternalInitializerInfo | None,
+                ) -> onnxrt.OrtExternalInitializerInfo | None:
+                    byte_size = initializer_value.tensor_size_in_bytes()
+
+                    if byte_size < 64:
+                        return None  # Store small initializer within compiled model.
+
+                    # Else, write initializer to new external file.
+                    value_np = initializer_value.numpy()
+                    file_offset = ext_init_file.tell()
+                    ext_init_file.write(value_np.tobytes())
+                    return onnxrt.OrtExternalInitializerInfo(initializer_file_path, file_offset, byte_size)
+            ```
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
@@ -688,6 +738,18 @@ class ModelCompiler:
         else:
             external_initializers_file_path = ""
 
+        if get_initializer_location_func is not None:
+            if external_initializers_file_path:
+                raise ValueError(
+                    "Cannot initialize ModelCompiler with both `external_initializers_file_path` "
+                    "and `get_initializer_location_func`"
+                )
+            self.get_initializer_location_func_wrapper = make_get_initializer_location_func_wrapper(
+                get_initializer_location_func
+            )
+        else:
+            self.get_initializer_location_func_wrapper = None
+
         if input_model_path:
             self._model_compiler = C.ModelCompiler(
                 sess_options,
@@ -698,6 +760,7 @@ class ModelCompiler:
                 external_initializers_size_threshold,
                 flags,
                 graph_optimization_level,
+                self.get_initializer_location_func_wrapper,
             )
         else:
             self._model_compiler = C.ModelCompiler(
@@ -709,6 +772,7 @@ class ModelCompiler:
                 external_initializers_size_threshold,
                 flags,
                 graph_optimization_level,
+                self.get_initializer_location_func_wrapper,
             )
 
     def compile_to_file(self, output_model_path: str | None = None):
@@ -737,6 +801,14 @@ class ModelCompiler:
         :return: A bytes object representing the compiled ONNX model.
         """
         return self._model_compiler.compile_to_bytes()
+
+    def compile_to_stream(self, write_function: Callable[[bytes], None]):
+        """
+        Compiles the input model and writes the serialized ONNX bytes to a stream using the provided write function.
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+        :param write_function: A callable that accepts a bytes buffer to write.
+        """
+        self._model_compiler.compile_to_stream(write_function)
 
 
 class IOBinding:
@@ -1298,3 +1370,14 @@ class SparseTensor:
         Returns the name of the device where the SparseTensor data buffers reside e.g. cpu, cuda
         """
         return self._tensor.device_name().lower()
+
+
+# Type hint for user-specified function that allows the user to specify initializer locations when compiling a model.
+GetInitializerLocationFunc = Callable[
+    [str, OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]
+
+# Type hint that adheres to the signature expected by ORT.
+GetInitializerLocationWrapperFunc = Callable[
+    [str, C.OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]

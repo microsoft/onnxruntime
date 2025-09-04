@@ -841,6 +841,9 @@ struct ConstExternalInitializerInfoImpl : Base<T> {
 using ConstExternalInitializerInfo =
     detail::ConstExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
 
+/** \brief Wrapper around ::OrtExternalInitializerInfo
+ *
+ */
 struct ExternalInitializerInfo : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
   using Base = detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>;
   using Base::Base;
@@ -850,6 +853,13 @@ struct ExternalInitializerInfo : detail::ConstExternalInitializerInfoImpl<OrtExt
       : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}
 
   ConstExternalInitializerInfo GetConst() const { return ConstExternalInitializerInfo{this->p_}; }
+
+  ///< Wraps OrtApi::CreateExternalInitializerInfo
+  ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size);
+
+  ///< Wrapper around CreateExternalInitializerInfo that does not throw an exception.
+  static Status Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
+                       /*out*/ ExternalInitializerInfo& out);
 };
 
 namespace detail {
@@ -1391,8 +1401,18 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                   size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+
+  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc
+  ModelCompilationOptions& SetOutputModelGetInitializerLocationFunc(
+      OrtGetInitializerLocationFunc get_initializer_location_func,
+      void* state);
+
   ModelCompilationOptions& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
                                                 size_t* output_model_buffer_size_ptr);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
+
+  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
+  ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
   ModelCompilationOptions& SetFlags(uint32_t flags);                                    ///< Wraps OrtApi::ModelCompilationOptions_SetFlags
