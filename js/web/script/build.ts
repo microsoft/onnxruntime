@@ -489,8 +489,10 @@ async function postProcess() {
 async function validate() {
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
   // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
-  const validateFiles = files.filter(file => (file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.'));
-  
+  const validateFiles = files.filter(
+    (file) => (file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.'),
+  );
+
   for (const file of validateFiles) {
     const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
     const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
