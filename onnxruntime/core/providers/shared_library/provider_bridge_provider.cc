@@ -173,6 +173,11 @@ MLDataType DataTypeImpl::GetType<Int4x2>() { return Provider_GetHost()->DataType
 template <>
 MLDataType DataTypeImpl::GetType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_UInt4x2(); }
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+MLDataType DataTypeImpl::GetType<Float4E2M1x2>() { return Provider_GetHost()->DataTypeImpl__GetType_Float4E2M1x2(); }
+#endif
+
 template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
 MLDataType DataTypeImpl::GetTensorTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTensorTypeFromOnnxType(onnx_type); }
@@ -217,6 +222,11 @@ template <>
 MLDataType DataTypeImpl::GetTensorType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Int4x2(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_UInt4x2(); }
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float4E2M1x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float4E2M1x2(); }
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 template <>
@@ -790,12 +800,12 @@ Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
 #endif
 
 #ifdef _WIN32
-std::string ToUTF8String(const std::wstring& s) {
-  return g_host->ToUTF8String(s);
+std::string ToUTF8String(std::wstring_view s) {
+  return g_host->ToUTF8String(std::wstring{s});
 }
 
-std::wstring ToWideString(const std::string& s) {
-  return g_host->ToWideString(s);
+std::wstring ToWideString(std::string_view s) {
+  return g_host->ToWideString(std::string{s});
 }
 #endif  // _WIN32
 }  // namespace onnxruntime

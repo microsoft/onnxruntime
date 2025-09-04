@@ -6,12 +6,27 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.36.1.250708
+  default: 2.37.1.250807
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
   type: boolean
   default: false
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
 
 - name: PackageName
   displayName: What is the package name? Override using an environment variable CustomPackageName.
@@ -69,6 +84,12 @@ extends:
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
 
     stages:
+      - template: stages/set_packaging_variables_stage.yml
+        parameters:
+          IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
       - template: templates/win-ci.yml
         parameters:
           ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'

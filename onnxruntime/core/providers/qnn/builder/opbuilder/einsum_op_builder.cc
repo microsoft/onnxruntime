@@ -48,13 +48,13 @@ std::optional<Equation> ParseEquation(std::string_view equation_string) {
   if (term_1.size() < 2 || term_2.size() < 2 || result.size() < 2) {
     return std::nullopt;
   }
-  if (!std::all_of(term_1.begin(), term_1.end(), [](unsigned char c) { return std::islower(c); })) {
+  if (!std::all_of(term_1.begin(), term_1.end(), [](unsigned char c) { return std::isalpha(c); })) {
     return std::nullopt;
   }
-  if (!std::all_of(term_2.begin(), term_2.end(), [](unsigned char c) { return std::islower(c); })) {
+  if (!std::all_of(term_2.begin(), term_2.end(), [](unsigned char c) { return std::isalpha(c); })) {
     return std::nullopt;
   }
-  if (!std::all_of(result.begin(), result.end(), [](unsigned char c) { return std::islower(c); })) {
+  if (!std::all_of(result.begin(), result.end(), [](unsigned char c) { return std::isalpha(c); })) {
     return std::nullopt;
   }
   return std::make_tuple(term_1, term_2, result);
@@ -287,8 +287,8 @@ Status CreateMatMulTransposeAll(
   std::vector<uint32_t> input_shape1(input_info1.shape);
   std::swap(input_shape0[1], input_shape0[2]);
   std::swap(input_shape1[1], input_shape1[2]);
-  const std::string input_transpos0 = input_names[0] + "_t0";
-  const std::string input_transpos1 = input_names[1] + "_t1";
+  const std::string input_transpos0 = onnxruntime::qnn::utils::GetUniqueName(input_names[0], "_transpose");
+  const std::string input_transpos1 = onnxruntime::qnn::utils::GetUniqueName(input_names[1], "_transpose");
   const std::vector<uint32_t> transpose_perm{0, 2, 1, 3};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper->AddTransposeNode(
       /*node_index=*/node_unit.Index(),
@@ -315,7 +315,7 @@ Status CreateMatMulTransposeAll(
   onnxruntime::qnn::TensorInfo matmul_output_info{};
   const auto& output = node_unit.Outputs()[0];
   ORT_RETURN_IF_ERROR(qnn_model_wrapper->GetTensorInfo(output, matmul_output_info));
-  const std::string matmul_output_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_matmul";
+  const std::string matmul_output_name = onnxruntime::qnn::utils::GetUniqueName(node_unit, "_matmul");
   std::vector<uint32_t> matmul_output_shape(matmul_output_info.shape);
   std::swap(matmul_output_shape[1], matmul_output_shape[2]);
   onnxruntime::qnn::QnnTensorWrapper matmul_output_wrapper(
@@ -325,7 +325,7 @@ Status CreateMatMulTransposeAll(
                     node_unit.OpType() + " failed to add tensor.");
   std::vector<std::string> param_tensor_names = SetMatMulParamTensorNames(
       qnn_model_wrapper, node_unit, /*transpose_in0=*/false, /*transpose_in1=*/false);
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(/*qnn_node_name=*/onnxruntime::qnn::utils::GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(/*qnn_node_name=*/onnxruntime::qnn::utils::GetUniqueName(node_unit, QNN_OP_MAT_MUL),
                                                      /*package_name=*/QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                      /*qnn_node_type=*/QNN_OP_MAT_MUL,
                                                      /*input_names=*/{input_transpos1, input_transpos0},
@@ -373,7 +373,7 @@ Status CreateReduceSumMulBroadcastX(
   ORT_RETURN_IF_NOT(shape_in0.size() == 4, "CreateReduceSumMulBroadcastX expects input 0 to be rank 4");
   ORT_RETURN_IF_NOT(shape_in1.size() == 3, "CreateReduceSumMulBroadcastX expects input 1 to be rank 3");
   const std::vector<uint32_t> new_shape_in0{shape_in0[0], shape_in0[1], shape_in0[2], 1, shape_in0[3]};
-  const std::string reshape_out_name = input_names[0] + "_reshaped";
+  const std::string reshape_out_name = onnxruntime::qnn::utils::GetUniqueName(input_names[0], "_reshape");
   ORT_RETURN_IF_ERROR(qnn_model_wrapper->AddReshapeNode(
       /*input_name=*/input_names[0],
       /*output_name=*/reshape_out_name,
@@ -387,7 +387,7 @@ Status CreateReduceSumMulBroadcastX(
   // Multiply: reshaped in0 * in1
   // The output shape of the multiplication is determined by broadcasting the reshaped in0 of
   // (b, h, w, 1, c) and in1 (w, k, c) along the matching axes, resulting in (b, h, w, k, c).
-  const std::string mul_out_name = onnxruntime::qnn::utils::GetNodeName(node_unit) + "_mul";
+  const std::string mul_out_name = onnxruntime::qnn::utils::GetUniqueName(node_unit, "_mul");
   std::vector<uint32_t> shape_out_mul{new_shape_in0[0], new_shape_in0[1], new_shape_in0[2], shape_in1[1], new_shape_in0[4]};
   onnxruntime::qnn::QnnTensorWrapper tensor_wrapper_mul(mul_out_name,
                                                         QNN_TENSOR_TYPE_NATIVE,
@@ -397,7 +397,7 @@ Status CreateReduceSumMulBroadcastX(
   ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensorWrapper(std::move(tensor_wrapper_mul)),
                     "CreateReduceSumMulBroadcastX: failed to AddTensorWrapper");
   ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(
-                        /*qnn_node_name=*/mul_out_name,
+                        /*qnn_node_name=*/onnxruntime::qnn::utils::GetUniqueName(node_unit, QNN_OP_ELEMENT_WISE_MULTIPLY),
                         /*package_name=*/QNN_OP_PACKAGE_NAME_QTI_AISW,
                         /*qnn_node_type=*/QNN_OP_ELEMENT_WISE_MULTIPLY,
                         /*input_names=*/{reshape_out_name, input_names[1]},
@@ -444,7 +444,7 @@ Status CreateReduceSumMulBroadcastX(
                     "CreateReduceSumMulBroadcastX: failed to AddTensorWrapper");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(
-                        /*qnn_node_name=*/out_name,
+                        /*qnn_node_name=*/onnxruntime::qnn::utils::GetUniqueName(node_unit, QNN_OP_REDUCE_SUM),
                         /*package_name=*/QNN_OP_PACKAGE_NAME_QTI_AISW,
                         /*qnn_node_type=*/QNN_OP_REDUCE_SUM,
                         /*input_names=*/{mul_out_name},

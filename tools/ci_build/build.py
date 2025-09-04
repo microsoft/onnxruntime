@@ -203,10 +203,6 @@ def add_default_definition(definition_list, key, default_value):
     definition_list.append(key + "=" + default_value)
 
 
-def normalize_arg_list(nested_list):
-    return [i for j in nested_list for i in j] if nested_list else []
-
-
 def number_of_parallel_jobs(args):
     return os.cpu_count() if args.parallel == 0 else args.parallel
 
@@ -378,6 +374,8 @@ def generate_build_tree(
     types_to_disable = args.disable_types
     # enable/disable float 8 types
     disable_float8_types = args.android or ("float8" in types_to_disable)
+    # enable/disable float 4 type
+    disable_float4_types = args.android or args.use_rocm or ("float4" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     if is_windows():
@@ -516,6 +514,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
+        "-Donnxruntime_DISABLE_FLOAT4_TYPES=" + ("ON" if disable_float4_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
@@ -720,8 +719,6 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=ON"]
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
-        cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
-        cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
 
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
@@ -988,7 +985,7 @@ def generate_build_tree(
             ]
 
         # add default emscripten settings
-        emscripten_settings = normalize_arg_list(args.emscripten_settings)
+        emscripten_settings = list(args.emscripten_settings)
 
         # set -s MALLOC
         if args.wasm_malloc is not None:
@@ -1332,13 +1329,14 @@ def clean_targets(cmake_path, build_dir, configs):
         run_subprocess(cmd_args)
 
 
-def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, target=None):
+def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targets: list[str] | None):
     for config in configs:
         log.info("Building targets for %s configuration", config)
         build_dir2 = get_config_build_dir(build_dir, config)
         cmd_args = [cmake_path, "--build", build_dir2, "--config", config]
-        if target:
-            cmd_args.extend(["--target", target])
+        if targets:
+            log.info(f"Building specified targets: {targets}")
+            cmd_args.extend(["--target", *targets])
 
         build_tool_args = []
         if num_parallel_jobs != 1:
@@ -1520,8 +1518,8 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
     def adb_shell(*args, **kwargs):
         return run_subprocess([sdk_tool_paths.adb, "shell", *args], **kwargs)
 
-    def adb_install(*args, **kwargs):
-        return run_subprocess([sdk_tool_paths.adb, "install", *args], **kwargs)
+    def adb_logcat(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, "logcat", *args], **kwargs)
 
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
@@ -1546,6 +1544,17 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 )
             )
             context_stack.callback(android.stop_emulator, emulator_proc)
+
+        all_android_tests_passed = False
+
+        def dump_logs_on_failure():
+            if not all_android_tests_passed:
+                log.warning("Android test failed. Dumping logs.")
+                adb_logcat("-d")  # dump logs
+
+        context_stack.callback(dump_logs_on_failure)
+
+        adb_logcat("-c")  # clear logs
 
         adb_push("testdata", device_dir, cwd=cwd)
         if is_linux() and os.path.exists("/data/onnx"):
@@ -1597,6 +1606,8 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             run_adb_shell(
                 f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
             )
+
+        all_android_tests_passed = True
 
 
 def run_ios_tests(args, source_dir, config, cwd):
@@ -1668,8 +1679,6 @@ def run_ios_tests(args, source_dir, config, cwd):
                 dynamic_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
-                "--variant",
-                "Full",
                 "--skip_macos_test",
             ],
             cwd=cwd,
@@ -1683,8 +1692,6 @@ def run_ios_tests(args, source_dir, config, cwd):
                 static_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
-                "--variant",
-                "Full",
                 "--skip_macos_test",
             ],
             cwd=cwd,
@@ -1704,8 +1711,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
-        if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+        if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
+        if args.use_nv_tensorrt_rtx:
+            dll_path_list.append(os.path.join(args.tensorrt_rtx_home, "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -2001,6 +2010,7 @@ def build_nuget_package(
     use_winml,
     use_qnn,
     use_dml,
+    use_migraphx,
     enable_training_apis,
     msbuild_extra_options,
 ):
@@ -2038,6 +2048,9 @@ def build_nuget_package(
     elif use_tensorrt:
         execution_provider = "/p:ExecutionProvider=tensorrt"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT"
+    elif use_migraphx:
+        execution_provider = "/p:ExecutionProvider=migraphx"
+        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.MIGraphX"
     elif use_dnnl:
         execution_provider = "/p:ExecutionProvider=dnnl"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DNNL"
@@ -2062,12 +2075,12 @@ def build_nuget_package(
             # use the sln that include the mobile targets
             sln = "OnnxRuntime.CSharp.sln"
 
-    # explicitly exclude mobile targets in this case
-    if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
-        msbuild_extra_options.append("IncludeMobileTargets=false")
-
     # expand extra_options to add prefix
     extra_options = ["/p:" + option for option in msbuild_extra_options]
+
+    # explicitly exclude mobile targets in this case
+    if sln != "OnnxRuntime.CSharp.sln" and have_exclude_mobile_targets_option is False:
+        extra_options.append("/p:IncludeMobileTargets=false")
 
     # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
     use_dotnet = sln != "OnnxRuntime.CSharp.sln"
@@ -2283,7 +2296,7 @@ def main():
                     "Running as root is not allowed. If you really want to do that, use '--allow_running_as_root'."
                 )
 
-    cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
+    cmake_extra_defines = list(args.cmake_extra_defines)
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -2562,7 +2575,7 @@ def main():
         if args.parallel < 0:
             raise BuildError(f"Invalid parallel job count: {args.parallel}")
         num_parallel_jobs = number_of_parallel_jobs(args)
-        build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
+        build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.targets)
 
     if args.test:
         if args.enable_onnx_tests:
@@ -2629,8 +2642,9 @@ def main():
                 getattr(args, "use_winml", False),
                 args.use_qnn,
                 getattr(args, "use_dml", False),
+                args.use_migraphx,
                 args.enable_training_apis,
-                normalize_arg_list(args.msbuild_extra_options),
+                args.msbuild_extra_options,
             )
 
     if args.test and args.build_nuget:
@@ -2643,7 +2657,7 @@ def main():
             args.use_dnnl,
             args.enable_training_apis,
             configs,
-            normalize_arg_list(args.msbuild_extra_options),
+            args.msbuild_extra_options,
         )
 
     if args.gen_doc:

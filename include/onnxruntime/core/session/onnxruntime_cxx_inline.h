@@ -56,15 +56,15 @@ inline void ThrowOnError(const Status& st) {
 inline Status::Status(OrtStatus* status) noexcept : detail::Base<OrtStatus>{status} {
 }
 
-inline Status::Status(const std::exception& e) noexcept {
+inline Status::Status(const std::exception& e) {
   p_ = GetApi().CreateStatus(ORT_FAIL, e.what());
 }
 
-inline Status::Status(const Exception& e) noexcept {
+inline Status::Status(const Exception& e) {
   p_ = GetApi().CreateStatus(e.GetOrtErrorCode(), e.what());
 }
 
-inline Status::Status(const char* message, OrtErrorCode code) noexcept {
+inline Status::Status(const char* message, OrtErrorCode code) {
   p_ = GetApi().CreateStatus(code, message);
 }
 
@@ -297,6 +297,16 @@ inline OrtMemType MemoryInfoImpl<T>::GetMemoryType() const {
 }
 
 template <typename T>
+inline OrtDeviceMemoryType MemoryInfoImpl<T>::GetDeviceMemoryType() const {
+  return GetApi().MemoryInfoGetDeviceMemType(this->p_);
+}
+
+template <typename T>
+inline uint32_t MemoryInfoImpl<T>::GetVendorId() const {
+  return GetApi().MemoryInfoGetVendorId(this->p_);
+}
+
+template <typename T>
 template <typename U>
 inline bool MemoryInfoImpl<T>::operator==(const MemoryInfoImpl<U>& o) const {
   int comp_result = 0;
@@ -314,6 +324,12 @@ inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_ty
 
 inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
   ThrowOnError(GetApi().CreateMemoryInfo(name, type, id, mem_type, &this->p_));
+}
+
+inline MemoryInfo::MemoryInfo(const char* name, OrtMemoryInfoDeviceType device_type, uint32_t vendor_id, uint32_t device_id,
+                              OrtDeviceMemoryType mem_type, size_t alignment, OrtAllocatorType allocator_type) {
+  ThrowOnError(GetApi().CreateMemoryInfo_V2(name, device_type, vendor_id, device_id, mem_type, alignment,
+                                            allocator_type, &this->p_));
 }
 
 namespace detail {
@@ -404,20 +420,7 @@ inline std::vector<std::string> GetOutputNamesHelper(const OrtIoBinding* binding
 
 inline std::vector<Value> GetOutputValuesHelper(const OrtIoBinding* binding, OrtAllocator* allocator) {
   std::vector<Value> result;
-  size_t owned = 0;
   size_t output_count = 0;
-  // Lambda to release the buffer when no longer needed and
-  // make sure that we destroy all instances on exception
-  auto free_fn = [&owned, &output_count, allocator](OrtValue** buffer) {
-    if (buffer) {
-      while (owned < output_count) {
-        auto* p = buffer + owned++;
-        GetApi().ReleaseValue(*p);
-      }
-      allocator->Free(allocator, buffer);
-    }
-  };
-  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)>;
 
   OrtValue** output_buffer = nullptr;
   ThrowOnError(GetApi().GetBoundOutputValues(binding, allocator, &output_buffer, &output_count));
@@ -425,12 +428,11 @@ inline std::vector<Value> GetOutputValuesHelper(const OrtIoBinding* binding, Ort
     return result;
   }
 
-  Ptr buffer_g(output_buffer, free_fn);
+  std::unique_ptr<void, AllocatedFree> buffer_g(output_buffer, AllocatedFree(allocator));
 
   result.reserve(output_count);
   for (size_t i = 0; i < output_count; ++i) {
     result.emplace_back(output_buffer[i]);
-    ++owned;
   }
   return result;
 }
@@ -444,6 +446,18 @@ inline IoBinding::IoBinding(Session& session) {
 
 inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
   ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
+}
+
+inline ArenaCfg::ArenaCfg(const std::unordered_map<std::string, size_t>& arena_config) {
+  std::vector<const char*> keys;
+  std::vector<size_t> values;
+  keys.reserve(arena_config.size());
+  values.reserve(arena_config.size());
+  for (const auto& kv : arena_config) {
+    keys.push_back(kv.first.c_str());
+    values.push_back(kv.second);
+  }
+  ThrowOnError(GetApi().CreateArenaCfgV2(keys.data(), values.data(), arena_config.size(), &p_));
 }
 
 inline ThreadingOptions::ThreadingOptions() {
@@ -484,6 +498,96 @@ inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustom
   ThrowOnError(GetApi().SetGlobalCustomJoinThreadFn(p_, ort_custom_join_thread_fn));
   return *this;
 }
+
+inline TensorRTProviderOptions::TensorRTProviderOptions() {
+  ThrowOnError(GetApi().CreateTensorRTProviderOptions(&this->p_));
+}
+
+inline void TensorRTProviderOptions::Update(const std::unordered_map<std::string, std::string>& options) {
+  std::vector<const char*> keys;
+  std::vector<const char*> values;
+  keys.reserve(options.size());
+  values.reserve(options.size());
+  for (const auto& kv : options) {
+    keys.push_back(kv.first.c_str());
+    values.push_back(kv.second.c_str());
+  }
+  ThrowOnError(GetApi().UpdateTensorRTProviderOptions(p_, keys.data(), values.data(), options.size()));
+}
+
+inline void TensorRTProviderOptions::UpdateWithValue(const char* key, void* value) {
+  ThrowOnError(GetApi().UpdateTensorRTProviderOptionsWithValue(p_, key, value));
+}
+
+inline void* TensorRTProviderOptions::GetOptionByName(const char* name) const {
+  void* value = nullptr;
+  ThrowOnError(GetApi().GetTensorRTProviderOptionsByName(p_, name, &value));
+  return value;
+}
+
+inline std::string TensorRTProviderOptions::GetTensorRTProviderOptionsAsString() const {
+  AllocatorWithDefaultOptions allocator;
+  char* options_str = nullptr;
+  ThrowOnError(GetApi().GetTensorRTProviderOptionsAsString(p_, allocator, &options_str));
+  std::unique_ptr<void, detail::AllocatedFree> options_str_g(options_str, detail::AllocatedFree(allocator));
+  return std::string(options_str);
+}
+
+inline CUDAProviderOptions::CUDAProviderOptions() {
+  ThrowOnError(GetApi().CreateCUDAProviderOptions(&this->p_));
+}
+
+inline void CUDAProviderOptions::Update(const std::unordered_map<std::string, std::string>& options) {
+  std::vector<const char*> keys;
+  std::vector<const char*> values;
+  keys.reserve(options.size());
+  values.reserve(options.size());
+  for (const auto& kv : options) {
+    keys.push_back(kv.first.c_str());
+    values.push_back(kv.second.c_str());
+  }
+  ThrowOnError(GetApi().UpdateCUDAProviderOptions(p_, keys.data(), values.data(), options.size()));
+}
+
+inline std::string CUDAProviderOptions::GetCUDAProviderOptionsAsString() const {
+  AllocatorWithDefaultOptions allocator;
+  char* options_str = nullptr;
+  ThrowOnError(GetApi().GetCUDAProviderOptionsAsString(p_, allocator, &options_str));
+  std::unique_ptr<void, detail::AllocatedFree> options_str_g(options_str, detail::AllocatedFree(allocator));
+  return std::string(options_str);
+}
+
+inline void CUDAProviderOptions::UpdateWithValue(const char* key, void* value) {
+  ThrowOnError(GetApi().UpdateCUDAProviderOptionsWithValue(p_, key, value));
+}
+
+inline void* CUDAProviderOptions::GetOptionByName(const char* name) const {
+  void* value = nullptr;
+  ThrowOnError(GetApi().GetCUDAProviderOptionsByName(p_, name, &value));
+  return value;
+}
+
+inline PrepackedWeightsContainer::PrepackedWeightsContainer() {
+  ThrowOnError(GetApi().CreatePrepackedWeightsContainer(&this->p_));
+}
+
+namespace detail {
+
+template <typename T>
+inline const std::basic_string<ORTCHAR_T> ConstExternalInitializerInfoImpl<T>::GetFilePath() const {
+  return GetApi().ExternalInitializerInfo_GetFilePath(this->p_);
+}
+
+template <typename T>
+inline int64_t ConstExternalInitializerInfoImpl<T>::GetFileOffset() const {
+  return GetApi().ExternalInitializerInfo_GetFileOffset(this->p_);
+}
+
+template <typename T>
+inline size_t ConstExternalInitializerInfoImpl<T>::GetByteSize() const {
+  return GetApi().ExternalInitializerInfo_GetByteSize(this->p_);
+}
+}  // namespace detail
 
 namespace detail {
 template <typename T>
@@ -547,6 +651,10 @@ inline void KeyValuePairs::Remove(const char* key) {
   GetApi().RemoveKeyValuePair(this->p_, key);
 }
 
+inline void* SyncStream::GetHandle() const {
+  return GetApi().SyncStream_GetHandle(this->p_);
+}
+
 namespace detail {
 template <typename T>
 inline OrtHardwareDeviceType HardwareDeviceImpl<T>::Type() const {
@@ -596,6 +704,19 @@ inline ConstKeyValuePairs EpDeviceImpl<T>::EpOptions() const {
 template <typename T>
 inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
   return ConstHardwareDevice(GetApi().EpDevice_Device(this->p_));
+}
+
+template <typename T>
+inline ConstMemoryInfo EpDeviceImpl<T>::GetMemoryInfo(OrtDeviceMemoryType memory_type) const {
+  const auto* mem_info = GetApi().EpDevice_MemoryInfo(this->p_, memory_type);
+  return ConstMemoryInfo{mem_info};
+}
+
+template <typename T>
+inline SyncStream EpDeviceImpl<T>::CreateSyncStream(ConstKeyValuePairs stream_options) const {
+  OrtSyncStream* stream = nullptr;
+  ThrowOnError(GetApi().CreateSyncStreamForEpDevice(this->p_, stream_options, &stream));
+  return SyncStream{stream};
 }
 }  // namespace detail
 
@@ -676,6 +797,16 @@ inline Env& Env::CreateAndRegisterAllocatorV2(const std::string& provider_type, 
   return *this;
 }
 
+inline Env& Env::RegisterAllocator(OrtAllocator* allocator) {
+  ThrowOnError(GetApi().RegisterAllocator(p_, allocator));
+  return *this;
+}
+
+inline Env& Env::UnregisterAllocator(const OrtMemoryInfo* mem_info) {
+  ThrowOnError(GetApi().UnregisterAllocator(p_, mem_info));
+  return *this;
+}
+
 inline Env& Env::RegisterExecutionProviderLibrary(const char* registration_name,
                                                   const std::basic_string<ORTCHAR_T>& path) {
   ThrowOnError(GetApi().RegisterExecutionProviderLibrary(p_, registration_name, path.c_str()));
@@ -703,12 +834,67 @@ inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
   return devices;
 }
 
+inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
+                               const std::vector<Value>& dst_tensors,
+                               OrtSyncStream* stream) const {
+  if (src_tensors.size() != dst_tensors.size()) {
+    return Status("Source and destination tensor vectors must have the same size", ORT_INVALID_ARGUMENT);
+  }
+  if (src_tensors.empty()) {
+    return Status(nullptr);
+  }
+
+  const OrtValue* const* src_tensors_ptr = reinterpret_cast<const OrtValue* const*>(src_tensors.data());
+  OrtValue* const* dst_tensors_ptr = reinterpret_cast<OrtValue* const*>(dst_tensors.data());
+  OrtStatus* status = GetApi().CopyTensors(p_, src_tensors_ptr, dst_tensors_ptr, stream, src_tensors.size());
+  return Status(status);
+}
+
+inline UnownedAllocator Env::CreateSharedAllocator(const OrtEpDevice* ep_device, OrtDeviceMemoryType mem_type,
+                                                   OrtAllocatorType allocator_type,
+                                                   const OrtKeyValuePairs* allocator_options) {
+  OrtAllocator* p;
+  ThrowOnError(GetApi().CreateSharedAllocator(p_, ep_device, mem_type, allocator_type, allocator_options, &p));
+  return UnownedAllocator{p};
+}
+
+inline UnownedAllocator Env::GetSharedAllocator(const OrtMemoryInfo* mem_info) {
+  OrtAllocator* p;
+  ThrowOnError(GetApi().GetSharedAllocator(p_, mem_info, &p));
+  return UnownedAllocator{p};
+}
+
+inline void Env::ReleaseSharedAllocator(const OrtEpDevice* ep_device,
+                                        OrtDeviceMemoryType mem_type) {
+  ThrowOnError(GetApi().ReleaseSharedAllocator(p_, ep_device, mem_type));
+}
+
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }
 
 inline void CustomOpDomain::Add(const OrtCustomOp* op) {
   ThrowOnError(GetApi().CustomOpDomain_Add(p_, op));
+}
+
+inline OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
+    const std::vector<ConstEpDevice>& ep_devices,
+    const char* compatibility_info) {
+  if (ep_devices.empty()) {
+    ORT_CXX_API_THROW("ep_devices is empty", ORT_INVALID_ARGUMENT);
+  }
+
+  std::vector<const OrtEpDevice*> ptrs;
+  ptrs.reserve(ep_devices.size());
+  for (const auto& d : ep_devices) ptrs.push_back(d);
+
+  OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  ThrowOnError(GetApi().GetModelCompatibilityForEpDevices(
+      reinterpret_cast<const OrtEpDevice* const*>(ptrs.data()),
+      ptrs.size(),
+      compatibility_info,
+      &status));
+  return status;
 }
 
 inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
@@ -851,8 +1037,15 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
   return *this;
 }
 
-inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(size_t flags) {
+inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(uint32_t flags) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetFlags(this->p_, flags));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetGraphOptimizationLevel(
+    GraphOptimizationLevel graph_optimization_level) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetGraphOptimizationLevel(this->p_,
+                                                                                      graph_optimization_level));
   return *this;
 }
 
@@ -1053,6 +1246,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFrom
   }
   ThrowOnError(GetApi().AddExternalInitializersFromFilesInMemory(this->p_, names_ptr.data(), buffer_array.data(),
                                                                  file_lengths.data(), inputs_num));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CPU(int use_arena) {
+  ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(this->p_, use_arena));
   return *this;
 }
 
@@ -1298,9 +1497,9 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetInputNames() const {
   input_names.reserve(num_inputs);
 
   for (size_t i = 0; i < num_inputs; ++i) {
-    char* name = nullptr;
+    char* name;
     ThrowOnError(GetApi().SessionGetInputName(this->p_, i, allocator, &name));
-    input_names.push_back(name);
+    input_names.emplace_back(name);
     allocator.Free(name);
   }
 
@@ -1316,9 +1515,9 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOutputNames() const {
   output_names.reserve(num_inputs);
 
   for (size_t i = 0; i < num_inputs; ++i) {
-    char* name = nullptr;
+    char* name;
     ThrowOnError(GetApi().SessionGetOutputName(this->p_, i, allocator, &name));
-    output_names.push_back(name);
+    output_names.emplace_back(name);
     allocator.Free(name);
   }
 
@@ -1334,12 +1533,43 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOverridableInitializerNa
   initializer_names.reserve(num_initializers);
 
   for (size_t i = 0; i < num_initializers; ++i) {
-    char* name = nullptr;
+    char* name;
     ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, i, allocator, &name));
-    initializer_names.push_back(name);
+    initializer_names.emplace_back(name);
   }
 
   return initializer_names;
+}
+
+template <typename T>
+inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForInputs() const {
+  static_assert(sizeof(ConstMemoryInfo) == sizeof(OrtMemoryInfo*),
+                "ConstMemoryInfo must be compatible with OrtMemoryInfo*");
+
+  auto num_inputs = GetInputCount();
+  std::vector<ConstMemoryInfo> mem_infos;
+  mem_infos.resize(num_inputs);
+
+  ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_,
+                                                      reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
+                                                      num_inputs));
+
+  return mem_infos;
+}
+
+template <typename T>
+inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForOutputs() const {
+  static_assert(sizeof(ConstMemoryInfo) == sizeof(OrtMemoryInfo*),
+                "ConstMemoryInfo must be compatible with OrtMemoryInfo*");
+
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstMemoryInfo> mem_infos;
+  mem_infos.resize(num_outputs);
+
+  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
+                                                       num_outputs));
+  return mem_infos;
 }
 
 template <typename T>
@@ -1361,6 +1591,19 @@ inline AllocatedStringPtr ConstSessionImpl<T>::GetOverridableInitializerNameAllo
   char* out;
   ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, index, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() const {
+  auto num_inputs = GetInputCount();
+  std::vector<ConstEpDevice> input_devices;
+  input_devices.resize(num_inputs);
+
+  ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_,
+                                                    reinterpret_cast<const OrtEpDevice**>(input_devices.data()),
+                                                    num_inputs));
+
+  return input_devices;
 }
 
 template <typename T>
@@ -1541,7 +1784,7 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
 
 #if !defined(ORT_MINIMAL_BUILD)
 inline Session::Session(const Env& env, const Model& model, const SessionOptions& options) {
-  ThrowOnError(GetModelEditorApi().CreateSessionFromModel(env, model.GetConst(), options, &this->p_));
+  ThrowOnError(GetModelEditorApi().CreateSessionFromModel(env, model, options, &this->p_));
 }
 
 // static
@@ -1857,15 +2100,15 @@ inline size_t ConstValueImpl<T>::GetTensorSizeInBytes() const {
 template <typename T>
 template <typename R>
 inline const R* ConstValueImpl<T>::GetTensorData() const {
-  R* out;
-  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), (void**)&out));
+  const R* out;
+  ThrowOnError(GetApi().GetTensorData(this->p_, reinterpret_cast<const void**>(&out)));
   return out;
 }
 
 template <typename T>
 inline const void* ConstValueImpl<T>::GetTensorRawData() const {
-  void* out;
-  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), &out));
+  const void* out;
+  ThrowOnError(GetApi().GetTensorData(this->p_, &out));
   return out;
 }
 
@@ -2257,6 +2500,172 @@ inline void KernelContext::ParallelFor(void (*fn)(void*, size_t), size_t total, 
   ThrowOnError(GetApi().KernelContext_ParallelFor(ctx_, fn, total, num_batch, usr_data));
 }
 
+namespace detail {
+
+template <typename T>
+constexpr OrtOpAttrType TypeToAttrType();
+
+template <>
+inline constexpr OrtOpAttrType TypeToAttrType<int64_t>() {
+  return OrtOpAttrType::ORT_OP_ATTR_INT;
+}
+
+template <>
+inline constexpr OrtOpAttrType TypeToAttrType<float>() {
+  return OrtOpAttrType::ORT_OP_ATTR_FLOAT;
+}
+
+template <typename T>
+inline constexpr OrtOpAttrType TypeToAttrsType();
+
+template <>
+inline constexpr OrtOpAttrType TypeToAttrsType<int64_t>() {
+  return OrtOpAttrType::ORT_OP_ATTR_INTS;
+}
+
+template <>
+inline constexpr OrtOpAttrType TypeToAttrsType<float>() {
+  return OrtOpAttrType::ORT_OP_ATTR_FLOATS;
+}
+
+inline Status CheckAttrType(const OrtOpAttr* attr, OrtOpAttrType requested_type) {
+  OrtOpAttrType type;
+  Ort::Status status(GetApi().OpAttr_GetType(attr, &type));
+  if (!status.IsOK()) return status;
+  if (requested_type != type) {
+    std::string msg = "Attribute type mismatch: expected " + std::to_string(requested_type) +
+                      ", but got " + std::to_string(type);
+    return Ort::Status(msg.c_str(), OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
+  return Ort::Status{};
+}
+
+inline size_t GetDataSize(const OrtOpAttr* attr, OrtOpAttrType attr_type) {
+  size_t result{};
+  // Ignore the status here because we check the data type so the error should only be about
+  // the size
+  [[maybe_unused]] Status status{GetApi().ReadOpAttr(attr, attr_type, nullptr, 0, &result)};
+  return result;
+}
+
+template <typename T>
+Ort::Status GetNumericValue(const OrtOpAttr* attr, T& out) {
+  static_assert(std::is_arithmetic<T>::value, "T must be an arithmetic type");
+  size_t size{};
+  return Ort::Status{GetApi().ReadOpAttr(attr, TypeToAttrType<T>(), &out, sizeof(out), &size)};
+}
+
+template <typename T>
+struct GetValueImpl {
+  static Status GetValue(const OrtOpAttr* attr, T& out) {
+    return GetNumericValue<T>(attr, out);
+  }
+  static Status GetValues(const OrtOpAttr* attr, std::vector<T>& out) {
+    // Api deficiency when it comes to value arrays. It is not possible
+    // to tell if the error is due to the type mismatch or the size
+    // so we check the type first, and then ignore the status of the size check
+    constexpr auto deduced_type = TypeToAttrsType<T>();
+    auto status = CheckAttrType(attr, deduced_type);
+    if (!status.IsOK()) return status;
+    auto size = GetDataSize(attr, deduced_type);
+    std::vector<T> result;
+    if (size > 0) {
+      result.resize(size / sizeof(T));
+      status = Status{GetApi().ReadOpAttr(
+          attr, deduced_type, result.data(), size, &size)};
+      if (!status.IsOK()) return status;
+    }
+    out.swap(result);
+    return status;
+  }
+};
+
+// Create GetValueImpl specializations for std::string
+template <>
+struct GetValueImpl<std::string> {
+  static Status GetValue(const OrtOpAttr* attr, std::string& out) {
+    // Api deficiency when it comes to value arrays. It is not possible
+    // to tell if the error is due to the type mismatch or the size
+    // so we check the type first, and then ignore the status of the size check
+    auto status = CheckAttrType(attr, OrtOpAttrType::ORT_OP_ATTR_STRING);
+    if (!status.IsOK()) return status;
+    auto size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRING);
+    std::string result;
+    if (size > 0) {
+      result.resize(size);
+      // some compilers in use do not support std::string::data() non-const
+      auto* buffer = &result[0];
+      status = Status{GetApi().ReadOpAttr(
+          attr, OrtOpAttrType::ORT_OP_ATTR_STRING, buffer, size, &size)};
+      if (!status.IsOK()) return status;
+    }
+    out.swap(result);
+    return status;
+  }
+  static Status GetValues(const OrtOpAttr* attr, std::vector<std::string>& out) {
+    auto status = CheckAttrType(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
+    if (!status.IsOK()) return status;
+
+    std::vector<std::string> result;
+    size_t total_buffer_size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
+    if (total_buffer_size > 0) {
+      // Create a temporary buffer to hold the string data
+      std::vector<char> buffer(total_buffer_size);
+      status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, buffer.data(),
+                                          total_buffer_size, &total_buffer_size)};
+      if (!status.IsOK()) return status;
+
+      const char* data = buffer.data();
+      const char* end = data + total_buffer_size;
+      while (data < end) {
+        result.emplace_back(data);
+        data += result.back().size() + 1;  // Move past the null terminator
+      }
+    }
+    out.swap(result);
+    return status;
+  }
+};
+
+template <typename T>
+template <typename R>
+inline Status ConstOpAttrImpl<T>::GetValue(R& out) const {
+  return GetValueImpl<R>::GetValue(this->p_, out);
+}
+
+template <typename T>
+template <typename R>
+inline Status ConstOpAttrImpl<T>::GetValueArray(std::vector<R>& out) const {
+  return GetValueImpl<R>::GetValues(this->p_, out);
+}
+
+template <typename T>
+inline Status ConstOpAttrImpl<T>::GetTensorAttributeAsOrtValue(Value& out) const {
+  OrtValue* tensor_value = nullptr;
+  auto status = Status(GetApi().OpAttr_GetTensorAttributeAsOrtValue(this->p_, &tensor_value));
+  if (!status.IsOK()) return status;
+  out = Value{tensor_value};
+  return status;
+}
+
+template <typename T>
+inline std::string ConstOpAttrImpl<T>::GetName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetApi().OpAttr_GetName(this->p_, &name));
+  if (name != nullptr) {
+    return name;
+  }
+  return {};
+}
+
+template <typename T>
+inline OrtOpAttrType ConstOpAttrImpl<T>::GetType() const {
+  OrtOpAttrType type;
+  ThrowOnError(GetApi().OpAttr_GetType(this->p_, &type));
+  return type;
+}
+}  // namespace detail
+
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
   Ort::ThrowOnError(GetApi().CreateOpAttr(name, data, len, type, &p_));
 }
@@ -2557,115 +2966,69 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
 }
 
 inline int64_t ShapeInferContext::GetAttrInt(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  int64_t i = {};
-  size_t out = {};
-  Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INT, &i, sizeof(i), &out));
-  return i;
+  auto attr = GetAttrHdl(attr_name);
+  int64_t value;
+  Status status = attr.GetValue<int64_t>(value);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting int attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
+  }
+  return value;
 }
 
 inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  int64_t i = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
-  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
-  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, &i, sizeof(i), &out);
-  if (status) {
-    size_t num_i = out / sizeof(int64_t);
-    ShapeInferContext::Ints ints(num_i, 0);
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, ints.data(), out, &out));
-    return ints;
-  } else {
-    if (out == 0u) {
-      return {};
-    }
-    return {i};
+  auto attr = GetAttrHdl(attr_name);
+  ShapeInferContext::Ints result;
+  auto status = attr.GetValueArray<int64_t>(result);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting ints attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return result;
 }
 
 inline float ShapeInferContext::GetAttrFloat(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  float f = {};
-  size_t out = {};
-  Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOAT, &f, sizeof(f), &out));
-  return f;
+  auto attr = GetAttrHdl(attr_name);
+  float value;
+  Status status = attr.GetValue<float>(value);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting float attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
+  }
+  return value;
 }
 
 inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  float f = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
-  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
-  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, &f, sizeof(f), &out);
-  if (status) {
-    size_t num_f = out / sizeof(float);
-    ShapeInferContext::Floats floats(num_f, 0);
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, floats.data(), out, &out));
-    return floats;
-  } else {
-    if (out == 0u) {
-      return {};
-    }
-    return {f};
+  auto attr = GetAttrHdl(attr_name);
+  ShapeInferContext::Floats result;
+  auto status = attr.GetValueArray<float>(result);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting floats attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return result;
 }
 
 inline std::string ShapeInferContext::GetAttrString(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  char c = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, &c, sizeof(char), &out);
-  if (status) {
-    std::vector<char> chars(out, '\0');
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRING, chars.data(), out, &out));
-    return std::string{chars.data(), out};
-  } else {
-    return {c};
+  auto attr = GetAttrHdl(attr_name);
+  std::string value;
+  Status status = attr.GetValue<std::string>(value);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting string attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return value;
 }
 
 inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* attr_name) {
-  const auto* attr = GetAttrHdl(attr_name);
-  char c = {};
-  size_t out = {};
-  // first call to get the bytes needed
-  // 1. A status == nullptr means that ReadOpAttr was successful. A status != nullptr means failure.
-  // 2. The ReadOpAttr function should normally be called twice: once to get the needed buffer size (returns a status != nullptr), and a second time to actually read the ints (returns status == null on success).
-  // 3. This code tries a subtle optimization in the first call to ReadOpAttr. It passes in a buffer (&i) of size 1 just in case there is only 1 int. In this case, status == nullptr and we need to return {i}.
-  auto status = ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRINGS, &c, sizeof(char), &out);
-  if (status) {
-    std::vector<char> chars(out, '\0');
-    Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_STRINGS, chars.data(), out, &out));
-    ShapeInferContext::Strings strings;
-    char* char_st = chars.data();
-    char* char_ed = char_st + out;
-    while (char_st < char_ed) {
-      strings.emplace_back(char_st);
-      while (*char_st != '\0') {
-        char_st++;
-      }
-      char_st++;
-    }
-    return strings;
-  } else {
-    if (out == 0u) {
-      return {};
-    }
-    return {std::string{c}};
+  auto attr = GetAttrHdl(attr_name);
+  ShapeInferContext::Strings result;
+  auto status = attr.GetValueArray<std::string>(result);
+  if (!status.IsOK()) {
+    ORT_CXX_API_THROW("Getting strings attribute failed: " + status.GetErrorMessage(), status.GetErrorCode());
   }
+  return result;
 }
 
-inline const OrtOpAttr* ShapeInferContext::GetAttrHdl(const char* attr_name) const {
+inline ConstOpAttr ShapeInferContext::GetAttrHdl(const char* attr_name) const {
   const OrtOpAttr* attr_hdl = {};
   Ort::ThrowOnError(ort_api_->ShapeInferContext_GetAttribute(ctx_, attr_name, &attr_hdl));
-  return attr_hdl;
+  return ConstOpAttr{attr_hdl};
 }
 
 namespace detail {
@@ -2677,6 +3040,136 @@ inline std::vector<const char*> StringsToCharPtrs(const std::vector<std::string>
 
   return ptrs;
 }
+}  // namespace detail
+
+namespace detail {
+template <typename T>
+inline size_t ConstNodeImpl<T>::GetId() const {
+  size_t id;
+  ThrowOnError(GetApi().Node_GetId(this->p_, &id));
+  return id;
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetName() const {
+  const char* name;
+  ThrowOnError(GetApi().Node_GetName(this->p_, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetOperatorType() const {
+  const char* type;
+  ThrowOnError(GetApi().Node_GetOperatorType(this->p_, &type));
+  return std::string(type);
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetDomain() const {
+  const char* domain;
+  ThrowOnError(GetApi().Node_GetDomain(this->p_, &domain));
+  return std::string(domain);
+}
+
+template <typename T>
+inline int ConstNodeImpl<T>::GetSinceVersion() const {
+  int since_version;
+  ThrowOnError(GetApi().Node_GetSinceVersion(this->p_, &since_version));
+  return since_version;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetInputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Node_GetNumInputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Node_GetInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetOutputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Node_GetNumOutputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Node_GetOutputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstNodeImpl<T>::GetImplicitInputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Node_GetNumImplicitInputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Node_GetImplicitInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()),
+                                                 num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstOpAttr> ConstNodeImpl<T>::GetAttributes() const {
+  static_assert(sizeof(const OrtOpAttr*) == sizeof(ConstOpAttr), "Must be the same size");
+  size_t num_attrs;
+  ThrowOnError(GetApi().Node_GetNumAttributes(this->p_, &num_attrs));
+  std::vector<ConstOpAttr> attrs;
+  if (num_attrs > 0) {
+    attrs.resize(num_attrs);
+    ThrowOnError(GetApi().Node_GetAttributes(this->p_, reinterpret_cast<const OrtOpAttr**>(attrs.data()), num_attrs));
+  }
+  return attrs;
+}
+
+template <typename T>
+inline Status ConstNodeImpl<T>::GetAttributeByName(const std::string& name, ConstOpAttr& out) const {
+  const OrtOpAttr* attr = nullptr;
+  auto status = Status(GetApi().Node_GetAttributeByName(this->p_, name.c_str(), &attr));
+  out = ConstOpAttr{attr};
+  return status;
+}
+
+template <typename T>
+inline std::vector<AttrNameSubgraph> ConstNodeImpl<T>::GetSubgraphs() const {
+  size_t num_graphs;
+  ThrowOnError(GetApi().Node_GetNumSubgraphs(this->p_, &num_graphs));
+  std::vector<AttrNameSubgraph> result;
+  if (num_graphs > 0) {
+    std::vector<const OrtGraph*> sub_graphs(num_graphs);
+    std::vector<const char*> attr_names(num_graphs);
+    ThrowOnError(GetApi().Node_GetSubgraphs(this->p_, sub_graphs.data(), num_graphs, attr_names.data()));
+    result.reserve(num_graphs);
+    for (size_t i = 0; i < num_graphs; ++i) {
+      result.push_back({std::string(attr_names[i]), ConstGraph{sub_graphs[i]}});
+    }
+  }
+  return result;
+}
+
+template <typename T>
+inline ConstGraph ConstNodeImpl<T>::GetGraph() const {
+  const OrtGraph* graph;
+  ThrowOnError(GetApi().Node_GetGraph(this->p_, &graph));
+  return ConstGraph{graph};
+}
+
+template <typename T>
+inline std::string ConstNodeImpl<T>::GetEpName() const {
+  const char* name;
+  ThrowOnError(GetApi().Node_GetEpName(this->p_, &name));
+  return std::string(name);
+}
+
 }  // namespace detail
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -2720,7 +3213,277 @@ inline Node::Node(const std::string& operator_name, const std::string& operator_
   std::vector<OpAttr> empty_attributes;
   Init(operator_name, operator_domain, node_name, input_names, output_names, empty_attributes, p_);
 }
+inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_info) {
+  ThrowOnError(GetModelEditorApi().CreateValueInfo(name.c_str(), type_info, &p_));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
+namespace detail {
+template <typename T>
+inline std::string ConstValueInfoImpl<T>::GetName() const {
+  const char* p = nullptr;
+  ThrowOnError(GetApi().GetValueInfoName(this->p_, &p));
+  return std::string(p);
+}
+
+template <typename T>
+inline ConstTypeInfo ConstValueInfoImpl<T>::TypeInfo() const {
+  const OrtTypeInfo* type_info = nullptr;
+  ThrowOnError(GetApi().GetValueInfoTypeInfo(this->p_, &type_info));
+  return ConstTypeInfo{type_info};
+}
+
+template <typename T>
+inline ValueInfoConsumerProducerInfo ConstValueInfoImpl<T>::GetProducerNode() const {
+  ValueInfoConsumerProducerInfo info;
+  const OrtNode* producer;
+  size_t index;
+  ThrowOnError(GetApi().ValueInfo_GetValueProducer(this->p_, &producer, &index));
+  info.node = ConstNode(producer);
+  info.index = static_cast<int64_t>(index);
+  return info;
+}
+
+template <typename T>
+inline std::vector<ValueInfoConsumerProducerInfo> ConstValueInfoImpl<T>::GetConsumers() const {
+  size_t num = 0;
+  ThrowOnError(GetApi().ValueInfo_GetValueNumConsumers(this->p_, &num));
+  std::vector<ValueInfoConsumerProducerInfo> out;
+  if (num > 0) {
+    std::vector<const OrtNode*> nodes(num);
+    std::vector<int64_t> indices(num);
+    ThrowOnError(GetApi().ValueInfo_GetValueConsumers(this->p_, nodes.data(), indices.data(), num));
+    out.reserve(num);
+    for (size_t i = 0; i < num; ++i) {
+      out.push_back({ConstNode{nodes[i]}, indices[i]});
+    }
+  }
+  return out;
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::GetInitializer(ConstValue& value) const {
+  const OrtValue* out = nullptr;
+  auto status = Status(GetApi().ValueInfo_GetInitializerValue(this->p_, &out));
+  if (!status.IsOK()) return status;
+  value = ConstValue{out};
+  return status;
+}
+
+template <typename T>
+inline Status ConstValueInfoImpl<T>::GetExternalInitializerInfo(ExternalInitializerInfo& info) const {
+  OrtExternalInitializerInfo* out = nullptr;
+  auto status = Status(GetApi().ValueInfo_GetExternalInitializerInfo(this->p_, &out));
+  if (!status.IsOK()) return status;
+  info = ExternalInitializerInfo{out};
+  return status;
+}
+
+template <typename T>
+inline bool ConstValueInfoImpl<T>::IsRequiredGraphInput() const {
+  bool out = false;
+  ThrowOnError(GetApi().ValueInfo_IsRequiredGraphInput(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline bool ConstValueInfoImpl<T>::IsOptionalGraphInput() const {
+  bool out = false;
+  ThrowOnError(GetApi().ValueInfo_IsOptionalGraphInput(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline bool ConstValueInfoImpl<T>::IsGraphOutput() const {
+  bool out = false;
+  ThrowOnError(GetApi().ValueInfo_IsGraphOutput(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline bool ConstValueInfoImpl<T>::IsConstantInitializer() const {
+  bool out = false;
+  ThrowOnError(GetApi().ValueInfo_IsConstantInitializer(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline bool ConstValueInfoImpl<T>::IsFromOuterScope() const {
+  bool out = false;
+  ThrowOnError(GetApi().ValueInfo_IsFromOuterScope(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline ModelMetadata ConstGraphImpl<T>::GetModelMetadata() const {
+  OrtModelMetadata* out;
+  ThrowOnError(GetApi().Graph_GetModelMetadata(this->p_, &out));
+  return ModelMetadata{out};
+}
+
+template <typename T>
+inline std::string ConstGraphImpl<T>::GetName() const {
+  const char* name;
+  ThrowOnError(GetApi().Graph_GetName(this->p_, &name));
+  return std::string(name);
+}
+
+template <typename T>
+inline std::basic_string<ORTCHAR_T> ConstGraphImpl<T>::GetModelPath() const {
+  const ORTCHAR_T* path;
+  ThrowOnError(GetApi().Graph_GetModelPath(this->p_, &path));
+  return std::basic_string<ORTCHAR_T>(path);
+}
+
+template <typename T>
+inline int64_t ConstGraphImpl<T>::GetOnnxIRVersion() const {
+  int64_t version;
+  ThrowOnError(GetApi().Graph_GetOnnxIRVersion(this->p_, &version));
+  return version;
+}
+
+template <typename T>
+inline std::vector<OperatorSet> ConstGraphImpl<T>::GetOperatorSets() const {
+  size_t num_opsets;
+  ThrowOnError(GetApi().Graph_GetNumOperatorSets(this->p_, &num_opsets));
+  std::vector<OperatorSet> result;
+  if (num_opsets > 0) {
+    std::vector<const char*> domains;
+    std::vector<int64_t> versions;
+    domains.resize(num_opsets);
+    versions.resize(num_opsets);
+    ThrowOnError(GetApi().Graph_GetOperatorSets(this->p_, domains.data(), versions.data(), num_opsets));
+    result.reserve(num_opsets);
+    for (size_t i = 0; i < num_opsets; ++i) {
+      result.push_back({domains[i], versions[i]});
+    }
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstGraphImpl<T>::GetInputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Graph_GetNumInputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Graph_GetInputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstGraphImpl<T>::GetOutputs() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Graph_GetNumOutputs(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Graph_GetOutputs(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()), num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstValueInfo> ConstGraphImpl<T>::GetInitializers() const {
+  static_assert(sizeof(const OrtValueInfo*) == sizeof(ConstValueInfo));
+  size_t num_vi;
+  ThrowOnError(GetApi().Graph_GetNumInitializers(this->p_, &num_vi));
+  std::vector<ConstValueInfo> result;
+  if (num_vi > 0) {
+    result.resize(num_vi);
+    ThrowOnError(GetApi().Graph_GetInitializers(this->p_, reinterpret_cast<const OrtValueInfo**>(result.data()),
+                                                num_vi));
+  }
+  return result;
+}
+
+template <typename T>
+inline std::vector<ConstNode> ConstGraphImpl<T>::GetNodes() const {
+  static_assert(sizeof(const OrtNode*) == sizeof(ConstNode));
+  size_t num_nodes;
+  ThrowOnError(GetApi().Graph_GetNumNodes(this->p_, &num_nodes));
+  std::vector<ConstNode> result;
+  if (num_nodes > 0) {
+    result.resize(num_nodes);
+    ThrowOnError(GetApi().Graph_GetNodes(this->p_, reinterpret_cast<const OrtNode**>(result.data()), num_nodes));
+  }
+  return result;
+}
+
+template <typename T>
+inline ConstNode ConstGraphImpl<T>::GetParentNode() const {
+  const OrtNode* parent;
+  ThrowOnError(GetApi().Graph_GetParentNode(this->p_, &parent));
+  return ConstNode{parent};
+}
+
+template <typename T>
+inline Graph ConstGraphImpl<T>::GetGraphView(const std::vector<ConstNode>& nodes) const {
+  OrtGraph* graph_viewer;
+  std::vector<const OrtNode*> inputs_ptrs;
+  inputs_ptrs.reserve(nodes.size());
+  std::transform(nodes.begin(), nodes.end(), std::back_inserter(inputs_ptrs),
+                 [](ConstNode n) -> const OrtNode* { return n; });
+  ThrowOnError(GetApi().Graph_GetGraphView(this->p_, inputs_ptrs.data(),
+                                           nodes.size(), &graph_viewer));
+  return Graph{graph_viewer};
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+template <typename T>
+inline void GraphImpl<T>::SetInputs(std::vector<ValueInfo>& inputs) {
+  std::vector<OrtValueInfo*> inputs_ptrs;
+  inputs_ptrs.reserve(inputs.size());
+  std::transform(inputs.begin(), inputs.end(), std::back_inserter(inputs_ptrs),
+                 [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
+
+  ThrowOnError(GetModelEditorApi().SetGraphInputs(this->p_, inputs_ptrs.data(), inputs_ptrs.size()));
+
+  // Graph now owns the inputs
+  std::for_each(inputs.begin(), inputs.end(), [](ValueInfo& vi) { vi.release(); });
+}
+
+template <typename T>
+inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
+  std::vector<OrtValueInfo*> outputs_ptrs;
+  outputs_ptrs.reserve(outputs.size());
+  std::transform(outputs.begin(), outputs.end(), std::back_inserter(outputs_ptrs),
+                 [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
+
+  ThrowOnError(GetModelEditorApi().SetGraphOutputs(this->p_, outputs_ptrs.data(), outputs_ptrs.size()));
+
+  // Graph now owns the outputs
+  std::for_each(outputs.begin(), outputs.end(), [](ValueInfo& vi) { vi.release(); });
+}
+
+template <typename T>
+inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
+  // Graph takes ownership of `initializer`
+  // On error the ownership is not transferred.
+  ThrowOnError(GetModelEditorApi().AddInitializerToGraph(this->p_, name.c_str(), initializer, data_is_external));
+  initializer.release();
+}
+
+template <typename T>
+inline void GraphImpl<T>::AddNode(Node& node) {
+  // Graph takes ownership of `node`
+  ThrowOnError(GetModelEditorApi().AddNodeToGraph(this->p_, node.release()));
+}
+
+template <typename T>
+inline void ModelImpl<T>::AddGraph(Graph& graph) {
+  // Model takes ownership of `graph`
+  ThrowOnError(GetModelEditorApi().AddGraphToModel(this->p_, graph.release()));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+}  // namespace detail
+
+#if !defined(ORT_MINIMAL_BUILD)
 inline Graph::Graph() {
   ThrowOnError(GetModelEditorApi().CreateGraph(&p_));
 }
@@ -2738,72 +3501,6 @@ inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
 
   ThrowOnError(GetModelEditorApi().CreateModel(domains.data(), versions.data(), opsets.size(), &p_));
 }
+#endif
 
-inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_info) {
-  ThrowOnError(GetModelEditorApi().CreateValueInfo(name.c_str(), type_info, &p_));
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-namespace detail {
-template <>
-inline std::string ValueInfoImpl<OrtValueInfo>::Name() const {
-  const char* name = nullptr;
-  ThrowOnError(GetApi().GetValueInfoName(this->p_, &name));
-  return name;
-}
-
-template <>
-inline ConstTypeInfo ValueInfoImpl<OrtValueInfo>::TypeInfo() const {
-  const OrtTypeInfo* type_info = nullptr;
-  ThrowOnError(GetApi().GetValueInfoTypeInfo(this->p_, &type_info));
-  return ConstTypeInfo{type_info};
-}
-
-#if !defined(ORT_MINIMAL_BUILD)
-template <>
-inline void GraphImpl<OrtGraph>::SetInputs(std::vector<ValueInfo>& inputs) {
-  std::vector<OrtValueInfo*> inputs_ptrs;
-  inputs_ptrs.reserve(inputs.size());
-  std::transform(inputs.begin(), inputs.end(), std::back_inserter(inputs_ptrs),
-                 [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
-
-  ThrowOnError(GetModelEditorApi().SetGraphInputs(p_, inputs_ptrs.data(), inputs_ptrs.size()));
-
-  // Graph now owns the inputs
-  std::for_each(inputs.begin(), inputs.end(), [](ValueInfo& vi) { vi.release(); });
-}
-
-template <>
-inline void GraphImpl<OrtGraph>::SetOutputs(std::vector<ValueInfo>& outputs) {
-  std::vector<OrtValueInfo*> outputs_ptrs;
-  outputs_ptrs.reserve(outputs.size());
-  std::transform(outputs.begin(), outputs.end(), std::back_inserter(outputs_ptrs),
-                 [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
-
-  ThrowOnError(GetModelEditorApi().SetGraphOutputs(p_, outputs_ptrs.data(), outputs_ptrs.size()));
-
-  // Graph now owns the outputs
-  std::for_each(outputs.begin(), outputs.end(), [](ValueInfo& vi) { vi.release(); });
-}
-
-template <>
-inline void GraphImpl<OrtGraph>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
-  // Graph takes ownership of `initializer`
-  ThrowOnError(GetModelEditorApi().AddInitializerToGraph(p_, name.c_str(), initializer.release(), data_is_external));
-}
-
-template <>
-inline void GraphImpl<OrtGraph>::AddNode(Node& node) {
-  // Graph takes ownership of `node`
-  ThrowOnError(GetModelEditorApi().AddNodeToGraph(p_, node.release()));
-}
-
-template <>
-inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
-  // Model takes ownership of `graph`
-  ThrowOnError(GetModelEditorApi().AddGraphToModel(p_, graph.release()));
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-}  // namespace detail
 }  // namespace Ort

@@ -48,7 +48,7 @@ jobs:
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
         id: build_docker_image_step
@@ -63,7 +63,7 @@ jobs:
 
       # --- Download Build Artifact to Runner Temp Directory ---
       - name: Download Build Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: build-output-x64-Release # Must match the upload name
           path: ${{ runner.temp }}/Release # Download contents into temp dir structure

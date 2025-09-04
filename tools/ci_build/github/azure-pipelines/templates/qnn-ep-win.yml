@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.36.1.250708'
+  QnnSdk: '2.37.1.250807'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -11,7 +11,8 @@ parameters:
 
 stages:
 - stage: ${{ parameters.StageName }}
-  dependsOn: []
+  dependsOn:
+  - Setup
   jobs:
   - job: ${{ parameters.StageName }}
     timeoutInMinutes: 300
@@ -45,6 +46,7 @@ stages:
           artifactName: "drop-signed-nuget-qnn"
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       commonBuildArgs: '--skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
 
     steps:
@@ -107,7 +109,12 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
         platform: 'Any CPU'
         configuration: ${{ parameters.build_config }}
-        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+        msbuildArguments: >
+          -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
+          -p:OrtPackageId=$(OrtPackageId)
+          -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          -p:PackageVersion=$(OnnxRuntimeVersion)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
@@ -123,7 +130,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: ${{ parameters.build_config }}
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=arm64'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:TargetArchitecture=arm64'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2

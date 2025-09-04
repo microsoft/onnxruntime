@@ -39,6 +39,7 @@ jobs:
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
+
   xnnpack:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
@@ -59,11 +60,13 @@ jobs:
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
+
   iphone_simulator:
     runs-on: macos-15
 
     env:
-      xcode_version: 16
+      xcode_version: 16.4
+      simulator_runtime_version: 18.5
 
     strategy:
       matrix:
@@ -73,7 +76,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
@@ -100,6 +103,8 @@ jobs:
             --apple_deploy_target=15.1 \
             --apple_sysroot=iphonesimulator \
             --osx_arch=${{ matrix.target_arch }}
+        env:
+          ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
@@ -111,7 +116,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup

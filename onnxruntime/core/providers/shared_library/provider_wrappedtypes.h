@@ -776,6 +776,8 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv4() { return g_host->DataTypeImpl__AllTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv9() { return g_host->DataTypeImpl__AllTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllTensorTypesIRv10() { return g_host->DataTypeImpl__AllTensorTypesIRv10(); }
+  static const std::vector<MLDataType>& AllTensorTypesIRv11() { return g_host->DataTypeImpl__AllTensorTypesIRv11(); }
 
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
 
@@ -1041,6 +1043,10 @@ struct Graph final {
   Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, const OrtValue& ort_value) {
     return g_host->Graph__AddInitializedOrtValue(this, tensor, ort_value);
   }
+  bool GetOrtValueInitializer(const std::string& tensor_name, OrtValue& ort_value,
+                              bool check_outer_scope = false) const {
+    return g_host->Graph__GetOrtValueInitializer(this, tensor_name, ort_value, check_outer_scope);
+  }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, NodeAttributes&& attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, std::move(attributes), domain); }
   Node& AddNode(const Node& other) { return g_host->Graph__AddNode(this, other); }
@@ -1123,6 +1129,9 @@ class GraphViewer final {
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name,
                                                             bool check_outer_scope = true) const {
     return g_host->GraphViewer__GetConstantInitializer(this, name, check_outer_scope);
+  }
+  bool GetOrtValueInitializer(const std::string& tensor_name, OrtValue& ort_value) const {
+    return g_host->GraphViewer__GetOrtValueInitializer(this, tensor_name, ort_value);
   }
   const Node* ParentNode() const { return g_host->GraphViewer__ParentNode(this); }
 
@@ -1506,6 +1515,11 @@ template <>
 inline bool Tensor::IsDataType<Float8E5M2FNUZ>() const { return g_host->Tensor__IsDataType_Float8E5M2FNUZ(this); }
 #endif
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+inline bool Tensor::IsDataType<Float4E2M1x2>() const { return g_host->Tensor__IsDataType_Float4E2M1x2(this); }
+#endif
+
 template <>
 inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }
 template <>
@@ -1548,6 +1562,11 @@ template <>
 inline Float8E5M2FNUZ* Tensor::MutableData<Float8E5M2FNUZ>() { return g_host->Tensor__MutableData_Float8E5M2FNUZ(this); }
 #endif
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+inline Float4E2M1x2* Tensor::MutableData<Float4E2M1x2>() { return g_host->Tensor__MutableData_Float4E2M1x2(this); }
+#endif
+
 template <>
 inline const bool* Tensor::Data<bool>() const { return g_host->Tensor__Data_bool(this); }
 template <>
@@ -1588,6 +1607,11 @@ template <>
 inline const Float8E5M2* Tensor::Data<Float8E5M2>() const { return g_host->Tensor__Data_Float8E5M2(this); }
 template <>
 inline const Float8E5M2FNUZ* Tensor::Data<Float8E5M2FNUZ>() const { return g_host->Tensor__Data_Float8E5M2FNUZ(this); }
+#endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+inline const Float4E2M1x2* Tensor::Data<Float4E2M1x2>() const { return g_host->Tensor__Data_Float4E2M1x2(this); }
 #endif
 
 // SparseTensor
