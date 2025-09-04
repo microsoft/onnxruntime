@@ -1,11 +1,23 @@
 parameters:
-  - name: msbuildPlatform
-    type: string
-  - name: java_artifact_id
-    type: string
-  - name: buildOnly
-    type: boolean
-    default: false
+- name: msbuildPlatform
+  type: string
+- name: java_artifact_id
+  type: string
+- name: buildOnly
+  type: boolean
+  default: false
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
 
 steps:
 - task: PowerShell@2
@@ -19,8 +31,8 @@ steps:
         "--binaries-dir", "$(Build.BinariesDirectory)",
         "--platform", "${{ parameters.msbuildPlatform }}",
         "--java-artifact-id", "${{ parameters.java_artifact_id }}",
-        "--base-version", "$(OnnxRuntimeVersion)",
-        "--version-suffix", "$(ReleaseVersionSuffix)",
+        "--pre-release-version-suffix-string", "${{ parameters.PreReleaseVersionSuffixString }}",
+        "--pre-release-version-suffix-number", "${{ parameters.PreReleaseVersionSuffixNumber }}",
         "--commit-hash", "$(OnnxRuntimeGitCommitHash)"
       )
 

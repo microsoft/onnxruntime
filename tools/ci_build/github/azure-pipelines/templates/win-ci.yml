@@ -40,6 +40,19 @@ parameters:
   type: string
   default: ''
 
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
 # for inference packages '', for training packages '-training'
 # used for drop-extra and c api artifacts (onnxruntime-win-* or onnxrutime-training-win-*)
 - name: artifact_name_suffix
@@ -190,6 +203,9 @@ stages:
           parameters:
             msbuildPlatform: ${{ parameters.msbuildPlatform }}
             java_artifact_id: ${{ parameters.java_artifact_id }}
+            PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+            PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
             ${{ if or(contains(parameters.buildparameter, 'use_cuda'), contains(parameters.buildparameter, 'use_tensorrt')) }}:
             # When it is a GPU build, we only assemble the java binaries, testing will be done in the later stage with GPU machine
               buildOnly: true

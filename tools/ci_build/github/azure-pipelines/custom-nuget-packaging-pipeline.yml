@@ -92,6 +92,8 @@ extends:
 
       - template: templates/win-ci.yml
         parameters:
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
           ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
           DoCompliance: false
           DoEsrp: true

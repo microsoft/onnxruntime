@@ -1,5 +1,6 @@
 import argparse
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -106,14 +107,37 @@ def main():
     parser.add_argument("--binaries-dir", required=True, type=Path, help="Path to the build binaries directory.")
     parser.add_argument("--platform", required=True, help="Platform string (e.g., x64).")
     parser.add_argument("--java-artifact-id", required=True, help="The Java artifact ID.")
-    parser.add_argument("--base-version", required=True, help="The base version string for the artifact.")
-    parser.add_argument("--version-suffix", default="", help="The version suffix (e.g., -rc.1).")
+    parser.add_argument("--pre-release-version-suffix-string", choices=['alpha', 'beta', 'rc', 'none'], default='none', help="The pre-release version suffix string.")
+    parser.add_argument("--pre-release-version-suffix-number", type=int, default=0, help="The pre-release version suffix number.")
     parser.add_argument("--commit-hash", required=True, help="The git commit hash.")
     parser.add_argument("--build-only", action="store_true", help="Flag to indicate if this is a build-only run.")
     args = parser.parse_args()
 
     # --- 1. Version and Build Logic ---
-    full_version = f"{args.base_version}{args.version_suffix}"
+    # Determine the repository root from the script's location
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    version_file_path = repo_root / "VERSION_NUMBER"
+    
+    logging.info(f"Reading base version from {version_file_path}")
+    if not version_file_path.is_file():
+        raise FileNotFoundError(f"Version file not found at {version_file_path}")
+    
+    base_version = version_file_path.read_text(encoding="utf-8").strip()
+    
+    # Validate the version format
+    if not re.match(r"^\d+\.\d+\.\d+$", base_version):
+        raise ValueError(f"Version '{base_version}' from {version_file_path} is not in the required x.y.z format.")
+    
+    logging.info(f"Successfully read and validated base version: {base_version}")
+
+    # Start with the base version and conditionally append the pre-release suffix.
+    full_version = base_version
+    if args.pre_release_version_suffix_string != 'none':
+        if args.pre_release_version_suffix_number <= 0:
+            raise ValueError("Pre-release version suffix number must be a positive integer if a suffix string is provided.")
+        # Append the suffix, conforming to Maven standards (e.g., 1.2.3-rc.1)
+        full_version += f"-{args.pre_release_version_suffix_string}.{args.pre_release_version_suffix_number}"
+
     logging.info(f"Using full version: {full_version}")
 
     java_working_dir = args.sources_dir / 'java'
@@ -203,4 +227,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
