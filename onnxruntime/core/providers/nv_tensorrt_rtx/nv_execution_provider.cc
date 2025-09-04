@@ -130,8 +130,7 @@ static std::string GetDataTypeName(ONNXTensorElementDataType data_type) {
 }
 
 // Helper function to check if a node has supported data types
-static bool CheckNodeDataTypes(const Node* node, bool print_warnings = true) {
-  bool all_types_supported = true;
+static bool CheckNodeDataTypes(const Node* node) {
 
   // Check input data types
   for (const auto* input_def : node->InputDefs()) {
@@ -140,13 +139,12 @@ static bool CheckNodeDataTypes(const Node* node, bool print_warnings = true) {
       if (type_proto && type_proto->has_tensor_type()) {
         auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
         if (!IsSupportedDataType(data_type)) {
-          all_types_supported = false;
-          if (print_warnings) {
-            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
-                                  << "' (OpType: " << node->OpType()
-                                  << ") has unsupported input data type: " << GetDataTypeName(data_type)
-                                  << " for input '" << input_def->Name() << "'";
-          }
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                << "' (OpType: " << node->OpType()
+                                << ") has unsupported input data type: " << GetDataTypeName(data_type)
+                                << " for input '" << input_def->Name() << "'";
+          return false;
+
         }
       }
     }
@@ -159,19 +157,18 @@ static bool CheckNodeDataTypes(const Node* node, bool print_warnings = true) {
       if (type_proto && type_proto->has_tensor_type()) {
         auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
         if (!IsSupportedDataType(data_type)) {
-          all_types_supported = false;
-          if (print_warnings) {
-            LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
-                                  << "' (OpType: " << node->OpType()
-                                  << ") has unsupported output data type: " << GetDataTypeName(data_type)
-                                  << " for output '" << output_def->Name() << "'";
-          }
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                << "' (OpType: " << node->OpType()
+                                << ") has unsupported output data type: " << GetDataTypeName(data_type)
+                                << " for output '" << output_def->Name() << "'";
+          return false;
+
         }
       }
     }
   }
 
-  return all_types_supported;
+  return true;
 }
 
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
@@ -2008,19 +2005,19 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
       supported_node = supported_control_flow_op(node);
     }
 
+    // Exclude any ops, if applicable
+    if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
+      supported_node = false;
+    }
+
     // Check data types and print warnings for unsupported types
     if (supported_node) {
-      if (!CheckNodeDataTypes(node, true)) {
+      if (!CheckNodeDataTypes(node)) {
         supported_node = false;
         LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Node '" << node->Name()
                           << "' (OpType: " << node->OpType()
                           << ") excluded due to unsupported data types";
       }
-    }
-
-    // Exclude any ops, if applicable
-    if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
-      supported_node = false;
     }
 
     if (supported_node) {
@@ -2151,23 +2148,6 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   const size_t number_of_subgraphs = supported_nodes_vector.size();
-
-    // Provide summary of data type compatibility
-  int nodes_with_unsupported_data_types = 0;
-  for (size_t i = 0; i < static_cast<size_t>(number_of_ort_nodes); ++i) {
-    const auto& node = graph.GetNode(node_index[i]);
-    if (!CheckNodeDataTypes(node, false)) {  // Don't print warnings again, just count
-      nodes_with_unsupported_data_types++;
-    }
-  }
-
-      if (nodes_with_unsupported_data_types > 0) {
-    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] " << nodes_with_unsupported_data_types
-                       << " out of " << number_of_ort_nodes
-                       << " nodes were excluded due to unsupported data types. "
-                       << "Supported data types: FLOAT, FLOAT16, BFLOAT16, BOOL, INT4, INT8, UINT8, INT32, INT64, FLOAT8E4M3FN";
-  }
-
   if (number_of_trt_nodes == 0) {
     LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] No graph will run on Nv execution provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
