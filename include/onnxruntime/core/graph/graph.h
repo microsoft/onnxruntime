@@ -1247,6 +1247,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                                   const std::filesystem::path& model_file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
 
+  /// <summary>
+  /// Serialize the Graph to a onnx::GraphProto. Caller provides a function that determines where each initializer
+  /// is stored (i.e., either in an external file or within the model).
+  /// </summary>
+  /// <param name="handle_initializer_func">Function called for every initializer.</param>
+  /// <param name="state">Opaque user state passed to the handle_initializer_func.</param>
+  /// <param name="graph_proto">Output parameter set to the serialized onnx::GraphProto.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  common::Status ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                           void* state,
+                                                           /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const;
+
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
 
@@ -1664,6 +1676,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       std::ostream& external_stream,
       int64_t& external_offset) const;
 
+  Status ToGraphProtoWithCustomInitializerHandlingImpl(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                       void* state,
+                                                       /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 #endif
 
   Version IrVersion() const noexcept {
