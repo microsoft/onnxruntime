@@ -183,7 +183,7 @@ stages:
       displayName: Pod install for onnxruntime react native ios bridge library
 
     # run unit tests on iOS simulator
-    - ${{ if eq(variables.testType, "unit_test") }}:
+    - ${{ if eq(variables.testType, 'unit_test') }}:
       - task: Xcode@5
         inputs:
           actions: 'test'
@@ -209,7 +209,7 @@ stages:
         displayName: Publish React Native iOS Instrumented Test Results
 
     # run e2e tests with detox on iOS simulator
-    - ${{ if eq(variables.testType, "e2e") }}:
+    - ${{ if eq(variables.testType, 'e2e') }}:
       - script:
           brew tap wix/brew
         displayName: brew tap wix/brew
