@@ -14,23 +14,17 @@
 # --------------------------------------------------------------------------
 
 import itertools
-import os
+import time
 import unittest
-from parameterized import parameterized
+
 import numpy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from onnx import TensorProto, helper
+from parameterized import parameterized
 
-try:
-    import onnxruntime
-    has_onnx = True
-except ImportError:
-    has_onnx = False
-
-# Reduces number of tests to run for faster pipeline checks
-pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
+from onnxruntime import InferenceSession, SessionOptions
 
 # Device and provider settings for CPU
 device = torch.device("cpu")
@@ -171,7 +165,7 @@ def create_swiglu_moe_onnx_graph(
             ["output"],
             "MoE_0",
             k=topk,
-            normalize_routing_weights=0,  # Test the fixed implementation
+            normalize_routing_weights=1,
             activation_type="swiglu",
             swiglu_fusion=1,
             activation_alpha=1.702,
@@ -265,8 +259,6 @@ class SparseMoeBlockORTHelper(nn.Module):
         self.np_type = numpy.float16 if self.onnx_dtype == TensorProto.FLOAT16 else numpy.float32
 
     def create_ort_session(self, moe_onnx_graph):
-        from onnxruntime import InferenceSession, SessionOptions
-
         sess_options = SessionOptions()
         sess_options.log_severity_level = 2
 
@@ -304,8 +296,6 @@ class SparseMoeBlockORTHelper(nn.Module):
         }
 
         if enable_performance_test:
-            import time
-
             repeat = 1000
             s = time.time()
             for _ in range(repeat):
@@ -346,73 +336,6 @@ class SparseMoeBlockORTHelper(nn.Module):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim).to(device)
         self.ort_forward(hidden_state, enable_performance_test=True)
 
-    def debug_detailed_comparison(self):
-        """Detailed debugging to identify potential issues"""
-        hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim).to(device)
-        
-        # Get PyTorch reference output
-        torch_output = self.forward(hidden_state)
-        
-        # Get ORT output
-        ort_output = self.ort_forward(hidden_state)
-        
-        if ort_output is None:
-            print("ORT output is None - session creation failed")
-            return
-            
-        print(f"\n=== DEBUGGING MoE COMPARISON ===")
-        print(f"Input shape: {hidden_state.shape}")
-        print(f"Input range: [{hidden_state.min():.6f}, {hidden_state.max():.6f}]")
-        print(f"Input std: {hidden_state.std():.6f}")
-        
-        # Check router probabilities
-        hidden_states_flat = hidden_state.view(-1, self.hidden_dim)
-        router_logits = self.gate(hidden_states_flat)
-        router_probs = F.softmax(router_logits, dim=-1)
-        
-        print(f"\nRouter logits range: [{router_logits.min():.6f}, {router_logits.max():.6f}]")
-        print(f"Router probs range: [{router_probs.min():.6f}, {router_probs.max():.6f}]")
-        print(f"Router probs sum per token (should be ~1.0): {router_probs.sum(dim=-1)[:5]}")
-        
-        # Check top-k selection
-        top_k_probs, top_k_indices = torch.topk(router_probs, self.top_k, dim=-1)
-        print(f"Top-k indices range: [{top_k_indices.min()}, {top_k_indices.max()}]")
-        print(f"Top-k probs range: [{top_k_probs.min():.6f}, {top_k_probs.max():.6f}]")
-        
-        # Output comparison
-        print(f"\nPyTorch output shape: {torch_output.shape}")
-        print(f"ORT output shape: {ort_output.shape}")
-        print(f"PyTorch output range: [{torch_output.min():.6f}, {torch_output.max():.6f}]")
-        print(f"ORT output range: [{ort_output.min():.6f}, {ort_output.max():.6f}]")
-        print(f"PyTorch output std: {torch_output.std():.6f}")
-        print(f"ORT output std: {ort_output.std():.6f}")
-        
-        # Difference analysis
-        diff = (torch_output - ort_output).abs()
-        print(f"\nAbsolute difference range: [{diff.min():.8f}, {diff.max():.8f}]")
-        print(f"Mean absolute difference: {diff.mean():.8f}")
-        print(f"Std of absolute difference: {diff.std():.8f}")
-        
-        # Check for any NaN or Inf values
-        torch_has_nan = torch.isnan(torch_output).any()
-        torch_has_inf = torch.isinf(torch_output).any()
-        ort_has_nan = torch.isnan(ort_output).any()
-        ort_has_inf = torch.isinf(ort_output).any()
-        
-        print(f"\nPyTorch output has NaN: {torch_has_nan}, Inf: {torch_has_inf}")
-        print(f"ORT output has NaN: {ort_has_nan}, Inf: {ort_has_inf}")
-        
-        # Check weight statistics
-        for i, expert in enumerate(self.experts[:2]):  # Check first 2 experts
-            w1_weight = expert.w1.weight
-            w2_weight = expert.w2.weight
-            print(f"\nExpert {i} W1 weight range: [{w1_weight.min():.6f}, {w1_weight.max():.6f}]")
-            print(f"Expert {i} W2 weight range: [{w2_weight.min():.6f}, {w2_weight.max():.6f}]")
-            print(f"Expert {i} W1 weight std: {w1_weight.std():.6f}")
-            print(f"Expert {i} W2 weight std: {w2_weight.std():.6f}")
-        
-        print(f"=== END DEBUGGING ===\n")
-
 
 class SwigluMoEBlock(SparseMoeBlockORTHelper):
     def __init__(
@@ -423,7 +346,6 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_token
-        use_quant = self.quant_bits > 0
 
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=True)
 
@@ -434,10 +356,10 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
 
         for expert in self.experts:
             w1_weight = expert.w1.weight.data.clone()
-            w2_weight = expert.w2.weight.data.clone() 
-            w1_bias = expert.w1.bias.data.clone()     
-            w2_bias = expert.w2.bias.data.clone()    
-            
+            w2_weight = expert.w2.weight.data.clone()
+            w1_bias = expert.w1.bias.data.clone()
+            w2_bias = expert.w2.bias.data.clone()
+
             fc1_w_list.append(w1_weight)
             fc2_w_list.append(w2_weight)
             fc1_b_list.append(w1_bias)
@@ -471,10 +393,13 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         router_logits = self.gate(hidden_states)
-        
-        # With normalize_routing_weights=0: full softmax then top-k selection
+
+        # Compute full softmax over all experts (same as CUDA)
         full_probs = F.softmax(router_logits, dim=-1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(full_probs, self.top_k, dim=-1)
+
+        # For normalize_routing_weights=1: normalize by sum of top-k values (same as CUDA)
+        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         routing_weights = routing_weights.to(hidden_states.dtype)
 
         final_hidden_states = torch.zeros(
@@ -516,6 +441,7 @@ perf_test_cases = list(
     )
 )
 
+
 class TestSwigluMoECPU(unittest.TestCase):
     @parameterized.expand(swiglu_test_cases)
     def test_swiglu_moe_parity(self, batch_size, sequence_length, quant_bits):
@@ -541,6 +467,7 @@ class TestSwigluMoECPUPerf(unittest.TestCase):
         moe = SwigluMoEBlock(config, batch_size, sequence_length, quant_bits)
         moe.to(device)
         moe.benchmark_ort()
+
 
 if __name__ == "__main__":
     unittest.main()

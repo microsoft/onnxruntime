@@ -124,24 +124,40 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
 
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
+
+      std::vector<float> full_softmax(static_cast<size_t>(num_experts));
+      float max_logit = logits[0];
+      for (int64_t j = 1; j < num_experts; ++j) {
+        max_logit = std::max(max_logit, logits[j]);
+      }
+
+      float sum_exp = 0.0f;
       for (int64_t j = 0; j < num_experts; ++j) {
-        sorted_logits[static_cast<size_t>(j)] = {logits[j], j};
+        full_softmax[static_cast<size_t>(j)] = std::exp(logits[j] - max_logit);
+        sum_exp += full_softmax[static_cast<size_t>(j)];
+      }
+
+      for (int64_t j = 0; j < num_experts; ++j) {
+        full_softmax[static_cast<size_t>(j)] /= sum_exp;
+      }
+
+      for (int64_t j = 0; j < num_experts; ++j) {
+        sorted_logits[static_cast<size_t>(j)] = {full_softmax[static_cast<size_t>(j)], j};
       }
       std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_), sorted_logits.end(), std::greater<>());
 
       if (normalize_routing_weights_) {
-        float sum_exp = 0.0f;
+        float top_k_sum = 0.0f;
         for (int64_t j = 0; j < k_; ++j) {
-          top_k_exp[static_cast<size_t>(j)] = std::exp(sorted_logits[static_cast<size_t>(j)].first);
-          sum_exp += top_k_exp[static_cast<size_t>(j)];
+          top_k_sum += sorted_logits[static_cast<size_t>(j)].first;
         }
 
-        float scale = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
         for (int64_t j = 0; j < k_; ++j) {
           int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
           int64_t route_idx = i * k_ + j;
+
           route_expert[route_idx] = static_cast<int>(expert_idx);
-          route_scale[route_idx] = top_k_exp[static_cast<size_t>(j)] * scale;
+          route_scale[route_idx] = sorted_logits[static_cast<size_t>(j)].first / top_k_sum;
           if (route_scale[route_idx] > 0.0f) {
             local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
           }
@@ -150,10 +166,9 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
         for (int64_t j = 0; j < k_; ++j) {
           int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
           int64_t route_idx = i * k_ + j;
+
           route_expert[route_idx] = static_cast<int>(expert_idx);
-          // logits points at the beginning of this token's expert values
-          float val = logits[static_cast<size_t>(expert_idx)];
-          route_scale[route_idx] = val;
+          route_scale[route_idx] = sorted_logits[static_cast<size_t>(j)].first;
           if (route_scale[route_idx] > 0.0f) {
             local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
           }
@@ -175,6 +190,11 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
         expert_token_map[static_cast<size_t>(expert_idx)].insert(expert_token_map[static_cast<size_t>(expert_idx)].end(), local_tokens.begin(), local_tokens.end());
       }
     }
+  }
+
+  for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+    std::sort(expert_token_map[static_cast<size_t>(expert_idx)].begin(),
+              expert_token_map[static_cast<size_t>(expert_idx)].end());
   }
 
   IAllocatorUniquePtr<float> input_float_buffer;
@@ -211,9 +231,10 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
       std::vector<int64_t> token_ids(static_cast<size_t>(num_expert_tokens));
 
       for (int64_t r = 0; r < num_expert_tokens; ++r) {
-        int64_t route_idx = routes[static_cast<size_t>(r)];  // stored as i*k + j
+        int64_t route_idx = routes[static_cast<size_t>(r)];
         int64_t token = route_idx / k_;
         int64_t kth = route_idx % k_;
+
         token_ids[static_cast<size_t>(r)] = token;
         batch_weights[static_cast<size_t>(r)] = route_scale[route_idx];
         const float* src = input_float + token * hidden_size;
@@ -244,16 +265,24 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
         const T* expert_output_t = C2_t.data() + static_cast<size_t>(r) * static_cast<size_t>(hidden_size);
         float w = batch_weights[static_cast<size_t>(r)];
         float* dest = local_output + static_cast<size_t>(token) * static_cast<size_t>(hidden_size);
-        for (int64_t j = 0; j < hidden_size; ++j) dest[static_cast<size_t>(j)] += w * static_cast<float>(expert_output_t[static_cast<size_t>(j)]);
+
+        for (int64_t j = 0; j < hidden_size; ++j) {
+          float weighted_value = w * static_cast<float>(expert_output_t[static_cast<size_t>(j)]);
+          dest[static_cast<size_t>(j)] += weighted_value;
+        }
       }
     }
   });
 
   auto accumulate = [&](float* buffer) {
     memset(buffer, 0, output_buffer_size * sizeof(float));
-    for (int i = 0; i < num_expert_threads; ++i) {
-      const size_t thread_offset = static_cast<size_t>(i) * output_buffer_size;
-      for (size_t j = 0; j < output_buffer_size; ++j) buffer[j] += thread_local_outputs[thread_offset + j];
+    for (size_t j = 0; j < output_buffer_size; ++j) {
+      double accumulator = 0.0;
+      for (int i = 0; i < num_expert_threads; ++i) {
+        const size_t thread_offset = static_cast<size_t>(i) * output_buffer_size;
+        accumulator += static_cast<double>(thread_local_outputs[thread_offset + j]);
+      }
+      buffer[j] = static_cast<float>(accumulator);
     }
   };
 
@@ -396,7 +425,16 @@ void MoE<T>::ApplySwiGLUVectorized(const T* input, T* output, int64_t size) cons
     gate = std::min(gate, swiglu_limit_);
     linear = std::clamp(linear, -swiglu_limit_, swiglu_limit_);
 
-    float sigmoid_out = 1.0f / (1.0f + std::exp(-activation_alpha_ * gate));
+    float sigmoid_arg = activation_alpha_ * gate;
+    float sigmoid_out;
+    if (sigmoid_arg > 0) {
+      float exp_neg = std::exp(-sigmoid_arg);
+      sigmoid_out = 1.0f / (1.0f + exp_neg);
+    } else {
+      float exp_pos = std::exp(sigmoid_arg);
+      sigmoid_out = exp_pos / (1.0f + exp_pos);
+    }
+
     float swish_out = gate * sigmoid_out;
     output[i] = static_cast<T>(swish_out * (linear + activation_beta_));
   }
