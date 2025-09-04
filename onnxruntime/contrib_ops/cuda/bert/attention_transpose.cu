@@ -166,25 +166,10 @@ Status LaunchTransCtx(cudaStream_t stream,
 Status LaunchTransCtx(cudaStream_t stream,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs,
-                      const onnxruntime::BFloat16* input, onnxruntime::BFloat16* output) {
+                      const BFloat16* input, BFloat16* output) {
   const dim3 grid(sequence_length, batch_size, 1);
 
-  if ((head_size % 4) == 0) {
-    // 4×bf16 packed in 8 bytes → use float2 path
-    const int H = head_size / 4;
-    const float2* input2 = reinterpret_cast<const float2*>(input);
-    float2* output2 = reinterpret_cast<float2*>(output);
-
-    if (H * num_heads <= max_threads_per_block) {
-      const dim3 block(H, num_heads, 1);
-      TransposeCtx<float2><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
-    } else {
-      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeCtxLarge<float2><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
-    }
-
-  } else if ((head_size & 1) == 0) {
-    // 2×bf16 packed → use __nv_bfloat162 path
+  if ((head_size & 1) == 0) {
     const int H = head_size / 2;
     const __nv_bfloat162* input2 = reinterpret_cast<const __nv_bfloat162*>(input);
     __nv_bfloat162* output2 = reinterpret_cast<__nv_bfloat162*>(output);
@@ -196,9 +181,7 @@ Status LaunchTransCtx(cudaStream_t stream,
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
     }
-
   } else {
-    // Odd H: scalar bf16 path
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
       TransposeCtx<onnxruntime::BFloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
@@ -350,28 +333,12 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs,
-                      const onnxruntime::BFloat16* input, onnxruntime::BFloat16* output,
+                      const BFloat16* input, BFloat16* output,
                       int total_matrix_count) {
   total_matrix_count = max(total_matrix_count, matrix_num);
   const dim3 grid(sequence_length, batch_size, matrix_num);
 
-  // When head_size % 4 == 0, we move 4x16-bit elements per thread (8 bytes).
-  // Using float2 keeps the same 8-byte vector width as the FP16 path.
-  if ((head_size % 4) == 0) {
-    const int H = head_size / 4;
-    const float2* input2 = reinterpret_cast<const float2*>(input);
-    float2* output2 = reinterpret_cast<float2*>(output);
-
-    if (H * num_heads <= max_threads_per_block) {
-      const dim3 block(H, num_heads, 1);
-      TransposeQKV<float2><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
-    } else {
-      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeQKVLarge<float2><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
-    }
-
-    // When head_size is even (but not divisible by 4), move 2x16-bit elements per thread (4 bytes).
-  } else if ((head_size & 1) == 0) {
+  if ((head_size & 1) == 0) {
     const int H = head_size / 2;
     const nv_bfloat162* input2 = reinterpret_cast<const nv_bfloat162*>(input);
     nv_bfloat162* output2 = reinterpret_cast<nv_bfloat162*>(output);
@@ -383,8 +350,6 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
     }
-
-    // Odd head_size: scalar 16-bit BF16 path.
   } else {
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
