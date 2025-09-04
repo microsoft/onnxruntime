@@ -1987,8 +1987,8 @@ Q8Int8GemmR2xC4DotProd(
 
                 // Android armeabi-v7a ABI doesn't have vfmaq_f32()
 #if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
-                accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
-                accf1_03 = vfmaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
 
 #else
                 accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
