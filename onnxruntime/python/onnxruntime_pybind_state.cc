@@ -1787,6 +1787,12 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("CPU", OrtMemTypeCPU)
       .value("DEFAULT", OrtMemTypeDefault);
 
+  py::enum_<OrtMemoryInfoDeviceType>(m, "OrtMemoryInfoDeviceType")
+      .value("CPU", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU)
+      .value("GPU", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU)
+      .value("NPU", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_NPU)
+      .value("FPGA", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_FPGA);
+
   py::enum_<OrtDeviceMemoryType>(m, "OrtDeviceMemoryType")
       .value("DEFAULT", OrtDeviceMemoryType_DEFAULT)
       .value("HOST_ACCESSIBLE", OrtDeviceMemoryType_HOST_ACCESSIBLE);
@@ -1952,30 +1958,28 @@ for model inference.)pbdoc");
       .def_readwrite("max_power_of_two_extend_bytes", &OrtArenaCfg::max_power_of_two_extend_bytes);
 
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
-  ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
-    if (strcmp(name, onnxruntime::CPU) == 0) {
-      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), mem_type);
-    } else if (strcmp(name, onnxruntime::CUDA) == 0) {
-      return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA, type,
-          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
-                    static_cast<OrtDevice::DeviceId>(id)),
-          mem_type);
-    } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
-      return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA_PINNED, type,
-          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                    static_cast<OrtDevice::DeviceId>(id)),
-          mem_type);
-    } else {
-      throw std::runtime_error("Specified device is not supported.");
-    } }))
-      .def_property_readonly("name", [](const OrtMemoryInfo* mem_info) -> const char* { return mem_info->name; })
-      .def_property_readonly("id", [](const OrtMemoryInfo* mem_info) -> int { return mem_info->device.Id(); }, R"pbdoc(Device Id.)pbdoc")
+  ort_memory_info_binding.def(
+                             py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
+                               Ort::MemoryInfo result(name, type, id, mem_type);
+                               return std::unique_ptr<OrtMemoryInfo>(result.release());
+                             }))
+      .def_static(
+          "create_v2",
+          [](const char* name, OrtMemoryInfoDeviceType device_type, uint32_t vendor_id,
+             int32_t device_id, OrtDeviceMemoryType device_mem_type, size_t alignment, OrtAllocatorType type) {
+            Ort::MemoryInfo result(name, device_type, vendor_id, device_id, device_mem_type, alignment, type);
+            return std::unique_ptr<OrtMemoryInfo>(result.release());
+          },
+          R"pbdoc(Create an OrtMemoryInfo instance using CreateMemoryInfo_V2())pbdoc")
+      .def_property_readonly("name", [](const OrtMemoryInfo* mem_info) -> std::string { return mem_info->name; }, R"pbdoc(Arbitrary name supplied by the user)pbdoc")
+      .def_property_readonly("device_id", [](const OrtMemoryInfo* mem_info) -> int { return mem_info->device.Id(); }, R"pbdoc(Device Id.)pbdoc")
       .def_property_readonly("mem_type", [](const OrtMemoryInfo* mem_info) -> OrtMemType { return mem_info->mem_type; }, R"pbdoc(OrtMemoryInfo memory type.)pbdoc")
-      .def_property_readonly("allocator_type", [](const OrtMemoryInfo* mem_info) -> OrtAllocatorType { return mem_info->alloc_type; })
-      .def_property_readonly("device_mem_type", [](const OrtMemoryInfo* mem_info) -> int { return mem_info->device.MemType(); }, R"pbdoc(Device memory type.)pbdoc")
-      .def_property_readonly("vendor_id", [](const OrtMemoryInfo* mem_info) -> uint32_t { return mem_info->device.Vendor(); });
+      .def_property_readonly("allocator_type", [](const OrtMemoryInfo* mem_info) -> OrtAllocatorType { return mem_info->alloc_type; }, R"pbdoc(Allocator type)pbdoc")
+      .def_property_readonly("device_mem_type", [](const OrtMemoryInfo* mem_info) -> OrtDeviceMemoryType {
+              auto mem_type =  mem_info->device.MemType();
+              return (mem_type == OrtDevice::MemType::DEFAULT) ? 
+                  OrtDeviceMemoryType_DEFAULT: OrtDeviceMemoryType_HOST_ACCESSIBLE ; }, R"pbdoc(Device memory type (Device or Host accessible).)pbdoc")
+      .def_property_readonly("device_vendor_id", [](const OrtMemoryInfo* mem_info) -> uint32_t { return mem_info->device.Vendor(); });
 
   py::class_<PySessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");

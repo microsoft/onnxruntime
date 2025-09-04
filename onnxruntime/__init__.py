@@ -37,6 +37,7 @@ try:
         OrtHardwareDevice,  # noqa: F401
         OrtHardwareDeviceType,  # noqa: F401
         OrtMemoryInfo,  # noqa: F401
+        OrtMemoryInfoDeviceType,  # noqa: F401
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
         RunOptions,  # noqa: F401

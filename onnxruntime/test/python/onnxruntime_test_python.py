@@ -1599,11 +1599,28 @@ class TestInferenceSession(unittest.TestCase):
             onnxrt.OrtMemType.DEFAULT,
         )
         self.assertEqual(cpu_memory_info.name, "Cpu")
-        self.assertEqual(cpu_memory_info.id, 0)
+        self.assertEqual(cpu_memory_info.device_id, 0)
         self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
         self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
-        self.assertEqual(cpu_memory_info.device_mem_type, 0)
-        self.assertEqual(cpu_memory_info.vendor_id, 0)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
+
+    def test_ort_memory_info_create_v2(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo.create_v2(
+            "Test",
+            onnxrt.OrtMemoryInfoDeviceType.CPU,
+            0,  # vendor_id
+            0,  # device_id
+            onnxrt.OrtDeviceMemoryType.DEFAULT,
+            128,  # alignment
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+        )
+        self.assertEqual(cpu_memory_info.name, "Test")
+        self.assertEqual(cpu_memory_info.device_id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
 
     def test_shared_allocator_using_create_and_register_allocator(self):
         # Create and register an arena based allocator
