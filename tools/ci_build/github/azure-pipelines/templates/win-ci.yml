@@ -92,8 +92,6 @@ parameters:
 
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
-  dependsOn:
-  - Setup
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -110,8 +108,6 @@ stages:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
       clean: all
-    variables:
-      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     templateContext:
       sdl:
         codeSignValidation:
