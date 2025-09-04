@@ -2593,8 +2593,10 @@ struct GetValueImpl<std::string> {
     std::string result;
     if (size > 0) {
       result.resize(size);
+      // some compilers in use do not support std::string::data() non-const
+      auto* buffer = &result[0];
       status = Status{GetApi().ReadOpAttr(
-          attr, OrtOpAttrType::ORT_OP_ATTR_STRING, result.data(), size, &size)};
+          attr, OrtOpAttrType::ORT_OP_ATTR_STRING, buffer, size, &size)};
       if (!status.IsOK()) return status;
     }
     out.swap(result);
@@ -2604,16 +2606,15 @@ struct GetValueImpl<std::string> {
     auto status = CheckAttrType(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
     if (!status.IsOK()) return status;
 
-    size_t total_buffer_size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
-
-    // Create a temporary buffer to hold the string data
-    std::vector<char> buffer(total_buffer_size);
-    status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, buffer.data(),
-                                        total_buffer_size, &total_buffer_size)};
-    if (!status.IsOK()) return status;
-
     std::vector<std::string> result;
+    size_t total_buffer_size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
     if (total_buffer_size > 0) {
+      // Create a temporary buffer to hold the string data
+      std::vector<char> buffer(total_buffer_size);
+      status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, buffer.data(),
+                                          total_buffer_size, &total_buffer_size)};
+      if (!status.IsOK()) return status;
+
       const char* data = buffer.data();
       const char* end = data + total_buffer_size;
       while (data < end) {
