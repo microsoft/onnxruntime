@@ -131,6 +131,13 @@ stages:
   - job: ReactNative_CI_iOS_test
     dependsOn: 'ReactNative_CI_iOS_build'
 
+    strategy:
+      matrix:
+        unit_test:
+          testType: unit_test
+        e2e:
+          testType: e2e
+
     ${{ if eq(parameters.is1ES, false) }}:
       pool:
         vmImage: 'macOS-14'
@@ -159,7 +166,6 @@ stages:
         addToPath: true
         architecture: "x64"
 
-    # Test the iOS package
     - task: NodeTool@0
       inputs:
         versionSpec: '22.x'
@@ -167,14 +173,6 @@ stages:
     - script:
         brew install coreutils ninja npm
       displayName: Install coreutils, ninja, npm
-
-    - script:
-        brew tap wix/brew
-      displayName: brew tap wix/brew
-
-    - script:
-        brew install applesimutils
-      displayName: Install applesimutils tools required by detox ios
 
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
@@ -184,121 +182,75 @@ stages:
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
-    - script: |
-        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
-        pod install
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-      displayName: Pod install for onnxruntime react native ios e2e tests
+    # run unit tests on iOS simulator
+    - ${{ if eq(variables.testType, "unit_test") }}:
+      - task: Xcode@5
+        inputs:
+          actions: 'test'
+          configuration: 'Debug'
+          sdk: 'iphonesimulator'
+          xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace'
+          scheme: 'OnnxruntimeModuleTest'
+          packageApp: false
+          destinationPlatformOption: 'iOS'
+          destinationSimulators: 'iPhone 15,OS=17.4'
+          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+          xcprettyArgs: '--output build/reports/test-results.xml'
+          publishJUnitResults: true
+          testRunTitle: 'React Native iOS Instrumented Test Results'
+        displayName: Run React Native iOS Instrumented Tests
 
-    - script: |
-        detox build --configuration ios.sim.release
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: Build React Native Detox iOS e2e Tests
+      - task: PublishTestResults@2
+        inputs:
+          testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+          failTaskOnFailedTests: true
+          testRunTitle: 'React Native iOS Instrumented Test results'
+        condition: succeededOrFailed()
+        displayName: Publish React Native iOS Instrumented Test Results
 
-    #
-    # Unit tests and E2E tests with iOS simulator
-    #
-    - script: |
-        set -e
+    # run e2e tests with detox on iOS simulator
+    - ${{ if eq(variables.testType, "e2e") }}:
+      - script:
+          brew tap wix/brew
+        displayName: brew tap wix/brew
 
-        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
+      - script:
+          brew install applesimutils
+        displayName: Install applesimutils tools required by detox ios
 
-        xcrun simctl create iPhoneRNTest \
-          com.apple.CoreSimulator.SimDeviceType.iPhone-15 \
-          com.apple.CoreSimulator.SimRuntime.iOS-17-4 \
-          > "${DEVICE_ID_FILE}"
+      - script: |
+          ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
+          pod install
+        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+        displayName: Pod install for onnxruntime react native ios e2e tests
 
-        DEVICE_ID=$(cat "$DEVICE_ID_FILE")
+      - script: |
+          detox build --configuration ios.sim.release
+        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+        displayName: Build React Native Detox iOS e2e Tests
 
-        echo "Created simulator device with id: ${DEVICE_ID}"
+      - script: |
+          JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
+            detox test --record-logs all \
+                      --configuration ios.sim.release \
+                      --loglevel trace \
+                      --take-screenshots failing
+        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+        displayName: Run React Native Detox iOS e2e Tests
 
-        xcrun simctl boot "${DEVICE_ID}"
+      - task: PublishTestResults@2
+        inputs:
+          testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml'
+          failTaskOnFailedTests: true
+          testRunTitle: 'React Native Detox iOS e2e Test Results'
+        condition: succeededOrFailed()
+        displayName: Publish React Native Detox iOS e2e Test Results
 
-        xcrun simctl bootstatus "${DEVICE_ID}"
-
-        open -a Simulator --args -CurrentDeviceUDID "${DEVICE_ID}"
-      displayName: Start iOS Simulator
-
-    - script: |
-        set -e -x
-
-        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
-        DEVICE_ID="$(cat "${DEVICE_ID_FILE}")"
-
-        xcrun xcodebuild -sdk iphonesimulator \
-          -configuration Debug \
-          -workspace "$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace" \
-          -scheme OnnxruntimeModuleTest \
-          -destination "platform=iOS Simulator,id=${DEVICE_ID}" \
-          test \
-          CODE_SIGNING_ALLOWED=NO
-
-      displayName: Run React Native iOS Instrumented Tests
-
-    # - task: PublishTestResults@2
-    #   inputs:
-    #     testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
-    #     failTaskOnFailedTests: true
-    #     testRunTitle: 'React Native iOS Instrumented Test results'
-    #   condition: succeededOrFailed()
-    #   displayName: Publish React Native iOS Instrumented Test Results
-
-    # - script: |
-    #     xcrun simctl list devices
-    #   displayName: List iOS Simulators
-    #   continueOnError: true
-
-    - script: |
-        set -e -x
-
-        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
-        DEVICE_ID="$(cat "${DEVICE_ID_FILE}")"
-
-        DETOX_CONFIG_FILE="$(Build.SourcesDirectory)/js/react_native/e2e/.detoxrc.json"
-        jq --arg device_id "${DEVICE_ID}" '(.devices|.simulator|.device) = {id: $device_id}' \
-          < "${DETOX_CONFIG_FILE}" \
-          > "${DETOX_CONFIG_FILE}.updated"
-
-        mv "${DETOX_CONFIG_FILE}.updated" "${DETOX_CONFIG_FILE}"
-
-        echo "Updated ${DETOX_CONFIG_FILE} with simulator device ID"
-        cat "${DETOX_CONFIG_FILE}"
-
-      displayName: Update .detoxrc.json with simulator device
-
-    - script: |
-        JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
-          detox test --record-logs all \
-                     --configuration ios.sim.release \
-                     --loglevel trace \
-                     --take-screenshots failing
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: Run React Native Detox iOS e2e Tests
-
-    - script: |
-        set -e
-        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
-        if [[ -f "${DEVICE_ID_FILE}" ]]; then
-          DEVICE_ID="$(cat "${DEVICE_ID_FILE}")"
-          xcrun simctl delete "${DEVICE_ID}"
-          rm "${DEVICE_ID_FILE}"
-        fi
-      displayName: Stop iOS Simulator
-      condition: always()
-
-    - task: PublishTestResults@2
-      inputs:
-        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml'
-        failTaskOnFailedTests: true
-        testRunTitle: 'React Native Detox iOS e2e Test Results'
-      condition: succeededOrFailed()
-      displayName: Publish React Native Detox iOS e2e Test Results
-
-    - task: ${{ variables.publishPipelineArtifactTask }}
-      inputs:
-        artifactName: 'ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)'
-        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      condition: succeededOrFailed()
-      displayName: Publish React Native Detox E2E test logs
+      - task: ${{ variables.publishPipelineArtifactTask }}
+        inputs:
+          artifactName: 'ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)'
+          targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+        condition: succeededOrFailed()
+        displayName: Publish React Native Detox E2E test logs
 
     - template: explicitly-defined-final-tasks.yml
