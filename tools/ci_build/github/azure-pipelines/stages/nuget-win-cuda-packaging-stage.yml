@@ -51,6 +51,8 @@ stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CUDA
@@ -65,6 +67,7 @@ stages:
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:

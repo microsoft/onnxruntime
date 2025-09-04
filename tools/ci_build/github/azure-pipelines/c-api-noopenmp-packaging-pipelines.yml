@@ -128,6 +128,8 @@ extends:
       parameters:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
         ${{ else }}:
@@ -139,8 +141,6 @@ extends:
         BuildId: ${{ parameters.BuildId }}
         QnnSDKVersion: ${{ parameters.QnnSdk }}
         is1ES: true
-        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
-        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
     - template: stages/java-cuda-packaging-stage.yml
       parameters:
