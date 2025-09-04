@@ -157,7 +157,7 @@ def main():
                 working_dir=java_working_dir)
 
     # --- 2. Path Definitions ---
-    platform_dir = args.binaries_dir / f"onnxruntime-java-win-{args.platform}"
+    platform_dir = args.binaries-dir / f"onnxruntime-java-win-{args.platform}"
     stage_dir = platform_dir / "stage"
     native_folder = stage_dir / "ai" / "onnxruntime" / "native" / f"win-{args.platform}"
     main_jar_name = f"onnxruntime-{full_version}.jar"
@@ -179,14 +179,6 @@ def main():
         
         (platform_dir / pom_archive_path).rename(final_pom_path)
         shutil.rmtree(platform_dir / "META-INF")
-
-        # PDB files are only generated for Debug and RelWithDebInfo builds.
-        if args.build_config in ['Debug', 'RelWithDebInfo']:
-            logging.info("Copying PDB files...")
-            shutil.copy2(build_config_dir / "onnxruntime.pdb", native_folder)
-            shutil.copy2(build_config_dir / "onnxruntime4j_jni.pdb", native_folder)
-        else:
-            logging.info(f"Skipping PDB copy for '{args.build_config}' build config.")
         
         shutil.copy2(args.sources_dir / "docs" / "Privacy.md", stage_dir)
         shutil.copy2(args.sources_dir / "ThirdPartyNotices.txt", stage_dir)
