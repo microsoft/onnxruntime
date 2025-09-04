@@ -591,10 +591,6 @@ if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   endif()
 endif()
 
-if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
-endif()
-
 if(onnxruntime_ENABLE_DLPACK)
   message(STATUS "dlpack is enabled.")
 

@@ -41,30 +41,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
   std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
     if (device_ == nullptr) {
       // Create wgpu::Adapter
-#if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
-      // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
-      //
-      // Dawn will try to load them later, but if they are in the different directory to the executable, it may fail to find them.
-      // To avoid this issue, we try to load them from the same directory as current module (usually onnxruntime.dll).
-      auto runtime_path = Env::Default().GetRuntimePath();
-      if (!runtime_path.empty()) {
-        Status status;
-        void* module_handle = nullptr;
-
-        PathString dxil_path = runtime_path + ToPathString(L"dxil.dll");
-        status = Env::Default().LoadDynamicLibrary(dxil_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxil_path, module_handle);
-        }
-
-        PathString dxcompiler_path = runtime_path + ToPathString(L"dxcompiler.dll");
-        status = Env::Default().LoadDynamicLibrary(dxcompiler_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxcompiler_path, module_handle);
-        }
-      }
-#endif
-
       wgpu::RequestAdapterOptions req_adapter_options = {};
       req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
       req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
