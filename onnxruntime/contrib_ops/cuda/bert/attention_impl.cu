@@ -773,27 +773,11 @@ Status UnfusedAttention(
 
       */
 
-    if constexpr (std::is_same<T, onnxruntime::BFloat16>::value) {
-      ORT_RETURN_IF_ERROR(
-          ComputeSoftmax<nv_bfloat16>(
-              stream,
-              total_sequence_length,
-              sequence_length,
-              batch_size,
-              num_heads,
-              reinterpret_cast<const nv_bfloat16*>(data.attention_bias),
-              broadcast_attn_bias_dim_0,
-              broadcast_attn_bias_dim_1,
-              reinterpret_cast<nv_bfloat16*>(data.scratch),
-              reinterpret_cast<nv_bfloat16*>(scratch2),
-              parameters.is_unidirectional));
-    } else {
-      ORT_RETURN_IF_ERROR(
-          ComputeSoftmax<T>(
-              stream, total_sequence_length, sequence_length, batch_size, num_heads,
-              data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
-              data.scratch, scratch2, parameters.is_unidirectional));
-    }
+    ORT_RETURN_IF_ERROR(
+        ComputeSoftmax<T>(
+            stream, total_sequence_length, sequence_length, batch_size, num_heads,
+            data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
+            data.scratch, scratch2, parameters.is_unidirectional));
   }
 
   DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
