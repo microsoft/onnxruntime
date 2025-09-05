@@ -704,15 +704,30 @@ static bool checkTrtTensorIsDynamic(nvinfer1::ITensor* tensor) {
 inline std::vector<char> loadTimingCacheFile(const std::string inFileName) {
   std::ifstream iFile(inFileName, std::ios::in | std::ios::binary);
   if (!iFile) {
-    // Use a simple approach for warnings since LOGS_DEFAULT may not be available in utils header
+    // File doesn't exist or can't be opened - this is normal for first run
     return std::vector<char>();
   }
+
+  // Check file size
   iFile.seekg(0, std::ifstream::end);
   size_t fsize = iFile.tellg();
+  if (fsize == 0) {
+    // Empty file - return empty vector
+    iFile.close();
+    return std::vector<char>();
+  }
+
   iFile.seekg(0, std::ifstream::beg);
   std::vector<char> content(fsize);
   iFile.read(content.data(), fsize);
   iFile.close();
+
+  // Basic validation - timing cache should have minimum size
+  if (fsize < 16) {
+    // File too small to be a valid timing cache
+    return std::vector<char>();
+  }
+
   return content;
 }
 
@@ -720,13 +735,36 @@ inline std::vector<char> loadTimingCacheFile(const std::string inFileName) {
  * Save timing cache to file
  */
 inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::IHostMemory* blob) {
+  if (blob == nullptr) {
+    throw std::runtime_error("saveTimingCacheFile: blob is null");
+  }
+  if (blob->size() == 0) {
+    throw std::runtime_error("saveTimingCacheFile: blob is empty");
+  }
+
+  // Ensure directory exists
+  std::filesystem::path cache_path(outFileName);
+  std::filesystem::path cache_dir = cache_path.parent_path();
+  if (!cache_dir.empty() && !std::filesystem::exists(cache_dir)) {
+    if (!std::filesystem::create_directories(cache_dir)) {
+      throw std::runtime_error("saveTimingCacheFile: failed to create directory: " + cache_dir.string());
+    }
+  }
+
   std::ofstream oFile(outFileName, std::ios::out | std::ios::binary);
   if (!oFile) {
-    // Use a simple approach for warnings since LOGS_DEFAULT may not be available in utils header
-    return;
+    throw std::runtime_error("saveTimingCacheFile: failed to open file for writing: " + outFileName);
   }
-  oFile.write((char*)blob->data(), blob->size());
+
+  oFile.write(static_cast<const char*>(blob->data()), blob->size());
+  if (!oFile) {
+    throw std::runtime_error("saveTimingCacheFile: failed to write data to file: " + outFileName);
+  }
+
   oFile.close();
+  if (!oFile) {
+    throw std::runtime_error("saveTimingCacheFile: failed to close file: " + outFileName);
+  }
 }
 
 }  // namespace onnxruntime

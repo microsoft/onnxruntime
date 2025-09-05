@@ -2669,14 +2669,20 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
     if (timing_cache_enable_ && !timing_cache_path_.empty()) {
       std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path_);
-      timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
-      if (timing_cache == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "NvTensorRTRTX EP could not create timing cache: " + timing_cache_path_);
-      }
-      trt_config->setTimingCache(*timing_cache, force_timing_cache_);
-      if (detailed_build_log_) {
-        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Deserialized timing cache from " + timing_cache_path_;
+      if (!loaded_timing_cache.empty()) {
+        timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+        if (timing_cache == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "NvTensorRTRTX EP failed to create timing cache from file: " + timing_cache_path_ + ". Cache file may be corrupted or incompatible.");
+        }
+        trt_config->setTimingCache(*timing_cache, force_timing_cache_);
+        if (detailed_build_log_) {
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Loaded timing cache from " + timing_cache_path_;
+        }
+      } else {
+        if (detailed_build_log_) {
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] No existing timing cache at " + timing_cache_path_;
+        }
       }
     }
 
@@ -2694,14 +2700,27 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     // Save timing cache to file if enabled
     if (timing_cache_enable_ && !timing_cache_path_.empty()) {
       auto timing_cache = trt_config->getTimingCache();
-      std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
-      if (timingCacheHostData == nullptr) {
+      if (timing_cache == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "NvTensorRTRTX EP could not serialize timing cache: " + timing_cache_path_);
+                               "NvTensorRTRTX EP: No timing cache available after engine build. This should not happen.");
       }
+
+      std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+      if (timingCacheHostData == nullptr || timingCacheHostData->size() == 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "NvTensorRTRTX EP failed to serialize timing cache to: " + timing_cache_path_);
+      }
+
       saveTimingCacheFile(timing_cache_path_, timingCacheHostData.get());
+
+      // Verify the file was actually written
+      if (!std::filesystem::exists(timing_cache_path_)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "NvTensorRTRTX EP failed to write timing cache file: " + timing_cache_path_);
+      }
+
       if (detailed_build_log_) {
-        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Serialized timing cache " + timing_cache_path_;
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Saved timing cache to " + timing_cache_path_ + " (" + std::to_string(timingCacheHostData->size()) + " bytes)";
       }
     }
 
