@@ -3,7 +3,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
 #include <memory>
 #include <string>
 #include "core/common/status.h"
@@ -14,11 +13,24 @@ namespace onnxruntime {
 class Environment;
 
 namespace python {
+// Type of the function provided by Python code that is called by ORT to write out the compiled model.
+using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
+
+// Type of the function provided by Python code that is called by ORT to handle every initializer.
+using PyGetInitializerLocationFunc = std::function<std::shared_ptr<const OrtExternalInitializerInfo>(
+    const std::string& initializer_name,
+    const OrtValue& initializer_value,
+    const OrtExternalInitializerInfo* external_info)>;
+
 /// <summary>
 /// Class exposed to Python that enables compiling ONNX models.
 /// Internally wraps a onnxruntime::ModelCompilationOptions that stores and validates settings.
 /// </summary>
 class PyModelCompiler {
+#if defined(ORT_MINIMAL_BUILD)
+ public:
+  bool not_defined_in_this_build{};  // Prevent empty class warning.
+#else
  private:
   // private tag to pass to constructor to ensure that constructor cannot be directly called externally
   struct PrivateConstructorTag {};
@@ -40,6 +52,7 @@ class PyModelCompiler {
   /// <param name="flags">Flags from OrtCompileApiFlags</param>
   /// <param name="graph_opt_level">Optimization level for graph transformations on the model.
   /// Defaults to ORT_DISABLE_ALL to allow EP to get the original loaded model.</param>
+  /// <param name="py_get_initializer_location_func">User's function to handle saving of initializers.</param>
   /// <returns>A Status indicating error or success.</returns>
   static onnxruntime::Status Create(/*out*/ std::unique_ptr<PyModelCompiler>& out,
                                     onnxruntime::Environment& env,
@@ -49,11 +62,13 @@ class PyModelCompiler {
                                     const std::string& external_initializers_file_path = {},
                                     size_t external_initializers_size_threshold = 1024,
                                     uint32_t flags = 0,
-                                    GraphOptimizationLevel graph_opt_level = GraphOptimizationLevel::ORT_DISABLE_ALL);
+                                    GraphOptimizationLevel graph_opt_level = GraphOptimizationLevel::ORT_DISABLE_ALL,
+                                    const PyGetInitializerLocationFunc& py_get_initializer_location_func = nullptr);
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
   PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
+                  const PyGetInitializerLocationFunc& py_get_initializer_location_func,
                   PrivateConstructorTag);
 
   /// <summary>
@@ -73,11 +88,19 @@ class PyModelCompiler {
   /// <returns>A Status indicating error or success.</returns>
   onnxruntime::Status CompileToBytes(std::string& output_buffer);
 
+  /// <summary>
+  /// Compiles the input model and writes the result into the provided output stream (write functor).
+  /// </summary>
+  /// <param name="write_func">Write functor that encapsulates the stream's state.</param>
+  /// <returns>A Status indicating error or success.</returns>
+  onnxruntime::Status CompileToOutStream(PyOutStreamWriteFunc& write_func);
+
  private:
   onnxruntime::Environment& env_;
   onnxruntime::ModelCompilationOptions model_compile_options_;
   std::string input_model_bytes_;
+  PyGetInitializerLocationFunc py_get_initializer_location_func_;
+#endif  // defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace python
 }  // namespace onnxruntime
-#endif  // !defined(ORT_MINIMAL_BUILD)

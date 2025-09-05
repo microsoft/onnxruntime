@@ -4,6 +4,7 @@
 namespace Microsoft.ML.OnnxRuntime
 {
     using System;
+    using System.Diagnostics;
     using System.Runtime.InteropServices;
 
     /// <summary>
@@ -22,7 +23,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// This class is used to set options for model compilation, and to produce a compiled model using those options.
     /// See https://onnxruntime.ai/docs/api/c/ for further details of various options.
     /// </summary>
-    public class OrtModelCompilationOptions : SafeHandle
+    public class OrtModelCompilationOptions : IDisposable
     {
         /// <summary>
         /// Create a new OrtModelCompilationOptions object from SessionOptions.
@@ -31,11 +32,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// to enable graph optimizations.</remarks>
         /// <param name="sessionOptions">SessionOptions instance to read settings from.</param>
         public OrtModelCompilationOptions(SessionOptions sessionOptions)
-            : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtCreateModelCompilationOptionsFromSessionOptions(
-                    OrtEnv.Instance().Handle, sessionOptions.Handle, out handle));
+                    OrtEnv.Instance().Handle, sessionOptions.Handle, out _handle));
         }
 
         /// <summary>
@@ -43,7 +43,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void CompileModel()
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.CompileApi.OrtCompileModel(OrtEnv.Instance().Handle, handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.CompileApi.OrtCompileModel(OrtEnv.Instance().Handle, _handle));
         }
 
 
@@ -55,7 +55,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(path);
             NativeApiStatus.VerifySuccess(
-                NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelPath(handle, platformPath));
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelPath(_handle, platformPath));
         }
 
         /// <summary>
@@ -67,7 +67,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelFromBuffer(
-                    handle, buffer, (UIntPtr)buffer.Length));
+                    _handle, buffer, (UIntPtr)buffer.Length));
         }
 
         /// <summary>
@@ -78,7 +78,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(path);
             NativeApiStatus.VerifySuccess(
-                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelPath(handle, platformPath));
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelPath(_handle, platformPath));
 
         }
 
@@ -93,7 +93,7 @@ namespace Microsoft.ML.OnnxRuntime
             var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(filePath);
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelExternalInitializersFile(
-                    handle, platformPath, new UIntPtr(threshold)));
+                    _handle, platformPath, new UIntPtr(threshold)));
         }
 
         // TODO: In order to use this to create an InferenceSession without copying bytes we need more infrastructure.
@@ -108,7 +108,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelBuffer(
-                    handle, allocator.Pointer, ref outputModelBufferPtr, ref outputModelBufferSizePtr));
+                    _handle, allocator.Pointer, ref outputModelBufferPtr, ref outputModelBufferSizePtr));
         }
 
         /// <summary>
@@ -119,7 +119,7 @@ namespace Microsoft.ML.OnnxRuntime
         public void SetEpContextEmbedMode(bool embed)
         {
             NativeApiStatus.VerifySuccess(
-                NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextEmbedMode(handle, embed));
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextEmbedMode(_handle, embed));
         }
 
         /// <summary>
@@ -129,7 +129,7 @@ namespace Microsoft.ML.OnnxRuntime
         public void SetFlags(OrtCompileApiFlags flags)
         {
             NativeApiStatus.VerifySuccess(
-                NativeMethods.CompileApi.OrtModelCompilationOptions_SetFlags(handle, (uint)flags));
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetFlags(_handle, (uint)flags));
         }
 
         /// <summary>
@@ -145,7 +145,7 @@ namespace Microsoft.ML.OnnxRuntime
             var platformModelName = NativeOnnxValueHelper.GetPlatformSerializedString(modelName);
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextBinaryInformation(
-                    handle, platformOutputDirectory, platformModelName));
+                    _handle, platformOutputDirectory, platformModelName));
         }
 
         /// <summary>
@@ -156,26 +156,352 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetGraphOptimizationLevel(
-                    handle, graphOptimizationLevel));
+                    _handle, graphOptimizationLevel));
         }
 
-        internal IntPtr Handle => handle;
-
+        /// <summary>
+        /// Delegate to write/save a buffer containing ONNX model bytes to a custom destination. The delegate
+        /// may be called repeatedly until the entire output model has been written out. Each call to the delegate
+        /// is expected to consume the entire buffer.
+        /// </summary>
+        /// <param name="buffer">The buffer to write out.</param>
+        /// <see cref="OrtModelCompilationOptions.SetOutputModelWriteDelegate"/>
+        public delegate void WriteBufferToDestinationDelegate(ReadOnlySpan<byte> buffer);
 
         /// <summary>
-        /// Indicates whether the native handle is invalid.
+        /// Sets a delegate that is called by ORT to write out the output model's serialized ONNX bytes.
+        /// The provided delegate may be called repeatedly until the entire output model has been written out.
+        /// Each call to the delegate is expected to consume/handle the entire input buffer.
         /// </summary>
-        public override bool IsInvalid => handle == IntPtr.Zero;
-
-        /// <summary>
-        /// Release the native instance of OrtModelCompilationOptions.
-        /// </summary>
-        /// <returns>true</returns>
-        protected override bool ReleaseHandle()
+        /// <param name="writeBufferDelegate">The delegate called by ORT to write out the model.</param>
+        public void SetOutputModelWriteDelegate(WriteBufferToDestinationDelegate writeBufferDelegate)
         {
-            NativeMethods.CompileApi.OrtReleaseModelCompilationOptions(handle);
-            handle = IntPtr.Zero;
-            return true;
+            _writeBufferToDestinationDelegateState?.Dispose();
+            _writeBufferToDestinationDelegateState =
+                new DelegateResources<WriteBufferToDestinationConnector,
+                                      NativeMethods.DOrtWriteBufferToDestinationDelegate>(
+                    new WriteBufferToDestinationConnector(writeBufferDelegate),
+                    new NativeMethods.DOrtWriteBufferToDestinationDelegate(
+                        WriteBufferToDestinationConnector.WriteBufferToDestinationDelegateWrapper));
+
+            IntPtr funcPtr = _writeBufferToDestinationDelegateState.GetFunctionPointerForDelegate();
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelWriteFunc(
+                    _handle,
+                    funcPtr,
+                    _writeBufferToDestinationDelegateState.GetConnectorHandleAsPointer()));
         }
+
+        /// <summary>
+        /// Delegate called by ORT for every initializer when generating the compiled model.
+        /// The delegate allows the user to determine whether the initializer should be stored within the compiled
+        /// model or externally in a file. If the delegate chooses to store an initializer externally, the delegate
+        /// implementation is responsible for writing the initializer data to a file.
+        /// </summary>
+        /// <param name="initializerName">The initializer's name.</param>
+        /// <param name="initializerValue">The readonly OrtValue instance containing the data, type, and
+        /// shape of the initializer.</param>
+        /// <param name="originalInitializerLocation">May be null. If the initializer is originally stored externally,
+        /// this contains the file path, file offset, and data size. Otherwise, this is null.</param>
+        /// <returns>A new OrtExternalInitializerInfo indicating the new location of the initializer.
+        /// Returns null if the initializer should be stored within the generated compiled model.</returns>
+        /// <remarks>The return value may be null.</remarks>
+        /// <see cref="OrtModelCompilationOptions.SetOutputModelGetInitializerLocationDelegate"/>
+        public delegate OrtExternalInitializerInfo GetInitializerLocationDelegate(
+            string initializerName,
+            IReadOnlyOrtValue initializerValue,
+            IReadOnlyExternalInitializerInfo originalInitializerLocation);
+
+        /// <summary>
+        /// Sets a delegate that is called by ORT for every initializer when generating the compiled model.
+        /// The delegate allows the user to determine whether the initializer should be stored within the compiled
+        /// model or externally in a file. If the delegate chooses to store an initializer externally, the delegate
+        /// implementation is responsible for writing the initializer data to a file.
+        /// </summary>
+        /// <param name="getInitializerLocationDelegate">The delegate called by ORT for every initializer.</param>
+        public void SetOutputModelGetInitializerLocationDelegate(
+            GetInitializerLocationDelegate getInitializerLocationDelegate)
+        {
+            _getInitializerLocationDelegateState?.Dispose();
+            _getInitializerLocationDelegateState =
+                new DelegateResources<GetInitializerLocationConnector,
+                                      NativeMethods.DOrtGetInitializerLocationDelegate>(
+                    new GetInitializerLocationConnector(getInitializerLocationDelegate),
+                    new NativeMethods.DOrtGetInitializerLocationDelegate(
+                        GetInitializerLocationConnector.GetInitializerLocationDelegateWrapper));
+
+            IntPtr funcPtr = _getInitializerLocationDelegateState.GetFunctionPointerForDelegate();
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc(
+                    _handle,
+                    funcPtr,
+                    _getInitializerLocationDelegateState.GetConnectorHandleAsPointer()));
+        }
+
+        #region Delegate helpers
+        /// <summary>
+        /// Class to bridge the C# and native worlds for the "write buffer to destination" delegate
+        /// </summary>
+        private class WriteBufferToDestinationConnector
+        {
+            private readonly WriteBufferToDestinationDelegate _userDelegate;
+
+            internal WriteBufferToDestinationConnector(WriteBufferToDestinationDelegate writeBufferDelegate)
+            {
+                _userDelegate = writeBufferDelegate;
+            }
+
+            public static IntPtr WriteBufferToDestinationDelegateWrapper(IntPtr /* void* */ state,
+                                                                         IntPtr /* const void* */ buffer,
+                                                                         UIntPtr /* size_t */ bufferNumBytes)
+            {
+                try
+                {
+
+                    WriteBufferToDestinationConnector connector = (WriteBufferToDestinationConnector)
+                        GCHandle.FromIntPtr(state).Target;
+                    ReadOnlySpan<byte> bufferSpan;
+
+                    unsafe
+                    {
+                        // NOTE: A Span<byte> can only view 2GB of data. This is fine because ORT does not write out
+                        // chunks that large. However, if we ever need to, the solution is to just write a loop here
+                        // that repeatedly calls the delegate with smaller chunks of data.
+                        bufferSpan = new ReadOnlySpan<byte>(buffer.ToPointer(), checked((int)bufferNumBytes));
+                    }
+
+                    connector._userDelegate(bufferSpan);
+                }
+                catch (Exception ex)
+                {
+                    var error = $"The C# WriteBufferToDestination delegate threw an exception: {ex.Message}";
+                    IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                    return status;
+                }
+
+                return IntPtr.Zero;
+            }
+        }
+
+        /// <summary>
+        /// Class to bridge the C# and native worlds for the "get initializer location" delegate
+        /// </summary>
+        private class GetInitializerLocationConnector
+        {
+            private readonly GetInitializerLocationDelegate _userDelegate;
+
+            internal GetInitializerLocationConnector(GetInitializerLocationDelegate getInitializerLocationDelegate)
+            {
+                _userDelegate = getInitializerLocationDelegate;
+            }
+
+            public static IntPtr GetInitializerLocationDelegateWrapper(
+                IntPtr /* void* */ state,
+                IntPtr /* const char* */ initializerName,
+                IntPtr /* const OrtValue* */ initializerValue,
+                IntPtr /* const OrtExternalInitializerInfo* */ originalInitializerLocation,
+                out IntPtr /* OrtExternalInitializerInfo** */ newInitializerLocationOutput)
+            {
+                newInitializerLocationOutput = IntPtr.Zero;
+
+                try
+                {
+
+                    GetInitializerLocationConnector connector = (GetInitializerLocationConnector)GCHandle.
+                        FromIntPtr(state).Target;
+                    string utf8InitializerName = NativeOnnxValueHelper.StringFromNativeUtf8(initializerName);
+                    IReadOnlyOrtValue readOnlyInitializerValue = new OrtValue(initializerValue, owned: false);
+                    IReadOnlyExternalInitializerInfo readOnlyOriginalInitializerLocation = null;
+
+                    if (originalInitializerLocation != IntPtr.Zero)
+                    {
+                        readOnlyOriginalInitializerLocation = new OrtExternalInitializerInfo(
+                            originalInitializerLocation, ownsHandle: false);
+                    }
+
+                    // Call user's delegate, which may return the new location of the initializer.
+                    OrtExternalInitializerInfo newInitializerLocation = connector._userDelegate(
+                        utf8InitializerName, readOnlyInitializerValue, readOnlyOriginalInitializerLocation);
+
+                    if (newInitializerLocation != null)
+                    {
+                        // Delegate returned info about a new location for the initializer.
+                        // Can't guarantee that the new external info returned by user's delegate is not referenced
+                        // by other C# code. ORT expects to own the new external info, so create a copy here and
+                        // give it to ORT.
+                        string newFilePath = newInitializerLocation.GetFilePath();
+                        byte[] newFilePathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(newFilePath);
+
+                        IntPtr status = NativeMethods.OrtCreateExternalInitializerInfo(
+                            newFilePathBytes,
+                            newInitializerLocation.GetFileOffset(),
+                            (UIntPtr)newInitializerLocation.GetByteSize(),
+                            out newInitializerLocationOutput);
+
+                        if (status != IntPtr.Zero)
+                        {
+                            return status;
+                        }
+                    }
+                    else
+                    {
+                        // User's delegate did not return a new location for the initializer. ORT will store initializer
+                        // within the generated compiled model.
+                        newInitializerLocationOutput = IntPtr.Zero;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    var error = $"The C# GetInitializerLocation delegate threw an exception: {ex.Message}";
+                    IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                    return status;
+                }
+
+                return IntPtr.Zero;
+            }
+        }
+
+        /// <summary>
+        /// Disposable class that stores resources for a delegate provided by the user.
+        /// </summary>
+        /// <typeparam name="Connector">The type of the connector class
+        /// (e.g., WriteBufferToDestinationConnector)</typeparam>
+        /// <typeparam name="Delegate">The type of the native delegate.</typeparam>
+        private class DelegateResources<Connector, Delegate> : IDisposable
+            where Connector : class
+            where Delegate : class
+        {
+            public DelegateResources(Connector connector, Delegate @delegate)
+            {
+                _connector = connector;
+                _delegate = @delegate;
+                _connectorHandle = GCHandle.Alloc(_connector);
+                _delegateHandle = GCHandle.Alloc(_delegate);
+            }
+
+            internal IntPtr GetFunctionPointerForDelegate()
+            {
+                return Marshal.GetFunctionPointerForDelegate(_delegate);
+            }
+
+            internal IntPtr GetConnectorHandleAsPointer()
+            {
+                return GCHandle.ToIntPtr(_connectorHandle);
+            }
+
+            public void Dispose()
+            {
+                Dispose(true);
+                GC.SuppressFinalize(this);
+            }
+
+            protected virtual void Dispose(bool disposing)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                if (disposing)
+                {
+                    // Dispose other children disposables. We have none.
+                }
+
+                if (_connectorHandle.IsAllocated)
+                {
+                    _connectorHandle.Free();
+                    _connector = null;
+                }
+
+                if (_delegateHandle.IsAllocated)
+                {
+                    _delegateHandle.Free();
+                    _delegate = null;
+                }
+
+                _disposed = true;
+            }
+
+            ~DelegateResources()
+            {
+                Dispose(false);
+            }
+
+            private Connector _connector = null;
+            private Delegate _delegate = null;
+            private GCHandle _connectorHandle = default;
+            private GCHandle _delegateHandle = default;
+            private bool _disposed = false;
+        }
+        #endregion
+
+        #region IDispose implementation
+        /// <summary>
+        /// IDispose implementation.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// IDispose implementation
+        /// </summary>
+        /// <param name="disposing">True if Dispose() has been called by the user-side code. False if
+        /// called by the runtime from inside the finalizer.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (disposing)
+            {
+                _writeBufferToDestinationDelegateState?.Dispose();
+                _getInitializerLocationDelegateState?.Dispose();
+            }
+
+            Debug.Assert(_handle != IntPtr.Zero);
+            NativeMethods.CompileApi.OrtReleaseModelCompilationOptions(_handle);
+            _handle = IntPtr.Zero;
+            _disposed = true;
+        }
+
+        /// <summary>
+        /// Finalizer that releases the native handle if not already released by Dispose().
+        /// </summary>
+        ~OrtModelCompilationOptions()
+        {
+            Dispose(false);
+        }
+        #endregion
+
+        /// <summary>
+        /// Handle to the native OrtModelCompilationOptions object.
+        /// </summary>
+        private IntPtr _handle;
+
+        /// <summary>
+        /// True if this OrtModelCompilationOptions instance has already been disposed.
+        /// </summary>
+        private bool _disposed = false;
+
+        /// <summary>
+        /// Stores delegate state for the "write buffer to destination" delegate.
+        /// </summary>
+        private DelegateResources<WriteBufferToDestinationConnector, NativeMethods.DOrtWriteBufferToDestinationDelegate>
+            _writeBufferToDestinationDelegateState = null;
+
+        /// <summary>
+        /// Stores delegate state for the "get initializer location" delegate.
+        /// </summary>
+        private DelegateResources<GetInitializerLocationConnector, NativeMethods.DOrtGetInitializerLocationDelegate>
+            _getInitializerLocationDelegateState = null;
     }
 }
