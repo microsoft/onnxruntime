@@ -16,11 +16,20 @@ def run_command(command: list, working_dir: Path):
     """Runs a command in a specified directory and checks for errors."""
     logging.info(f"Running command: '{' '.join(map(str, command))}' in '{working_dir}'")
     try:
-        subprocess.run(command, cwd=working_dir, check=True)
+        # On Windows, shell=True is required to correctly locate and execute .bat or .cmd files
+        # like gradlew.bat and mvn.cmd that may be in the system's PATH.
+        use_shell = sys.platform == 'win32'
+        subprocess.run(command, cwd=working_dir, check=True, shell=use_shell)
         logging.info("Command successful.")
     except subprocess.CalledProcessError as e:
         # Output will have been streamed, so we just need to log the failure.
         logging.error(f"Command failed with exit code {e.returncode}")
+        raise
+    except FileNotFoundError:
+        logging.error(
+            f"Command failed: The executable '{command[0]}' was not found. "
+            "Please ensure it is installed and that its location is in the system's PATH environment variable."
+        )
         raise
 
 def log_directory_contents(dir_path: Path, description: str):
