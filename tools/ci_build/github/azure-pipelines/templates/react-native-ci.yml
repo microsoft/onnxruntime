@@ -142,13 +142,6 @@ stages:
 
     - template: use-xcode-version.yml
 
-    - task: UsePythonVersion@0
-      displayName: Use python 3.12
-      inputs:
-        versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
-
     - task: NodeTool@0
       inputs:
         versionSpec: '22.x'
@@ -218,13 +211,6 @@ stages:
         BuildId: 930670
 
     - template: use-xcode-version.yml
-
-    - task: UsePythonVersion@0
-      displayName: Use python 3.12
-      inputs:
-        versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
 
     - task: NodeTool@0
       inputs:
