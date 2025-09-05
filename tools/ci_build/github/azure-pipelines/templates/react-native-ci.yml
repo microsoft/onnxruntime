@@ -84,36 +84,33 @@ stages:
       runCodesignValidationInjection: false
 
     steps:
-    - checkout: none
+    - template: use-xcode-version.yml
 
-    # TODO debugging only - disabled
-    # - template: use-xcode-version.yml
+    - task: UsePythonVersion@0
+      displayName: Use python 3.12
+      inputs:
+        versionSpec: "3.12"
+        addToPath: true
+        architecture: "x64"
 
-    # - task: UsePythonVersion@0
-    #   displayName: Use python 3.12
-    #   inputs:
-    #     versionSpec: "3.12"
-    #     addToPath: true
-    #     architecture: "x64"
-
-    # - script: |
-    #     pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
-    #   displayName: "Install Python requirements"
+    - script: |
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+      displayName: "Install Python requirements"
 
     # Build the iOS package
-    # - script: |
-    #     set -e -x
-    #     python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-    #       --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-    #       --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
-    #       --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-    #   displayName: Build iOS package and assemble pods
+    - script: |
+        set -e -x
+        python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+          --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+          --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
+          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+      displayName: Build iOS package and assemble pods
 
-    # - task: ${{ variables.publishPipelineArtifactTask }}
-    #   inputs:
-    #     artifactName: 'ios_pod'
-    #     targetPath: '$(Build.BinariesDirectory)/ios_pod'
-    #   displayName: Publish React Native iOS pod files
+    - task: ${{ variables.publishPipelineArtifactTask }}
+      inputs:
+        artifactName: 'ios_pod'
+        targetPath: '$(Build.BinariesDirectory)/ios_pod'
+      displayName: Publish React Native iOS pod files
 
   - job: ReactNative_CI_iOS_unit_tests
     dependsOn: 'ReactNative_CI_iOS_build'
@@ -135,10 +132,6 @@ stages:
         StepName: 'Download Pipeline Artifact - ios_pod'
         ArtifactName: 'ios_pod'
         TargetPath: '$(Build.BinariesDirectory)/ios_pod'
-        # SpecificArtifact: false
-        # TODO debugging only - use specific artifact for debugging rest of pipeline
-        SpecificArtifact: true
-        BuildId: 930670
 
     - template: use-xcode-version.yml
 
@@ -158,7 +151,7 @@ stages:
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
-    # run unit tests on iOS simulator
+    # Run unit tests on iOS simulator
     - task: Xcode@5
       inputs:
         actions: 'test'
@@ -205,10 +198,6 @@ stages:
         StepName: 'Download Pipeline Artifact - ios_pod'
         ArtifactName: 'ios_pod'
         TargetPath: '$(Build.BinariesDirectory)/ios_pod'
-        # SpecificArtifact: false
-        # TODO debugging only - use specific artifact for debugging rest of pipeline
-        SpecificArtifact: true
-        BuildId: 930670
 
     - template: use-xcode-version.yml
 
@@ -228,7 +217,7 @@ stages:
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
-    # run e2e tests with detox on iOS simulator
+    # Run E2E tests with Detox on iOS simulator
     - script:
         brew tap wix/brew
       displayName: brew tap wix/brew
