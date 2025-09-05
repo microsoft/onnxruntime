@@ -113,7 +113,7 @@ const char* TensorElementTypeToString(ONNXTensorElementDataType type) {
   }
 }
 
-std::string TensorShapeToString(VectorInt64 shape) {
+std::string TensorShapeToString(std::vector<int64_t> shape) {
   std::string result;
 
   result.append("{");
@@ -166,24 +166,32 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
   }
 }
 
-//#if defined(__aarch64__) && defined(__linux__)
+// #if defined(__aarch64__) && defined(__linux__)
 template <typename T>
-std::pair<COMPARE_RESULT, std::string> CheckCosineSimilarity(const Ort::Value& outvalue, const Ort::Value& expected_value) {
-  size_t element_count = expected_value.GetTensorTypeAndShapeInfo().GetElementCount();
-  const T* expected_output = expected_value.GetTensorData<T>();
-  const T* real_output = outvalue.GetTensorData<T>();
+std::pair<COMPARE_RESULT, std::string> CheckCosineSimilarity(const Ort::ConstValue& actual, const Ort::ConstValue& expected) {
+  const T* actual_output = actual.IsSparseTensor() ? actual.GetSparseTensorValues<T>() : actual.GetTensorData<T>();
+  const T* expected_output = expected.IsSparseTensor() ? expected.GetSparseTensorValues<T>() : expected.GetTensorData<T>();
+
+  size_t element_count = 0;
+  if (expected.IsSparseTensor()) {
+    auto values_shape = expected.GetSparseTensorValuesTypeAndShapeInfo().GetShape();
+    element_count = values_shape.size() > 0 ? values_shape[0] : 0;  // non-zeros
+  } else {
+    element_count = expected.GetTensorTypeAndShapeInfo().GetElementCount();
+  }
+
   std::pair<COMPARE_RESULT, std::string> res = std::make_pair(COMPARE_RESULT::SUCCESS, "");
   const T cosine_similarity_threshold = 0.99f;
 
   T dot = 0.0f, denom_a = 0.0f, denom_b = 0.0f;
   for (size_t i = 0u; i < element_count; ++i) {
-    if (isnan(expected_output[i]) && isnan(real_output[i]))
+    if (isnan(expected_output[i]) && isnan(actual_output[i]))
       continue;
-    if (isinf(expected_output[i]) && isinf(real_output[i]))
+    if (isinf(expected_output[i]) && isinf(actual_output[i]))
       continue;
-    dot += expected_output[i] * real_output[i];
+    dot += expected_output[i] * actual_output[i];
     denom_a += expected_output[i] * expected_output[i];
-    denom_b += real_output[i] * real_output[i];
+    denom_b += actual_output[i] * actual_output[i];
   }
 
   T cos_factor = abs(dot / (sqrt(denom_a) * sqrt(denom_b)));
@@ -197,23 +205,31 @@ std::pair<COMPARE_RESULT, std::string> CheckCosineSimilarity(const Ort::Value& o
 }
 
 template <typename T>
-std::pair<COMPARE_RESULT, std::string> CheckCloseMatch(const Ort::Value& outvalue, const Ort::Value& expected_value) {
-  size_t element_count = expected_value.GetTensorTypeAndShapeInfo().GetElementCount();
-  const T* expected_output = expected_value.Data<T>();
-  const T* real_output = outvalue.Data<T>();
+std::pair<COMPARE_RESULT, std::string> CheckCloseMatch(const Ort::ConstValue& actual, const Ort::ConstValue& expected) {
+  const T* actual_output = actual.IsSparseTensor() ? actual.GetSparseTensorValues<T>() : actual.GetTensorData<T>();
+  const T* expected_output = expected.IsSparseTensor() ? expected.GetSparseTensorValues<T>() : expected.GetTensorData<T>();
+
+  size_t element_count = 0;
+  if (expected.IsSparseTensor()) {
+    auto values_shape = expected.GetSparseTensorValuesTypeAndShapeInfo().GetShape();
+    element_count = values_shape.size() > 0 ? values_shape[0] : 0;  // non-zeros
+  } else {
+    element_count = expected.GetTensorTypeAndShapeInfo().GetElementCount();
+  }
+
   const T close_match_threshold = 1.0;
 
   for (size_t i = 0; i != element_count; ++i) {
-    const T diff = expected_output[i] - real_output[i];
+    const T diff = expected_output[i] - actual_output[i];
     if (std::fabs(diff) > close_match_threshold) {
       std::ostringstream oss;
-      oss << "expected " << expected_output[i] << ", got " << real_output[i];
+      oss << "expected " << expected_output[i] << ", got " << actual_output[i];
       return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
     }
   }
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
-//#endif
+// #endif
 /**
  * @brief Check if two values are closely matched with given tolerance.
 
@@ -250,13 +266,12 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Ort::ConstValue&
                                                           double relative_per_sample_tolerance, bool post_processing) {
   const FLOAT_TYPE* actual_output = actual.IsSparseTensor() ? actual.GetSparseTensorValues<FLOAT_TYPE>() : actual.GetTensorData<FLOAT_TYPE>();
 
-  const FLOAT_TYPE* expected_output = expected.IsSparseTensor() ? 
-                                      expected.GetSparseTensorValues<FLOAT_TYPE>() : expected.GetTensorData<FLOAT_TYPE>();
+  const FLOAT_TYPE* expected_output = expected.IsSparseTensor() ? expected.GetSparseTensorValues<FLOAT_TYPE>() : expected.GetTensorData<FLOAT_TYPE>();
 
   size_t element_count = 0;
   if (actual.IsSparseTensor()) {
     auto values_shape = actual.GetSparseTensorValuesTypeAndShapeInfo().GetShape();
-    element_count = values_shape.size() > 0 ? values_shape[0] : 0; // non-zeros
+    element_count = values_shape.size() > 0 ? values_shape[0] : 0;  // non-zeros
   } else {
     element_count = expected.GetTensorTypeAndShapeInfo().GetElementCount();
   }
@@ -409,9 +424,9 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensorIndices(const int64_t*
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
-std::pair<COMPARE_RESULT, std::string> CompareTensorsOfOrtValues(const Ort::ConstValue& actual_value, const Ort::ConstValue& expected_value,
-                                                                 double per_sample_tolerance,
-                                                                 double relative_per_sample_tolerance, bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Ort::ConstValue& actual_value, const Ort::ConstValue& expected_value,
+                                                         double per_sample_tolerance,
+                                                         double relative_per_sample_tolerance, bool post_processing) {
   Ort::TensorTypeAndShapeInfo type_shape_info = actual_value.GetTensorTypeAndShapeInfo();
   ONNXTensorElementDataType element_type = type_shape_info.GetElementType();
   auto shape = type_shape_info.GetShape();
@@ -424,7 +439,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTensorsOfOrtValues(const Ort::Cons
     return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
   }
 
-#if defined(__aarch64__) && defined(__linux__)
+  // #if defined(__aarch64__) && defined(__linux__)
   if (isnan(per_sample_tolerance) || isnan(per_sample_tolerance)) {
     if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
       return CheckCosineSimilarity<float>(actual_value, expected_value);
@@ -452,7 +467,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTensorsOfOrtValues(const Ort::Cons
       return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
     }
   }
-#endif
+  // #endif
 
   if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     return CompareFloatResult<float>(actual_value, expected_value, per_sample_tolerance, relative_per_sample_tolerance,
@@ -496,7 +511,6 @@ std::pair<COMPARE_RESULT, std::string> CompareMapToFloat(const Ort::ConstValue& 
                                                          double per_sample_tolerance,
                                                          double relative_per_sample_tolerance,
                                                          bool post_processing) {
-
   const Ort::ConstValue keys = actual.GetValue(0, Ort::AllocatorWithDefaultOptions()).GetConst();
   const Ort::ConstValue values = actual.GetValue(1, Ort::AllocatorWithDefaultOptions()).GetConst();
   size_t num_keys = keys.GetTensorTypeAndShapeInfo().GetElementCount();
@@ -512,13 +526,13 @@ std::pair<COMPARE_RESULT, std::string> CompareMapToFloat(const Ort::ConstValue& 
   }
 
   // Check keys of the map
-  TEST_RETURN_IF_ERROR(CompareTensorsOfOrtValues(keys, expected_keys,
-                                                 per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+  TEST_RETURN_IF_ERROR(CompareTwoTensors(keys, expected_keys,
+                                         per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                        "While comparing keys of the Map");
 
   // Check values of the map
-  TEST_RETURN_IF_ERROR(CompareTensorsOfOrtValues(values, expected_values,
-                                                 per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+  TEST_RETURN_IF_ERROR(CompareTwoTensors(values, expected_values,
+                                         per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                        "While comparing values of the Map");
 
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
@@ -605,8 +619,8 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensorsOfOrtValues(const Ort
                      " actual: ", TensorElementTypeToString(element_type));
 
   // Check non-zero values
-  TEST_RETURN_IF_ERROR(CompareTensorsOfOrtValues(actual, expected,
-                                                 per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+  TEST_RETURN_IF_ERROR(CompareTwoTensors(actual, expected,
+                                         per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                        "While comparing sparse values");
 
   // Check indices
@@ -635,7 +649,6 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensorsOfOrtValues(const Ort
                        "Expected number of inner index: ", expected_num_inner_indices,
                        " actual: ", num_inner_indices);
 
-    
     TEST_RETURN_IF_ERROR(CompareSparseTensorIndices(inner_indices, expected_inner_indices, num_inner_indices),
                          "Comparing Csr(c) inner indices");
 
@@ -722,7 +735,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
     return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
   }
 
-  if (output_mlvalue_type == ONNX_TYPE_TENSOR) { // Tensor
+  if (output_mlvalue_type == ONNX_TYPE_TENSOR) {  // Tensor
     ONNXTensorElementDataType element_type = output_mlvalue.GetTensorTypeAndShapeInfo().GetElementType();
     ONNXTensorElementDataType expected_element_type = expected_mlvalue.GetTensorTypeAndShapeInfo().GetElementType();
 
@@ -733,21 +746,21 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
 
-    return CompareTensorsOfOrtValues(output_mlvalue, expected_mlvalue, per_sample_tolerance, relative_per_sample_tolerance,
-                                     post_processing);
+    return CompareTwoTensors(output_mlvalue, expected_mlvalue, per_sample_tolerance, relative_per_sample_tolerance,
+                             post_processing);
 
-  } else if (output_mlvalue_type == ONNX_TYPE_SPARSETENSOR) { // Sparse tensor
+  } else if (output_mlvalue_type == ONNX_TYPE_SPARSETENSOR) {  // Sparse tensor
 #if !defined(DISABLE_SPARSE_TENSORS)
     TEST_RETURN_IF_NOT(expected_mlvalue.IsSparseTensor(), COMPARE_RESULT::TYPE_MISMATCH,
                        "SparseTensor is not expected as output");
     TEST_RETURN_IF_ERROR(CompareSparseTensorsOfOrtValues(output_mlvalue, expected_mlvalue,
-                                              per_sample_tolerance, relative_per_sample_tolerance,
-                                              post_processing),
+                                                         per_sample_tolerance, relative_per_sample_tolerance,
+                                                         post_processing),
                          "while comaring sparse tensors");
 #endif
     return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 
-  } else if (output_mlvalue_type == ONNX_TYPE_SEQUENCE) { // Sequence
+  } else if (output_mlvalue_type == ONNX_TYPE_SEQUENCE) {  // Sequence
     size_t num_elements = output_mlvalue.GetCount();
     size_t expected_num_elements = expected_mlvalue.GetCount();
 
@@ -782,13 +795,12 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
       }
 
       if (onnx_type == ONNX_TYPE_TENSOR) {  // Tensor type. It means the original OrtValue is sequence of tensors.
-        auto res = CompareTensorsOfOrtValues(actual_ort_value, expect_ort_value, per_sample_tolerance, relative_per_sample_tolerance,
-                                             post_processing);
+        auto res = CompareTwoTensors(actual_ort_value, expect_ort_value, per_sample_tolerance, relative_per_sample_tolerance,
+                                     post_processing);
         if (res.first != COMPARE_RESULT::SUCCESS) {
           return res;
         }
-      } 
-      else if (onnx_type == ONNX_TYPE_MAP) { // Map type. It means the original OrtValue is sequence of maps.
+      } else if (onnx_type == ONNX_TYPE_MAP) {  // Map type. It means the original OrtValue is sequence of maps.
 #if !defined(DISABLE_ML_OPS)
         const Ort::ConstValue key = actual_ort_value.GetValue(0, Ort::AllocatorWithDefaultOptions()).GetConst();
         const Ort::ConstValue value = actual_ort_value.GetValue(1, Ort::AllocatorWithDefaultOptions()).GetConst();
@@ -811,8 +823,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
 #else
         return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "Sequence of maps is not supported in this build.");
 #endif
-      }
-      else {
+      } else {
         return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "Only sequence of tensors/maps are supported.");
       }
     }
@@ -890,50 +901,6 @@ float ParseValueToFloat(float data_value) {
   return ParseValueToFloat(MLFloat16(data_value));
 }
 
-template <typename RealT, typename ExpectT>
-std::pair<COMPARE_RESULT, std::string> CompareFloat16WithFloatResult(const Tensor& outvalue,
-                                                                     const Tensor& expected_value,
-                                                                     double per_sample_tolerance,
-                                                                     double relative_per_sample_tolerance) {
-  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
-  const ExpectT* expected_output = expected_value.Data<ExpectT>();
-  const RealT* real_output = outvalue.Data<RealT>();
-
-  COMPARE_RESULT result = COMPARE_RESULT::SUCCESS;
-  std::string error_msg = "";
-
-  OrtThreadPoolParams to;
-  to.thread_pool_size = 16;
-  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-
-  static double cost = 1;
-  std::once_flag write_flag;
-  concurrency::ThreadPool::TryParallelFor(
-      tp.get(), size1, cost,
-      [&error_msg, &result, &expected_output, &real_output, per_sample_tolerance,
-       relative_per_sample_tolerance, size1, &write_flag](
-          std::ptrdiff_t begin, std::ptrdiff_t end) {
-        for (std::ptrdiff_t di = begin; di != end && di < static_cast<std::ptrdiff_t>(size1); ++di) {
-          float expected = ParseValueToFloat(expected_output[di]);
-          float real = ParseValueToFloat(real_output[di]);
-          const double diff = std::fabs(expected - real);
-          const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected);
-          if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
-            std::ostringstream oss;
-            oss << "idx: " << di << ", expected " << expected << ", got " << real
-                << ", diff: " << diff << ", tol=" << rtol << "\n";
-            std::call_once(write_flag, [&error_msg, &result, &oss]() {
-              error_msg = oss.str();
-              result = COMPARE_RESULT::RESULT_DIFFERS;
-            });
-            break;
-          }
-        }
-      });
-
-  return std::make_pair(result, error_msg);
-}
-
 }  // namespace
 
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* val_ptr) {
@@ -974,9 +941,9 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     // Cannot do this check for tensor/sequence of tensor type.
     // For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
     // For sequences of tensor type, o.Type() is SequenceTensorTypeBase*, but p points to a subclass of SequenceTensorTypeBase
-    //MLDataType p = DataTypeImpl::TypeFromProto(v.type());
-    //MLDataType q = ((OrtValue*)(const OrtValue*)o)->Type();
-    //if (q != p) {
+    // MLDataType p = DataTypeImpl::TypeFromProto(v.type());
+    // MLDataType q = ((OrtValue*)(const OrtValue*)o)->Type();
+    // if (q != p) {
     //  return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     //}
   }
