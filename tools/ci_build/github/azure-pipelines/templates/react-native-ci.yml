@@ -100,27 +100,13 @@ stages:
       displayName: "Install Python requirements"
 
     # Build the iOS package
-    - template: mac-build-step-with-cache.yml
-      parameters:
-        WithCache: true
-        Today: $(TODAY)
-        AdditionalKey: react_${{parameters.BuildConfig}}
-        CacheDir: $(ORT_CACHE_DIR)
-        BuildStep:
-        - script: |
-            set -e -x
-            python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-              --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-              --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
-              --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-          displayName: Build iOS package and assemble pods
-          env:
-            CC: clang
-            CXX: clang++
-            CCACHE_CPP2: 1
-            CCACHE_DEPEND: 1
-            CCACHE_SLOPPINESS: modules
-            CCACHE_DIR: $(ORT_CACHE_DIR)
+    - script: |
+        set -e -x
+        python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+          --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+          --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
+          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+      displayName: Build iOS package and assemble pods
 
     - task: ${{ variables.publishPipelineArtifactTask }}
       inputs:
