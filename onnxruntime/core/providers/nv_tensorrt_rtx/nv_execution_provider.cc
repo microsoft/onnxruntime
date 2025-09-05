@@ -2680,8 +2680,15 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
           LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Loaded timing cache from " + timing_cache_path_;
         }
       } else {
+        // Create empty timing cache for first run - TensorRT will populate it during build
+        timing_cache.reset(trt_config->createTimingCache(nullptr, 0));
+        if (timing_cache == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "NvTensorRTRTX EP failed to create empty timing cache.");
+        }
+        trt_config->setTimingCache(*timing_cache, force_timing_cache_);
         if (detailed_build_log_) {
-          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] No existing timing cache at " + timing_cache_path_;
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Created empty timing cache for " + timing_cache_path_;
         }
       }
     }
