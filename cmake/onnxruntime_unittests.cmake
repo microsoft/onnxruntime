@@ -817,6 +817,7 @@ source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 onnxruntime_add_static_library(onnxruntime_test_utils_public_values ${onnxruntime_test_utils_public_values_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils_public_values onnxruntime_common onnx onnx_proto Eigen3::Eigen)
 target_include_directories(onnxruntime_test_utils_public_values PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+add_dependencies(onnxruntime_test_utils_public_values ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_test_utils_public_values PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # This utility library uses internal onnxruntime libraries, e.g. onnxruntime::Tensor, to provide capability of comparing two OrtValues with all supported data type.
