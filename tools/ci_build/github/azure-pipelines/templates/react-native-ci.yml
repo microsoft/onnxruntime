@@ -78,7 +78,7 @@ stages:
         image: 'macOS-14'
         os: 'macOS'
 
-    timeoutInMinutes: 150
+    timeoutInMinutes: 120
 
     variables:
       runCodesignValidationInjection: false
@@ -258,9 +258,9 @@ stages:
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
           detox test --record-logs all \
-                    --configuration ios.sim.release \
-                    --loglevel trace \
-                    --take-screenshots failing
+                     --configuration ios.sim.release \
+                     --loglevel trace \
+                     --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
 
