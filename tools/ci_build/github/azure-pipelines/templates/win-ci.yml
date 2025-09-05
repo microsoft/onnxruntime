@@ -154,7 +154,7 @@ stages:
           architecture: ${{ parameters.buildArch }}
 
       - template: telemetry-steps.yml
-
+      - template: setup_maven.yml
       - task: PipAuthenticate@1
         displayName: 'Pip Authenticate'
         inputs:
@@ -196,6 +196,7 @@ stages:
 
       # For CPU job, tests are run in the same machine as building
       - ${{ if eq(parameters.buildJava, 'true') }}:
+        #- template: setup_maven.yml
         - template: make_java_win_binaries.yml
           parameters:
             msbuildPlatform: ${{ parameters.msbuildPlatform }}
