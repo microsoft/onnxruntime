@@ -9,21 +9,6 @@
 
 @interface OnnxruntimeModule : NSObject <RCTBridgeModule>
 
-- (void)setBlobManager:(RCTBlobManager*)manager;
-
-- (NSDictionary*)loadModel:(NSString*)modelPath
-                   options:(NSDictionary*)options;
-
-- (NSDictionary*)loadModelFromBuffer:(NSData*)modelData
-                             options:(NSDictionary*)options;
-
-- (void)dispose:(NSString*)key;
-
-- (NSDictionary*)run:(NSString*)url
-               input:(NSDictionary*)input
-              output:(NSArray*)output
-             options:(NSDictionary*)options;
-
 @end
 
 #endif /* OnnxruntimeModule_h */
