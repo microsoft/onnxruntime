@@ -2,7 +2,7 @@ steps:
 - task: AzureCLI@2
   displayName: 'Download and Extract Maven using Azure CLI'
   inputs:
-    azureSubscription: 'OnnxrunTimeCodeSign_20240611'
+    azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
     scriptType: 'pscore' # Use PowerShell Core
     scriptLocation: 'inlineScript'
     inlineScript: |

@@ -122,8 +122,6 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: stages/download-java-tools-stage.yml
-
     - template: templates/c-api-cpu.yml
       parameters:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
