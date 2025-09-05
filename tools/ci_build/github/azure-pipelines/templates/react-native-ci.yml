@@ -241,7 +241,7 @@ stages:
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
           detox test --record-logs all \
                      --configuration ios.sim.release \
-                     --loglevel trace \
+                     --loglevel verbose \
                      --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
