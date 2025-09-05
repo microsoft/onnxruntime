@@ -330,7 +330,10 @@ TEST_F(ConvertRawDataInTensorProtoTest, UInt8NoConversion) {
     original_values.push_back(tensor.int32_data(i));
   }
 
-  // Convert - for 1-byte elements, no conversion should happen
+  // Convert once
+  onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
+
+  // Convert again - this should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
   // Verify no change occurred
