@@ -834,8 +834,6 @@ def generate_build_tree(
 
     if is_macOS() and not args.android:
         add_default_definition(cmake_extra_defines, "CMAKE_OSX_ARCHITECTURES", args.osx_arch)
-        if args.apple_deploy_target:
-            cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
         if args.xcode_code_signing_identity:
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=" + args.xcode_code_signing_identity]
@@ -926,7 +924,6 @@ def generate_build_tree(
         cmake_args += [
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
             "-DCMAKE_OSX_SYSROOT=" + args.apple_sysroot,
-            "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
             "-DPLATFORM_NAME=" + platform_name,
@@ -942,16 +939,14 @@ def generate_build_tree(
         if args.macos == "Catalyst":
             macabi_target = f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi"
             cmake_args += [
-                "-DCMAKE_CXX_COMPILER_TARGET=" + macabi_target,
-                "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,
-                "-DCMAKE_CC_COMPILER_TARGET=" + macabi_target,
                 f"-DCMAKE_CXX_FLAGS=--target={macabi_target}",
-                f"-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
                 f"-DCMAKE_C_FLAGS=--target={macabi_target}",
-                f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
-                f"-DCMAKE_CC_FLAGS=--target={macabi_target}",
-                f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
             ]
+        else:
+            cmake_args += [
+                "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
+            ]
+
         if args.visionos:
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=visionOS",
