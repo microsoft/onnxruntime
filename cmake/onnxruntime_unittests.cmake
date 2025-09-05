@@ -1190,7 +1190,7 @@ if (NOT IOS)
         target_link_libraries(onnxruntime_plugin_ep_onnx_test PRIVATE debug dbghelp advapi32)
       endif()
     else()
-      target_link_libraries(onnxruntime_plugin_ep_onnx_test PRIVATE onnx_test_runner_common onnxruntime_test_values_utils absl::flags absl::flags_parse ${onnx_test_libs} nlohmann_json::nlohmann_json)
+        target_link_libraries(onnxruntime_plugin_ep_onnx_test PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs} nlohmann_json::nlohmann_json)
     endif()
 
     target_include_directories(onnxruntime_plugin_ep_onnx_test PRIVATE ${ONNXRUNTIME_ROOT})

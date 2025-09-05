@@ -29,10 +29,10 @@
 #pragma GCC diagnostic pop
 #endif
 
-#include "core/framework/utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/common/common.h"
+#include "core/framework/float16.h"
 
 using namespace onnxruntime;
 
@@ -781,7 +781,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
 
-    for (int i = 0; i < expected_num_elements; ++i) {
+    for (size_t i = 0; i < expected_num_elements; ++i) {
       const Ort::ConstValue actual_ort_value = output_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions()).GetConst();
       const Ort::ConstValue expect_ort_value = expected_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions()).GetConst();
 
@@ -883,25 +883,6 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
 
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
-
-namespace {
-template <typename T>
-float ParseValueToFloat(T data_value) {
-  return static_cast<float>(data_value);
-}
-
-template <>
-float ParseValueToFloat(MLFloat16 data_value) {
-  return Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(data_value.val));
-}
-
-template <>
-float ParseValueToFloat(float data_value) {
-  // Covert float to half and then convert back to float to simulate rounding to half
-  return ParseValueToFloat(MLFloat16(data_value));
-}
-
-}  // namespace
 
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* val_ptr) {
   Ort::ConstValue o{val_ptr};
