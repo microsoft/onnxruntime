@@ -3755,7 +3755,8 @@ void TrigFloatTest(OpTester& test, std::initializer_list<float> input, float abs
 
 template <double (&op)(double value) MATH_NO_EXCEPT>
 void TrigDoubleTest(OpTester& test, std::initializer_list<double> input,
-                    const std::unordered_set<std::string> excluded_provider_types = {}) {
+                    const std::unordered_set<std::string> excluded_provider_types = {},
+                    float abs_error = -1.0) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
 
   std::vector<double> output;
@@ -3764,6 +3765,9 @@ void TrigDoubleTest(OpTester& test, std::initializer_list<double> input,
 
   test.AddInput<double>("X", dims, input);
   test.AddOutput<double>("Y", dims, output);
+  if (abs_error >= 0.0) {
+    test.SetOutputTolerance(abs_error);
+  }
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
@@ -3805,12 +3809,10 @@ TEST(MathOpTest, CosFloat) {
 }
 
 TEST(MathOpTest, CosDouble) {
-  if (DefaultCudaExecutionProvider().get() != nullptr) {  // double type not supported on CPU
-    OpTester test("Cos");
-    TrigDoubleTest<::cos>(test, {1.1, -1.1, 2.2, -2.2}, {kTensorrtExecutionProvider});
-    // Fails TensorRT unit-test because the unit tests only test one EP at a time and the TensorRT EP will not be able to find an implementation in the fall-back CPU EP,
-    // so skip it
-  }
+  OpTester test("Cos");
+  TrigDoubleTest<::cos>(test, {1.1, -1.1, 2.2, -2.2}, {kTensorrtExecutionProvider});
+  // Fails TensorRT unit-test because the unit tests only test one EP at a time and the TensorRT EP will not be able to find an implementation in the fall-back CPU EP,
+  // so skip it
 }
 
 TEST(MathOpTest, CosFloat16) {
@@ -3820,12 +3822,17 @@ TEST(MathOpTest, CosFloat16) {
   }
 }
 
-TEST(MathOpTest, Tan) {
+TEST(MathOpTest, TanFloat) {
   OpTester test("Tan");
   TrigFloatTest<::tanf>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
 }
 
-TEST(MathOpTest, Asin) {
+TEST(MathOpTest, TanDouble) {
+  OpTester test("Tan");
+  TrigDoubleTest<::tan>(test, {-100.0, -50.0, 0.0, 50.0, 100.0});
+}
+
+TEST(MathOpTest, AsinFloat) {
   OpTester test("Asin");
   float abs_error =
 #ifdef _WIN32
@@ -3838,39 +3845,87 @@ TEST(MathOpTest, Asin) {
   TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f}, abs_error);
 }
 
-TEST(MathOpTest, Acos) {
+TEST(MathOpTest, AsinDouble) {
+  OpTester test("Asin");
+  float abs_error =
+#ifdef _WIN32
+      // Set abs_error to 0.0001f for built-in function asin() in HLSL based EPs (DML and WebGPU)
+      DefaultDmlExecutionProvider().get() != nullptr || DefaultWebGpuExecutionProvider().get() != nullptr
+          ? 0.0001
+          :
+#endif
+          -1.0;
+  TrigDoubleTest<::asin>(test, {-1.0, -0.5, 0.0, 0.5, 1.0}, {}, abs_error);
+}
+
+TEST(MathOpTest, AcosFloat) {
   OpTester test("Acos");
   TrigFloatTest<::acosf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
 }
 
-TEST(MathOpTest, Atan) {
+TEST(MathOpTest, AcosDouble) {
+  OpTester test("Acos");
+  TrigDoubleTest<::acos>(test, {-1.0, -0.5, 0.0, 0.5, 1.0});
+}
+
+TEST(MathOpTest, AtanFloat) {
   OpTester test("Atan");
   TrigFloatTest<::atanf>(test, {-10.0f, -5.0f, 0.0f, 5.0f, 10.0f});
 }
 
-TEST(MathOpTest, Sinh) {
+TEST(MathOpTest, AtanDouble) {
+  OpTester test("Atan");
+  TrigDoubleTest<::atan>(test, {-10.0, -5.0, 0.0, 5.0, 10.0});
+}
+
+TEST(MathOpTest, SinhFloat) {
   OpTester test("Sinh", 9);
   TrigFloatTest<::sinhf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
 }
 
-TEST(MathOpTest, Cosh) {
+TEST(MathOpTest, SinhDouble) {
+  OpTester test("Sinh", 9);
+  TrigDoubleTest<::sinh>(test, {-1.0, -0.5, 0.0, 0.5, 1.0});
+}
+
+TEST(MathOpTest, CoshFloat) {
   OpTester test("Cosh", 9);
   TrigFloatTest<::coshf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
 }
 
-TEST(MathOpTest, Asinh) {
+TEST(MathOpTest, CoshDouble) {
+  OpTester test("Cosh", 9);
+  TrigDoubleTest<::cosh>(test, {-1.0, -0.5, 0.0, 0.5, 1.0});
+}
+
+TEST(MathOpTest, AsinhFloat) {
   OpTester test("Asinh", 9);
   TrigFloatTest<::asinhf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
 }
 
-TEST(MathOpTest, Acosh) {
-  OpTester test("Acosh", 9);
-  TrigFloatTest<::acoshf>(test, {1.0f, 1.1f, 3.0f, 10.0f, 100.0f});
+TEST(MathOpTest, AsinhDouble) {
+  OpTester test("Asinh", 9);
+  TrigDoubleTest<::asinh>(test, {-1.0, -0.5, 0.0, 0.5, 1.0});
 }
 
-TEST(MathOpTest, Atanh) {
+TEST(MathOpTest, AcoshFloat) {
+  OpTester test("Acosh", 9);
+  TrigFloatTest<::acoshf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+}
+
+TEST(MathOpTest, AcoshDouble) {
+  OpTester test("Acosh", 9);
+  TrigDoubleTest<::acosh>(test, {-1.0, -0.5, 0.0, 0.5, 1.0});
+}
+
+TEST(MathOpTest, AtanhFloat) {
   OpTester test("Atanh", 9);
   TrigFloatTest<::atanhf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f});
+}
+
+TEST(MathOpTest, AtanhDouble) {
+  OpTester test("Atanh", 9);
+  TrigDoubleTest<::atanh>(test, {-1.0, -0.5, 0.0, 0.5, 1.0});
 }
 
 TEST(MathOpTest, Expand_8_3x3_string) {
