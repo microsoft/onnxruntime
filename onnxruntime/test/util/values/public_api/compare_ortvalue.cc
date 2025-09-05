@@ -467,6 +467,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Ort::ConstValue& 
   }
 }
 
+#if !defined(DISABLE_ML_OPS)
 std::pair<COMPARE_RESULT, std::string> CompareMapToFloat(const Ort::ConstValue& actual, const Ort::ConstValue& expected,
                                                          double per_sample_tolerance,
                                                          double relative_per_sample_tolerance,
@@ -497,51 +498,12 @@ std::pair<COMPARE_RESULT, std::string> CompareMapToFloat(const Ort::ConstValue& 
 
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
-
-template <typename T>
-std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_output_vector, const T& expected_value,
-                                                              double per_sample_tolerance,
-                                                              double relative_per_sample_tolerance,
-                                                              bool post_processing) {
-  if (real_output_vector.size() != expected_value.size()) {
-    std::ostringstream oss;
-    oss << "vector size mismatch, expected " << expected_value.size() << ", got " << real_output_vector.size();
-    return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
-  }
-  for (size_t i = 0; i != real_output_vector.size(); ++i) {
-    const auto& expected_map = expected_value[i];
-    // compare if expected_map equals real_output_vector[i]
-    if (real_output_vector[i].size() != expected_map.size()) {
-      std::ostringstream oss;
-      oss << "map size mismatch, expected " << expected_map.size() << ", got " << real_output_vector[i].size();
-      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
-    }
-
-    for (const auto& real_output_key_value_pair : real_output_vector[i]) {
-      auto expected_key_value_pair = expected_map.find(real_output_key_value_pair.first);
-      if (expected_key_value_pair == expected_map.end()) {
-        return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, "");
-      }
-      const double real = post_processing
-                              ? std::max<double>(0.0, std::min<double>(255.0, real_output_key_value_pair.second))
-                              : real_output_key_value_pair.second;
-      const double diff = std::fabs(expected_key_value_pair->second - real);
-      const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected_key_value_pair->second);
-      if (!IsResultCloselyMatch<double>(real, expected_key_value_pair->second, diff, rtol)) {
-        std::ostringstream oss;
-        oss << "expected " << expected_key_value_pair->second << ", got " << real << ", diff: " << diff
-            << ", tol=" << rtol;
-        return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
-      }
-    }
-  }
-  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
-}
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-std::pair<COMPARE_RESULT, std::string> CompareSparseTensorsOfOrtValues(const Ort::ConstValue& actual, const Ort::ConstValue& expected,
-                                                                       double per_sample_tolerance, double relative_per_sample_tolerance,
-                                                                       bool post_processing) {
+std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const Ort::ConstValue& actual, const Ort::ConstValue& expected,
+                                                            double per_sample_tolerance, double relative_per_sample_tolerance,
+                                                            bool post_processing) {
   // Check dense shape
   Ort::TensorTypeAndShapeInfo type_shape_info = actual.GetTensorTypeAndShapeInfo();
   auto shape = actual.GetTensorTypeAndShapeInfo().GetShape();
@@ -713,9 +675,9 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
 #if !defined(DISABLE_SPARSE_TENSORS)
     TEST_RETURN_IF_NOT(expected_mlvalue.IsSparseTensor(), COMPARE_RESULT::TYPE_MISMATCH,
                        "SparseTensor is not expected as output");
-    TEST_RETURN_IF_ERROR(CompareSparseTensorsOfOrtValues(output_mlvalue, expected_mlvalue,
-                                                         per_sample_tolerance, relative_per_sample_tolerance,
-                                                         post_processing),
+    TEST_RETURN_IF_ERROR(CompareSparseTensors(output_mlvalue, expected_mlvalue,
+                                              per_sample_tolerance, relative_per_sample_tolerance,
+                                              post_processing),
                          "while comaring sparse tensors");
 #endif
     return std::make_pair(COMPARE_RESULT::SUCCESS, "");
