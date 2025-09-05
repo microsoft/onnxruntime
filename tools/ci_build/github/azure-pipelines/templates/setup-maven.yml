@@ -1,7 +1,7 @@
 steps:
 - task: AzurePowerShell@5
   inputs:
-    azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+    azureSubscription: 'ONNXRuntimeBuildAzureConnection'
     azurePowerShellVersion: 'LatestVersion'
     scriptType: 'InlineScript'
     inline: |
