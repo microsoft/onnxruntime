@@ -9,10 +9,8 @@ steps:
       # Define the scope for the access token
       $authScope = "https://mspmecloud.onmicrosoft.com/RebuildManager.Web/.default"
 
-      # Use Azure CLI to get the access token and parse the JSON response
-      # The 'az account get-access-token' command returns a JSON string, which we convert to a PowerShell object
       Write-Host "Requesting access token for scope: $authScope"
-      $tokenInfo = az account get-access-token --resource $authScope | ConvertFrom-Json
+      $tokenInfo = az account get-access-token --scope $authScope | ConvertFrom-Json
       
       # Set the token as an environment variable for the next tool to use
       $env:TRT_UPLOAD_AUTH_TOKEN = $tokenInfo.accessToken
