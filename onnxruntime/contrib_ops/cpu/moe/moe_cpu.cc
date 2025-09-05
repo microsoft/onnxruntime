@@ -70,7 +70,6 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
                           Tensor* output) const {
   const auto& input_shape = input->Shape();
   const auto& router_shape = router_probs->Shape();
-  const auto& fc1_shape = fc1_experts_weights->Shape();
   const auto& fc2_shape = fc2_experts_weights->Shape();
 
   const int64_t num_tokens = input_shape.Size() / input_shape[input_shape.NumDimensions() - 1];
@@ -88,10 +87,15 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const T* fc2_bias_data = fc2_experts_bias ? fc2_experts_bias->Data<T>() : nullptr;
   T* output_data = output->MutableData<T>();
 
-  std::fill_n(output_data, output->Shape().Size(), T{});
-
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
+  auto input_data_copy_ptr = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(num_tokens * hidden_size));
+  T* input_data_copy = input_data_copy_ptr.get();
+  std::copy(input_data, input_data + (num_tokens * hidden_size), input_data_copy);
+
+  input_data = input_data_copy;
+  std::fill_n(output_data, output->Shape().Size(), T{});
 
   IAllocatorUniquePtr<float> router_logits_float_buffer;
   const float* router_logits_float = nullptr;
@@ -233,7 +237,6 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
       for (int64_t r = 0; r < num_expert_tokens; ++r) {
         int64_t route_idx = routes[static_cast<size_t>(r)];
         int64_t token = route_idx / k_;
-        int64_t kth = route_idx % k_;
 
         token_ids[static_cast<size_t>(r)] = token;
         batch_weights[static_cast<size_t>(r)] = route_scale[route_idx];
