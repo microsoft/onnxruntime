@@ -817,12 +817,14 @@ source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 onnxruntime_add_static_library(onnxruntime_test_utils_public_values ${onnxruntime_test_utils_public_values_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils_public_values onnxruntime_common onnx onnx_proto Eigen3::Eigen)
 target_include_directories(onnxruntime_test_utils_public_values PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+set_target_properties(onnxruntime_test_utils_public_values PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # This utility library uses internal onnxruntime libraries, e.g. onnxruntime::Tensor, to provide capability of comparing two OrtValues with all supported data type.
 onnxruntime_add_static_library(onnxruntime_test_utils_internal_values ${onnxruntime_test_utils_internal_values_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils_internal_values onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 Eigen3::Eigen)
 target_include_directories(onnxruntime_test_utils_internal_values PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${TEST_SRC_DIR}/util/include")
 add_dependencies(onnxruntime_test_utils_internal_values ${onnxruntime_EXTERNAL_DEPENDENCIES})
+set_target_properties(onnxruntime_test_utils_internal_values PROPERTIES FOLDER "ONNXRuntimeTest")
 
 if(NOT IOS)
     set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)

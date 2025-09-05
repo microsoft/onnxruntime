@@ -327,46 +327,6 @@ std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Ort::ConstValu
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
-/*
-template <>
-std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<Int4x2>(const Tensor& outvalue,
-                                                                    const Tensor& expected_value) {
-  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
-  const Int4x2* expected_output = expected_value.Data<Int4x2>();
-  const Int4x2* real_output = outvalue.Data<Int4x2>();
-  for (size_t di = 0; di != size1; ++di) {
-    size_t r = di >> 1;
-    size_t c = di & 0x1;
-
-    if (expected_output[r].GetElem(c) != real_output[r].GetElem(c)) {
-      std::ostringstream oss;
-      oss << "expected " << expected_output[r].GetElem(c) << ", got " << real_output[r].GetElem(c);
-      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
-    }
-  }
-  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
-}
-
-template <>
-std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch<UInt4x2>(const Tensor& outvalue,
-                                                                     const Tensor& expected_value) {
-  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
-  const UInt4x2* expected_output = expected_value.Data<UInt4x2>();
-  const UInt4x2* real_output = outvalue.Data<UInt4x2>();
-  for (size_t di = 0; di != size1; ++di) {
-    size_t r = di >> 1;
-    size_t c = di & 0x1;
-
-    if (expected_output[r].GetElem(c) != real_output[r].GetElem(c)) {
-      std::ostringstream oss;
-      oss << "expected " << expected_output[r].GetElem(c) << ", got " << real_output[r].GetElem(c);
-      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
-    }
-  }
-  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
-}
-*/
-
 std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Ort::ConstValue& outvalue, const Ort::ConstValue& expected_value,
                                                             double per_sample_tolerance,
                                                             double relative_per_sample_tolerance,
@@ -511,12 +471,12 @@ std::pair<COMPARE_RESULT, std::string> CompareMapToFloat(const Ort::ConstValue& 
                                                          double per_sample_tolerance,
                                                          double relative_per_sample_tolerance,
                                                          bool post_processing) {
-  const Ort::ConstValue keys = actual.GetValue(0, Ort::AllocatorWithDefaultOptions()).GetConst();
-  const Ort::ConstValue values = actual.GetValue(1, Ort::AllocatorWithDefaultOptions()).GetConst();
+  const Ort::Value keys = actual.GetValue(0, Ort::AllocatorWithDefaultOptions());
+  const Ort::Value values = actual.GetValue(1, Ort::AllocatorWithDefaultOptions());
   size_t num_keys = keys.GetTensorTypeAndShapeInfo().GetElementCount();
 
-  const Ort::ConstValue expected_keys = expected.GetValue(0, Ort::AllocatorWithDefaultOptions()).GetConst();
-  const Ort::ConstValue expected_values = expected.GetValue(1, Ort::AllocatorWithDefaultOptions()).GetConst();
+  const Ort::Value expected_keys = expected.GetValue(0, Ort::AllocatorWithDefaultOptions());
+  const Ort::Value expected_values = expected.GetValue(1, Ort::AllocatorWithDefaultOptions());
   size_t expected_num_keys = expected_keys.GetTensorTypeAndShapeInfo().GetElementCount();
 
   if (num_keys != expected_num_keys) {
@@ -526,12 +486,12 @@ std::pair<COMPARE_RESULT, std::string> CompareMapToFloat(const Ort::ConstValue& 
   }
 
   // Check keys of the map
-  TEST_RETURN_IF_ERROR(CompareTwoTensors(keys, expected_keys,
+  TEST_RETURN_IF_ERROR(CompareTwoTensors(keys.GetConst(), expected_keys.GetConst(),
                                          per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                        "While comparing keys of the Map");
 
   // Check values of the map
-  TEST_RETURN_IF_ERROR(CompareTwoTensors(values, expected_values,
+  TEST_RETURN_IF_ERROR(CompareTwoTensors(values.GetConst(), expected_values.GetConst(),
                                          per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                        "While comparing values of the Map");
 
@@ -720,7 +680,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
   const Ort::ConstValue output_mlvalue{&actual_value};
   const Ort::ConstValue expected_mlvalue{&expected_value};
 
-  // Only following OrtValue types are supported:
+  // Only four ONNX types are supported:
   // - Tensor
   // - Sparse Tensor
   // - Sequence of Tensors
@@ -771,39 +731,39 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
       return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
     }
 
-    ONNXTensorElementDataType element_type = output_mlvalue.GetTensorTypeAndShapeInfo().GetElementType();
-    ONNXTensorElementDataType expected_element_type = expected_mlvalue.GetTensorTypeAndShapeInfo().GetElementType();
-
-    if (element_type != expected_element_type) {
-      std::ostringstream oss;
-      oss << "expect " << TensorElementTypeToString(expected_element_type) << " got "
-          << TensorElementTypeToString(element_type);
-      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
-    }
-
     for (size_t i = 0; i < expected_num_elements; ++i) {
-      const Ort::ConstValue actual_ort_value = output_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions()).GetConst();
-      const Ort::ConstValue expect_ort_value = expected_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions()).GetConst();
+      const Ort::Value actual_ort_value = output_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions());
+      const Ort::Value expect_ort_value = expected_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions());
+
+      ONNXTensorElementDataType element_type = actual_ort_value.GetTensorTypeAndShapeInfo().GetElementType();
+      ONNXTensorElementDataType expected_element_type = expect_ort_value.GetTensorTypeAndShapeInfo().GetElementType();
+
+      if (element_type != expected_element_type) {
+        std::ostringstream oss;
+        oss << "expect " << TensorElementTypeToString(expected_element_type) << " got "
+            << TensorElementTypeToString(element_type);
+        return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
+      }
 
       ONNXType onnx_type;
       ONNXType expected_onnx_type;
-      Ort::ThrowOnError(Ort::GetApi().GetValueType(output_mlvalue, &onnx_type));
-      Ort::ThrowOnError(Ort::GetApi().GetValueType(expected_mlvalue, &expected_onnx_type));
+      Ort::ThrowOnError(Ort::GetApi().GetValueType(actual_ort_value, &onnx_type));
+      Ort::ThrowOnError(Ort::GetApi().GetValueType(expect_ort_value, &expected_onnx_type));
 
       if (onnx_type != expected_onnx_type) {
         return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
       }
 
       if (onnx_type == ONNX_TYPE_TENSOR) {  // Tensor type. It means the original OrtValue is sequence of tensors.
-        auto res = CompareTwoTensors(actual_ort_value, expect_ort_value, per_sample_tolerance, relative_per_sample_tolerance,
+        auto res = CompareTwoTensors(actual_ort_value.GetConst(), expect_ort_value.GetConst(), per_sample_tolerance, relative_per_sample_tolerance,
                                      post_processing);
         if (res.first != COMPARE_RESULT::SUCCESS) {
           return res;
         }
       } else if (onnx_type == ONNX_TYPE_MAP) {  // Map type. It means the original OrtValue is sequence of maps.
 #if !defined(DISABLE_ML_OPS)
-        const Ort::ConstValue key = actual_ort_value.GetValue(0, Ort::AllocatorWithDefaultOptions()).GetConst();
-        const Ort::ConstValue value = actual_ort_value.GetValue(1, Ort::AllocatorWithDefaultOptions()).GetConst();
+        const Ort::Value key = actual_ort_value.GetValue(0, Ort::AllocatorWithDefaultOptions());
+        const Ort::Value value = actual_ort_value.GetValue(1, Ort::AllocatorWithDefaultOptions());
         ONNXTensorElementDataType key_element_type = key.GetTensorTypeAndShapeInfo().GetElementType();
         ONNXTensorElementDataType value_element_type = value.GetTensorTypeAndShapeInfo().GetElementType();
 
@@ -811,7 +771,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
             value.IsTensor() &&
             (key_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 || key_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) &&
             value_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-          auto res = CompareMapToFloat(actual_ort_value, expect_ort_value,
+          auto res = CompareMapToFloat(actual_ort_value.GetConst(), expect_ort_value.GetConst(),
                                        per_sample_tolerance, relative_per_sample_tolerance, post_processing);
           if (res.first != COMPARE_RESULT::SUCCESS) {
             return res;
