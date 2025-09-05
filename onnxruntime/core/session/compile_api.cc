@@ -64,7 +64,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetInputModelPath,
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-  std::string model_path = PathToUTF8String(input_model_path);
+  std::filesystem::path model_path = input_model_path;
 
   if (model_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid input model: path string is empty");
@@ -113,7 +113,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelPath,
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 
-  std::string model_path = PathToUTF8String(output_model_path);
+  std::filesystem::path model_path = output_model_path;
   if (model_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid output model path: path is empty");
   }
@@ -136,17 +136,18 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextBinaryInf
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 
-  std::string output_dir = PathToUTF8String(output_directory);
-  if (output_dir.empty()) {
+  std::filesystem::path output_directory_path = output_directory;
+  if (output_directory_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid output directory: path is empty");
   }
 
-  std::string model_name_str = ToUTF8String(model_name);
-  if (model_name_str.empty()) {
+  std::filesystem::path model_name_path = model_name;
+  if (model_name_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid model name: string is empty");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetEpContextBinaryInformation(output_dir, model_name_str));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetEpContextBinaryInformation(output_directory_path,
+                                                                                       model_name_path));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
@@ -163,7 +164,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
                     size_t external_initializer_size_threshold) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  std::string initializers_file_path = PathToUTF8String(external_initializers_file_path);
+  std::filesystem::path initializers_file_path = external_initializers_file_path;
   if (initializers_file_path.empty()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid external initializer file: path is empty");
   }
@@ -214,6 +215,50 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelWriteFunc,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ OrtWriteBufferFunc write_func, _In_ void* state) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+
+  if (write_func == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtWriteBufferFunc function for output model is null");
+  }
+
+  model_compile_options->SetOutputModelWriteFunc(write_func, state);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(write_func);
+  ORT_UNUSED_PARAMETER(state);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+
+  if (get_initializer_location_func == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtGetInitializerLocationFunc function for output model is null");
+  }
+
+  model_compile_options->SetOutputModelGetInitializerLocationFunc(get_initializer_location_func, state);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(get_initializer_location_func);
+  ORT_UNUSED_PARAMETER(state);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
                     bool embed_ep_context_in_model) {
@@ -231,7 +276,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode
 }
 
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetFlags,
-                    _In_ OrtModelCompilationOptions* ort_model_compile_options, size_t flags) {
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options, uint32_t flags) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
@@ -240,6 +285,22 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetFlags,
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
   ORT_UNUSED_PARAMETER(flags);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetGraphOptimizationLevel,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ GraphOptimizationLevel graph_optimization_level) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetGraphOptimizationLevel(graph_optimization_level));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(graph_optimization_level);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
@@ -278,6 +339,9 @@ static constexpr OrtCompileApi ort_compile_api = {
 
     &OrtCompileAPI::ModelCompilationOptions_SetFlags,
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextBinaryInformation,
+    &OrtCompileAPI::ModelCompilationOptions_SetGraphOptimizationLevel,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelWriteFunc,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
