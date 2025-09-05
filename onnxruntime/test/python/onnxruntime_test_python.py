@@ -252,6 +252,29 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
 
+    def test_copy_tensors(self):
+        # Generate 2 numpy arrays
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+
+        # Create OrtValue from numpy arrays
+        a_ort = onnxrt.OrtValue.ortvalue_from_numpy(a)
+        b_ort = onnxrt.OrtValue.ortvalue_from_numpy(b)
+
+        # Create destination ort values with the same shape
+        a_ort_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(a.shape, a.dtype)
+        b_ort_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(b.shape, b.dtype)
+
+        # source list
+        src_list = [a_ort, b_ort]
+        dst_list = [a_ort_copy, b_ort_copy]
+        # Passing None for stream as we copy between CPU
+        onnxrt.copy_tensors(src_list, dst_list, None)
+
+        # Verify the contents
+        np.testing.assert_array_equal(a, a_ort_copy.numpy())
+        np.testing.assert_array_equal(b, b_ort_copy.numpy())
+
     def test_enabling_and_disabling_telemetry(self):
         onnxrt.disable_telemetry_events()
 
@@ -689,15 +712,30 @@ class TestInferenceSession(unittest.TestCase):
     def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        input_name = sess.get_inputs()[0].name
-        self.assertEqual(input_name, "X")
-        input_shape = sess.get_inputs()[0].shape
-        self.assertEqual(input_shape, [3, 2])
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Y")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [3, 2])
-        res = sess.run([output_name], {input_name: x})
+
+        inputs = sess.get_inputs()
+        self.assertEqual(len(inputs), 1)
+        self.assertEqual(inputs[0].name, "X")
+        self.assertEqual(inputs[0].shape, [3, 2])
+
+        inputs_meminfo = sess.inputs_meminfo
+        self.assertEqual(len(inputs_meminfo), 1)
+        self.assertIsNotNone(inputs_meminfo[0])
+
+        inputs_epdevices = sess.inputs_epdevices
+        self.assertEqual(len(inputs_epdevices), 1)
+        self.assertIsNotNone(inputs_epdevices[0])
+
+        outputs_meminfo = sess.outputs_meminfo
+        self.assertEqual(len(outputs_meminfo), 1)
+        self.assertIsNotNone(outputs_meminfo[0])
+
+        outputs = sess.get_outputs()
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(outputs[0].name, "Y")
+        self.assertEqual(outputs[0].shape, [3, 2])
+
+        res = sess.run([outputs[0].name], {inputs[0].name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 

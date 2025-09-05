@@ -651,9 +651,12 @@ inline void KeyValuePairs::Remove(const char* key) {
   GetApi().RemoveKeyValuePair(this->p_, key);
 }
 
-inline void* SyncStream::GetHandle() const {
+namespace detail {
+template <typename T>
+inline void* SyncStreamImpl<T>::GetHandle() {
   return GetApi().SyncStream_GetHandle(this->p_);
 }
+}  // namespace detail
 
 namespace detail {
 template <typename T>

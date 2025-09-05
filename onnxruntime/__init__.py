@@ -40,9 +40,11 @@ try:
         OrtMemoryInfoDeviceType,  # noqa: F401
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
+        OrtSyncStream,  # noqa: F401
         RunOptions,  # noqa: F401
         SessionIOBinding,  # noqa: F401
         SessionOptions,  # noqa: F401
+        copy_tensors,  # noqa: F401
         create_and_register_allocator,  # noqa: F401
         create_and_register_allocator_v2,  # noqa: F401
         disable_telemetry_events,  # noqa: F401
