@@ -12,7 +12,6 @@ stages:
   - Linux_C_API_Packaging_GPU
   - Windows_Packaging_CUDA
   - Windows_Packaging_TensorRT
-  - Download_Java_Tools
   jobs:
   - job: Jar_Packaging_GPU
     workspace:
