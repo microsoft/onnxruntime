@@ -32,14 +32,14 @@ class GemmOpBuilder : public BaseOpBuilder {
 
 // Helper function
 common::Status ProcessZeroPointAndScale(
-    const std::vector<int64_t>& input_shape,
+    gsl::span<const int64_t> input_shape,
     const size_t zero_point_index,
-    emscripten::val& zero_point,
-    emscripten::val& scale,
     ModelBuilder& model_builder,
     const Node& node,
     const int32_t zero_point_type,
-    const logging::Logger& logger) {
+    const logging::Logger& logger,
+    emscripten::val& zero_point,
+    emscripten::val& scale) {
   ORT_RETURN_IF_NOT((zero_point_index == 2 || zero_point_index == 3), "zero_point_index should be 2 or 3.");
   // The WebNN dequantizeLinear op requires the scale and zero_point tensors to have the
   // same rank as the input tensor. So we need to reshape the zero_point tensors
@@ -146,9 +146,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     emscripten::val a_zero_point, b_zero_point, a_scale, b_scale;
 
     ORT_RETURN_IF_ERROR(
-        ProcessZeroPointAndScale(a_shape, 2, a_zero_point, a_scale, model_builder, node, a_type, logger));
+        ProcessZeroPointAndScale(a_shape, 2, model_builder, node, a_type, logger, a_zero_point, a_scale));
     ORT_RETURN_IF_ERROR(
-        ProcessZeroPointAndScale(b_shape, 3, b_zero_point, b_scale, model_builder, node, a_type, logger));
+        ProcessZeroPointAndScale(b_shape, 3, model_builder, node, a_type, logger, b_zero_point, b_scale));
 
     // Dequantize A to Float32
     common_options.set("label", node.Name() + "_dequantized_a");
