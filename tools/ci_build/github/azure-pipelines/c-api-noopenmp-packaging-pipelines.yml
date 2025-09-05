@@ -128,6 +128,8 @@ extends:
       parameters:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
         ${{ else }}:
@@ -159,6 +161,8 @@ extends:
         buildNodejs: true
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
     - template: stages/nodejs-win-packaging-stage.yml
       parameters:

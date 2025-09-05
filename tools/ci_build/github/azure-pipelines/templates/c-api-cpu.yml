@@ -9,6 +9,19 @@ parameters:
   type: boolean
   default: false
 
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
   type: string
@@ -155,6 +168,8 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
 - template: win-ci.yml
   parameters:
@@ -167,6 +182,8 @@ stages:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     buildNodejs: false
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
 - stage: Jar_Packaging
   dependsOn:
