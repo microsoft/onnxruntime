@@ -1,7 +1,7 @@
 steps:
 - task: AzurePowerShell@5
   inputs:
-    azureSubscription: 'ONNXRuntimeBuildAzureConnection'
+    azureSubscription: 'OnnxrunTimeCodeSign_20240611'
     azurePowerShellVersion: 'LatestVersion'
     scriptType: 'InlineScript'
     inline: |
