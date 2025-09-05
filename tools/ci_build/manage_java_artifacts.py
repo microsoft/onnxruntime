@@ -23,6 +23,21 @@ def run_command(command: list, working_dir: Path):
         logging.error(f"Command failed with exit code {e.returncode}")
         raise
 
+def log_directory_contents(dir_path: Path, description: str):
+    """Logs the contents of a directory for debugging."""
+    logging.info(f"--- Listing contents of {description} at '{dir_path}' ---")
+    if not dir_path.is_dir():
+        logging.warning(f"Directory does not exist: {dir_path}")
+        return
+    contents = list(dir_path.rglob('*'))
+    if not contents:
+        logging.warning(f"Directory is empty: {dir_path}")
+    else:
+        for item in contents:
+            logging.info(f"  - {item.relative_to(dir_path)}")
+    logging.info("--- End of directory listing ---")
+
+
 def create_zip_from_directory(zip_file_path: Path, source_dir: Path):
     """Creates a zip file from the contents of a source directory."""
     logging.info(f"Creating archive '{zip_file_path}' from directory '{source_dir}'...")
@@ -132,7 +147,7 @@ def main():
 
     run_command([str(gradle_executable_path), "cmakeCheck", "-x", "test", cmake_build_dir_arg, "--warning-mode", "all", version_property_arg],
                 working_dir=java_working_dir)
-
+    
     # --- 2. Path Definitions ---
     platform_dir = args.binaries_dir / f"onnxruntime-java-win-{args.platform}"
     stage_dir = platform_dir / "stage"
@@ -147,8 +162,21 @@ def main():
         stage_dir.mkdir(parents=True, exist_ok=True)
         native_folder.mkdir(parents=True, exist_ok=True)
 
-        source_jar_path = next((build_config_dir / "java" / "build" / "libs").glob("*.jar"))
+        # ADDED LOGGING: Check Gradle output directory
+        gradle_libs_dir = build_config_dir / "java" / "build" / "libs"
+        log_directory_contents(gradle_libs_dir, "Gradle build output libs")
+
+        # Improved error handling for finding the source JAR
+        try:
+            source_jar_path = next(gradle_libs_dir.glob("*.jar"))
+            logging.info(f"Found source JAR to copy: {source_jar_path.name}")
+        except StopIteration:
+            raise FileNotFoundError(f"Gradle build finished, but no .jar file was found in the expected output directory: {gradle_libs_dir}")
+
         shutil.copy2(source_jar_path, platform_dir)
+        
+        # ADDED LOGGING: Check destination directory as requested
+        log_directory_contents(platform_dir, "final platform directory before JAR processing")
 
         pom_archive_path = f"META-INF/maven/com.microsoft.onnxruntime/{args.java_artifact_id}/pom.xml"
         with zipfile.ZipFile(main_jar_path, 'r') as jar:
