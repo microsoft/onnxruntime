@@ -100,19 +100,21 @@ stages:
       displayName: "Install Python requirements"
 
     # Build the iOS package
-    - script: |
-        set -e -x
-        python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-          --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-          --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
-          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-      displayName: Build iOS package and assemble pods
+    # TODO debugging only - disabled
+    # - script: |
+    #     set -e -x
+    #     python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+    #       --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+    #       --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
+    #       --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+    #   displayName: Build iOS package and assemble pods
 
-    - task: ${{ variables.publishPipelineArtifactTask }}
-      inputs:
-        artifactName: 'ios_pod'
-        targetPath: '$(Build.BinariesDirectory)/ios_pod'
-      displayName: Publish React Native iOS pod files
+    # TODO debugging only - disabled
+    # - task: ${{ variables.publishPipelineArtifactTask }}
+    #   inputs:
+    #     artifactName: 'ios_pod'
+    #     targetPath: '$(Build.BinariesDirectory)/ios_pod'
+    #   displayName: Publish React Native iOS pod files
 
   - job: ReactNative_CI_iOS_unit_tests
     dependsOn: 'ReactNative_CI_iOS_build'
@@ -129,12 +131,15 @@ stages:
     timeoutInMinutes: 90
 
     steps:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        buildType: 'current'
-        artifactName: 'ios_pod'
-        targetPath: '$(Build.BinariesDirectory)/ios_pod'
-      displayName: Download React Native iOS pod files
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - ios_pod'
+        ArtifactName: 'ios_pod'
+        TargetPath: '$(Build.BinariesDirectory)/ios_pod'
+        # SpecificArtifact: false
+        # TODO debugging only - use specific artifact for debugging rest of pipeline
+        SpecificArtifact: true
+        BuildId: 930670
 
     - template: use-xcode-version.yml
 
@@ -203,12 +208,15 @@ stages:
     timeoutInMinutes: 90
 
     steps:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        buildType: 'current'
-        artifactName: 'ios_pod'
-        targetPath: '$(Build.BinariesDirectory)/ios_pod'
-      displayName: Download React Native iOS pod files
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - ios_pod'
+        ArtifactName: 'ios_pod'
+        TargetPath: '$(Build.BinariesDirectory)/ios_pod'
+        # SpecificArtifact: false
+        # TODO debugging only - use specific artifact for debugging rest of pipeline
+        SpecificArtifact: true
+        BuildId: 930670
 
     - template: use-xcode-version.yml
 
