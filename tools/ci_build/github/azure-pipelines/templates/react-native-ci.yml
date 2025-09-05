@@ -100,13 +100,18 @@ stages:
       displayName: "Install Python requirements"
 
     # Build the iOS package
+    # - script: |
+    #     set -e -x
+    #     python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+    #       --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+    #       --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
+    #       --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+    #   displayName: Build iOS package and assemble pods
+
+    # TODO testing - put something in artifacts directory
     - script: |
-        set -e -x
-        python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-          --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-          --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
-          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-      displayName: Build iOS package and assemble pods
+        mkdir $(Build.BinariesDirectory)/ios_pod
+        echo "hello" > $(Build.BinariesDirectory)/ios_pod/hello.txt
 
     - task: ${{ variables.publishPipelineArtifactTask }}
       inputs:
