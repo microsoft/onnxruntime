@@ -192,7 +192,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All inputs must be tensors on WebGPU buffers.");
 
@@ -201,7 +201,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All outputs must be tensors on WebGPU buffers.");
   }
