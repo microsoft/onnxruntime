@@ -82,25 +82,25 @@ stages:
 
     variables:
       runCodesignValidationInjection: false
-      TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-      ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
 
     steps:
-    - template: use-xcode-version.yml
+    - checkout: none
 
-    - task: UsePythonVersion@0
-      displayName: Use python 3.12
-      inputs:
-        versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
+    # TODO debugging only - disabled
+    # - template: use-xcode-version.yml
 
-    - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
-      displayName: "Install Python requirements"
+    # - task: UsePythonVersion@0
+    #   displayName: Use python 3.12
+    #   inputs:
+    #     versionSpec: "3.12"
+    #     addToPath: true
+    #     architecture: "x64"
+
+    # - script: |
+    #     pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+    #   displayName: "Install Python requirements"
 
     # Build the iOS package
-    # TODO debugging only - disabled
     # - script: |
     #     set -e -x
     #     python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
@@ -109,7 +109,6 @@ stages:
     #       --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
     #   displayName: Build iOS package and assemble pods
 
-    # TODO debugging only - disabled
     # - task: ${{ variables.publishPipelineArtifactTask }}
     #   inputs:
     #     artifactName: 'ios_pod'
