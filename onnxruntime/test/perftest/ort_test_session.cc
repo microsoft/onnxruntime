@@ -20,10 +20,6 @@
 #include "TestCase.h"
 #include "strings_helper.h"
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
-#include <cuda_runtime.h>
-#endif
-
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
 #endif
@@ -220,12 +216,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 
     ParseSessionConfigs(ov_string, provider_options);
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+      if (cudaStreamCreate(&stream_) != cudaError_t::cudaSuccess) {
+        ORT_THROW("Unable to create CUDA stream for IOBinding");
+      }
+      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream_));
+      provider_options["user_compute_stream"] = stream_str;
+    }
     cuda_options.Update(provider_options);
 
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
-    if (performance_test_config.run_config.enable_cuda_io_binding) {
-      device_memory_name_ = CUDA;
-    }
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -234,7 +235,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     Ort::TensorRTProviderOptions tensorrt_options;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;
-
+    OrtCUDAProviderOptions cuda_options;
+    if (performance_test_config.run_config.enable_cuda_io_binding) {
+      device_memory_name_ = CUDA;
+      if (cudaStreamCreate(&stream_) != cudaError_t::cudaSuccess) {
+        ORT_THROW("Unable to create CUDA stream for IOBinding");
+      }
+      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream_));
+      cuda_options.has_user_compute_stream = 1;
+      cuda_options.user_compute_stream = reinterpret_cast<void*>(stream_);
+      provider_options["user_compute_stream"] = stream_str;
+    }
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
@@ -244,15 +255,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.Update(provider_options);
     session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 
-    OrtCUDAProviderOptions cuda_options;
     cuda_options.device_id = static_cast<OrtTensorRTProviderOptionsV2*>(tensorrt_options)->device_id;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
-    if (performance_test_config.run_config.enable_cuda_io_binding) {
-      device_memory_name_ = CUDA;
-    }
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
@@ -272,9 +279,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     }
     if (performance_test_config.run_config.enable_cuda_io_binding) {
       device_memory_name_ = CUDA;
-      cudaStream_t stream;
-      cudaStreamCreate(&stream);
-      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream));
+      if (cudaStreamCreate(&stream_) != cudaError_t::cudaSuccess) {
+        ORT_THROW("Unable to create CUDA stream for IOBinding");
+      }
+      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream_));
       provider_options["user_compute_stream"] = stream_str;
     }
     session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
@@ -1113,6 +1121,19 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
     }
   }
   return true;
+}
+OnnxRuntimeTestSession::~OnnxRuntimeTestSession() {
+#ifdef USE_CUDA
+  if (device_memory_name_ == CUDA && stream_ != nullptr) {
+    // Need to synchronize here before the custom allocator is destroyedif (cudaStreamSynchronize(stream_);
+    if (cudaStreamSynchronize(stream_) != cudaError_t::cudaSuccess) {
+      std::cerr << "Unable to sync CUDA stream";
+    }
+    if (cudaStreamDestroy(stream_) != cudaError_t::cudaSuccess) {
+      std::cerr << "Unable to destroy CUDA stream";
+    }
+  }
+#endif
 }
 
 }  // namespace perftest
