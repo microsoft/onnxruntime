@@ -94,7 +94,7 @@ def main():
     parser.add_argument("--sources-dir", required=True, type=Path, help="Path to the build sources directory.")
     parser.add_argument("--binaries-dir", required=True, type=Path, help="Path to the build binaries directory.")
     parser.add_argument("--platform", required=True, help="Platform string (e.g., x64).")
-    parser.add_argument("--java-artifact-id", required=True, help="The Java artifact ID.")
+    parser.add_argument("--java-artifact-id", required=True, help="The Java artifact ID (e.g., onnxruntime or onnxruntime_gpu).")
     parser.add_argument("--build-config", choices=['Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel'],
                         default='RelWithDebInfo', help="The CMake build configuration type.")
     parser.add_argument("--pre-release-version-suffix-string", choices=['alpha', 'beta', 'rc', 'none'], default='none', help="The pre-release version suffix string.")
@@ -152,9 +152,9 @@ def main():
     platform_dir = args.binaries_dir / f"onnxruntime-java-win-{args.platform}"
     stage_dir = platform_dir / "stage"
     native_folder = stage_dir / "ai" / "onnxruntime" / "native" / f"win-{args.platform}"
-    main_jar_name = f"onnxruntime-{full_version}.jar"
+    main_jar_name = f"{args.java_artifact_id}-{full_version}.jar"
     main_jar_path = platform_dir / main_jar_name
-    final_pom_path = platform_dir / f"onnxruntime-{full_version}.pom"
+    final_pom_path = platform_dir / f"{args.java_artifact_id}-{full_version}.pom"
     testing_jar_path = platform_dir / "testing.jar"
 
     # --- 3. Packaging Logic ---
@@ -166,14 +166,22 @@ def main():
         gradle_libs_dir = build_config_dir / "java" / "build" / "libs"
         log_directory_contents(gradle_libs_dir, "Gradle build output libs")
 
-        # Improved error handling for finding the source JAR
-        try:
-            source_jar_path = next(gradle_libs_dir.glob("*.jar"))
-            logging.info(f"Found source JAR to copy: {source_jar_path.name}")
-        except StopIteration:
-            raise FileNotFoundError(f"Gradle build finished, but no .jar file was found in the expected output directory: {gradle_libs_dir}")
+        # FIX: Filter glob results to find the main artifact JAR, excluding sources and javadoc.
+        main_jars = [
+            p for p in gradle_libs_dir.glob("*.jar")
+            if not p.name.endswith("-sources.jar") and not p.name.endswith("-javadoc.jar")
+        ]
 
-        shutil.copy2(source_jar_path, platform_dir)
+        if not main_jars:
+            raise FileNotFoundError(f"Gradle build finished, but no main artifact JAR was found in {gradle_libs_dir}")
+        if len(main_jars) > 1:
+            logging.warning(f"Found multiple potential main JARs: {[p.name for p in main_jars]}. Using the first one.")
+        
+        source_jar_path = main_jars[0]
+        logging.info(f"Found source JAR to copy: {source_jar_path.name}")
+        
+        # The JAR file is copied to its final name directly.
+        shutil.copy2(source_jar_path, main_jar_path)
         
         # ADDED LOGGING: Check destination directory as requested
         log_directory_contents(platform_dir, "final platform directory before JAR processing")
