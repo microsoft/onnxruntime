@@ -41,16 +41,6 @@ parameters:
   type: string
   default: 'default'
 
-- name: SpecificArtifact
-  displayName: Use Specific Artifact
-  type: boolean
-  default: false
-
-- name: BuildId
-  displayName: Specific Artifact's BuildId
-  type: string
-  default: '0'
-
 # Do not update this to a version that does not exist for the qnn-runtime Maven package:
 # https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSDKVersion
@@ -71,9 +61,6 @@ stages:
 - template: mac-cpu-packaging-pipeline.yml
   parameters:
     AllowReleasedOpsetOnly: 1
-    BuildForAllArchs: true
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
     DoEsrp: true
 
 - stage: Android_Java_API_AAR_Packaging_Full
@@ -278,6 +265,28 @@ stages:
         binskim:
           enabled: true
           scanOutputDirectoryOnly: true
+      inputs:
+        - input: pipelineArtifact
+          artifactName: onnxruntime-win-x64
+          targetPath: $(Build.BinariesDirectory)/nuget-artifact
+        - input: pipelineArtifact
+          artifactName: onnxruntime-win-arm64
+          targetPath: $(Build.BinariesDirectory)/nuget-artifact
+        - input: pipelineArtifact
+          artifactName: onnxruntime-osx
+          targetPath: $(Build.BinariesDirectory)/nuget-artifact
+        - input: pipelineArtifact
+          artifactName: onnxruntime-linux-x64
+          targetPath: $(Build.BinariesDirectory)/nuget-artifact
+        - input: pipelineArtifact
+          artifactName: onnxruntime-linux-aarch64
+          targetPath: $(Build.BinariesDirectory)/nuget-artifact
+        - input: pipelineArtifact
+          artifactName: onnxruntime-ios-full-xcframework
+          targetPath: $(Build.BinariesDirectory)/nuget-artifact
+        - input: pipelineArtifact
+          artifactName: onnxruntime-android-full-aar
+          targetPath: $(Build.BinariesDirectory)/nuget-artifact
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
@@ -292,62 +301,6 @@ stages:
     steps:
     - checkout: self
       submodules: true
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Win x64'
-        ArtifactName: 'onnxruntime-win-x64'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download win-arm64 Pipeline Artifact'
-        ArtifactName: 'onnxruntime-win-arm64'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download osx-x64 Pipeline Artifact'
-        ArtifactName: 'onnxruntime-osx'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download linux-x64 Pipeline Artifact'
-        ArtifactName: 'onnxruntime-linux-x64'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download linux-aarch64 Pipeline Artifact'
-        ArtifactName: 'onnxruntime-linux-aarch64'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download iOS Pipeline Artifact'
-        ArtifactName: 'onnxruntime-ios-full-xcframework'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Android-full-aar Pipeline Artifact'
-        ArtifactName: 'onnxruntime-android-full-aar'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - script: |
         dir

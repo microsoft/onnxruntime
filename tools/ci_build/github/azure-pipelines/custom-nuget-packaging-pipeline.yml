@@ -126,7 +126,6 @@ extends:
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:
           AllowReleasedOpsetOnly: 1
-          BuildForAllArchs: true
           AdditionalBuildFlags: '--use_webgpu --skip_tests'
           DoEsrp: true
 
