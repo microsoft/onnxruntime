@@ -424,8 +424,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
     case TransformerLevel::Level3: {
 #ifndef DISABLE_CONTRIB_OPS
+      const bool disable_nchwc_optimizer =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableNchwcOptimizer, "0") == "1";
+
       // Register the NCHWc layout transformer if supported by the platform.
-      if (MlasNchwcGetBlockSize() > 1) {
+      if (MlasNchwcGetBlockSize() > 1 && !disable_nchwc_optimizer) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
 

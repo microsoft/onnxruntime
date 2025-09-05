@@ -408,3 +408,8 @@ static const char* const kOrtSessionOptionsDisableModelCompile = "session.disabl
 // Note: UNSUPPORTED models always fail regardless of this setting.
 static const char* const kOrtSessionOptionsFailOnSuboptimalCompiledModel =
     "session.fail_on_suboptimal_compiled_model";
+
+// Option values:
+// - "0": NCHWc optimizer is NOT disabled. [DEFAULT]
+// - "1": NCHWc optimizer is disabled.
+static const char* const kOrtSessionOptionsDisableNchwcOptimizer = "session.disable_nchwc_optimizer";
