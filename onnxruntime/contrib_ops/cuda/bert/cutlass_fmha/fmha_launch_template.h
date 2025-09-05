@@ -9,6 +9,13 @@
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
+#pragma warning(disable : 4310)  // Ignore warning C4310: cast truncates constant value.
+#pragma warning(disable : 4459)  // Ignore warning C4100: declaration of '_' hides global declaration.
+#endif
+
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
 
@@ -286,6 +293,10 @@ void DispatchBlockSize(const MemoryEfficientAttentionParams& params) {
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#endif
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
 #endif
 
 #endif  // USE_MEMORY_EFFICIENT_ATTENTION
