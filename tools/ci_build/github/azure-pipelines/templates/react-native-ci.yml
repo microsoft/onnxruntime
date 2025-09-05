@@ -154,8 +154,8 @@ stages:
         versionSpec: '22.x'
 
     - script:
-        brew install coreutils ninja npm
-      displayName: Install coreutils, ninja, npm
+        brew install npm
+      displayName: Install npm
 
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
@@ -231,8 +231,8 @@ stages:
         versionSpec: '22.x'
 
     - script:
-        brew install coreutils ninja npm
-      displayName: Install coreutils, ninja, npm
+        brew install npm
+      displayName: Install npm
 
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
