@@ -154,7 +154,7 @@ stages:
           architecture: ${{ parameters.buildArch }}
 
       - template: telemetry-steps.yml
-      - template: setup_maven.yml
+      - template: setup-maven.yml
       - task: PipAuthenticate@1
         displayName: 'Pip Authenticate'
         inputs:
