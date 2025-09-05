@@ -23,6 +23,7 @@ class EpLibrary {
   virtual Status Load() { return Status::OK(); }
   virtual const std::vector<OrtEpFactory*>& GetFactories() = 0;  // valid after Load()
   virtual Status Unload() { return Status::OK(); }
+
   virtual ~EpLibrary() = default;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibrary);

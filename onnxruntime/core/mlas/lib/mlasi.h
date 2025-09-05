@@ -1200,7 +1200,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH;
 
 const MLAS_QNBIT_GEMM_DISPATCH&
 GetMlasQNBitGemmDispatchNeon(
-    bool InitializeWithDotSupport
+    bool InitializeWithDotSupport,
+    bool InitializeWithI8MMSupport
 );
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
@@ -1297,6 +1298,8 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    bool ArmNeonIsQuantActivationsUnsigned = false;
+
     // Mlas overrides initialisation
     MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
     MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
