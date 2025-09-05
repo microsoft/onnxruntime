@@ -10,9 +10,9 @@
 // columns that each workgroup is responsible for. Then within each workgroup
 // the task of summation over the num_total_seq_length_tile for the tile_size
 // columns is further split in two ways. First across the row dimension to have
-// WORKGROUP_SIZE/TILE_SIZE parallel computations of summation of TILE_SIZE
+// WORKGROUP_SIZE/tile_size parallel computations of summation of tile_size
 // rows. Then across the column dimension where each thread is responsible for 1
-// column of the TILE_SIZE columns the workgroup is responsible for.
+// column of the tile_size columns the workgroup is responsible for.
 
 var<workgroup> tile_input: array<array<output_value_t, tile_size>, tile_size>;
 
@@ -24,10 +24,27 @@ $MAIN {
   let local_row = u32(local_idx / tile_size);
   let local_col = local_idx % tile_size;
 
+  // Calculate the global max and sum in qkv.
+  var g_max = f32(-3.402823e+38f);
+  var g_sum = f32(0);
+  for (var i = 0u; i < uniforms.num_total_seq_length_tile; i++)
+  {
+    let meta_offset = head_idx * uniforms.num_present_sequence_length_tile + i;
+    let meta_value = metadata[meta_offset];
+    let l_max = meta_value.x;
+    let g_max_new = max(g_max, l_max);
+    g_sum = g_sum * exp(g_max - g_max_new) + meta_value.y * exp(l_max - g_max_new);
+    g_max = g_max_new;
+  }
+
   if (head_size_offset + local_col < uniforms.head_size_vec) {
     for (var r = 0u; r < uniforms.num_total_seq_length_tile; r += tile_size) {
       if (r + local_row < uniforms.num_total_seq_length_tile) {
-        value += input[in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col];
+        let in_value = input[in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col];
+        let meta_value = metadata[head_idx * uniforms.num_present_sequence_length_tile + r + local_row];
+        let l_max = meta_value.x;
+        let l_sum = meta_value.y;
+        value += output_value_t((l_sum / g_sum) * exp(l_max - g_max) * vec4<f32>(in_value));
       }
     }
   }
