@@ -2870,7 +2870,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       auto status = CreateCtxNode(graph_body_viewer,
                                   ep_context_model_->MainGraph(),
                                   cache_path,
-                                  engine_data,
+                                  const_cast<char*>(engine_data),
                                   engine_size,
                                   ep_context_embed_mode_,
                                   compute_capability_hw_compat,
