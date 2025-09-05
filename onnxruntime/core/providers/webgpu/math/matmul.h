@@ -51,7 +51,7 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
 
 class MatMulTiledSubgroupProgram final : public Program<MatMulTiledSubgroupProgram> {
  public:
-  MatMulTiledSubgroupProgram() : Program{"MatMulTiledSubgroup"} {}
+  MatMulTiledSubgroupProgram(uint32_t tile_n) : Program{"MatMulTiledSubgroup"}, tile_n_(tile_n) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -61,7 +61,11 @@ class MatMulTiledSubgroupProgram final : public Program<MatMulTiledSubgroupProgr
                                           {"k_of_a", ProgramUniformVariableDataType::Uint32},
                                           {"n_div_4", ProgramUniformVariableDataType::Uint32},
                                           {"M_tiles", ProgramUniformVariableDataType::Uint32},
-                                          {"N_tiles", ProgramUniformVariableDataType::Uint32}, );
+                                          {"K_tiles", ProgramUniformVariableDataType::Uint32},
+                                          {"N_tiles", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const uint32_t tile_n_;
 };
 
 }  // namespace webgpu

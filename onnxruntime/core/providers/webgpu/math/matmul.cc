@@ -106,7 +106,12 @@ Status MatMulTiledSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) cons
   shader.AddInput("b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  return WGSL_TEMPLATE_APPLY(shader, "math/matmul_tiled_subgroup.wgsl.template");
+  ORT_ENFORCE(tile_n_ == 32 || tile_n_ == 16, "tile_n must be 32 or 16.");
+
+  return WGSL_TEMPLATE_APPLY(shader,
+                             "math/matmul_tiled_subgroup.wgsl.template",
+                             narrow<int32_t>(tile_n_),
+                             true);
 }
 
 Status MatMul::ComputeInternal(ComputeContext& context) const {
@@ -162,6 +167,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     return context.RunProgram(program);
   }
 
+#if 1
   {
     auto a_shape = a->Shape();
     auto b_shape = b->Shape();
@@ -190,11 +196,14 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
       const uint32_t batch_size = narrow<uint32_t>(batch_dims.Size());
 
       const uint32_t kTileM = 64;
-      const uint32_t kTileN = 64;
+      // TODO: Choose an optimal tile size for the N dimension based on the matrix size.
+      uint32_t kTileN = (n > 128) ? 32 : 16;
+
       const uint32_t kMTiles = (m + kTileM - 1) / kTileM;
       const uint32_t kNTiles = (n + kTileN - 1) / kTileN;
+      const uint32_t kKTiles = (k + 15) / 16;
 
-      MatMulTiledSubgroupProgram program;
+      MatMulTiledSubgroupProgram program(kTileN);
       program.SetWorkgroupSize(64, 1, 1);
       program.SetDispatchGroupSize(kNTiles, kMTiles, batch_size);
 
@@ -213,11 +222,13 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
                                    {k / 4},
                                    {n / 4},
                                    {kMTiles},
+                                   {kKTiles},
                                    {kNTiles}});
 
       return context.RunProgram(program);
     }
   }
+#endif
 
   std::vector<const Tensor*> inputs(has_bias ? 3 : 2);
   inputs[0] = a;
