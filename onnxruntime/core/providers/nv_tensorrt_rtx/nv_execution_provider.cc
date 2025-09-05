@@ -2709,9 +2709,34 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     if (engine_cache_enable_ && !engine_cache_path.empty()) {
       loaded_engine_data = loadEngine(engine_cache_path);
       if (!loaded_engine_data.empty()) {
-        engine_loaded_from_cache = true;
-        if (detailed_build_log_) {
-          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Loaded engine from cache: " + engine_cache_path + " (" + std::to_string(loaded_engine_data.size()) + " bytes)";
+        // Validate profile compatibility if dynamic shapes are used
+        bool profile_compatible = true;
+        if (has_explicit_profile && !profile_min_shapes_.empty()) {
+          // Check if profile file exists and compare profiles
+          std::string profile_cache_path = engine_cache_path + ".profile";
+          if (std::filesystem::exists(profile_cache_path)) {
+            // CompareProfiles returns true if profiles differ (need rebuild), false if same
+            profile_compatible = !CompareProfiles(profile_cache_path, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+            if (!profile_compatible && detailed_build_log_) {
+              LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Cached engine profile mismatch, rebuilding engine: " + engine_cache_path;
+            }
+          } else {
+            // No profile file found, assume incompatible for safety
+            profile_compatible = false;
+            if (detailed_build_log_) {
+              LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] No profile file found for cached engine, rebuilding: " + engine_cache_path;
+            }
+          }
+        }
+
+        if (profile_compatible) {
+          engine_loaded_from_cache = true;
+          if (detailed_build_log_) {
+            LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Loaded engine from cache: " + engine_cache_path + " (" + std::to_string(loaded_engine_data.size()) + " bytes)";
+          }
+        } else {
+          // Clear loaded data since profile is incompatible
+          loaded_engine_data.clear();
         }
       }
     }
@@ -2767,13 +2792,20 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     // Save engine cache to file if enabled and engine was built (not loaded from cache)
     if (!engine_loaded_from_cache && engine_cache_enable_ && !engine_cache_path.empty() && serialized_engine != nullptr) {
       try {
-        // Deserialize to ICudaEngine first to validate the engine before saving
-        std::unique_ptr<nvinfer1::ICudaEngine> temp_engine(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
-        if (temp_engine != nullptr) {
-          saveEngine(*temp_engine, engine_cache_path);
+        // Save engine directly from serialized data (more efficient)
+        saveEngine(serialized_engine.get(), engine_cache_path);
+        
+        // Save profile file if dynamic shapes are used
+        if (has_explicit_profile && !input_explicit_shape_ranges.empty()) {
+          std::string profile_cache_path = engine_cache_path + ".profile";
+          SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
           if (detailed_build_log_) {
-            LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Saved engine to cache: " + engine_cache_path + " (" + std::to_string(serialized_engine->size()) + " bytes)";
+            LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Saved profile to cache: " + profile_cache_path;
           }
+        }
+        
+        if (detailed_build_log_) {
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Saved engine to cache: " + engine_cache_path + " (" + std::to_string(serialized_engine->size()) + " bytes)";
         }
       } catch (const std::exception& e) {
         // Log error but don't fail - engine caching is not critical

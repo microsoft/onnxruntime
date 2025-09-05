@@ -801,13 +801,11 @@ inline std::vector<char> loadEngine(const std::string& fileName) {
 }
 
 /*
- * Save engine to file
+ * Save engine to file (more efficient version for serialized data)
  */
-inline void saveEngine(const nvinfer1::ICudaEngine& engine, const std::string& fileName) {
-  std::unique_ptr<nvinfer1::IHostMemory> serializedEngine{engine.serialize()};
-  
+inline void saveEngine(const nvinfer1::IHostMemory* serializedEngine, const std::string& fileName) {
   if (serializedEngine == nullptr) {
-    throw std::runtime_error("saveEngine: failed to serialize engine");
+    throw std::runtime_error("saveEngine: serialized engine is null");
   }
   if (serializedEngine->size() == 0) {
     throw std::runtime_error("saveEngine: serialized engine is empty");
