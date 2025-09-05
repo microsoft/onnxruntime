@@ -319,8 +319,10 @@ bool PerformanceRunner::Initialize() {
     for (int i = 0; i != input_count; ++i) {
       auto iter = feeds.find(test_model_info->GetInputName(i));
       if (iter == feeds.end()) {
-        std::cout << "there is no test input data for input " << test_model_info->GetInputName(i) << " and model "
-                  << test_case_->GetTestCaseName() << std::endl;
+        std::cout << "there is no test input data in " << test_case_->GetDataDir(test_data_id)
+                  << " for input " << test_model_info->GetInputName(i)
+                  << " and model " << test_case_->GetTestCaseName()
+                  << std::endl;
         return false;
       }
       session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), std::move(iter->second));
