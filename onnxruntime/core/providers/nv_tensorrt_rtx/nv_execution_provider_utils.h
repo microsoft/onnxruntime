@@ -767,4 +767,75 @@ inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::I
   }
 }
 
+/*
+ * Load engine from file
+ */
+inline std::vector<char> loadEngine(const std::string& fileName) {
+  std::ifstream iFile(fileName, std::ios::in | std::ios::binary);
+  if (!iFile) {
+    // File doesn't exist or can't be opened - this is normal for first run
+    return std::vector<char>();
+  }
+
+  // Check file size
+  iFile.seekg(0, std::ifstream::end);
+  size_t fsize = iFile.tellg();
+  if (fsize == 0) {
+    // Empty file - return empty vector
+    iFile.close();
+    return std::vector<char>();
+  }
+
+  iFile.seekg(0, std::ifstream::beg);
+  std::vector<char> content(fsize);
+  iFile.read(content.data(), fsize);
+  iFile.close();
+
+  // Basic validation - engine should have minimum size
+  if (fsize < 32) {
+    // File too small to be a valid engine
+    return std::vector<char>();
+  }
+
+  return content;
+}
+
+/*
+ * Save engine to file
+ */
+inline void saveEngine(const nvinfer1::ICudaEngine& engine, const std::string& fileName) {
+  std::unique_ptr<nvinfer1::IHostMemory> serializedEngine{engine.serialize()};
+  
+  if (serializedEngine == nullptr) {
+    throw std::runtime_error("saveEngine: failed to serialize engine");
+  }
+  if (serializedEngine->size() == 0) {
+    throw std::runtime_error("saveEngine: serialized engine is empty");
+  }
+
+  // Ensure directory exists
+  std::filesystem::path cache_path(fileName);
+  std::filesystem::path cache_dir = cache_path.parent_path();
+  if (!cache_dir.empty() && !std::filesystem::exists(cache_dir)) {
+    if (!std::filesystem::create_directories(cache_dir)) {
+      throw std::runtime_error("saveEngine: failed to create directory: " + cache_dir.string());
+    }
+  }
+
+  std::ofstream oFile(fileName, std::ios::out | std::ios::binary);
+  if (!oFile) {
+    throw std::runtime_error("saveEngine: failed to open file for writing: " + fileName);
+  }
+
+  oFile.write(static_cast<const char*>(serializedEngine->data()), serializedEngine->size());
+  if (!oFile) {
+    throw std::runtime_error("saveEngine: failed to write data to file: " + fileName);
+  }
+
+  oFile.close();
+  if (!oFile) {
+    throw std::runtime_error("saveEngine: failed to close file: " + fileName);
+  }
+}
+
 }  // namespace onnxruntime
