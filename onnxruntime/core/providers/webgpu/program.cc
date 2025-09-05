@@ -334,6 +334,11 @@ ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) 
   return *this;
 }
 
+ProgramBase& ProgramBase::ClearInputs() {
+  inputs_.clear();
+  return *this;
+}
+
 ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
   outputs_.emplace_back(std::move(output));
   return *this;

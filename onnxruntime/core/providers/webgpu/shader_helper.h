@@ -128,10 +128,10 @@ class ShaderHelper final {
     }
   }
 
-  const ShaderVariableHelper& AddVariableImpl(bool is_input,
-                                              const std::string& name,
-                                              ShaderUsage usage,
-                                              const TensorShape& dims);
+  ShaderVariableHelper& AddVariableImpl(bool is_input,
+                                        const std::string& name,
+                                        ShaderUsage usage,
+                                        const TensorShape& dims);
 
 #ifndef NDEBUG  // if debug build
   Status ValidateVariable(const ProgramInput& input, const ShaderVariableHelper& var) const;
@@ -162,7 +162,7 @@ class ShaderHelper final {
   uint32_t dispatch_group_size_y_;
   uint32_t dispatch_group_size_z_;
 
-  const ProgramBase& program_;
+  ProgramBase& program_;
   const ProgramMetadata& program_metadata_;
 
   std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
@@ -172,6 +172,8 @@ class ShaderHelper final {
   OStringStream additional_implementation_ss_;
   std::string body_;
   OStringStream body_ss_;
+  // Count of logical inputs added so far (each may map to multiple segmented shader variables)
+  size_t logical_input_count_ = 0;
 };
 
 }  // namespace webgpu

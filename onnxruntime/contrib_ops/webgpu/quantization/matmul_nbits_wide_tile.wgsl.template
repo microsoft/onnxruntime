@@ -82,7 +82,7 @@ fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
 fn load_b(row : u32, block_idx : u32) -> vec4<input_b_element_t> {
   if (row < uniforms.N && block_idx < uniforms.K_of_b) {
     let offset = row * uniforms.K_of_b + block_idx;
-    return input_b[offset];
+    return get_input_b_from_offset(offset);
   }
   return vec4<input_b_element_t>();
 }
@@ -112,10 +112,10 @@ fn load_b(row : u32, block_idx : u32) -> array<vec2<u32>, 4> {
   if (row < uniforms.N) {
     let offset = 2 * block_idx;
     let b_data_0 = select(input_b_value_t(),
-                          input_b[row * uniforms.K_of_b + offset],
+                          get_input_b_from_offset(row * uniforms.K_of_b + offset),
                           offset < uniforms.K_of_b);
     let b_data_1 = select(input_b_value_t(),
-                          input_b[row * uniforms.K_of_b + offset + 1],
+                          get_input_b_from_offset(row * uniforms.K_of_b + offset + 1),
                           offset + 1 < uniforms.K_of_b);
 
     let b_data = array<vec2<u32>, 4>(
