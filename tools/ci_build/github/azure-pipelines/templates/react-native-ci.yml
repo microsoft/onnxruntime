@@ -31,24 +31,27 @@ parameters:
   default: false
 
 stages:
-- stage: Build_Android_Packages
-  displayName: Build_Android_Packages
-  dependsOn: '${{parameters.InitialStageDependsOn}}'
-  jobs:
-  - template: android-java-api-aar.yml
-    parameters:
-      buildConfig: '${{parameters.BuildConfig}}'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-full-aar'
-      job_name_suffix: 'For_React_Native'
-      enable_code_sign: '${{parameters.enable_code_sign}}'
-      pool_name: '${{parameters.PoolName}}'
-      packageName: 'onnxruntime-android'
-      is1ES: '${{parameters.is1ES}}'
+# TODO debug only - disable
+# - stage: Build_Android_Packages
+#   displayName: Build_Android_Packages
+#   dependsOn: '${{parameters.InitialStageDependsOn}}'
+#   jobs:
+#   - template: android-java-api-aar.yml
+#     parameters:
+#       buildConfig: '${{parameters.BuildConfig}}'
+#       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
+#       artifactName: 'onnxruntime-android-full-aar'
+#       job_name_suffix: 'For_React_Native'
+#       enable_code_sign: '${{parameters.enable_code_sign}}'
+#       pool_name: '${{parameters.PoolName}}'
+#       packageName: 'onnxruntime-android'
+#       is1ES: '${{parameters.is1ES}}'
 
 - stage: ReactNative_CI_Android
   displayName: ReactNative_CI_Android
-  dependsOn: Build_Android_Packages
+  # TODO debug only - disable
+  dependsOn: []
+  # dependsOn: Build_Android_Packages
   jobs:
   - template: ../stages/jobs/react-natvie-andriod-e2e-test-job.yml
     parameters:

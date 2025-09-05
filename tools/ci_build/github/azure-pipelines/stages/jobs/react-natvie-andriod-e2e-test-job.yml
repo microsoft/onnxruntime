@@ -47,12 +47,21 @@ jobs:
       sudo apt install ninja-build
     displayName: Install ninja
 
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      buildType: 'current'
-      artifactName: '${{parameters.ArtifactName}}'
-      targetPath: '$(Build.BinariesDirectory)/android-full-aar'
-    displayName: Download Android AAR artifacts
+  # TODO debug only - download existing artifact
+  - template: flex-downloadPipelineArtifact.yml
+    parameters:
+      StepName: 'Download Pipeline Artifact - Android AAR'
+      ArtifactName: '${{parameters.ArtifactName}}'
+      TargetPath: '$(Build.BinariesDirectory)/android-full-aar'
+      SpecificArtifact: true
+      BuildId: 931530
+
+  # - task: DownloadPipelineArtifact@2
+  #   inputs:
+  #     buildType: 'current'
+  #     artifactName: '${{parameters.ArtifactName}}'
+  #     targetPath: '$(Build.BinariesDirectory)/android-full-aar'
+  #   displayName: Download Android AAR artifacts
 
   - task: CopyFiles@2
     inputs:
