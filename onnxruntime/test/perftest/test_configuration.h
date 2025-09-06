@@ -69,6 +69,9 @@ struct RunConfig {
   std::basic_string<ORTCHAR_T> register_custom_op_path;
   bool enable_cuda_io_binding{false};
   bool use_extensions = false;
+  bool compile_ep_context{false};
+  std::basic_string<ORTCHAR_T> compile_model_path;
+  bool compile_binary_embed{false};
 };
 
 struct PerformanceTestConfig {
