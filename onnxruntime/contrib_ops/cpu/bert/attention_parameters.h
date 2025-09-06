@@ -86,7 +86,7 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   int kv_hidden_size;           // hidden size of key or value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
-  int local_window_size;        // The window size excludes current token. It only includes tokens on the left side.
+  int local_window_size;        // The window size includes new token. It only includes tokens on the left side.
   bool kv_share_buffer;
   bool is_subsequent_prompt;  // indicates whether we have past context and seqlen > 1
   bool is_first_prompt;       // indicates whether this is first decoding step
@@ -106,7 +106,7 @@ struct PagedAttentionParameters : AttentionParameters {
   int block_size;              // block size for kv cache
   int max_num_blocks_per_seq;  // max number of blocks per sequence for kv cache
   int num_blocks;              // number of blocks in kv cache
-  int local_window_size;       // The window size excludes current token. It only includes tokens on the left side.
+  int local_window_size;       // The window size includes new token. It only includes tokens on the left side.
   bool rotary_interleaved;
   float softcap;
 };
