@@ -35,12 +35,12 @@ steps:
     scriptSource: 'filePath'
     scriptPath: 'tools/ci_build/linux_java_copy_strip_binary.py'
     arguments: >-
-      -r $(Build.BinariesDirectory)
-      -c ${{parameters.buildConfig}}
-      -a ${{parameters.artifactName}}
-      -l ${{parameters.libraryName}}
-      -n ${{parameters.nativeLibraryName}}
-      -h ${{parameters.arch}}
+      --binary-dir $(Build.BinariesDirectory)
+      --build-config ${{parameters.buildConfig}}
+      --artifact-name ${{parameters.artifactName}}
+      --lib-name ${{parameters.libraryName}}
+      --native-lib-name ${{parameters.nativeLibraryName}}
+      --arch ${{parameters.arch}}
   displayName: 'Package ONNX Runtime Java Native Libs'
 
 - task: 1ES.PublishPipelineArtifact@1

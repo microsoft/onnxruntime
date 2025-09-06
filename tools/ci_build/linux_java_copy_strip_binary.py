@@ -77,12 +77,12 @@ def main():
     )
 
     # Arguments
-    parser.add_argument("-r", "--binary-dir", required=True, type=Path, help="Path to the build binaries directory.")
-    parser.add_argument("-a", "--artifact-name", required=True, help="Name of the final artifact directory.")
-    parser.add_argument("-c", "--build-config", required=True, help="CMake build configuration (e.g., Release).")
-    parser.add_argument("-l", "--lib-name", required=True, help="Filename of the main ONNX Runtime shared library.")
-    parser.add_argument("-n", "--native-lib-name", required=True, help="Filename of the JNI shared library.")
-    parser.add_argument("-h", "--arch", required=True, help="Architecture string (e.g., osx-x86_64).")
+    parser.add_argument("--binary-dir", required=True, type=Path, help="Path to the build binaries directory.")
+    parser.add_argument("--artifact-name", required=True, help="Name of the final artifact directory.")
+    parser.add_argument("--build-config", required=True, help="CMake build configuration (e.g., Release).")
+    parser.add_argument("--lib-name", required=True, help="Filename of the main ONNX Runtime shared library.")
+    parser.add_argument("--native-lib-name", required=True, help="Filename of the JNI shared library.")
+    parser.add_argument("--arch", required=True, help="Architecture string (e.g., osx-x86_64).")
     args = parser.parse_args()
 
     # --- Path Setup and Validation ---
@@ -91,7 +91,7 @@ def main():
     source_build_dir = args.binary_dir / args.build_config
     target_artifact_dir = args.binary_dir / args.artifact_name
 
-    # ERROR CHECK 1: Validate that the source build directory exists.
+    # Validate that the source build directory exists.
     if not source_build_dir.is_dir():
         logging.error(f"Source build directory not found: {source_build_dir}")
         sys.exit(1)
@@ -109,7 +109,7 @@ def main():
     native_folder.mkdir(parents=True, exist_ok=True)
     logging.info(f"Staging native libraries in: {native_folder}")
     
-    # ERROR CHECK 2: Validate that all required library files exist before processing.
+    # Validate that all required library files exist before processing.
     main_lib_src = source_build_dir / args.lib_name
     jni_lib_src = source_build_dir / args.native_lib_name
     
