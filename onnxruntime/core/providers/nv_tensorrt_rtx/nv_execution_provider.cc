@@ -2174,7 +2174,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
         } else if (proto.has_raw_data()) {
           auto& raw_data = proto.raw_data();
           names.push_back(proto.name());
-          bytes.push_back(raw_data.c_str());
+          bytes.push_back(raw_data.data());
           sizes.push_back(raw_data.size());
         } else {
           LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Proto: " + proto_name + " has no raw nor external data.";
@@ -2794,7 +2794,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       try {
         // Save engine directly from serialized data (more efficient)
         saveEngine(serialized_engine.get(), engine_cache_path);
-        
+
         // Save profile file if dynamic shapes are used
         if (has_explicit_profile && !input_explicit_shape_ranges.empty()) {
           std::string profile_cache_path = engine_cache_path + ".profile";
@@ -2803,7 +2803,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
             LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Saved profile to cache: " + profile_cache_path;
           }
         }
-        
+
         if (detailed_build_log_) {
           LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Saved engine to cache: " + engine_cache_path + " (" + std::to_string(serialized_engine->size()) + " bytes)";
         }
