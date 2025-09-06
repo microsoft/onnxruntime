@@ -90,8 +90,6 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  // Optimize memory layout: reduce input copy overhead
-  // Only copy input if we need to modify it (routing weights normalization)
   const T* input_data_to_use = input_data;
   IAllocatorUniquePtr<T> input_data_copy_ptr;
   if (normalize_routing_weights_) {
@@ -101,7 +99,6 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     input_data_to_use = input_data_copy;
   }
 
-  // Initialize output to zero
   std::fill_n(output_data, output->Shape().Size(), T{});
 
   IAllocatorUniquePtr<float> router_logits_float_buffer;
@@ -119,40 +116,32 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * k_));
   float* route_scale = route_scale_ptr.get();
 
-  // Optimize routing computation with better thread scheduling
   auto* tp = context->GetOperatorThreadPool();
-  // Use more conservative thread count for small workloads to reduce overhead
   int num_routing_threads = 1;
   if (tp != nullptr && num_tokens >= 1024) {
-    // Scale threads based on workload size
     int max_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
     num_routing_threads = std::min(static_cast<int>(num_tokens / 512), max_threads);
     num_routing_threads = std::max(1, num_routing_threads);
   }
 
-  // Pre-allocate thread-local storage more efficiently
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
   for (auto& map : thread_local_expert_token_maps) {
     map.resize(static_cast<size_t>(num_experts));
-    // Reserve space to reduce allocations during routing
     for (auto& expert_map : map) {
-      expert_map.reserve(static_cast<size_t>(std::max(1L, num_tokens / num_experts / num_routing_threads * 2)));
+      expert_map.reserve(static_cast<size_t>(std::max(static_cast<int64_t>(1), num_tokens / num_experts / num_routing_threads * 2)));
     }
   }
 
-  // Optimized routing computation with reduced memory operations
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_routing_threads, [&](std::ptrdiff_t thread_id) {
     auto work = concurrency::ThreadPool::PartitionWork(static_cast<int>(thread_id), num_routing_threads, static_cast<std::ptrdiff_t>(num_tokens));
     auto& local_expert_token_map = thread_local_expert_token_maps[thread_id];
 
-    // Pre-allocate vectors outside the loop for better cache efficiency
     std::vector<std::pair<float, int64_t>> sorted_logits(static_cast<size_t>(num_experts));
     std::vector<float> full_softmax(static_cast<size_t>(num_experts));
 
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
 
-      // Compute softmax more efficiently
       float max_logit = logits[0];
       for (int64_t j = 1; j < num_experts; ++j) {
         max_logit = std::max(max_logit, logits[j]);
@@ -164,17 +153,14 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
         sum_exp += full_softmax[static_cast<size_t>(j)];
       }
 
-      // Normalize and prepare for sorting
       const float inv_sum_exp = 1.0f / sum_exp;
       for (int64_t j = 0; j < num_experts; ++j) {
         full_softmax[static_cast<size_t>(j)] *= inv_sum_exp;
         sorted_logits[static_cast<size_t>(j)] = {full_softmax[static_cast<size_t>(j)], j};
       }
 
-      // Use partial_sort for better performance than full sort
       std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_), sorted_logits.end(), std::greater<>());
 
-      // Process top-k experts with branch optimization
       if (normalize_routing_weights_) {
         float top_k_sum = 0.0f;
         for (int64_t j = 0; j < k_; ++j) {
@@ -209,10 +195,8 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     }
   });
 
-  // Optimized expert token aggregation
   std::vector<std::vector<int64_t>> expert_token_map(static_cast<size_t>(num_experts));
 
-  // First pass: calculate total sizes to avoid multiple reallocations
   for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
     size_t total_tokens_for_expert = 0;
     for (int t = 0; t < num_routing_threads; ++t) {
@@ -221,7 +205,6 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     expert_token_map[static_cast<size_t>(expert_idx)].reserve(total_tokens_for_expert);
   }
 
-  // Second pass: aggregate with move semantics where possible
   for (int t = 0; t < num_routing_threads; ++t) {
     for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
       auto& local_tokens = thread_local_expert_token_maps[t][static_cast<size_t>(expert_idx)];
@@ -234,7 +217,6 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     }
   }
 
-  // Sort expert token maps for better cache locality
   for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
     auto& expert_map = expert_token_map[static_cast<size_t>(expert_idx)];
     if (!expert_map.empty()) {
@@ -242,7 +224,6 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     }
   }
 
-  // Convert input data to float only once, avoiding repeated conversions
   IAllocatorUniquePtr<float> input_float_buffer;
   const float* input_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -253,10 +234,8 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     input_float = reinterpret_cast<const float*>(input_data_to_use);
   }
 
-  // Optimize expert processing with better parallelization strategy
   int num_expert_threads = 1;
   if (tp != nullptr) {
-    // Use thread count based on workload characteristics
     int total_active_experts = 0;
     for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
       if (!expert_token_map[static_cast<size_t>(expert_idx)].empty()) {
@@ -266,10 +245,69 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
 
     if (total_active_experts > 0) {
       int max_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
-      // Balance between expert parallelism and avoiding thread overhead
       num_expert_threads = std::min(total_active_experts, max_threads);
-      num_expert_threads = std::min(num_expert_threads, 8);  // Cap for better load balancing
+      num_expert_threads = std::min(num_expert_threads, 8);
     }
+  }
+
+  // Calculate maximum possible tokens per expert for buffer sizing
+  int64_t max_tokens_per_expert = 0;
+  for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+    const auto& routes = expert_token_map[static_cast<size_t>(expert_idx)];
+    max_tokens_per_expert = std::max(max_tokens_per_expert, static_cast<int64_t>(routes.size()));
+  }
+
+  // Thread-local buffer pool for expert processing
+  struct ThreadLocalBuffers {
+    IAllocatorUniquePtr<float> A1_buffer;
+    IAllocatorUniquePtr<float> batch_weights_buffer;
+    IAllocatorUniquePtr<int64_t> token_ids_buffer;
+    IAllocatorUniquePtr<T> A1_t_buffer;
+    IAllocatorUniquePtr<T> C2_buffer;
+    // Additional buffers for ProcessExpertBatch to avoid repeated allocations
+    IAllocatorUniquePtr<T> fc1_output_buffer;
+    IAllocatorUniquePtr<T> activation_output_buffer;
+    int64_t current_capacity = 0;
+    int64_t current_fc1_capacity = 0;
+    int64_t current_activation_capacity = 0;
+
+    void EnsureCapacity(AllocatorPtr& allocator, int64_t required_tokens, int64_t hidden_size,
+                        int64_t fc1_output_size, int64_t inter_size) {
+      if (required_tokens > current_capacity) {
+        // Use high watermark approach - allocate more than needed for future reuse
+        int64_t new_capacity = std::max(required_tokens * 2, current_capacity + 512);
+
+        A1_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(new_capacity * hidden_size));
+        batch_weights_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(new_capacity));
+        token_ids_buffer = IAllocator::MakeUniquePtr<int64_t>(allocator, static_cast<size_t>(new_capacity));
+        A1_t_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_capacity * hidden_size));
+        C2_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_capacity * hidden_size));
+
+        current_capacity = new_capacity;
+      }
+
+      // Ensure ProcessExpertBatch buffers have sufficient capacity
+      int64_t required_fc1_capacity = required_tokens * fc1_output_size;
+      int64_t required_activation_capacity = required_tokens * inter_size;
+
+      if (required_fc1_capacity > current_fc1_capacity) {
+        int64_t new_fc1_capacity = std::max(required_fc1_capacity * 2, current_fc1_capacity + (512 * fc1_output_size));
+        fc1_output_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_fc1_capacity));
+        current_fc1_capacity = new_fc1_capacity;
+      }
+
+      if (required_activation_capacity > current_activation_capacity) {
+        int64_t new_activation_capacity = std::max(required_activation_capacity * 2, current_activation_capacity + (512 * inter_size));
+        activation_output_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_activation_capacity));
+        current_activation_capacity = new_activation_capacity;
+      }
+    }
+  };
+
+  // Pre-allocate thread-local buffer pools
+  std::vector<ThreadLocalBuffers> thread_buffers(num_expert_threads);
+  for (int i = 0; i < num_expert_threads; ++i) {
+    thread_buffers[i].EnsureCapacity(allocator, max_tokens_per_expert, hidden_size, fc1_output_size, inter_size);
   }
 
   const size_t output_buffer_size = static_cast<size_t>(output->Shape().Size());
@@ -279,12 +317,13 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   // Initialize thread-local outputs with vectorized operation
   std::fill_n(thread_local_outputs, static_cast<size_t>(num_expert_threads) * output_buffer_size, 0.0f);
 
-  // Optimized expert processing with improved memory access patterns
+  // Optimized expert processing with thread-local buffer reuse
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
     int thread_id = static_cast<int>(thread_id_pd);
     auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_expert_threads, static_cast<std::ptrdiff_t>(num_experts));
 
     float* local_output = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size;
+    ThreadLocalBuffers& buffers = thread_buffers[thread_id];
 
     for (int64_t expert_idx = work.start; expert_idx < work.end; ++expert_idx) {
       const auto& routes = expert_token_map[static_cast<size_t>(expert_idx)];
@@ -292,14 +331,17 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
 
       const int64_t num_expert_tokens = static_cast<int64_t>(routes.size());
 
-      // Use allocator for temporary buffers to leverage memory pooling
-      auto A1_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_tokens * hidden_size));
-      auto batch_weights_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_tokens));
-      auto token_ids_ptr = IAllocator::MakeUniquePtr<int64_t>(allocator, static_cast<size_t>(num_expert_tokens));
+      // Ensure thread-local buffers have sufficient capacity
+      buffers.EnsureCapacity(allocator, num_expert_tokens, hidden_size, fc1_output_size, inter_size);
 
-      float* A1 = A1_ptr.get();
-      float* batch_weights = batch_weights_ptr.get();
-      int64_t* token_ids = token_ids_ptr.get();
+      // Use pre-allocated buffers from thread-local pool
+      float* A1 = buffers.A1_buffer.get();
+      float* batch_weights = buffers.batch_weights_buffer.get();
+      int64_t* token_ids = buffers.token_ids_buffer.get();
+      T* A1_t = buffers.A1_t_buffer.get();
+      T* C2 = buffers.C2_buffer.get();
+      T* fc1_output = buffers.fc1_output_buffer.get();
+      T* activation_output = buffers.activation_output_buffer.get();
 
       // Optimized data gathering with better memory access patterns
       for (int64_t r = 0; r < num_expert_tokens; ++r) {
@@ -320,14 +362,7 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
       const T* fc2_expert_weights = fc2_weights_data + expert_idx * hidden_size * inter_size;
       const T* fc2_expert_bias = fc2_bias_data ? fc2_bias_data + expert_idx * hidden_size : nullptr;
 
-      // Use allocator for output buffer as well
-      auto C2_ptr = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(num_expert_tokens * hidden_size));
-      T* C2 = C2_ptr.get();
-
       // Convert input to T only when needed for computation
-      auto A1_t_ptr = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(num_expert_tokens * hidden_size));
-      T* A1_t = A1_t_ptr.get();
-
       for (size_t i = 0; i < static_cast<size_t>(num_expert_tokens * hidden_size); ++i) {
         A1_t[i] = static_cast<T>(A1[i]);
       }
@@ -336,7 +371,8 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
                                                  num_expert_tokens, expert_idx,
                                                  fc1_expert_weights, fc1_expert_bias,
                                                  fc2_expert_weights, fc2_expert_bias,
-                                                 C2, hidden_size, inter_size));
+                                                 C2, hidden_size, inter_size,
+                                                 fc1_output, activation_output));
 
       // Optimized output accumulation with vectorized operations
       for (int64_t r = 0; r < num_expert_tokens; ++r) {
@@ -353,14 +389,12 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     }
   });
 
-  // Optimized final accumulation with reduced memory operations
   auto accumulate = [&](float* buffer) {
     std::fill_n(buffer, output_buffer_size, 0.0f);
 
-    // Use Kahan summation for better numerical stability with large thread counts
     for (size_t j = 0; j < output_buffer_size; ++j) {
       double sum = 0.0;
-      double c = 0.0;  // Compensation for lost low-order bits
+      double c = 0.0;
 
       for (int i = 0; i < num_expert_threads; ++i) {
         const size_t thread_offset = static_cast<size_t>(i) * output_buffer_size;
@@ -403,12 +437,13 @@ Status MoE<T>::ProcessExpertBatch(const T* input_tokens,
                                   const T* fc2_bias,
                                   T* output_buffer,
                                   int64_t hidden_size,
-                                  int64_t inter_size) const {
+                                  int64_t inter_size,
+                                  T* fc1_output_buffer,
+                                  T* activation_output_buffer) const {
   const bool is_swiglu = activation_type_ == ActivationType::SwiGLU;
   const int64_t fc1_output_size = is_swiglu ? (inter_size * 2) : inter_size;
 
-  // Use stack allocation for small batches to avoid heap allocation overhead
-  constexpr int64_t stack_threshold = 1024;  // Elements, not bytes
+  constexpr int64_t stack_threshold = 1024;
   const bool use_stack = (batch_size * fc1_output_size) <= stack_threshold;
 
   std::vector<T> fc1_output_vec;
@@ -417,23 +452,20 @@ Status MoE<T>::ProcessExpertBatch(const T* input_tokens,
   T* activation_output;
 
   if (use_stack) {
-    // For small batches, we'll use the vectors but with reserved size
-    fc1_output_vec.resize(batch_size * fc1_output_size);
-    activation_output_vec.resize(batch_size * inter_size);
+    fc1_output_vec.resize(static_cast<size_t>(batch_size * fc1_output_size));
+    activation_output_vec.resize(static_cast<size_t>(batch_size * inter_size));
     fc1_output = fc1_output_vec.data();
     activation_output = activation_output_vec.data();
   } else {
-    fc1_output_vec.resize(batch_size * fc1_output_size);
-    activation_output_vec.resize(batch_size * inter_size);
+    fc1_output_vec.resize(static_cast<size_t>(batch_size * fc1_output_size));
+    activation_output_vec.resize(static_cast<size_t>(batch_size * inter_size));
     fc1_output = fc1_output_vec.data();
     activation_output = activation_output_vec.data();
   }
 
-  // First GEMM: input * fc1_weights -> fc1_output
   ORT_RETURN_IF_ERROR(ComputeGEMM(input_tokens, fc1_weights, fc1_output,
                                   batch_size, hidden_size, fc1_output_size, true));
 
-  // Add bias with vectorized operations
   if (fc1_bias) {
     for (int64_t batch = 0; batch < batch_size; ++batch) {
       T* batch_output = fc1_output + batch * fc1_output_size;
@@ -445,7 +477,6 @@ Status MoE<T>::ProcessExpertBatch(const T* input_tokens,
     }
   }
 
-  // Apply activation function
   if (is_swiglu) {
     for (int64_t batch = 0; batch < batch_size; ++batch) {
       ApplySwiGLUVectorized(fc1_output + batch * fc1_output_size,
@@ -454,19 +485,15 @@ Status MoE<T>::ProcessExpertBatch(const T* input_tokens,
     }
   } else {
     ApplyActivationVectorized(fc1_output, batch_size * fc1_output_size);
-    // Direct copy since activation is applied in-place
     std::copy(fc1_output, fc1_output + (batch_size * fc1_output_size), activation_output);
   }
 
-  // Second GEMM: activation_output * fc2_weights -> output_buffer
   ORT_RETURN_IF_ERROR(ComputeGEMM(activation_output, fc2_weights, output_buffer,
                                   batch_size, inter_size, hidden_size, true));
 
-  // Add second bias with vectorized operations
   if (fc2_bias) {
     for (int64_t batch = 0; batch < batch_size; ++batch) {
       T* batch_output = output_buffer + batch * hidden_size;
-      // Explicit loop for better vectorization
       for (int64_t i = 0; i < hidden_size; ++i) {
         batch_output[i] = static_cast<T>(static_cast<float>(batch_output[i]) +
                                          static_cast<float>(fc2_bias[i]));

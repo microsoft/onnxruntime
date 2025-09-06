@@ -37,7 +37,9 @@ class MoE final : public OpKernel, public MoEBaseCPU {
                             const T* fc2_bias,
                             T* output_buffer,
                             int64_t hidden_size,
-                            int64_t inter_size) const;
+                            int64_t inter_size,
+                            T* fc1_output_buffer,
+                            T* activation_output_buffer) const;
 
   Status ComputeGEMM(const T* A, const T* B, T* C,
                      int64_t M, int64_t K, int64_t N,
