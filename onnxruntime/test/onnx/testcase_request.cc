@@ -4,6 +4,9 @@
 #include "testcase_request.h"
 #include "dataitem_request.h"
 #include "TestCase.h"
+#include "utils/macros.h"
+
+#include <iostream>
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
@@ -39,12 +42,13 @@ bool TestCaseRequestContext::SetupSession() {
     session_opts_.SetLogId(test_case_name);
     Ort::Session session{env_, test_case_.GetModelUrl().native().c_str(), session_opts_};
     session_ = std::move(session);
-    LOGF_DEFAULT(INFO, "Testing %s\n", test_case_name);
+    TEST_LOG_INFO("Testing " + std::string(test_case_name));
+
     return true;
   }
   ORT_CATCH(const Ort::Exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      LOGF_DEFAULT(ERROR, "Model %s failed to load:%s", test_case_.GetTestCaseName().c_str(), ex.what());
+      TEST_LOG_INFO("Model " + test_case_.GetTestCaseName() + " failed to load:" + ex.what());
       result_ = std::make_shared<TestCaseResult>(test_case_.GetDataCount(), EXECUTE_RESULT::NOT_SUPPORT, "");
     });
   }
@@ -194,19 +198,19 @@ void TestCaseRequestContext::CalculateAndLogStats() const {
     std::string s = test_case_.GetDatasetDebugInfoString(i);
     switch (r) {
       case EXECUTE_RESULT::RESULT_DIFFERS:
-        LOGF_DEFAULT(ERROR, "%s: result differs. Dataset:%s\n", test_case_name.c_str(), s.c_str());
+        TEST_LOG_ERROR(test_case_name + ": result differs. Dataset:" + s);
         break;
       case EXECUTE_RESULT::SHAPE_MISMATCH:
-        LOGF_DEFAULT(ERROR, "%s: shape mismatch. Dataset:%s\n", test_case_name.c_str(), s.c_str());
+        TEST_LOG_ERROR(test_case_name + ": shape mismatch. Dataset:" + s);
         break;
       case EXECUTE_RESULT::TYPE_MISMATCH:
-        LOGF_DEFAULT(ERROR, "%s: type mismatch. Dataset:%s\n", test_case_name.c_str(), s.c_str());
+        TEST_LOG_ERROR(test_case_name + ": type mismatch. Dataset:" + s);
         break;
       case EXECUTE_RESULT::MODEL_SHAPE_MISMATCH:
-        LOGF_DEFAULT(ERROR, "%s: shape in model file mismatch. Dataset:%s\n", test_case_name.c_str(), s.c_str());
+        TEST_LOG_ERROR(test_case_name + ": shape in model file mismatch. Dataset:" + s);
         break;
       case EXECUTE_RESULT::MODEL_TYPE_MISMATCH:
-        LOGF_DEFAULT(ERROR, "%s: type in model file mismatch. Dataset:%s\n", test_case_name.c_str(), s.c_str());
+        TEST_LOG_ERROR(test_case_name + ": type in model file mismatch. Dataset:" + s);
         break;
       default:
         // nothing to do

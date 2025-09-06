@@ -265,6 +265,14 @@ file(GLOB onnxruntime_test_utils_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/util/*.cc"
 )
 
+file(GLOB onnxruntime_test_utils_public_values_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/util/values/public_api/*.cc"
+)
+
+file(GLOB onnxruntime_test_utils_internal_values_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/util/values/internal_api/*.cc"
+)
+
 file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/*.cc"
   "${TEST_SRC_DIR}/common/*.h"
@@ -535,6 +543,7 @@ set (onnxruntime_webgpu_delay_load_test_SRC
 
 set(onnxruntime_test_common_libs
   onnxruntime_test_utils
+  onnxruntime_test_utils_internal_values
   onnxruntime_common
 )
 
@@ -790,6 +799,7 @@ else()
     target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
   endif()
 endif()
+
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
@@ -803,11 +813,27 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
+# This utility library uses onnxruntime c/c++ apis to provide capability of comparing two OrtValues with all supported data type.
+onnxruntime_add_static_library(onnxruntime_test_utils_public_values ${onnxruntime_test_utils_public_values_src})
+onnxruntime_add_include_to_target(onnxruntime_test_utils_public_values onnxruntime_common onnx onnx_proto Eigen3::Eigen)
+target_include_directories(onnxruntime_test_utils_public_values PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+add_dependencies(onnxruntime_test_utils_public_values ${onnxruntime_EXTERNAL_DEPENDENCIES})
+set_target_properties(onnxruntime_test_utils_public_values PROPERTIES FOLDER "ONNXRuntimeTest")
+
+# This utility library uses internal onnxruntime libraries, e.g. onnxruntime::Tensor, to provide capability of comparing two OrtValues with all supported data type.
+onnxruntime_add_static_library(onnxruntime_test_utils_internal_values ${onnxruntime_test_utils_internal_values_src})
+onnxruntime_add_include_to_target(onnxruntime_test_utils_internal_values onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 Eigen3::Eigen)
+target_include_directories(onnxruntime_test_utils_internal_values PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} "${TEST_SRC_DIR}/util/include")
+add_dependencies(onnxruntime_test_utils_internal_values ${onnxruntime_EXTERNAL_DEPENDENCIES})
+set_target_properties(onnxruntime_test_utils_internal_values PROPERTIES FOLDER "ONNXRuntimeTest")
+
 if(NOT IOS)
     set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
     file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
         ${onnx_test_runner_src_dir}/*.h
-        ${onnx_test_runner_src_dir}/*.cc)
+        ${onnx_test_runner_src_dir}/*.cc
+        ${onnx_test_runner_src_dir}/utils/*.h
+        ${onnx_test_runner_src_dir}/utils/*.cc)
 
     list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
@@ -852,7 +878,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
   add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils onnxruntime_common)
   target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
-  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_test_utils onnxruntime_common)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_test_utils onnxruntime_test_utils_internal_values onnxruntime_common)
   if (MSVC)
     # Cutlass code has an issue with the following:
     # warning C4100: 'magic': unreferenced formal parameter
@@ -1098,6 +1124,7 @@ endif()
 
 set(onnx_test_libs
   onnxruntime_test_utils
+  onnxruntime_test_utils_internal_values
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto
   ${onnxruntime_EXTERNAL_LIBRARIES})
@@ -1125,6 +1152,59 @@ if (NOT IOS)
     set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
     install(TARGETS onnx_test_runner
+            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            BUNDLE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if (NOT IOS)
+    onnxruntime_add_executable(onnxruntime_plugin_ep_onnx_test
+                               ${onnx_test_runner_src_dir}/plugin_ep/main.cc
+                               ${onnx_test_runner_src_dir}/plugin_ep/command_args_parser.cc
+                               ${onnx_test_runner_src_dir}/plugin_ep/command_args_parser.h)
+    if(MSVC)
+      target_compile_options(onnxruntime_plugin_ep_onnx_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+              "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+        set_target_properties(onnxruntime_plugin_ep_onnx_test PROPERTIES LINK_FLAGS "-s NODERAWFS=1 -s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+      else()
+        set_target_properties(onnxruntime_plugin_ep_onnx_test PROPERTIES LINK_FLAGS "-s NODERAWFS=1 -s ALLOW_MEMORY_GROWTH=1")
+      endif()
+    endif()
+
+    # ABSL_FLAGS_STRIP_NAMES is set to 1 by default to disable flag registration when building for Android, iPhone, and "embedded devices".
+    # See the issue: https://github.com/abseil/abseil-cpp/issues/1875
+    # We set it to 0 for all builds to be able to use ABSL flags for onnxruntime_plugin_ep_onnx_test.
+    target_compile_definitions(onnxruntime_plugin_ep_onnx_test PRIVATE ABSL_FLAGS_STRIP_NAMES=0)
+
+    if (onnxruntime_BUILD_SHARED_LIB)
+      set(onnx_test_runner_libs
+            onnx_test_runner_common onnxruntime_test_utils onnxruntime_test_utils_public_values onnxruntime_common
+            onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
+            ${onnxruntime_EXTERNAL_LIBRARIES}
+            absl::flags absl::flags_parse ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+
+      target_link_libraries(onnxruntime_plugin_ep_onnx_test PRIVATE ${onnx_test_runner_libs} nlohmann_json::nlohmann_json)
+
+      if(WIN32)
+        target_link_libraries(onnxruntime_plugin_ep_onnx_test PRIVATE debug dbghelp advapi32)
+      endif()
+    else()
+        target_link_libraries(onnxruntime_plugin_ep_onnx_test PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs} nlohmann_json::nlohmann_json)
+    endif()
+
+    target_include_directories(onnxruntime_plugin_ep_onnx_test PRIVATE ${ONNXRUNTIME_ROOT})
+    target_include_directories(onnxruntime_plugin_ep_onnx_test PRIVATE ${onnx_test_runner_src_dir})
+
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      target_link_libraries(onnxruntime_plugin_ep_onnx_test PRIVATE Python::Python)
+    endif()
+    set_target_properties(onnxruntime_plugin_ep_onnx_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    install(TARGETS onnxruntime_plugin_ep_onnx_test
             ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
             BUNDLE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
