@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
@@ -156,6 +157,37 @@ Status LaunchTransCtx(cudaStream_t stream,
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeCtxLarge<half><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
+    }
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+Status LaunchTransCtx(cudaStream_t stream,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs,
+                      const BFloat16* input, BFloat16* output) {
+  const dim3 grid(sequence_length, batch_size, 1);
+
+  if ((head_size & 1) == 0) {
+    const int H = head_size / 2;
+    const __nv_bfloat162* input2 = reinterpret_cast<const __nv_bfloat162*>(input);
+    __nv_bfloat162* output2 = reinterpret_cast<__nv_bfloat162*>(output);
+
+    if (H * num_heads <= max_threads_per_block) {
+      const dim3 block(H, num_heads, 1);
+      TransposeCtx<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      TransposeCtxLarge<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
+    }
+  } else {
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      TransposeCtx<onnxruntime::BFloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      TransposeCtxLarge<onnxruntime::BFloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
   }
 
@@ -298,6 +330,47 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
   return CUDA_CALL(cudaGetLastError());
 }
 
+Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs,
+                      const BFloat16* input, BFloat16* output,
+                      int total_matrix_count) {
+  total_matrix_count = max(total_matrix_count, matrix_num);
+  const dim3 grid(sequence_length, batch_size, matrix_num);
+
+  if ((head_size & 1) == 0) {
+    const int H = head_size / 2;
+    const nv_bfloat162* input2 = reinterpret_cast<const nv_bfloat162*>(input);
+    nv_bfloat162* output2 = reinterpret_cast<nv_bfloat162*>(output);
+
+    if (H * num_heads <= max_threads_per_block) {
+      const dim3 block(H, num_heads, 1);
+      TransposeQKV<nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      TransposeQKVLarge<nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2, total_matrix_count);
+    }
+  } else {
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      TransposeQKV<nv_bfloat16><<<grid, block, 0, stream>>>(
+          head_size, reversed_bs,
+          reinterpret_cast<const nv_bfloat16*>(input),
+          reinterpret_cast<nv_bfloat16*>(output),
+          total_matrix_count);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      TransposeQKVLarge<nv_bfloat16><<<grid, block, 0, stream>>>(
+          head_size, reversed_bs,
+          reinterpret_cast<const nv_bfloat16*>(input),
+          reinterpret_cast<nv_bfloat16*>(output),
+          total_matrix_count);
+    }
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const half* input, half* output, cudaStream_t stream, const int max_threads_per_block) {
   return LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
@@ -306,6 +379,12 @@ Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, c
 
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const float* input, float* output, cudaStream_t stream, const int max_threads_per_block) {
+  return LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
+                        max_threads_per_block, false, input, output);
+}
+
+Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const BFloat16* input, BFloat16* output, cudaStream_t stream, const int max_threads_per_block) {
   return LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads,
                         max_threads_per_block, false, input, output);
 }
