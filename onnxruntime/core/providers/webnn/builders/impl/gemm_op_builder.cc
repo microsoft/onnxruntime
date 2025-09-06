@@ -30,6 +30,72 @@ class GemmOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
 };
 
+// Helper function
+common::Status ProcessZeroPointAndScale(
+    gsl::span<const int64_t> input_shape,
+    const size_t zero_point_index,
+    ModelBuilder& model_builder,
+    const Node& node,
+    const int32_t zero_point_type,
+    const logging::Logger& logger,
+    emscripten::val& zero_point,
+    emscripten::val& scale) {
+  ORT_RETURN_IF_NOT((zero_point_index == 2 || zero_point_index == 3), "zero_point_index should be 2 or 3.");
+  // The WebNN dequantizeLinear op requires the scale and zero_point tensors to have the
+  // same rank as the input tensor. So we need to reshape the zero_point tensors
+  // to match the input rank.
+
+  // Initially set target zero point shape to [1, 1, ..., 1].
+  std::vector<uint32_t> target_zero_point_shape(input_shape.size(), 1);
+  if (TensorExists(node.InputDefs(), zero_point_index)) {
+    const auto& zero_point_arg = node.InputDefs()[zero_point_index];
+    const auto zero_point_name = zero_point_arg->Name();
+    zero_point = model_builder.GetOperand(zero_point_name);
+    std::vector<int64_t> zero_point_shape;
+    ORT_RETURN_IF_NOT(GetShape(*zero_point_arg, zero_point_shape, logger),
+                      "Cannot get shape of zero_point: " + zero_point_name);
+
+    // Assume zero_point shape has the same shape as input or is 1-D.
+    // Adjust zero_point shape only if it's 1-D to match the input shape.
+    const auto target_zero_point_rank = target_zero_point_shape.size();
+    const auto zero_point_rank = zero_point_shape.size();
+    if (zero_point_rank == 1 && zero_point_shape[0] != 1) {
+      // For a_zero_point, its shape may be:
+      // - [K] when the A input shape is [1, K], it should be reshaped to [1, K]
+      // - [M] when the A input shape is [M, K], it should be reshaped to [M, 1]
+      // For b_zero_point, its shape may be:
+      // - [K] when the B input shape is [K, 1], it should be reshaped to [K, 1]
+      // - [N] when the B input shape is [K, N], it should be reshaped to [1, N]
+      const uint32_t safe_zero_point_shape = SafeInt<uint32_t>(zero_point_shape[0]);
+      if (safe_zero_point_shape == input_shape[0]) {
+        target_zero_point_shape[0] = safe_zero_point_shape;
+      } else {
+        target_zero_point_shape.back() = safe_zero_point_shape;
+      }
+    }
+
+    if (zero_point_rank != target_zero_point_rank) {
+      // Reshape zero_point to the target shape.
+      emscripten::val common_options = emscripten::val::object();
+      common_options.set("label", node.Name() + "_reshape_zero_point_" + zero_point_name);
+      zero_point = model_builder.GetBuilder().call<emscripten::val>(
+          "reshape", zero_point, emscripten::val::array(target_zero_point_shape), common_options);
+    } else {
+      // Set target_zero_point_shape to the actual shape of zero_point.
+      target_zero_point_shape = GetNarrowedIntFromInt64<uint32_t>(zero_point_shape);
+    }
+  } else {
+    // If zero_point is not provided, create default zero_point with the same rank as input.
+    zero_point = model_builder.CreateOrGetConstant<uint8_t>(zero_point_type, 0, target_zero_point_shape);
+  }
+
+  // Create scale with the same shape as the zero point.
+  scale = model_builder.CreateOrGetConstant<float>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_zero_point_shape);
+
+  return Status::OK();
+}
+
 // Add operator related.
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                             const logging::Logger& logger) const {
@@ -39,10 +105,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   std::vector<int64_t> a_shape;
   std::vector<int64_t> b_shape;
-  std::vector<int64_t> output_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[a_idx], a_shape, logger), "Can not get shape of A");
   ORT_RETURN_IF_NOT(GetShape(*input_defs[b_idx], b_shape, logger), "Can not get shape of B");
-  ORT_RETURN_IF_NOT(GetShape(*node.OutputDefs()[0], output_shape, logger), "Can not get output shape");
 
   emscripten::val a = model_builder.GetOperand(node.InputDefs()[a_idx]->Name());
   emscripten::val b = model_builder.GetOperand(node.InputDefs()[b_idx]->Name());
@@ -51,16 +115,19 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // MatMul and MatMulInteger in ONNX allow 1-D inputs while matmul in WebNN only supports at least 2-D inputs.
   // We can support 1-D inputs by reshaping them to 2-D. We don't care Gemm here because it only provides 2-D inputs.
+  const auto a_rank = a_shape.size();
+  const auto b_rank = b_shape.size();
+  const bool is_input_1d = (a_rank == 1 || b_rank == 1);
 
   // If the input A is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
-  if (a_shape.size() == 1) {
+  if (a_rank == 1) {
     a_shape.insert(a_shape.begin(), 1);
     emscripten::val a_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(a_shape));
     common_options.set("label", node.Name() + "_reshape_a");
     a = model_builder.GetBuilder().call<emscripten::val>("reshape", a, a_shape_arr, common_options);
   }
   // If the input B is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
-  if (b_shape.size() == 1) {
+  if (b_rank == 1) {
     b_shape.push_back(1);
     emscripten::val b_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(b_shape));
     common_options.set("label", node.Name() + "_reshape_b");
@@ -70,16 +137,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (op_type == "MatMul") {
     common_options.set("label", node.Name());
     output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b, common_options);
-
-    // If A or B input is 1-D, we need to reshape the output back to its original shape.
-    if (a_shape.size() == 1 || b_shape.size() == 1) {
-      common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
-      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                                output,
-                                                                output_shape_arr,
-                                                                common_options);
-    }
   } else if (op_type == "MatMulInteger") {
     // WebNN doesn't provide a dedicated op for MatMulInteger, it can be simply decomposed by
     // DequantizeLinear A, B -> MatMul -> Cast (to int32)
@@ -87,20 +144,11 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_NOT(GetType(*input_defs[0], a_type, logger), "Cannot get data type of input A");
 
     emscripten::val a_zero_point, b_zero_point, a_scale, b_scale;
-    if (TensorExists(input_defs, 2)) {
-      a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
-      std::vector<int64_t> a_zero_point_shape;
-      ORT_RETURN_IF_NOT(GetShape(*input_defs[2], a_zero_point_shape, logger), "Cannot get shape of a_zero_point");
-      // Scale is not used by MatMulInteger but required by DequantizeLinear. So set it to default value 1.0f.
-      // The scale input should have the same shape as the zero point input.
-      a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                         1.0f,
-                                                         GetNarrowedIntFromInt64<uint32_t>(a_zero_point_shape));
-    } else {
-      // If a_zero_point is not provided, create default scalar for zero_point and scale inputs.
-      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
-      a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
-    }
+
+    ORT_RETURN_IF_ERROR(
+        ProcessZeroPointAndScale(a_shape, 2, model_builder, node, a_type, logger, a_zero_point, a_scale));
+    ORT_RETURN_IF_ERROR(
+        ProcessZeroPointAndScale(b_shape, 3, model_builder, node, a_type, logger, b_zero_point, b_scale));
 
     // Dequantize A to Float32
     common_options.set("label", node.Name() + "_dequantized_a");
@@ -109,18 +157,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                                                                      a_scale,
                                                                                      a_zero_point,
                                                                                      common_options);
-    if (TensorExists(input_defs, 3)) {
-      b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
-      std::vector<int64_t> b_zero_point_shape;
-      ORT_RETURN_IF_NOT(GetShape(*input_defs[3], b_zero_point_shape, logger), "Cannot get shape of b_zero_point");
-      b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                         1.0f,
-                                                         GetNarrowedIntFromInt64<uint32_t>(b_zero_point_shape));
-    } else {
-      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(a_type, 0);
-      b_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f);
-    }
-
     // Dequantize B to Float32
     common_options.set("label", node.Name() + "_dequantized_b");
     emscripten::val dequantized_b = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear",
@@ -140,15 +176,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                                               matmul_dequantized_ab,
                                                               emscripten::val("int32"),
                                                               common_options);
-    // If A or B input is 1-D, we need to reshape the output back to its original shape.
-    if (a_shape.size() == 1 || b_shape.size() == 1) {
-      common_options.set("label", node.Name() + "_reshape_output");
-      emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
-      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                                output,
-                                                                output_shape_arr,
-                                                                common_options);
-    }
   } else {  // Gemm
     NodeAttrHelper helper(node);
     const auto transA = helper.Get("transA", 0);
@@ -167,6 +194,19 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     common_options.set("label", node.Name());
     output = model_builder.GetBuilder().call<emscripten::val>("gemm", a, b, common_options);
+  }
+
+  // For MatMul or MatMulInteger, if either the A or B input is 1-D,
+  // we need to reshape the output back to its original shape.
+  if (is_input_1d && (op_type == "MatMul" || op_type == "MatMulInteger")) {
+    std::vector<int64_t> output_shape;
+    ORT_RETURN_IF_NOT(GetShape(*node.OutputDefs()[0], output_shape, logger), "Can not get output shape");
+    common_options.set("label", node.Name() + "_reshape_output");
+    emscripten::val output_shape_arr = emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(output_shape));
+    output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                              output,
+                                                              output_shape_arr,
+                                                              common_options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));

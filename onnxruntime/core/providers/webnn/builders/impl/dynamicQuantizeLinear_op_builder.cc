@@ -43,10 +43,10 @@ class DynamicQuantizeLinearOpBuilder : public BaseOpBuilder {
 //    Initial_ZeroPoint_FP = Sub (Q_Min, Min_Scaled)
 //    Clipped_ZeroPoint_FP = Clip (Initial_ZeroPoint_FP, Q_Min, Q_Max)
 //    Rounded_ZeroPoint_FP = Round (Clipped_ZeroPoint_FP)
-//    Zeropoint = Cast <to: int = 2> (Rounded_ZeroPoint_FP)
+//    ZeroPoint = Cast <to: int = 2> (Rounded_ZeroPoint_FP)
 //    y_scale = Identity (Scale) (Skip in WebNN)
-//    y_zero_point = Identity (Zeropoint) (Skip in WebNN)
-//    y = QuantizeLinear (x, Scale, Zeropoint)
+//    y_zero_point = Identity (ZeroPoint) (Skip in WebNN)
+//    y = QuantizeLinear (x, Scale, ZeroPoint)
 // }
 Status DynamicQuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                              const Node& node,
@@ -109,7 +109,7 @@ Status DynamicQuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model
   emscripten::val rounded_zero_point_fp = model_builder.GetBuilder().call<emscripten::val>(
       "roundEven", clipped_zero_point_fp, common_options);
 
-  // Zeropoint = Cast <to: int = 2> (Rounded_ZeroPoint_FP)
+  // ZeroPoint = Cast <to: int = 2> (Rounded_ZeroPoint_FP)
   // to: int = 2 means cast to uint8
   common_options.set("label", node.Name() + "_zero_point");
   emscripten::val zero_point = model_builder.GetBuilder().call<emscripten::val>(
@@ -133,7 +133,7 @@ Status DynamicQuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model
         "reshape", zero_point, emscripten::val::array(new_shape), common_options);
   }
 
-  // y = QuantizeLinear (x, Scale, Zeropoint)
+  // y = QuantizeLinear (x, Scale, ZeroPoint)
   common_options.set("label", node.Name() + "_quantize_linear");
   emscripten::val y = model_builder.GetBuilder().call<emscripten::val>(
       "quantizeLinear", input, new_scale, new_zero_point, common_options);
