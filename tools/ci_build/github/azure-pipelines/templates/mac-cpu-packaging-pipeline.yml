@@ -1,3 +1,5 @@
+# This stage fetch built macOS binaries from other stages, sign the binaries, then repack them
+
 parameters:
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
@@ -45,15 +47,15 @@ stages:
     templateContext:
       inputs:
       - input: pipelineArtifact
-        artifactName: onnxruntime-osx-x86_64
+        artifactName: onnxruntime-osx-x86_64 # The files in this artifact are not signed
         targetPath: $(Build.ArtifactStagingDirectory)
       - input: pipelineArtifact
-        artifactName: onnxruntime-osx-arm64
+        artifactName: onnxruntime-osx-arm64 # The files in this artifact are not signed
         targetPath: $(Build.ArtifactStagingDirectory)
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: 'onnxruntime-osx'
+        artifactName: 'onnxruntime-osx' # The files in this artifact are signed
     steps:
     - checkout: self
 
@@ -66,7 +68,7 @@ stages:
       displayName: 'Prepare, Create Universal Binary, and Zip with Python'
       inputs:
         scriptSource: 'filePath'
-        scriptPath: 'tools/ci_build/prepare_packages.py' 
+        scriptPath: 'tools/ci_build/prepare_macos_package.py' 
 
     - template: mac-esrp-dylib.yml
       parameters:

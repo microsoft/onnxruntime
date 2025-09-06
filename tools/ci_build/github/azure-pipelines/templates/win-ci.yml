@@ -123,6 +123,11 @@ stages:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+            
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - output: pipelineArtifact
+          targetPath: $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
       # GPU build has two jobs. This is the first one.
       - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
           - output: pipelineArtifact
@@ -208,11 +213,6 @@ stages:
             ${{ else }}:
               buildOnly: false
 
-        - task: 1ES.PublishPipelineArtifact@1
-          displayName: 'Publish Java temp binaries'
-          inputs:
-            targetPath: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-            artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
         # All GPU builds will be tested in the next stage with GPU machine
       - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
         - task: PythonScript@0

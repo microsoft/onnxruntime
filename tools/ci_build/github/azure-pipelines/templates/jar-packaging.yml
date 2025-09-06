@@ -26,8 +26,6 @@ steps:
     showWarnings: true
     workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
-- script: dir $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
-
 - template: jar-esrp-dll.yml
   parameters:
     JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
