@@ -763,7 +763,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     // The inputScale and zero points will be ignored while prepacking the weights (if they are provided).
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, HasZp, inputZP, nullptr);
+        inputScale, HasZp, inputZp, nullptr);
 
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
