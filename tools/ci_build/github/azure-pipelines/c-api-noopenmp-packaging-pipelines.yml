@@ -139,10 +139,6 @@ extends:
         is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
-      parameters:
-        CudaVersion: 12.2
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
