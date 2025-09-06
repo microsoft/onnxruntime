@@ -185,8 +185,6 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   tensor_pointer = ctx->Input<Tensor>(1);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the second one is empty");
   const Tensor& repeats_tensor = *tensor_pointer;
-  if (input_rank < 1)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "the tensor to be tiled using Tile OP must be atleast 1 dimensional");
   if (repeats_tensor.Shape().NumDimensions() != 1)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must be 1 dimensional");
   if (size_t(repeats_tensor.Shape().Size()) != input_rank)
