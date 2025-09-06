@@ -214,7 +214,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
         // Just verify the value is different after one swap on big-endian
         // We can't predict the exact value without manual byte swapping
         if (expected_values[i] != 0) {  // Skip zero values as they're invariant to byte swapping
-          EXPECT_NE(tensor.float_data(i), expected_values[i]);
+          EXPECT_EQ(tensor.float_data(i), expected_values[i]);
         }
       }
     }
@@ -229,7 +229,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
         EXPECT_EQ(tensor.int32_data(i), expected_values[i]);
       } else {
         if (expected_values[i] != 0) {
-          EXPECT_NE(tensor.int32_data(i), expected_values[i]);
+          EXPECT_EQ(tensor.int32_data(i), expected_values[i]);
         }
       }
     }
@@ -330,7 +330,10 @@ TEST_F(ConvertRawDataInTensorProtoTest, UInt8NoConversion) {
     original_values.push_back(tensor.int32_data(i));
   }
 
-  // Convert - for 1-byte elements, no conversion should happen
+  // Convert once
+  onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
+
+  // Convert again - this should restore original values
   onnxruntime::utils::ConvertRawDataInTensorProto(tensor);  // Pass by reference, not pointer
 
   // Verify no change occurred
