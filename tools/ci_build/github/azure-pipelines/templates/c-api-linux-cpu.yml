@@ -86,7 +86,6 @@ jobs:
         arch: 'linux-${{parameters.OnnxruntimeArch}}'
         buildConfig: 'Release'
         artifactName: 'onnxruntime-java-linux-${{parameters.OnnxruntimeArch}}'
-        version: '$(OnnxRuntimeVersion)'
         libraryName: 'libonnxruntime.so'
         nativeLibraryName: 'libonnxruntime4j_jni.so'
 

@@ -59,7 +59,6 @@ steps:
     arch: 'osx-${{ parameters.MacosArch }}'
     buildConfig: 'Release'
     artifactName: 'onnxruntime-java-osx-${{ parameters.MacosArch }}'
-    version: '$(OnnxRuntimeVersion)'
     libraryName: 'libonnxruntime.dylib'
     nativeLibraryName: 'libonnxruntime4j_jni.dylib'
 
