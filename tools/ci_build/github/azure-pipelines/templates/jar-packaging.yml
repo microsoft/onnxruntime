@@ -16,14 +16,12 @@ steps:
 
 - template: set-version-number-variables-step.yml
 
-- task: PowerShell@2
-  displayName: 'Package Java Artifacts (${{ parameters.package_type }})'
+
+- task: PythonScript@0
+  displayName: 'Package Java Artifacts'
   inputs:
-    targetType: filePath
-    filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_packaging.ps1
-    arguments: '-PackageType ${{ parameters.package_type }}'
-    failOnStderr: true
-    showWarnings: true
+    scriptPath: $(Build.SourcesDirectory)\tools\ci_build\jar_packaging.ps1
+    arguments: '--package_type ${{ parameters.package_type }}'
     workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
 - template: jar-esrp-dll.yml
