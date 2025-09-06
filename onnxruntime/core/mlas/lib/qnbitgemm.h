@@ -53,16 +53,14 @@ struct PackedQuantBDataStruct {
     {
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
-        if constexpr (BlkBitWidth == 8) {
-            PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
-        } else {
 #if defined(MLAS_TARGET_AMD64_IX86)
         // avx512 requires alignment on a 64-byte boundary
         PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 64);
+#elif defined (MLAS_TARGET_ARM64)
+        PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
 #else
         PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
 #endif
-        }
 
         QuantBBlkSum = (T*)(PackedQuantBData + PackedQuantBDataSize);
         QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
