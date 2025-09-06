@@ -1,5 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+
+# This script runs after ORT jars are built. It picks up the jars from ORT's build dir then repack them a bit.
+
 import argparse
 import logging
 import re
@@ -173,7 +176,6 @@ def main():
         stage_dir.mkdir(parents=True, exist_ok=True)
         native_folder.mkdir(parents=True, exist_ok=True)
 
-        # ADDED LOGGING: Check Gradle output directory
         gradle_libs_dir = build_config_dir / "java" / "build" / "libs"
         log_directory_contents(gradle_libs_dir, "Gradle build output libs")
 
@@ -191,10 +193,22 @@ def main():
         source_jar_path = main_jars[0]
         logging.info(f"Found source JAR to copy: {source_jar_path.name}")
         
-        # The JAR file is copied to its final name directly.
+        # The main JAR file is copied to its final name directly.
         shutil.copy2(source_jar_path, main_jar_path)
+
+        # Now, find and copy the associated sources and javadoc JARs, renaming them to match.
+        source_basename = source_jar_path.stem     # e.g., 'onnxruntime-1.23.0'
+        dest_basename = main_jar_path.stem         # e.g., 'onnxruntime_gpu-1.23.0'
+
+        for classifier in ["sources", "javadoc"]:
+            source_classified_jar = gradle_libs_dir / f"{source_basename}-{classifier}.jar"
+            if source_classified_jar.is_file():
+                dest_classified_jar = platform_dir / f"{dest_basename}-{classifier}.jar"
+                logging.info(f"Copying classified artifact: {source_classified_jar.name} -> {dest_classified_jar.name}")
+                shutil.copy2(source_classified_jar, dest_classified_jar)
+            else:
+                logging.warning(f"Optional artifact '{source_classified_jar.name}' not found, skipping.")
         
-        # ADDED LOGGING: Check destination directory as requested
         log_directory_contents(platform_dir, "final platform directory before JAR processing")
 
         pom_archive_path = f"META-INF/maven/com.microsoft.onnxruntime/{args.java_artifact_id}/pom.xml"
