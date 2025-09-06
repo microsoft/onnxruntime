@@ -45,6 +45,10 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
+  - task: UsePythonVersion@0
+    displayName: Use Python 3.12
+    inputs:
+      versionSpec: 3.12
   - template: set-version-number-variables-step.yml
   - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
     - template: get-docker-image-steps.yml
@@ -85,7 +89,6 @@ jobs:
         version: '$(OnnxRuntimeVersion)'
         libraryName: 'libonnxruntime.so'
         nativeLibraryName: 'libonnxruntime4j_jni.so'
-        is1ES: true
 
   - template: c-api-artifacts-package-and-publish-steps-posix.yml
     parameters:

@@ -26,6 +26,7 @@ $mainCpuJarFile = Get-ChildItem -Path $PrimaryPackageDirectory -Filter "onnxrunt
 } | Select-Object -First 1
 
 if (-not $mainCpuJarFile) {
+    dir '$PrimaryPackageDirectory'
     throw "Could not find a main JAR file in '$PrimaryPackageDirectory' to determine the version."
 }
 
