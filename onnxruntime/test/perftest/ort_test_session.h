@@ -6,6 +6,11 @@
 #include <random>
 #include "test_configuration.h"
 #include "test_session.h"
+
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+#include <cuda_runtime.h>
+#endif
+
 class TestModelInfo;
 namespace onnxruntime {
 namespace perftest {
@@ -27,9 +32,9 @@ class OnnxRuntimeTestSession : public TestSession {
 
   bool PopulateGeneratedInputTestData(int32_t seed);
 
-  ~OnnxRuntimeTestSession() = default;
+  ~OnnxRuntimeTestSession();
 
-  std::chrono::duration<double> Run() override;
+  RunTiming Run() override;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
 
@@ -51,6 +56,9 @@ class OnnxRuntimeTestSession : public TestSession {
   const int input_length_;
   std::string provider_name_;
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+  cudaStream_t stream_;  // Device stream if required by IO bindings
+#endif
 };
 
 }  // namespace perftest
