@@ -50,7 +50,7 @@ jobs:
     displayName: Use Python 3.12
     inputs:
       versionSpec: 3.12
-      - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+      ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
         architecture: arm64
 
   - template: set-version-number-variables-step.yml
