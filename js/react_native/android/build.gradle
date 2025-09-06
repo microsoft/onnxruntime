@@ -1,17 +1,5 @@
 import java.nio.file.Paths
 
-buildscript {
-  repositories {
-    google()
-    mavenCentral()
-  }
-
-  dependencies {
-    classpath 'com.android.tools.build:gradle:7.4.2'
-    // noinspection DifferentKotlinGradleVersion
-  }
-}
-
 apply plugin: 'com.android.library'
 
 def getExtOrDefault(name) {

@@ -80,11 +80,37 @@ export declare namespace Binding {
 }
 
 // export native binding
-const { Onnxruntime, OnnxruntimeJSIHelper } = NativeModules;
-export const binding = Onnxruntime as Binding.InferenceSession;
+const { Onnxruntime, OnnxruntimeJSIHelper } = NativeModules as unknown as {
+  Onnxruntime?: Binding.InferenceSession;
+  OnnxruntimeJSIHelper?: { install?: () => void };
+};
 
-// install JSI helper global functions
-OnnxruntimeJSIHelper.install();
+function createUninstalledBinding(): Binding.InferenceSession {
+  const notInstalled = () => {
+    throw new Error(
+      'onnxruntime-react-native: Native module is not installed.\n' +
+        'If you are using Expo, ensure you have a custom development client and have run prebuild, or add the config plugin.',
+    );
+  };
+  return {
+    async loadModel() {
+      notInstalled();
+    },
+    async dispose() {
+      notInstalled();
+    },
+    async run() {
+      notInstalled();
+    },
+  } as unknown as Binding.InferenceSession;
+}
+
+export const binding = (Onnxruntime ?? createUninstalledBinding()) as Binding.InferenceSession;
+
+// install JSI helper global functions (guarded for environments like Expo Go)
+if (OnnxruntimeJSIHelper && typeof OnnxruntimeJSIHelper.install === 'function') {
+  OnnxruntimeJSIHelper.install();
+}
 
 declare global {
   // eslint-disable-next-line no-var
