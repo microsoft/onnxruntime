@@ -528,7 +528,7 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
-  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxStorageBufferBindingSize = 536870912;  // use 512MB. adapter_limits.maxStorageBufferBindingSize;
   required_limits.maxBufferSize = adapter_limits.maxBufferSize;
   required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
   required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
@@ -725,8 +725,24 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
                                           uint32_t x, uint32_t y, uint32_t z) {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
-  for (WGPUBuffer buffer : bind_buffers) {
-    bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+
+  for (size_t buffer_idx = 0; buffer_idx < bind_buffers.size();) {
+    WGPUBuffer buffer = bind_buffers[buffer_idx];
+    uint64_t buffer_size = wgpuBufferGetSize(buffer);
+    const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
+
+    if (buffer_size > kMaxBufferSize) {
+      uint64_t offset = 0;
+      while (offset < buffer_size) {
+        uint64_t segment_size = std::min(kMaxBufferSize, buffer_size - offset);
+        bind_group_entries.push_back({nullptr, entry_index++, buffer, offset, segment_size, nullptr, nullptr});
+        offset += segment_size;
+        ++buffer_idx;
+      }
+    } else {
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, buffer_size, nullptr, nullptr});
+      ++buffer_idx;
+    }
   }
 
   WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();

@@ -28,10 +28,11 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
       dispatch_group_size_x_{dispatch_group_size_x},
       dispatch_group_size_y_{dispatch_group_size_y},
       dispatch_group_size_z_{dispatch_group_size_z},
-      program_{program},
+      program_{const_cast<ProgramBase&>(program)},
       program_metadata_{program_metadata},
       additional_implementation_ss_{&additional_implementation_},
-      body_ss_{&body_} {}
+      body_ss_{&body_} {
+}
 
 Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
@@ -85,13 +86,39 @@ Status ShaderHelper::Init() {
 }
 
 const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, ShaderUsage usage) {
-  const size_t input_index = input_vars_.size();
+  size_t input_index = input_vars_.size();
   ORT_ENFORCE(input_index < program_.Inputs().size(),
               "Too many inputs in the program (", program_.Inputs().size(), ")");
 
-  const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
-                                                                       : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims);
+  const auto& prog_input = program_.Inputs()[input_index];
+  const TensorShape& dims = prog_input.use_override_shape ? prog_input.override_shape : prog_input.tensor->Shape();
+  const ProgramVariableDataType type = prog_input.var_type;
+
+  uint64_t segments = 1;
+  if (prog_input.tensor) {
+    const uint64_t size_in_bytes = static_cast<uint64_t>(prog_input.tensor->SizeInBytes());
+    const uint64_t max_binding_size = static_cast<uint64_t>(limits_.maxStorageBufferBindingSize);
+    if (max_binding_size > 0) {
+      segments = (size_in_bytes + max_binding_size - 1) / max_binding_size;
+      if (segments == 0) segments = 1;
+    }
+  }
+
+  ShaderVariableHelper* first_var = nullptr;
+  for (uint64_t seg = 0; seg < segments; ++seg) {
+    std::string seg_name = (seg == 0) ? name : (name + std::to_string(seg));
+    const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
+                                                                         : program_.Inputs()[input_index].tensor->Shape();
+    ShaderVariableHelper& var_ptr = AddVariableImpl(true, seg_name, usage, dims);
+    input_index++;
+    if (!first_var) first_var = &var_ptr;
+  }
+
+  if (usage & ShaderUsage::UseGetByMultipleBuffer && first_var) {
+    first_var->SetSegments(segments, limits_.maxStorageBufferBindingSize);
+  }
+
+  return *first_var;
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -263,10 +290,10 @@ Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderV
 
 #endif  // NDEBUG
 
-const ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
-                                                          const std::string& name,
-                                                          ShaderUsage usage,
-                                                          const TensorShape& dims) {
+ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
+                                                    const std::string& name,
+                                                    ShaderUsage usage,
+                                                    const TensorShape& dims) {
   ORT_ENFORCE(input_vars_.size() + output_vars_.size() < limits_.maxStorageBuffersPerShaderStage,
               "Too many storage buffers in shader. Max is ", limits_.maxStorageBuffersPerShaderStage);
 
