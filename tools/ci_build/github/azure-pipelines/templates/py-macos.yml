@@ -36,12 +36,6 @@ jobs:
   variables:
   - name: MACOSX_DEPLOYMENT_TARGET
     value: '13.3'
-
-  - name: extra_build_args
-    ${{ if ne(parameters.extra_build_arg, '') }}:
-      value: '-x ${{ parameters.extra_build_arg }}'
-    ${{ if eq(parameters.extra_build_arg, '') }}:
-      value: ''
         
   steps:
   - checkout: self
@@ -62,8 +56,6 @@ jobs:
     parameters:
       xcodeVersion: '16.4.0'
 
-  - template: set-nightly-build-option-variable-step.yml
-
   - script: |
       set -e -x
       export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-${{ parameters.arch }}
@@ -74,7 +66,7 @@ jobs:
         --use_binskim_compliant_compile_flags \
         --config Release \
         --build_wheel \
-        --use_coreml $(NightlyBuildOption) $(extra_build_args) \
+        --use_coreml ${{ parameters.extra_build_arg }} \
         --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=${{ parameters.arch }} \
         --update --skip_submodule_sync --build --parallel
       python -m pip install --upgrade delocate
