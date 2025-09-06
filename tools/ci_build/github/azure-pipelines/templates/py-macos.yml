@@ -19,7 +19,7 @@ parameters:
   default: ''
 
 jobs:
-- job: Linux_py_Wheels_${{ parameters.arch }}
+- job: Mac_${{ parameters.arch }}_${{ replace(parameters.python_version,'.','_')
   timeoutInMinutes: 240
   workspace:
     clean: all
