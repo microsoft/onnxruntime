@@ -941,6 +941,7 @@ def generate_build_tree(
             cmake_args += [
                 f"-DCMAKE_CXX_FLAGS=--target={macabi_target}",
                 f"-DCMAKE_C_FLAGS=--target={macabi_target}",
+                f"-DCMAKE_ASM_FLAGS=--target={macabi_target}",
             ]
         else:
             cmake_args += [
