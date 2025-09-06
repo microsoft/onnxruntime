@@ -31,7 +31,7 @@ jobs:
     outputs:
     - output: pipelineArtifact
       targetPath: $(Build.SourcesDirectory)/build/Release/dist/fixed_wheels
-      artifactName: onnxruntime-macos-$(PythonVersion)
+      artifactName: onnxruntime-macos-${{ parameters.arch }}_${{ replace(parameters.python_version,'.','_') }}
 
   variables:
   - name: MACOSX_DEPLOYMENT_TARGET
