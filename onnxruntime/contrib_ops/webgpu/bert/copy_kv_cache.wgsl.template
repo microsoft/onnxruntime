@@ -1,0 +1,60 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .offsetToIndices .indicesToOffset
+
+#param has_past
+#param kv_BNSH
+#param past_present_share_buffer
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.copy_size);
+  let output_indices = copy_kv_shape.offsetToIndices(global_idx);
+  let head_size_id = output_indices[3];
+  let sequence_id = output_indices[2];
+  let num_head_id = output_indices[1];
+  let batch = output_indices[0];
+
+#if has_past
+  let past_sequence_length = uniforms.past_sequence_length;
+ #if past_present_share_buffer
+  let present_offset = present_key.indicesToOffset(present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id));
+   #if kv_BNSH
+  let offset = key.indicesToOffset(key_indices_t(batch, num_head_id, sequence_id, head_size_id));
+   #else
+  let offset = key.indicesToOffset(key_indices_t(batch, sequence_id, num_head_id, head_size_id));
+   #endif
+  present_key[present_offset] = key[offset];
+  present_value[present_offset] = value[offset];
+ #else
+  let present_offset = global_idx;
+  if (sequence_id < past_sequence_length) {
+    let pastOffset = past_key.indicesToOffset(past_key_indices_t(batch, num_head_id, sequence_id, head_size_id));
+    present_key[present_offset] = past_key[pastOffset];
+    present_value[present_offset] = past_value[pastOffset];
+  } else {
+     #if kv_BNSH
+    let offset = key.indicesToOffset(key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id));
+     #else
+    let offset = key.indicesToOffset(key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id));
+     #endif
+    present_key[present_offset] = key[offset];
+    present_value[present_offset] = value[offset];
+  }
+ #endif
+#else
+   #if past_present_share_buffer
+  let present_offset = present_key.indicesToOffset(output_indices);
+   #else
+  let present_offset = global_idx;
+   #endif
+   #if kv_BNSH
+  let offset = key.indicesToOffset(key_indices_t(batch, num_head_id, sequence_id, head_size_id));
+   #else
+  let offset = key.indicesToOffset(key_indices_t(batch, sequence_id, num_head_id, head_size_id));
+   #endif
+  present_key[present_offset] = key[offset];
+  present_value[present_offset] = value[offset];
+#endif
+}
