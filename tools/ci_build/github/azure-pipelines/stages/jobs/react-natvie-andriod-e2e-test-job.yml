@@ -48,7 +48,7 @@ jobs:
     displayName: Install ninja
 
   # TODO debug only - download existing artifact
-  - template: ../../templates/flex-downloadPipelineArtifact.yml
+  - template: flex-downloadPipelineArtifact.yml
     parameters:
       StepName: 'Download Pipeline Artifact - Android AAR'
       ArtifactName: '${{parameters.ArtifactName}}'
