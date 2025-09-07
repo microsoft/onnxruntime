@@ -12,6 +12,7 @@ steps:
     displayName: 'ESRP Jar - Extract Jar File'
     inputs:
       targetType: filePath
+      #TODO: remove the JarFileName parameter
       filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_esrp_dll.ps1
       arguments: extract '${{ parameters.JarFileDirectory }}' '${{ parameters.JarFileName }}'
       workingDirectory: '$(Build.BinariesDirectory)'

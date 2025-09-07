@@ -158,11 +158,13 @@ stages:
           addToPath: true
           architecture: ${{ parameters.buildArch }}
 
-      - template: telemetry-steps.yml
       - task: PipAuthenticate@1
         displayName: 'Pip Authenticate'
         inputs:
           artifactFeeds: 'Lotus'
+
+      - template: telemetry-steps.yml
+
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
