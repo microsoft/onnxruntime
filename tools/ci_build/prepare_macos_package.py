@@ -17,8 +17,18 @@ def run_command(command: list[str | pathlib.Path], check: bool = True) -> subpro
         raise
 
 def get_relative_file_paths(root_dir: pathlib.Path) -> set[pathlib.Path]:
-    """Returns a set of all relative file paths within a directory."""
-    return {p.relative_to(root_dir) for p in root_dir.rglob('*') if p.is_file()}
+    """
+    Returns a set of all relative file paths within a directory,
+    ignoring any files inside .dSYM directories.
+    """
+    paths = set()
+    for p in root_dir.rglob('*'):
+        # CHANGE: Check if any part of the path is a .dSYM directory.
+        if any(part.endswith('.dSYM') for part in p.relative_to(root_dir).parts):
+            continue
+        if p.is_file():
+            paths.add(p.relative_to(root_dir))
+    return paths
 
 def is_macho_binary(file_path: pathlib.Path) -> bool:
     """Checks if a file is a Mach-O binary using the 'file' command."""
@@ -64,7 +74,7 @@ def main():
     print(f"Found x86_64 source: {x64_dir.name}")
     print("##[endgroup]")
 
-    # 4. Error Check: Verify file tree structures are identical
+    # 4. Error Check: Verify file tree structures are identical (ignoring .dSYM)
     print("##[group]Verifying file tree structures...")
     arm64_files = get_relative_file_paths(arm64_dir)
     x64_files = get_relative_file_paths(x64_dir)
@@ -84,8 +94,15 @@ def main():
     universal_dir = staging_dir / arm64_dir.name.replace("arm64", "universal2")
     
     print(f"Copying {arm64_dir.name} to {universal_dir.name} as a template.")
-    shutil.copytree(arm64_dir, universal_dir, symlinks=True)
+    # CHANGE: Use shutil.ignore_patterns to prevent .dSYM directories from being copied.
+    shutil.copytree(
+        arm64_dir,
+        universal_dir,
+        symlinks=True,
+        ignore=shutil.ignore_patterns('*.dSYM')
+    )
 
+    # This loop now implicitly ignores .dSYM files because `arm64_files` was filtered.
     for relative_path in arm64_files:
         arm64_file = arm64_dir / relative_path
         x64_file = x64_dir / relative_path
@@ -95,6 +112,15 @@ def main():
             print(f"Combining {relative_path}...")
             run_command(['lipo', '-create', arm64_file, x64_file, '-output', universal_file])
             run_command(['lipo', '-info', universal_file])
+    print("##[endgroup]")
+
+    # CHANGE: Add a step to remove .dSYM folders from source packages before zipping.
+    print("##[group]Removing .dSYM folders from source packages...")
+    for package_dir in (arm64_dir, x64_dir):
+        for dsym_dir in package_dir.rglob('*.dSYM'):
+            if dsym_dir.is_dir():
+                print(f"Removing {dsym_dir.relative_to(staging_dir)}")
+                shutil.rmtree(dsym_dir)
     print("##[endgroup]")
 
     # 6. Zip all packages for signing and clean up

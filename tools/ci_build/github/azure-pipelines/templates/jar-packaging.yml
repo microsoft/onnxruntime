@@ -20,7 +20,7 @@ steps:
 - task: PythonScript@0
   displayName: 'Package Java Artifacts'
   inputs:
-    scriptPath: $(Build.SourcesDirectory)\tools\ci_build\jar_packaging.ps1
+    scriptPath: $(Build.SourcesDirectory)\tools\ci_build\jar_packaging.py
     arguments: '--package_type ${{ parameters.package_type }}'
     workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
