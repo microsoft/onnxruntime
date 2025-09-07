@@ -63,7 +63,7 @@ struct PackedQuantBDataStruct {
         // When bit width is 4, there is no alignment guarantee.
         // TODO(hasesh): Can we unify the alignment for 4-bit and 8-bit ARM64 Gemms so as to
         // simpify this logic and make code here cleaner ?
-        if (BlkBitWidth == 8) {
+        if constexpr (BlkBitWidth == 8) {
             PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);        
         }
         else {
