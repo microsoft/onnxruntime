@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
@@ -41,6 +42,18 @@ __device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
   Half4 r;
   r.x = a.x + b.x;
   r.y = a.y + b.y;
+  return r;
+}
+
+struct __align__(8) nv_bfloat164 {
+  __nv_bfloat162 lo;
+  __nv_bfloat162 hi;
+};
+
+__device__ __forceinline__ nv_bfloat164 operator+(const nv_bfloat164& a, const nv_bfloat164& b) {
+  nv_bfloat164 r;
+  r.lo = __hadd2(a.lo, b.lo);
+  r.hi = __hadd2(a.hi, b.hi);
   return r;
 }
 
@@ -153,6 +166,12 @@ template <>
 struct Vec_t<__nv_bfloat162> {
   using Type = uint2;             // packs 4×bf16
   static constexpr int size = 4;  // four 16-bit elements
+};
+
+template <>
+struct Vec_t<nv_bfloat164> {
+  using Type = uint4;
+  static constexpr int size = 8;
 };
 
 //------------------------------------------------------------

@@ -303,7 +303,7 @@ struct T2<BFloat16> {
 
 template <>
 struct T4<BFloat16> {
-  using Type = float2;
+  using Type = nv_bfloat164;
 };
 
 template <typename T>
