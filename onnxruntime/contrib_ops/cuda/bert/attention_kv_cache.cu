@@ -4,7 +4,6 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kv_cache.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
@@ -210,7 +209,7 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const BFloat16* tensor_add,
                                   BFloat16* tensor_out) {
   const dim3 grid(all_sequence_length, batch_size, matrix_num);
-  if ((head_size & 1) == 0) {
+  if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);

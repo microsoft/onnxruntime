@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <cuda_fp16.h>
 #include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cublas_v2.h>
 #include <gsl/gsl>
 #include <iostream>

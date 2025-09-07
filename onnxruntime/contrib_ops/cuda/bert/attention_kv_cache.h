@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/cuda_common.h"

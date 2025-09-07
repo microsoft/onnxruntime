@@ -803,9 +803,7 @@ void LaunchAddBiasTranspose<BFloat16>(
     BFloat16* qkv_add_bias, int total_matrix_count,
     bool do_rotary, int rotary_embedding, int past_sequence_length) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
-  if ((qk_head_size % 2 == 0) &&
-      (v_head_size == -1 || (v_head_size % 2 == 0)) &&
-      !do_rotary) {
+  if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1)) && !do_rotary) {
     const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
 
@@ -924,15 +922,15 @@ void LaunchAddBiasTransposeTrt(
 }
 
 template <>
-void LaunchAddBiasTransposeTrt<onnxruntime::BFloat16>(
+void LaunchAddBiasTransposeTrt<BFloat16>(
     cudaStream_t /*stream*/, const int /*max_threads_per_block*/,
     const int /*batch_size*/, const int /*sequence_length*/,
     const int /*num_heads*/, const int /*head_size*/,
-    const onnxruntime::BFloat16* /*biases*/,
-    const onnxruntime::BFloat16* /*query*/,
-    const onnxruntime::BFloat16* /*key*/,
-    const onnxruntime::BFloat16* /*value*/,
-    onnxruntime::BFloat16* /*output*/,
+    const BFloat16* /*biases*/,
+    const BFloat16* /*query*/,
+    const BFloat16* /*key*/,
+    const BFloat16* /*value*/,
+    BFloat16* /*output*/,
     bool /*is_cross_attention*/, int /*kv_sequence_length*/) {
   ORT_ENFORCE(false, "BF16 not supported for LaunchAddBiasTransposeTrt.");
 }
@@ -1105,7 +1103,7 @@ void LaunchAddBias<BFloat16>(
     const int num_heads, const int head_size, const int v_head_size,
     const BFloat16* biases, const BFloat16* query, const BFloat16* key, const BFloat16* value,
     BFloat16* q, BFloat16* k, BFloat16* v) {
-  if ((head_size % 2 == 0) && (v_head_size % 2 == 0)) {
+  if (0 == (head_size & 1) && 0 == (v_head_size & 1)) {
     const int H = head_size / 2;
     const int H_v = v_head_size / 2;
     const __nv_bfloat162* query2 = reinterpret_cast<const __nv_bfloat162*>(query);
@@ -1212,7 +1210,7 @@ void LaunchAddBias<BFloat16>(
     const int batch_size, const int sequence_length,
     const int num_heads, const int head_size,
     const BFloat16* biases, const BFloat16* query, BFloat16* q) {
-  if ((head_size % 2) == 0) {
+  if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const __nv_bfloat162* query2 = reinterpret_cast<const __nv_bfloat162*>(query);
     const __nv_bfloat162* biases2 = reinterpret_cast<const __nv_bfloat162*>(biases);
@@ -1224,7 +1222,6 @@ void LaunchAddBias<BFloat16>(
         biases2, query2, q2);
 
   } else {
-    // Fallback: keep template param = ORT's wrapper type for consistency
     InvokeAddBias<BFloat16>(
         stream, max_threads_per_block,
         batch_size, sequence_length, num_heads, head_size,

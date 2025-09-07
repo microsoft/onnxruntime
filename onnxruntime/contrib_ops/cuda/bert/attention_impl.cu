@@ -47,8 +47,6 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
-#include <cuda_bf16.h>
-
 using namespace onnxruntime::cuda;
 using namespace onnxruntime::contrib::attention_softmax_cuda;
 
@@ -764,15 +762,6 @@ Status UnfusedAttention(
       ORT_RETURN_IF_ERROR(
           (CopyQK<T, QK>(stream, static_cast<int>(qk_size), data.scratch, reinterpret_cast<QK*>(data.output_qk))));
     }
-    /*
-    ORT_RETURN_IF_ERROR(
-        ComputeSoftmax<T>(
-            stream, total_sequence_length, sequence_length, batch_size, num_heads,
-            data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
-            data.scratch, scratch2, parameters.is_unidirectional));
-
-      */
-
     ORT_RETURN_IF_ERROR(
         ComputeSoftmax<T>(
             stream, total_sequence_length, sequence_length, batch_size, num_heads,
