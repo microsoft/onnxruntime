@@ -182,12 +182,15 @@ Status LaunchTransCtx(cudaStream_t stream,
       TransposeCtxLarge<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
     }
   } else {
+    const __nv_bfloat16* input1 = reinterpret_cast<const __nv_bfloat16*>(input);
+    __nv_bfloat16* output1 = reinterpret_cast<__nv_bfloat16*>(output);
+
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
-      TransposeCtx<onnxruntime::BFloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
+      TransposeCtx<__nv_bfloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input1, output1);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeCtxLarge<onnxruntime::BFloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
+      TransposeCtxLarge<__nv_bfloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input1, output1);
     }
   }
 
