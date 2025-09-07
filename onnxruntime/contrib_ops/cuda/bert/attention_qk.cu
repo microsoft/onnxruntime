@@ -84,10 +84,10 @@ Status CopyQK(cudaStream_t stream,
   const __nv_bfloat16* in_nv = reinterpret_cast<const __nv_bfloat16*>(input);
   __nv_bfloat16* out_nv = reinterpret_cast<__nv_bfloat16*>(output);
 
-  const size_t bytes = static_cast<size_t>(qk_size) * sizeof(__nv_bfloat16);
+  const size_t bytes_size = static_cast<size_t>(qk_size) * sizeof(__nv_bfloat16);
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-      out_nv, in_nv, bytes, cudaMemcpyDeviceToDevice, stream));
+      out_nv, in_nv, bytes_size, cudaMemcpyDeviceToDevice, stream));
 
   return Status::OK();
 }

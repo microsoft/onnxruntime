@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
-#include <cuda_bf16.h>
 
 using namespace onnxruntime::cuda;
 
@@ -169,7 +168,7 @@ Status LaunchTransCtx(cudaStream_t stream,
                       const BFloat16* input, BFloat16* output) {
   const dim3 grid(sequence_length, batch_size, 1);
 
-  if ((head_size & 1) == 0) {
+  if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const __nv_bfloat162* input2 = reinterpret_cast<const __nv_bfloat162*>(input);
     __nv_bfloat162* output2 = reinterpret_cast<__nv_bfloat162*>(output);
@@ -182,15 +181,15 @@ Status LaunchTransCtx(cudaStream_t stream,
       TransposeCtxLarge<__nv_bfloat162><<<grid, block, 0, stream>>>(H, reversed_bs, input2, output2);
     }
   } else {
-    const __nv_bfloat16* input1 = reinterpret_cast<const __nv_bfloat16*>(input);
-    __nv_bfloat16* output1 = reinterpret_cast<__nv_bfloat16*>(output);
+    const __nv_bfloat16* input2 = reinterpret_cast<const __nv_bfloat16*>(input);
+    __nv_bfloat16* output2 = reinterpret_cast<__nv_bfloat16*>(output);
 
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
-      TransposeCtx<__nv_bfloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input1, output1);
+      TransposeCtx<__nv_bfloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input2, output2);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeCtxLarge<__nv_bfloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input1, output1);
+      TransposeCtxLarge<__nv_bfloat16><<<grid, block, 0, stream>>>(head_size, reversed_bs, input2, output2);
     }
   }
 
@@ -341,7 +340,7 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
   total_matrix_count = max(total_matrix_count, matrix_num);
   const dim3 grid(sequence_length, batch_size, matrix_num);
 
-  if ((head_size & 1) == 0) {
+  if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const nv_bfloat162* input2 = reinterpret_cast<const nv_bfloat162*>(input);
     nv_bfloat162* output2 = reinterpret_cast<nv_bfloat162*>(output);
