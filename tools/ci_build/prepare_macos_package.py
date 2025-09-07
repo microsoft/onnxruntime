@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import os
 import pathlib
 import shutil
@@ -23,7 +26,7 @@ def get_relative_file_paths(root_dir: pathlib.Path) -> set[pathlib.Path]:
     """
     paths = set()
     for p in root_dir.rglob('*'):
-        # CHANGE: Check if any part of the path is a .dSYM directory.
+        # Check if any part of the path is a .dSYM directory.
         if any(part.endswith('.dSYM') for part in p.relative_to(root_dir).parts):
             continue
         if p.is_file():
@@ -74,7 +77,16 @@ def main():
     print(f"Found x86_64 source: {x64_dir.name}")
     print("##[endgroup]")
 
-    # 4. Error Check: Verify file tree structures are identical (ignoring .dSYM)
+    # **NEW**: Remove _manifest directories before comparison or processing.
+    print("##[group]Removing _manifest directories...")
+    for package_dir in (arm64_dir, x64_dir):
+        manifest_path = package_dir / "_manifest"
+        if manifest_path.is_dir():
+            print(f"Removing manifest directory: {manifest_path.relative_to(staging_dir)}")
+            shutil.rmtree(manifest_path)
+    print("##[endgroup]")
+
+    # 4. Error Check: Verify file tree structures are identical
     print("##[group]Verifying file tree structures...")
     arm64_files = get_relative_file_paths(arm64_dir)
     x64_files = get_relative_file_paths(x64_dir)
@@ -94,7 +106,6 @@ def main():
     universal_dir = staging_dir / arm64_dir.name.replace("arm64", "universal2")
     
     print(f"Copying {arm64_dir.name} to {universal_dir.name} as a template.")
-    # CHANGE: Use shutil.ignore_patterns to prevent .dSYM directories from being copied.
     shutil.copytree(
         arm64_dir,
         universal_dir,
@@ -102,7 +113,6 @@ def main():
         ignore=shutil.ignore_patterns('*.dSYM')
     )
 
-    # This loop now implicitly ignores .dSYM files because `arm64_files` was filtered.
     for relative_path in arm64_files:
         arm64_file = arm64_dir / relative_path
         x64_file = x64_dir / relative_path
@@ -114,7 +124,7 @@ def main():
             run_command(['lipo', '-info', universal_file])
     print("##[endgroup]")
 
-    # CHANGE: Add a step to remove .dSYM folders from source packages before zipping.
+    # Remove .dSYM folders from source packages before zipping.
     print("##[group]Removing .dSYM folders from source packages...")
     for package_dir in (arm64_dir, x64_dir):
         for dsym_dir in package_dir.rglob('*.dSYM'):
@@ -128,7 +138,6 @@ def main():
     for dir_path in (arm64_dir, x64_dir, universal_dir):
         zip_file_name = f"{dir_path.name}.zip"
         print(f"Zipping {dir_path.name} to {zip_file_name}")
-        # Using the system 'zip' command is the most reliable way to preserve symlinks
         run_command(['zip', '-FSr', '--symlinks', zip_file_name, dir_path.name])
         
         print(f"Removing directory {dir_path.name}")

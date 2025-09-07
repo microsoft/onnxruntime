@@ -17,7 +17,7 @@ steps:
 
 - task: UsePythonVersion@0
   inputs:
-    versionSpec: '3.12'
+    versionSpec: '3.13'
     addToPath: true
 
 - task: PipAuthenticate@1
@@ -44,12 +44,17 @@ steps:
     ${{ if eq(parameters.package_type, 'cpu') }}:
       JarFileName: 'onnxruntime-$(OnnxRuntimeVersion).jar'
 
-- template: jar-maven-signing-win.yml
-  parameters:
-    JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-
-- task: CopyFiles@2
-  displayName: 'Copy Java Files to Artifact Staging Directory'
+- task: AzureKeyVault@2
+  displayName: 'Get GnuPG signing keys'
   inputs:
-    SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-    TargetFolder: '$(Build.ArtifactStagingDirectory)'
+   azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+   KeyVaultName: 'ort-release'
+   SecretsFilter: 'java-pgp-pwd,java-pgp-key'
+   RunAsPreJob: false
+
+- task: PythonScript@0
+  displayName: 'Sign files: GnuPG, sha1, and md5'
+  inputs:
+   scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/sign_java_artifacts.py'
+   arguments: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+   workingDirectory: '$(Build.SourcesDirectory)'
