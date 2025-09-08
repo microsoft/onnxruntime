@@ -299,7 +299,7 @@ class SparseMoeBlockORTHelper(nn.Module):
             repeat = 1000
             s = time.time()
             for _ in range(repeat):
-                ort_outputs = self.ort_sess.run(None, ort_inputs)
+                self.ort_sess.run(None, ort_inputs)
             e = time.time()
             print(f"MoE CPU kernel time: {(e - s) / repeat * 1000} ms")
             ort_outputs = self.ort_sess.run(None, ort_inputs)
