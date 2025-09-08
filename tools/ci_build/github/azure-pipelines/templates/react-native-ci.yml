@@ -139,10 +139,6 @@ stages:
       inputs:
         versionSpec: '22.x'
 
-    - script:
-        brew install npm
-      displayName: Install npm
-
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
@@ -204,10 +200,6 @@ stages:
     - task: NodeTool@0
       inputs:
         versionSpec: '22.x'
-
-    - script:
-        brew install npm
-      displayName: Install npm
 
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
