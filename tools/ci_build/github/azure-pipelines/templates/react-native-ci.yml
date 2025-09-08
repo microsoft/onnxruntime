@@ -234,7 +234,8 @@ stages:
           detox test --record-logs all \
                      --configuration ios.sim.release \
                      --loglevel verbose \
-                     --take-screenshots failing
+                     --take-screenshots failing \
+                     --retries 3
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
 
