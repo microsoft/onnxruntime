@@ -9,7 +9,11 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
     // NOTE: The order of the APIs in this struct should match exactly that in OrtCompileApi
     // See onnxruntime/core/session/compile_api.cc.
     [StructLayout(LayoutKind.Sequential)]
+#if NETSTANDARD2_0
+    public class OrtCompileApi
+#else
     public struct OrtCompileApi
+#endif
     {
         public IntPtr ReleaseModelCompilationOptions;
         public IntPtr CreateModelCompilationOptionsFromSessionOptions;
