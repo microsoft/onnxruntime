@@ -41,40 +41,55 @@ static constexpr size_t kWorkspacePoolingThreshold = 1024 * 1024;  // 1MB thresh
 namespace onnxruntime {
 namespace contrib {
 
-// Optimized dequantization for better performance (without SIMD)
+// Use MLAS for dequantization where possible, with fallback for custom block-wise quantization
 template <typename TScale>
-void DequantizeBlockOptimized(const uint8_t* quantized_data,
-                              const TScale* scales,
-                              int64_t block_size,
-                              int64_t num_bits,
-                              int64_t rows,
-                              int64_t cols,
-                              float* dequantized_data) {
+void DequantizeBlockWithMlas(const uint8_t* quantized_data,
+                             const TScale* scales,
+                             int64_t block_size,
+                             int64_t num_bits,
+                             int64_t rows,
+                             int64_t cols,
+                             float* dequantized_data) {
   const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
   const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
 
-  if (num_bits == 8) {
-    // Optimized 8-bit dequantization with better memory access patterns
+  if (num_bits == 8 && block_size == 0) {
+    // Use MLAS for simple row-wise 8-bit dequantization
     for (int64_t r = 0; r < rows; ++r) {
-      for (int64_t c = 0; c < cols; ++c) {
-        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
-        const int64_t scale_idx = r * blocks_per_row + block_idx;
-        const float scale = static_cast<float>(scales[scale_idx]);
-        dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_data[r * cols + c]) - zero_point);
-      }
-    }
-  } else if (num_bits == 4) {
-    // Optimized 4-bit dequantization
-    const int64_t packed_cols = (cols + 1) / 2;
-    for (int64_t r = 0; r < rows; ++r) {
-      for (int64_t c = 0; c < cols; ++c) {
-        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
-        const int64_t scale_idx = r * blocks_per_row + block_idx;
-        const float scale = static_cast<float>(scales[scale_idx]);
+      const float scale = static_cast<float>(scales[r]);
+      const uint8_t zero_pt = static_cast<uint8_t>(zero_point);
 
-        const uint8_t packed_val = quantized_data[r * packed_cols + c / 2];
-        const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
-        dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_val) - zero_point);
+      MlasDequantizeLinear(
+          quantized_data + r * cols,
+          dequantized_data + r * cols,
+          static_cast<size_t>(cols),
+          scale,
+          zero_pt);
+    }
+  } else {
+    // Fall back to custom implementation for block-wise or 4-bit quantization
+    if (num_bits == 8) {
+      for (int64_t r = 0; r < rows; ++r) {
+        for (int64_t c = 0; c < cols; ++c) {
+          const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
+          const int64_t scale_idx = r * blocks_per_row + block_idx;
+          const float scale = static_cast<float>(scales[scale_idx]);
+          dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_data[r * cols + c]) - zero_point);
+        }
+      }
+    } else if (num_bits == 4) {
+      // 4-bit dequantization - no MLAS support, use custom implementation
+      const int64_t packed_cols = (cols + 1) / 2;
+      for (int64_t r = 0; r < rows; ++r) {
+        for (int64_t c = 0; c < cols; ++c) {
+          const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
+          const int64_t scale_idx = r * blocks_per_row + block_idx;
+          const float scale = static_cast<float>(scales[scale_idx]);
+
+          const uint8_t packed_val = quantized_data[r * packed_cols + c / 2];
+          const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
+          dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_val) - zero_point);
+        }
       }
     }
   }
@@ -118,8 +133,8 @@ void DequantizeBlock(const uint8_t* quantized_data,
                      int64_t rows,
                      int64_t cols,
                      float* dequantized_data) {
-  // Use optimized version for better performance
-  DequantizeBlockOptimized(quantized_data, scales, block_size, num_bits, rows, cols, dequantized_data);
+  // Use MLAS-optimized dequantization for better performance
+  DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, dequantized_data);
 }
 
 template <typename T>

@@ -798,12 +798,7 @@ class SparseMoeBlockORTHelper(nn.Module):
     def __init__(self, quant_bits=0, onnx_dtype=None):
         super().__init__()
         self.quant_bits = quant_bits
-        # Prefer FP32 ONNX dtype for quantized tests to preserve scale precision and reduce
-        # quantization/dequantization rounding error when constructing the reference graph.
-        if onnx_dtype is None:
-            self.onnx_dtype = TensorProto.FLOAT if self.quant_bits > 0 else TensorProto.FLOAT
-        else:
-            self.onnx_dtype = onnx_dtype
+        self.onnx_dtype = onnx_dtype
         self.np_type = numpy.float16 if self.onnx_dtype == TensorProto.FLOAT16 else numpy.float32
 
     def create_ort_session(self, moe_onnx_graph):
@@ -1071,11 +1066,6 @@ class SparseMoeBlockORTHelper(nn.Module):
             diff = (torch_output.cpu() - ort_output.cpu()).abs()
             idx = torch.argmax(diff)
             flat_idx = int(idx)
-            b = (
-                flat_idx // (self.hidden_dim * self.sequence_length)
-                if (self.hidden_dim * self.sequence_length) > 0
-                else 0
-            )
             # Derive coordinates (batch, seq, hidden) from flattened index
             total_elems = torch_output.numel()
             # Work in flattened [batch, seq, hidden] ordering
