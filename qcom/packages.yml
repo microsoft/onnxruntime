@@ -94,7 +94,7 @@ onnx_models:
   sha256: 9f14b64abc156ae8f6607ce20dc3886c7b40baaf0b19da0a07ef37bef4c0bfb4
   content_root: onnx-models-{version}
 qairt:
-  version: 2.37.1.250807
+  version: 2.38.0.250901
   url: https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/{version}/v{version}.zip
   content_root: qairt/{version}
   bindir: bin
