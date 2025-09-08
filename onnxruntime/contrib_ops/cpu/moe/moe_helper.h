@@ -91,8 +91,17 @@ Status CheckInputs(MoEParameters& parameters,
   CHECK_TENSOR_SHAPE(fc2_experts_bias, num_experts, hidden_size);
   CHECK_TENSOR_SHAPE(fc3_experts_bias, num_experts, inter_size);
 
-  // Validate scale tensors: 2D for row-wise quantization, 3D for block-wise quantization
-  if (block_size > 0) {
+  // Validate scale tensors: Handle both row-wise and block-wise quantization flexibly
+  // First, detect the actual quantization method from the tensor shapes
+  bool is_row_wise_quantization = true;
+  if (fc1_experts_scales != nullptr) {
+    const auto& fc1_scales_dims = fc1_experts_scales->Shape().GetDims();
+    if (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1) {
+      is_row_wise_quantization = false;
+    }
+  }
+
+  if (block_size > 0 && !is_row_wise_quantization) {
     // Block-wise quantization: 3D scale tensors
     // For block-wise quantization, we calculate the number of blocks using ceiling division
     // to handle cases where the dimension is not perfectly divisible by block_size
@@ -104,10 +113,40 @@ Status CheckInputs(MoEParameters& parameters,
     CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, fc2_blocks_per_row);
     CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, fc3_blocks_per_row);
   } else {
-    // Row-wise quantization: 2D scale tensors
-    CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
-    CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
-    CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
+    // Row-wise quantization: 2D scale tensors or 3D with last dimension = 1
+    // Handle both {num_experts, features} and {num_experts, features, 1} shapes
+    if (fc1_experts_scales != nullptr) {
+      const auto& fc1_scales_dims = fc1_experts_scales->Shape().GetDims();
+      if (fc1_scales_dims.size() == 2) {
+        CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
+      } else if (fc1_scales_dims.size() == 3) {
+        CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size, 1);
+      } else {
+        ORT_THROW("fc1_experts_scales must be 2D or 3D tensor");
+      }
+    }
+
+    if (fc2_experts_scales != nullptr) {
+      const auto& fc2_scales_dims = fc2_experts_scales->Shape().GetDims();
+      if (fc2_scales_dims.size() == 2) {
+        CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
+      } else if (fc2_scales_dims.size() == 3) {
+        CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, 1);
+      } else {
+        ORT_THROW("fc2_experts_scales must be 2D or 3D tensor");
+      }
+    }
+
+    if (fc3_experts_scales != nullptr) {
+      const auto& fc3_scales_dims = fc3_experts_scales->Shape().GetDims();
+      if (fc3_scales_dims.size() == 2) {
+        CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
+      } else if (fc3_scales_dims.size() == 3) {
+        CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, 1);
+      } else {
+        ORT_THROW("fc3_experts_scales must be 2D or 3D tensor");
+      }
+    }
   }
 
   if (fc3_experts_weights == nullptr) {

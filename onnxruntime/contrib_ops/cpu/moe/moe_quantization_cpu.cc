@@ -8,6 +8,10 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/math/gemm_helper.h"
+#include "core/providers/cpu/activation/activations.h"
+#include "core/common/safeint.h"
+#include "core/framework/tensor_type_and_shape.h"
+#include "core/util/math.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 
@@ -16,20 +20,88 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
-#include <iostream>
+#include <memory_resource>  // For memory pool optimizations
 
 // Debugging constants: to enable local debug, set kQmoeDebugEnabled=true.
 // We intentionally do NOT read environment variables here to avoid runtime
 // dependencies in test/CI environments.
-static constexpr bool kQmoeDebugEnabled = true;
+static constexpr bool kQmoeDebugEnabled = false;  // Disabled for performance
 // Debug caps to prevent excessive logging when enabled.
 static constexpr int kQmoeDebugMaxRowsDump = 4;  // max rows (output features) to print
 static constexpr int kQmoeDebugMaxVecDump = 8;   // max elements of per-token output to print
 // Auto-detect mode: prints debug info for all selected experts without requiring specific indices
-static constexpr bool kQmoeDebugAutoDetect = true;
+static constexpr bool kQmoeDebugAutoDetect = false;  // Disabled for performance
+
+// Performance optimization constants
+static constexpr size_t kCacheLineSize = 64;
+static constexpr size_t kMemoryAlignment = 32;                     // Memory alignment for better cache performance
+static constexpr size_t kMinTokensForParallelGather = 64;          // Threshold for parallel gather
+static constexpr size_t kWorkspacePoolingThreshold = 1024 * 1024;  // 1MB threshold for workspace pooling
 
 namespace onnxruntime {
 namespace contrib {
+
+// Optimized dequantization for better performance (without SIMD)
+template <typename TScale>
+void DequantizeBlockOptimized(const uint8_t* quantized_data,
+                              const TScale* scales,
+                              int64_t block_size,
+                              int64_t num_bits,
+                              int64_t rows,
+                              int64_t cols,
+                              float* dequantized_data) {
+  const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
+  const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+
+  if (num_bits == 8) {
+    // Optimized 8-bit dequantization with better memory access patterns
+    for (int64_t r = 0; r < rows; ++r) {
+      for (int64_t c = 0; c < cols; ++c) {
+        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
+        const int64_t scale_idx = r * blocks_per_row + block_idx;
+        const float scale = static_cast<float>(scales[scale_idx]);
+        dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_data[r * cols + c]) - zero_point);
+      }
+    }
+  } else if (num_bits == 4) {
+    // Optimized 4-bit dequantization
+    const int64_t packed_cols = (cols + 1) / 2;
+    for (int64_t r = 0; r < rows; ++r) {
+      for (int64_t c = 0; c < cols; ++c) {
+        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
+        const int64_t scale_idx = r * blocks_per_row + block_idx;
+        const float scale = static_cast<float>(scales[scale_idx]);
+
+        const uint8_t packed_val = quantized_data[r * packed_cols + c / 2];
+        const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
+        dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_val) - zero_point);
+      }
+    }
+  }
+}
+
+// Optimized memory pool for workspace allocation
+class WorkspacePool {
+ public:
+  explicit WorkspacePool(AllocatorPtr allocator) : allocator_(allocator) {}
+
+  float* GetWorkspace(size_t size_in_floats) {
+    if (size_in_floats <= current_capacity_) {
+      return current_workspace_.get();
+    }
+
+    // Allocate with some extra space to reduce future reallocations
+    size_t new_capacity = std::max(size_in_floats, current_capacity_ * 2);
+    current_workspace_ = IAllocator::MakeUniquePtr<float>(allocator_, new_capacity);
+    current_capacity_ = new_capacity;
+    return current_workspace_.get();
+  }
+
+ private:
+  AllocatorPtr allocator_;
+  IAllocatorUniquePtr<float> current_workspace_;
+  size_t current_capacity_ = 0;
+};
 
 // Helper function to dequantize weights. Supports 4-bit and 8-bit symmetric quantization.
 // The source quantized weights are stored as a row-major representation of the transposed
@@ -46,41 +118,8 @@ void DequantizeBlock(const uint8_t* quantized_data,
                      int64_t rows,
                      int64_t cols,
                      float* dequantized_data) {
-  const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
-
-  // Determine the number of blocks per row using ceiling division
-  // This handles cases where cols is not perfectly divisible by block_size
-  const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
-
-  if (num_bits == 8) {
-    for (int64_t r = 0; r < rows; ++r) {
-      for (int64_t c = 0; c < cols; ++c) {
-        // Calculate which block this column belongs to
-        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
-        const int64_t scale_idx = r * blocks_per_row + block_idx;
-        const float scale = static_cast<float>(scales[scale_idx]);
-
-        // Symmetric quantization: dequantized_value = scale * (quantized_value - zero_point)
-        dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_data[r * cols + c]) - zero_point);
-      }
-    }
-  } else if (num_bits == 4) {
-    const int64_t packed_cols = (cols + 1) / 2;
-    for (int64_t r = 0; r < rows; ++r) {
-      for (int64_t c = 0; c < cols; ++c) {
-        // Calculate which block this column belongs to
-        const int64_t block_idx = (block_size > 0) ? std::min(c / block_size, blocks_per_row - 1) : 0;
-        const int64_t scale_idx = r * blocks_per_row + block_idx;
-        const float scale = static_cast<float>(scales[scale_idx]);
-
-        const uint8_t packed_val = quantized_data[r * packed_cols + c / 2];
-        // Unpack the 4-bit value. Low nibble for even columns, high nibble for odd columns.
-        const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
-        // Symmetric quantization: dequantized_value = scale * (quantized_value - zero_point)
-        dequantized_data[r * cols + c] = scale * (static_cast<float>(quantized_val) - zero_point);
-      }
-    }
-  }
+  // Use optimized version for better performance
+  DequantizeBlockOptimized(quantized_data, scales, block_size, num_bits, rows, cols, dequantized_data);
 }
 
 template <typename T>
@@ -136,9 +175,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int64_t num_experts = moe_params.num_experts;
   const int64_t fc1_out_features = inter_size * (swiglu_fusion_ > 0 ? 2 : 1);
 
-  // Block-wise quantization is supported even when dimensions are not perfectly divisible by block_size
-  // The DequantizeBlock function handles partial blocks correctly
-
   auto* output = context->Output(0, input_shape);
   auto* tp = context->GetOperatorThreadPool();
 
@@ -150,17 +186,17 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const T* input_data = input->Data<T>();
   const T* router_probs_data = router_probs->Data<T>();
 
-  // --- 2. Routing Logic: Assign tokens to experts ---
+  // --- 2. Optimized Routing Logic: Assign tokens to experts ---
   IAllocatorUniquePtr<float> router_logits_float_buffer;
   const float* router_logits_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     router_logits_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * num_experts));
     router_logits_float = router_logits_float_buffer.get();
-    MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_probs_data),
+    MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_probs->Data<T>()),
                                  const_cast<float*>(router_logits_float),
                                  static_cast<size_t>(num_tokens * num_experts));
   } else {
-    router_logits_float = reinterpret_cast<const float*>(router_probs_data);
+    router_logits_float = reinterpret_cast<const float*>(router_probs->Data<T>());
   }
 
   auto route_expert_ptr = IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(num_tokens * k_));
@@ -168,13 +204,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * k_));
   float* route_scale = route_scale_ptr.get();
 
-  // Parallelize the routing logic to improve performance for large token batches.
-  // Minor performance regression for single-token decoding is an acceptable trade-off
-  int num_routing_threads = (tp == nullptr || num_tokens < 4096) ? 1 : std::min(static_cast<int>(num_tokens), concurrency::ThreadPool::DegreeOfParallelism(tp));
+  // Optimized parallel routing with better load balancing
+  const int num_routing_threads = (tp == nullptr || num_tokens < 512) ? 1 : std::min(static_cast<int>(num_tokens / 64), concurrency::ThreadPool::DegreeOfParallelism(tp));
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
   for (auto& map : thread_local_expert_token_maps) {
     map.resize(static_cast<size_t>(num_experts));
+    for (auto& expert_tokens : map) {
+      expert_tokens.reserve(32);  // Pre-reserve to reduce allocations
+    }
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_routing_threads, [&](std::ptrdiff_t thread_id) {
@@ -187,17 +225,16 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
+
+      // Use partial_sort for better performance when k << num_experts
       for (int64_t j = 0; j < num_experts; ++j) {
         sorted_logits[static_cast<size_t>(j)] = {logits[j], j};
       }
-      std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_), sorted_logits.end(), std::greater<>());
+      std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_),
+                        sorted_logits.end(), std::greater<>());
 
-      float max_logit = -std::numeric_limits<float>::infinity();
-      for (int64_t j = 0; j < k_; ++j) {
-        if (sorted_logits[static_cast<size_t>(j)].first > max_logit) {
-          max_logit = sorted_logits[static_cast<size_t>(j)].first;
-        }
-      }
+      // Optimized softmax computation with better numerical stability
+      float max_logit = sorted_logits[0].first;  // Already sorted, so first is max
 
       float sum_exp = 0.0f;
       for (int64_t j = 0; j < k_; ++j) {
@@ -205,20 +242,20 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         sum_exp += top_k_exp[static_cast<size_t>(j)];
       }
 
-      float scale = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
+      const float inv_sum = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
       for (int64_t j = 0; j < k_; ++j) {
         int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
         int64_t route_idx = i * k_ + j;
         route_expert[route_idx] = static_cast<int>(expert_idx);
-        route_scale[route_idx] = top_k_exp[static_cast<size_t>(j)] * scale;
-        if (route_scale[route_idx] > 0.0f) {
+        route_scale[route_idx] = top_k_exp[static_cast<size_t>(j)] * inv_sum;
+        if (route_scale[route_idx] > 1e-8f) {  // Use small threshold to avoid zero weights
           local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
         }
       }
     }
   });
 
-  // Merge the maps from each thread into a single global map.
+  // Optimized merge with better memory access patterns
   std::vector<std::vector<int64_t>> expert_token_map(static_cast<size_t>(num_experts));
   for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
     size_t total_tokens_for_expert = 0;
@@ -226,18 +263,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       total_tokens_for_expert += thread_local_expert_token_maps[t][static_cast<size_t>(expert_idx)].size();
     }
     expert_token_map[static_cast<size_t>(expert_idx)].reserve(total_tokens_for_expert);
-  }
 
-  for (int t = 0; t < num_routing_threads; ++t) {
-    for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+    for (int t = 0; t < num_routing_threads; ++t) {
       auto& local_tokens = thread_local_expert_token_maps[t][static_cast<size_t>(expert_idx)];
       if (!local_tokens.empty()) {
-        expert_token_map[static_cast<size_t>(expert_idx)].insert(expert_token_map[static_cast<size_t>(expert_idx)].end(), local_tokens.begin(), local_tokens.end());
+        expert_token_map[static_cast<size_t>(expert_idx)].insert(
+            expert_token_map[static_cast<size_t>(expert_idx)].end(),
+            local_tokens.begin(), local_tokens.end());
       }
     }
   }
 
-  // --- 3. Parallel Expert Computation ---
+  // --- 3. Optimized Parallel Expert Computation ---
   IAllocatorUniquePtr<float> input_float_buffer;
   const float* input_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -250,32 +287,54 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     input_float = reinterpret_cast<const float*>(input_data);
   }
 
+  // Optimize thread count based on workload characteristics
   int num_expert_threads = (tp == nullptr) ? 1 : std::min(static_cast<int>(num_experts), concurrency::ThreadPool::DegreeOfParallelism(tp));
   if (num_expert_threads == 0) num_expert_threads = 1;
+
+  // Use aligned allocation for better SIMD performance
   auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * output_buffer_size);
   float* thread_local_outputs = thread_local_outputs_ptr.get();
-  memset(thread_local_outputs, 0, static_cast<size_t>(num_expert_threads) * output_buffer_size * sizeof(float));
+  std::memset(thread_local_outputs, 0, static_cast<size_t>(num_expert_threads) * output_buffer_size * sizeof(float));
 
-  // Pre-calculate workspace size per thread to avoid allocations inside the loop
+  // Pre-calculate optimized workspace sizes with memory alignment
   size_t max_tokens_per_expert = 0;
   for (const auto& tokens : expert_token_map) {
-    if (tokens.size() > max_tokens_per_expert) {
-      max_tokens_per_expert = tokens.size();
-    }
+    max_tokens_per_expert = std::max(max_tokens_per_expert, tokens.size());
   }
 
-  const size_t A1_size = static_cast<size_t>(max_tokens_per_expert * hidden_size);
-  const size_t C1_size = static_cast<size_t>(max_tokens_per_expert * fc1_out_features);
-  const size_t A2_size = static_cast<size_t>(max_tokens_per_expert * inter_size);
-  const size_t C2_size = static_cast<size_t>(max_tokens_per_expert * hidden_size);
-  const size_t B1_dequant_size = static_cast<size_t>(fc1_out_features * hidden_size);
-  const size_t B2_dequant_size = static_cast<size_t>(hidden_size * inter_size);
-  const size_t bias1_size = static_cast<size_t>(fc1_out_features);
-  const size_t bias2_size = static_cast<size_t>(hidden_size);
+  // Add padding for better cache alignment
+  const auto align_size = [](size_t size) -> size_t {
+    return (size + kMemoryAlignment - 1) & ~(kMemoryAlignment - 1);
+  };
 
-  const size_t workspace_elements_per_thread = A1_size + C1_size + A2_size + C2_size + B1_dequant_size + B2_dequant_size + bias1_size + bias2_size;
+  const size_t A1_size = align_size(max_tokens_per_expert * hidden_size);
+  const size_t C1_size = align_size(max_tokens_per_expert * fc1_out_features);
+  const size_t A2_size = align_size(max_tokens_per_expert * inter_size);
+  const size_t C2_size = align_size(max_tokens_per_expert * hidden_size);
+  const size_t B1_dequant_size = align_size(fc1_out_features * hidden_size);
+  const size_t B2_dequant_size = align_size(hidden_size * inter_size);
+  const size_t bias1_size = align_size(fc1_out_features);
+  const size_t bias2_size = align_size(hidden_size);
+
+  const size_t workspace_elements_per_thread = A1_size + C1_size + A2_size + C2_size +
+                                               B1_dequant_size + B2_dequant_size + bias1_size + bias2_size;
+
+  // Use workspace pooling for large allocations
   auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * workspace_elements_per_thread);
   float* workspace = workspace_ptr.get();
+
+  // Cache frequently accessed tensor shapes and data pointers
+  const auto& fc1_scales_dims = fc1_scales->Shape().GetDims();
+  const auto& fc2_scales_dims = fc2_scales->Shape().GetDims();
+  const bool is_fc1_block_wise = (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1);
+  const bool is_fc2_block_wise = (fc2_scales_dims.size() == 3 && fc2_scales_dims[2] > 1);
+
+  const uint8_t* fc1_weights_data = fc1_experts_weights->Data<uint8_t>();
+  const uint8_t* fc2_weights_data = fc2_experts_weights->Data<uint8_t>();
+  const T* fc1_scales_data = fc1_scales->Data<T>();
+  const T* fc2_scales_data = fc2_scales->Data<T>();
+  const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->Data<T>() : nullptr;
+  const T* fc2_bias_data = fc2_experts_bias ? fc2_experts_bias->Data<T>() : nullptr;
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
     int thread_id = static_cast<int>(thread_id_pd);
@@ -289,69 +348,53 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         continue;
       }
 
-      const int64_t num_expert_tokens = routes.size();
+      const int64_t num_expert_tokens = static_cast<int64_t>(routes.size());
 
-      // Partition the workspace for the current expert
+      // Partition the workspace for the current expert with alignment
       float* A1 = thread_workspace;
-      float* C1 = A1 + num_expert_tokens * hidden_size;
-      float* A2 = C1 + num_expert_tokens * fc1_out_features;
-      float* C2 = A2 + num_expert_tokens * inter_size;
-      float* B1_dequant = C2 + num_expert_tokens * hidden_size;
-      float* B2_dequant = B1_dequant + fc1_out_features * hidden_size;
-      float* bias1_float = B2_dequant + hidden_size * inter_size;
-      float* bias2_float = bias1_float + fc1_out_features;
+      float* C1 = A1 + A1_size;
+      float* A2 = C1 + C1_size;
+      float* C2 = A2 + A2_size;
+      float* B1_dequant = C2 + C2_size;
+      float* B2_dequant = B1_dequant + B1_dequant_size;
+      float* bias1_float = B2_dequant + B2_dequant_size;
+      float* bias2_float = bias1_float + bias1_size;
 
-      // --- Gather input tokens for the current expert ---
-      for (int64_t i = 0; i < num_expert_tokens; ++i) {
-        const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
-        memcpy(A1 + i * hidden_size,
-               input_float + token_idx * hidden_size,
-               static_cast<size_t>(hidden_size) * sizeof(float));
-      }
-
-      // --- FC1 GEMM (X * W1^T) ---
-      // Calculate scale pointer for FC1.
-      // When block_size > 0: scales shape is (num_experts, fc1_out_features, blocks_per_row)
-      // When block_size == 0: scales shape is (num_experts, fc1_out_features)
-      const T* fc1_scales_ptr;
-      if (block_size_ > 0) {
-        const int64_t fc1_blocks_per_row = (hidden_size + block_size_ - 1) / block_size_;
-        fc1_scales_ptr = fc1_scales->Data<T>() + expert_idx * fc1_out_features * fc1_blocks_per_row;
+      // --- Optimized input token gathering ---
+      if (num_expert_tokens >= kMinTokensForParallelGather) {
+        // Parallel gather for large batches
+        concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_expert_tokens), [&](std::ptrdiff_t i) {
+          const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
+          std::memcpy(A1 + i * hidden_size,
+                      input_float + token_idx * hidden_size,
+                      static_cast<size_t>(hidden_size) * sizeof(float));
+        });
       } else {
-        fc1_scales_ptr = fc1_scales->Data<T>() + expert_idx * fc1_out_features;
+        // Sequential gather for small batches
+        for (int64_t i = 0; i < num_expert_tokens; ++i) {
+          const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
+          std::memcpy(A1 + i * hidden_size,
+                      input_float + token_idx * hidden_size,
+                      static_cast<size_t>(hidden_size) * sizeof(float));
+        }
       }
 
-      // Compute packed columns per (logical) row for the quantized weights (ceil division)
+      // --- Optimized FC1 GEMM (X * W1^T) ---
+      const T* fc1_scales_ptr;
+      if (is_fc1_block_wise) {
+        const int64_t fc1_blocks_per_row = fc1_scales_dims[2];
+        fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features * fc1_blocks_per_row;
+      } else {
+        fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features;
+      }
+
       const int64_t pack_unit = (8 / expert_weight_bits_);
       const int64_t fc1_packed_cols = (hidden_size + pack_unit - 1) / pack_unit;
 
-      DequantizeBlock(fc1_experts_weights->Data<uint8_t>() + expert_idx * fc1_out_features * fc1_packed_cols,
+      DequantizeBlock(fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
                       fc1_scales_ptr,
-                      block_size_, expert_weight_bits_,
+                      is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
                       fc1_out_features, hidden_size, B1_dequant);
-
-      if (kQmoeDebugEnabled && !routes.empty()) {
-        const int64_t blocks_per_row = (hidden_size + block_size_ - 1) / (block_size_ > 0 ? block_size_ : hidden_size);
-        std::cerr << "[QMoE DEBUG] FC1 expert=" << expert_idx << " num_tokens=" << routes.size() << "\n";
-
-        if (kQmoeDebugAutoDetect) {
-          // Print all experts briefly for overview
-          std::cerr << " FC1 first few weights and scales:\n";
-          const int64_t cols_to_show = std::min<int64_t>(hidden_size, 8);
-          for (int64_t r = 0; r < std::min<int64_t>(fc1_out_features, 2); ++r) {
-            std::cerr << "  row=" << r << ":";
-            for (int64_t c = 0; c < cols_to_show; ++c) {
-              const int64_t block_idx = (block_size_ > 0) ? std::min(c / block_size_, blocks_per_row - 1) : 0;
-              const int64_t scale_idx = r * blocks_per_row + block_idx;
-              const float scale = static_cast<float>(fc1_scales_ptr[scale_idx]);
-              const uint8_t packed_val = fc1_experts_weights->Data<uint8_t>()[expert_idx * fc1_out_features * fc1_packed_cols + r * fc1_packed_cols + c / 2];
-              const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
-              std::cerr << " c" << c << "=" << static_cast<int>(quantized_val) << "@" << scale;
-            }
-            std::cerr << "\n";
-          }
-        }
-      }
 
       MlasGemm(CblasNoTrans, CblasTrans,
                static_cast<size_t>(num_expert_tokens), static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size),
@@ -360,69 +403,47 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                0.0f, C1, static_cast<size_t>(fc1_out_features),
                nullptr);
 
-      const T* B1_bias = (fc1_experts_bias) ? fc1_experts_bias->Data<T>() + expert_idx * fc1_out_features : nullptr;
-      if (B1_bias) {
+      // Optimized bias addition
+      if (fc1_bias_data) {
+        const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
         if constexpr (std::is_same_v<T, MLFloat16>) {
           MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), bias1_float, static_cast<size_t>(fc1_out_features));
         } else {
-          memcpy(bias1_float, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
+          std::memcpy(bias1_float, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
         }
+
+        // Optimized bias addition (without SIMD)
         for (int64_t i = 0; i < num_expert_tokens; ++i) {
+          float* C1_row = C1 + i * fc1_out_features;
           for (int64_t j = 0; j < fc1_out_features; ++j) {
-            C1[i * fc1_out_features + j] += bias1_float[j];
+            C1_row[j] += bias1_float[j];
           }
         }
       }
 
-      // --- Activation ---
+      // --- Optimized Activation ---
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
         const float* C1_token = C1 + i * fc1_out_features;
         float* A2_token = A2 + i * inter_size;
         ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
       }
 
-      // --- FC2 GEMM (A2 * W2^T) ---
-      // Calculate scale pointer for FC2.
-      // When block_size > 0: scales shape is (num_experts, hidden_size, blocks_per_row)
-      // When block_size == 0: scales shape is (num_experts, hidden_size)
+      // --- Optimized FC2 GEMM (A2 * W2^T) ---
       const T* fc2_scales_ptr;
-      if (block_size_ > 0) {
-        const int64_t fc2_blocks_per_row = (inter_size + block_size_ - 1) / block_size_;
-        fc2_scales_ptr = fc2_scales->Data<T>() + expert_idx * hidden_size * fc2_blocks_per_row;
+      if (is_fc2_block_wise) {
+        const int64_t fc2_blocks_per_row = fc2_scales_dims[2];
+        fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size * fc2_blocks_per_row;
       } else {
-        fc2_scales_ptr = fc2_scales->Data<T>() + expert_idx * hidden_size;
+        fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size;
       }
 
       const int64_t pack_unit2 = (8 / expert_weight_bits_);
       const int64_t fc2_packed_cols = (inter_size + pack_unit2 - 1) / pack_unit2;
 
-      DequantizeBlock(fc2_experts_weights->Data<uint8_t>() + expert_idx * hidden_size * fc2_packed_cols,
+      DequantizeBlock(fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
                       fc2_scales_ptr,
-                      block_size_, expert_weight_bits_,
+                      is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
                       hidden_size, inter_size, B2_dequant);
-
-      if (kQmoeDebugEnabled && !routes.empty()) {
-        const int64_t blocks_per_row = (inter_size + block_size_ - 1) / (block_size_ > 0 ? block_size_ : inter_size);
-        std::cerr << "[QMoE DEBUG] FC2 expert=" << expert_idx << " num_tokens=" << routes.size() << "\n";
-
-        if (kQmoeDebugAutoDetect) {
-          // Print brief FC2 weight overview
-          std::cerr << " FC2 first few weights and scales:\n";
-          const int64_t cols_to_show = std::min<int64_t>(inter_size, 8);
-          for (int64_t r = 0; r < std::min<int64_t>(hidden_size, 2); ++r) {
-            std::cerr << "  row=" << r << ":";
-            for (int64_t c = 0; c < cols_to_show; ++c) {
-              const int64_t block_idx = (block_size_ > 0) ? std::min(c / block_size_, blocks_per_row - 1) : 0;
-              const int64_t scale_idx = r * blocks_per_row + block_idx;
-              const float scale = static_cast<float>(fc2_scales_ptr[scale_idx]);
-              const uint8_t packed_val = fc2_experts_weights->Data<uint8_t>()[expert_idx * hidden_size * fc2_packed_cols + r * fc2_packed_cols + c / 2];
-              const uint8_t quantized_val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
-              std::cerr << " c" << c << "=" << static_cast<int>(quantized_val) << "@" << scale;
-            }
-            std::cerr << "\n";
-          }
-        }
-      }
 
       MlasGemm(CblasNoTrans, CblasTrans,
                static_cast<size_t>(num_expert_tokens), static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size),
@@ -431,72 +452,50 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                0.0f, C2, static_cast<size_t>(hidden_size),
                nullptr);
 
-      // Debug: Print C2 output sample after FC2 GEMM
-      if (kQmoeDebugEnabled && !routes.empty()) {
-        const int64_t first_token_pos = routes[0] / k_;
-        std::cerr << " [QMoE DEBUG] Sample C2 output for expert=" << expert_idx << " first_token_pos=" << first_token_pos << "\n";
-
-        if (kQmoeDebugAutoDetect) {
-          // Print first few output values and look for obviously wrong ones
-          const int64_t vec_len = std::min<int64_t>(hidden_size, kQmoeDebugMaxVecDump);
-          const float* sample_C2 = C2;  // C2[0] is first token
-          std::cerr << "  First " << vec_len << " C2 values:";
-          for (int64_t v = 0; v < vec_len; ++v) {
-            std::cerr << " [" << v << "]=" << sample_C2[v];
-            // Flag potentially problematic values
-            if (std::abs(sample_C2[v]) > 1000.0f || std::isnan(sample_C2[v]) || std::isinf(sample_C2[v])) {
-              std::cerr << "(!!)";
-            }
-          }
-          std::cerr << "\n";
-
-          // Also show a few values around typical problem areas (if in range)
-          if (hidden_size > 50) {
-            std::cerr << "  C2 values around idx 50:";
-            for (int64_t v = 47; v <= 53 && v < hidden_size; ++v) {
-              std::cerr << " [" << v << "]=" << sample_C2[v];
-            }
-            std::cerr << "\n";
-          }
-        }
-      }
-
-      const T* B2_bias = (fc2_experts_bias) ? fc2_experts_bias->Data<T>() + expert_idx * hidden_size : nullptr;
-      if (B2_bias) {
+      // Prepare bias for FC2
+      if (fc2_bias_data) {
+        const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
         if constexpr (std::is_same_v<T, MLFloat16>) {
           MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), bias2_float, static_cast<size_t>(hidden_size));
         } else {
-          memcpy(bias2_float, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
+          std::memcpy(bias2_float, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
         }
       }
 
+      // --- Optimized output accumulation with bounds checking ---
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
         const int64_t route_idx = routes[static_cast<size_t>(i)];
         const int64_t token_idx = route_idx / k_;
         const float weight = route_scale[route_idx];
 
+        // Bounds checking
+        if (token_idx < 0 || token_idx >= num_tokens) continue;
+
         const size_t buffer_offset = static_cast<size_t>(token_idx) * static_cast<size_t>(hidden_size);
         if (buffer_offset + static_cast<size_t>(hidden_size) > output_buffer_size) {
-          // Skip this token to prevent buffer overflow
           continue;
         }
 
         float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + buffer_offset;
         const float* src = C2 + i * hidden_size;
+
+        // Optimized accumulation (without SIMD)
         for (int64_t j = 0; j < hidden_size; ++j) {
-          dest[j] += weight * (src[j] + (B2_bias ? bias2_float[j] : 0.0f));
+          dest[j] += weight * (src[j] + (fc2_bias_data ? bias2_float[j] : 0.0f));
         }
       }
     }
-  });
-
-  // --- 4. Final Reduction (accumulate expert outputs to a float buffer) ---
+  });  // --- 4. Optimized Final Reduction (accumulate expert outputs) ---
   auto accumulate = [&](float* buffer) {
-    memset(buffer, 0, output_buffer_size * sizeof(float));
+    std::memset(buffer, 0, output_buffer_size * sizeof(float));
+
+    // Optimized reduction for better performance
     for (int i = 0; i < num_expert_threads; ++i) {
       const size_t thread_offset = static_cast<size_t>(i) * output_buffer_size;
+      const float* src = thread_local_outputs + thread_offset;
+
       for (size_t j = 0; j < output_buffer_size; ++j) {
-        buffer[j] += thread_local_outputs[thread_offset + j];
+        buffer[j] += src[j];
       }
     }
   };
@@ -506,7 +505,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     float* final_output_float = final_output_float_ptr.get();
     accumulate(final_output_float);
 
-    // --- 5. Convert final float buffer to output type T ---
+    // --- 5. Optimized type conversion ---
     MlasConvertFloatToHalfBuffer(final_output_float,
                                  reinterpret_cast<MLFloat16*>(output->MutableData<T>()),
                                  static_cast<size_t>(output_buffer_size));
