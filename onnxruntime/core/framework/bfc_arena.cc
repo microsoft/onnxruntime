@@ -13,7 +13,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    int max_dead_bytes_per_chunk,
                    int initial_growth_chunk_size_bytes,
                    int64_t max_power_of_two_extend_bytes)
-    : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
+    : IAllocator(OrtMemoryInfo(resource_allocator->Info().name.c_str(),
                                OrtAllocatorType::OrtArenaAllocator,
                                resource_allocator->Info().device,
                                resource_allocator->Info().mem_type)),
