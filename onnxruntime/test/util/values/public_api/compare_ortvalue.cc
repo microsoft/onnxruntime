@@ -693,7 +693,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
       return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
     }
 
-    for (size_t i = 0; i < expected_num_elements; ++i) {
+    for (int i = 0; i < static_cast<int>(expected_num_elements); ++i) {
       const Ort::Value actual_ort_value = output_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions());
       const Ort::Value expect_ort_value = expected_mlvalue.GetValue(i, Ort::AllocatorWithDefaultOptions());
 
