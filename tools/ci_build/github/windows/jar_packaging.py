@@ -2,22 +2,41 @@
 # Licensed under the MIT License.
 
 """
-This script packages the Java artifacts for ONNX Runtime.
+Packages ONNX Runtime Java artifacts by combining native libraries from
+various platform builds into final Java archive (JAR) files.
 
-It is a Python rewrite of the original PowerShell script and is designed to
-be used in Azure DevOps pipelines to create the final Java packages for
-both CPU and GPU variants.
+This script is designed for CI/CD pipelines and expects a specific input
+directory structure created by preceding build steps.
 
-The script performs the following steps:
-1.  Discovers the ONNX Runtime version from the primary CPU package JAR file.
-2.  Defines package configurations for different platforms (CPU/GPU).
-3.  For GPU packages, it copies necessary provider libraries (.so/.dll) into
-    the target platform directories.
-4.  Processes each platform-specific directory by:
-    a. Optionally archiving a custom operator library to a test JAR.
-    b. Removing the custom operator library after archiving.
-    c. Archiving all remaining contents into the main package JAR.
-5.  Uses Python's built-in 'zipfile' module for all archiving operations.
+Input Format:
+The script requires a root directory named 'java-artifact/'. This directory
+must contain a specific structure of subdirectories and files:
+
+1.  **Platform-Specific Subdirectories:** For each target platform, a
+    subdirectory must exist. Examples:
+    - `java-artifact/onnxruntime-java-win-x64/`
+    - `java-artifact/onnxruntime-java-linux-x64/`
+    - `java-artifact/onnxruntime-java-osx-arm64/`
+
+2.  **Native Library Path:** Inside each platform subdirectory, the native
+    binaries (.dll, .so, .dylib) must be placed in a nested path that
+    matches the Java package structure.
+    - Path format: `ai/onnxruntime/native/<platform-arch>/`
+    - Example: The `onnxruntime.dll` for Windows x64 must be at:
+      `java-artifact/onnxruntime-java-win-x64/ai/onnxruntime/native/win-x64/onnxruntime.dll`
+
+3.  **Version Source JAR:** The primary Windows directory
+    (`onnxruntime-java-win-x64`) must also contain the initial Java JAR
+    (e.g., 'onnxruntime-1.18.0.jar'). The script reads this file's name
+    to determine the package version. This JAR should contain the compiled
+    Java class files.
+
+Outputs:
+- A primary ONNX Runtime JAR file (e.g., 'onnxruntime-1.18.0.jar' or
+  'onnxruntime_gpu-1.18.0.jar'). This is a comprehensive archive containing
+  the native libraries for all supported platforms.
+- A secondary testing JAR file (e.g., 'testing-onnxruntime.jar') that
+  includes custom operator libraries used for validation.
 """
 
 import argparse
@@ -153,7 +172,7 @@ def main():
 
     # --- Version Discovery ---
     print(f"Discovering version from JAR files in '{primary_package_dir}'...")
-    jar_pattern = str(primary_package_dir / "onnxruntime-*.jar")
+    jar_pattern = str(primary_package_dir / "onnxruntime*-*.jar")
     jar_files = [
         Path(f) for f in glob.glob(jar_pattern)
         if "-sources.jar" not in f and "-javadocs.jar" not in f
@@ -164,12 +183,18 @@ def main():
         sys.exit(1)
 
     main_cpu_jar_file = jar_files[0]
-    # e.g., "onnxruntime-1.15.0" -> "1.15.0"
+    main_cpu_jar_file_stem = main_cpu_jar_file.stem
     try:
-        version = main_cpu_jar_file.stem.split('-')[-1]
-    except IndexError:
-        print(f"Error: Failed to parse version from filename '{main_cpu_jar_file.name}'.", file=sys.stderr)
+        if main_cpu_jar_file_stem.startswith("onnxruntime_gpu-"):
+            version = main_cpu_jar_file_stem.replace("onnxruntime_gpu-", "", 1)
+        elif main_cpu_jar_file_stem.startswith("onnxruntime-"):
+            version = main_cpu_jar_file_stem.replace("onnxruntime-", "", 1)
+        else:
+            raise ValueError(f"Unexpected JAR file name format: {main_cpu_jar_file.name}")
+    except ValueError as e:
+        print(f"Error: Failed to parse version from filename '{main_cpu_jar_file.name}'. Reason: {e}", file=sys.stderr)
         sys.exit(1)
+
 
     print(f"Version discovered: {version}")
 
@@ -260,4 +285,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nAn unhandled error occurred: {e}", file=sys.stderr)
         sys.exit(1)
-
