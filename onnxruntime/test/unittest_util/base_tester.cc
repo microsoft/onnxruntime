@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/util/include/base_tester.h"
+#include "test/unittest_util/base_tester.h"
 
 #include <csignal>
 #include "gmock/gmock.h"
@@ -15,9 +15,9 @@
 
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/run_options_config_keys.h"
-#include "test/util/include/test_allocator_manager.h"
-#include "test/util/include/test_dynamic_plugin_ep.h"
+#include "test/unittest_util/run_options_config_keys.h"
+#include "test/unittest_util/test_allocator_manager.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
 

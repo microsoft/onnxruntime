@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/util/include/test_dynamic_plugin_ep.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 
 #include <iostream>
 #include <functional>

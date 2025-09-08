@@ -15,7 +15,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
-#include "test/util/include/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

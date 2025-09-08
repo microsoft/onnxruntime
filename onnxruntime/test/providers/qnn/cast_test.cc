@@ -12,7 +12,7 @@
 #include "core/framework/float16.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/providers/qnn/qnn_test_utils.h"
-#include "test/util/include/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

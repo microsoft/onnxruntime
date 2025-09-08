@@ -6,8 +6,8 @@
 #include "gtest/gtest.h"
 
 #include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/graph_transform_test_builder.h"
 
 namespace onnxruntime::test {
 

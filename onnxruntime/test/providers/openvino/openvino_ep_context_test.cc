@@ -11,7 +11,7 @@
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"

@@ -8,11 +8,11 @@
 #include "core/mlas/inc/mlas.h"
 #include "gtest/gtest.h"
 #include "graph_transform_test_builder.h"
-#include "test/test_environment.h"
-#include "test/util/include/asserts.h"
 
 #include "test/optimizer/graph_transform_test_fixture.h"
-#include "test/util/include/graph_transform_test_builder.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {

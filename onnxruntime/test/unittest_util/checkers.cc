@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/util/include/checkers.h"
+#include "test/unittest_util/checkers.h"
 
 #include "gtest/gtest.h"
 
@@ -10,7 +10,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/int4.h"
 #include "test/framework/test_utils.h"
-#include "test/util/include/conversion.h"
+#include "test/unittest_util/conversion.h"
 
 namespace onnxruntime {
 namespace test {

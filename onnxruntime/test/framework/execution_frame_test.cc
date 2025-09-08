@@ -11,7 +11,7 @@
 #include "test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/inference_session_wrapper.h"
-#include "test/util/include/test_allocator_manager.h"
+#include "test/unittest_util/test_allocator_manager.h"
 #include "asserts.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"

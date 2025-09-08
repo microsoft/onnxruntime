@@ -16,7 +16,7 @@
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/providers.h"
-#include "test/util/include/test_dynamic_plugin_ep.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 
 namespace onnxruntime {
 

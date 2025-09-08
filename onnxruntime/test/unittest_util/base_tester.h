@@ -17,9 +17,9 @@
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
 
-#include "test/util/include/checkers.h"
-#include "test/util/include/test_allocator_manager.h"
-#include "test/util/include/tester_types.h"
+#include "test/unittest_util/checkers.h"
+#include "test/unittest_util/test_allocator_manager.h"
+#include "test/unittest_util/tester_types.h"
 
 namespace onnxruntime {
 class InferenceSession;

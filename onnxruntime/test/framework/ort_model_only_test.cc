@@ -13,8 +13,8 @@
 #include "test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/test_environment.h"
+#include "test/unittest_util/checkers.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/checkers.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "flatbuffers/idl.h"

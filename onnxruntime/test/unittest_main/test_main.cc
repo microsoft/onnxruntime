@@ -34,7 +34,7 @@
 #endif  // !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
 
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
-#include "test/util/include/test_dynamic_plugin_ep.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
 
 std::unique_ptr<Ort::Env> ort_env;

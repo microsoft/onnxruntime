@@ -14,7 +14,7 @@
 #include "core/util/qmath.h"
 
 #include "test/util/include/default_providers.h"
-#include "test/util/include/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
 

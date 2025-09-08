@@ -11,7 +11,7 @@
 #include "core/providers/coreml/coreml_provider_factory.h"  // for COREMLFlags
 #include "test/common/random_generator.h"
 #include "test/util/include/current_test_name.h"
-#include "test/util/include/model_tester.h"
+#include "test/unittest_util/model_tester.h"
 #include "test/util/include/test_utils.h"
 
 namespace onnxruntime::test {

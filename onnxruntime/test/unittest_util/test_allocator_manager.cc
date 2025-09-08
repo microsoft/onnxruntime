@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/util/include/test_allocator_manager.h"
+#include "test/unittest_util/test_allocator_manager.h"
 
 namespace onnxruntime {
 namespace test {

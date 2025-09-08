@@ -8,8 +8,8 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/graph_transform_test_builder.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 
 using namespace std;
