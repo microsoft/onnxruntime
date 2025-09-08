@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <sstream>
+#include <cstdint>
 
 #include "core/providers/webgpu/shader_variable.h"
 
@@ -93,6 +94,33 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "i32",   // Int4x8
 };
 constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
+
+constexpr static const uint32_t BYTES_ARRAY[] = {
+    4,   // Float32
+    8,   // Float32x2
+    16,  // Float32x4
+    2,   // Float16
+    4,   // Float16x2
+    8,   // Float16x4
+    4,   // Int32
+    8,   // Int32x2
+    16,  // Int32x4
+    4,   // Uint32
+    8,   // Uint32x2
+    16,  // Uint32x4
+    8,   // Int64 (vec2<u32>)
+    8,   // Uint64 (vec2<u32>)
+    4,   // Boolx4 (packed in u32)
+    4,   // Uint8x4 (packed in u32)
+    8,   // Uint8x8 (vec2<u32>)
+    16,  // Uint8x16 (vec4<u32>)
+    4,   // Int8x4 (packed in u32)
+    8,   // Int8x8 (vec2<u32>)
+    16,  // Int8x16 (vec4<u32>)
+    4,   // Uint4x8 (packed in u32)
+    4,   // Int4x8 (packed in u32)
+};
+constexpr static const auto BYTES = details::_to_std_array(BYTES_ARRAY);
 
 inline std::string GetIndicesType(int rank) {
   return rank < 2 ? "u32"
@@ -272,6 +300,29 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
       SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices_fnarg)"), ";\n");
       SS_APPEND(ss, "}\n");
     }
+  }
+  // Implementation of "fn get_{name}_from_offset" for multi-buffer segmented inputs
+  if ((usage_ & ShaderUsage::UseGetByMultipleBuffer) && segments_ > 1) {
+    // Multi-buffer segmented input accessor.
+    // Compute which physical storage buffer chunk the global linear element offset belongs to.
+    // We assume each element occupies 16 bytes (128 bits) currently; TODO: derive from actual element/value type size instead of fixed 128.
+    SS_APPEND(ss, "fn get_", name_, "_from_offset(global_offset: u32) -> ", ValueType(), " {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    // case 0 (base buffer name_)
+    SS_APPEND(ss, "    case 0u: { return ", name_, "[local_offset]; }\n");
+    for (int i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { return ", name_, i, "[local_offset]; }\n");
+    }
+    SS_APPEND(ss, "    default: { return ", name_, "[local_offset]; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  } else if ((usage_ & ShaderUsage::UseGetByMultipleBuffer) && segments_ == 1) {
+    std::string element_t = std::string(ElementType());
+    SS_APPEND(ss, "fn get_", name_, "_from_offset(offset: u32) -> ", ValueType(), " {\n");
+    SS_APPEND(ss, "  return ", name_, "[offset];\n}\n");
   }
 }
 

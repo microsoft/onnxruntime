@@ -163,7 +163,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
-            let b_value = input_b[b_idx];
+            let b_value = get_input_b_from_offset(b_idx);
             let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
             let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
             let tile_b_base = row * tile_k + col;
@@ -192,7 +192,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale   = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
-            let b_value = input_b[b_idx];
+            let b_value = get_input_b_from_offset(b_idx);
             let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
             let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(zero)) * scale;
             let tile_b_base = row * tile_k + col;
@@ -313,7 +313,7 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             for (var step:u32 = 0; step < 2; step++)
             {
-                var b_value = input_b[b_idx+step];
+                var b_value = get_input_b_from_offset(b_idx+step);
                 var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
                 var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
                 let tile_b_base = row * tile_k + col + step * 8;
@@ -345,7 +345,7 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             for (var step:u32 = 0; step < 2; step++)
             {
-                var b_value = input_b[b_idx+step];
+                var b_value = get_input_b_from_offset(b_idx+step);
                 var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
                 var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
                 let tile_b_base = row * tile_k + col + step * 8;
@@ -464,7 +464,7 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
 
 Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseGetByMultipleBuffer);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
