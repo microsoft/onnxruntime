@@ -78,13 +78,15 @@ stages:
 
     - script: |
         set -ex
-        find . -name '*.zip' -exec unzip {} \;
-        rm -f *.zip;
-        find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;
-        find . -type d -name 'onnxruntime-osx-*' -exec rm -rf {} \;
+        mkdir temp
+        cd temp
+        find $(Build.ArtifactStagingDirectory) -name '*.zip' -exec unzip {} \;
+        rm -f $(Build.ArtifactStagingDirectory)/*;
+        find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;        
         ls -l
+        mv *.tgz $(Build.ArtifactStagingDirectory)
       displayName: 'Unzip Signed Files and Repackage to TGZ'
-      workingDirectory: $(Build.ArtifactStagingDirectory)
+      workingDirectory: $(Agent.TempDirectory)
 
     - bash: |
         set -ex

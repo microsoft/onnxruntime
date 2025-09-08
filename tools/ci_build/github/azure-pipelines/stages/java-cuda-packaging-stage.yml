@@ -15,12 +15,8 @@ stages:
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
 
       - input: pipelineArtifact
-        artifactName: drop-onnxruntime-java-linux-x64-cuda
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
-
-      - input: pipelineArtifact
         artifactName: drop-onnxruntime-java-linux-x64-tensorrt
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
         
       outputs:
       - output: pipelineArtifact
