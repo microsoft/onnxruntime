@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 #include <fstream>
 #include <list>
+#include <thread>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
@@ -83,6 +84,108 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
+
+// Helper function to check if a data type is supported by NvTensorRTRTX EP
+static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:         // kFLOAT - 32-bit floating point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:       // kHALF - IEEE 16-bit floating-point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:      // kBF16 - Brain float 16
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:          // kBOOL - 8-bit boolean
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:          // kINT4 - 4-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:          // kINT8 - 8-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:         // kUINT8 - 8-bit unsigned integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:         // kINT32 - 32-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:         // kINT64 - 64-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:  // kFP8 - 8-bit floating point
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Helper function to get data type name as string
+static std::string GetDataTypeName(ONNXTensorElementDataType data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      return "FLOAT";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      return "FLOAT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      return "BFLOAT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      return "BOOL";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
+      return "INT4";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return "INT8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      return "UINT8";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      return "INT32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return "INT64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+      return "FLOAT8E4M3FN";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      return "DOUBLE";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      return "STRING";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      return "UINT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      return "UINT32";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      return "UINT64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      return "INT16";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+      return "COMPLEX64";
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+      return "COMPLEX128";
+    default:
+      return "UNKNOWN(" + std::to_string(static_cast<int>(data_type)) + ")";
+  }
+}
+
+// Helper function to check if a node has supported data types
+static bool CheckNodeDataTypes(const Node* node) {
+  // Check input data types
+  for (const auto* input_def : node->InputDefs()) {
+    if (input_def->Exists()) {
+      const auto* type_proto = input_def->TypeAsProto();
+      if (type_proto && type_proto->has_tensor_type()) {
+        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        if (!IsSupportedDataType(data_type)) {
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                << "' (OpType: " << node->OpType()
+                                << ") has unsupported input data type: " << GetDataTypeName(data_type)
+                                << " for input '" << input_def->Name() << "'";
+          return false;
+        }
+      }
+    }
+  }
+
+  // Check output data types
+  for (const auto* output_def : node->OutputDefs()) {
+    if (output_def->Exists()) {
+      const auto* type_proto = output_def->TypeAsProto();
+      if (type_proto && type_proto->has_tensor_type()) {
+        auto data_type = static_cast<ONNXTensorElementDataType>(type_proto->tensor_type().elem_type());
+        if (!IsSupportedDataType(data_type)) {
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                                << "' (OpType: " << node->OpType()
+                                << ") has unsupported output data type: " << GetDataTypeName(data_type)
+                                << " for output '" << output_def->Name() << "'";
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
 
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
                                              uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
@@ -477,10 +580,12 @@ Status BindContextInput(Ort::KernelContext& ctx,
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, uint8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
@@ -561,10 +666,12 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, uint8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -623,10 +730,12 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, uint8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -654,9 +763,9 @@ void NvExecutionProvider::PerThreadContext::ResetTensorRTContext(std::string fus
   }
 }
 
-bool NvExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context) {
+bool NvExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fused_node, tensorrt_ptr::unique_pointer_exec_ctx context) {
   if (!context) {
-    context = std::make_unique<nvinfer1::IExecutionContext>();
+    context = tensorrt_ptr::unique_pointer_exec_ctx();
   }
   trt_context_map_[fused_node] = std::move(context);
 
@@ -757,11 +866,11 @@ bool NvExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::string f
 nvinfer1::IExecutionContext& NvExecutionProvider::PerThreadContext::GetTensorRTContext(std::string fused_node) {
   auto it = trt_context_map_.find(fused_node);
   if (it != trt_context_map_.end()) {
-    return *(it->second);  // dereference shared pointer
+    return *(it->second.get());  // dereference shared pointer
   }
-  auto context = std::make_unique<nvinfer1::IExecutionContext>();
+  auto context = tensorrt_ptr::unique_pointer_exec_ctx();
   trt_context_map_[fused_node] = std::move(context);
-  return *(trt_context_map_[fused_node]);  // dereference shared pointer
+  return *(trt_context_map_[fused_node].get());  // dereference shared pointer
 }
 
 void NvExecutionProvider::ReleasePerThreadContext() const {
@@ -870,6 +979,20 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   max_shared_mem_size_ = info.max_shared_mem_size;
   dump_subgraphs_ = info.dump_subgraphs;
   weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
+  // make runtime cache path absolute and create directory if it doesn't exist
+  if (!info.runtime_cache_path.empty()) {
+    std::filesystem::path p(info.runtime_cache_path);
+    std::filesystem::path abs_path = std::filesystem::absolute(p);
+    const auto& env = GetDefaultEnv();
+    auto status = env.CreateFolder(abs_path.string());
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] The runtime cache directory could not be created at: " << abs_path
+                            << ". Runtime cache is disabled.";
+    } else {
+      runtime_cache_ = abs_path;
+    }
+  }
+
   onnx_model_folder_path_ = info.onnx_model_folder_path;
   onnx_model_bytestream_ = info.onnx_bytestream;
   onnx_model_bytestream_size_ = info.onnx_bytestream_size;
@@ -1053,7 +1176,13 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
                         << ", nv_onnx_external_bytestream_size_: " << onnx_external_data_bytestream_size_
                         << ", nv_use_external_data_initializer_: " << use_external_data_initializer_
-                        << ", nv_op_types_to_exclude: " << op_types_to_exclude_;
+                        << ", nv_op_types_to_exclude: " << op_types_to_exclude_
+                        << ", nv_runtime_cache_path: " << runtime_cache_;
+}
+
+Status NvExecutionProvider::Sync() const {
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
+  return Status::OK();
 }
 
 NvExecutionProvider::~NvExecutionProvider() {
@@ -1574,8 +1703,8 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
               // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
               size_t size = 0;
               const void* ptr = nullptr;
-              c_api.GetTensorSizeInBytes(&initializer_value, &size);
-              c_api.GetTensorData(&initializer_value, &ptr);
+              Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
+              Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
               userWeights.emplace_back(tp->name(), ptr, size);
             } else if (utils::HasExternalDataInMemory(*tp)) {
               // only copy and take ownership of the data if none of the above conditions are met
@@ -1857,6 +1986,7 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   /* Iterate all the nodes and exclude the node if:
    *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible.
    *   2. It's a DDS op.
+   *   3. It has unsupported data types.
    */
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
@@ -1894,6 +2024,16 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     // Exclude any ops, if applicable
     if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
       supported_node = false;
+    }
+
+    // Check data types and print warnings for unsupported types
+    if (supported_node) {
+      if (!CheckNodeDataTypes(node)) {
+        supported_node = false;
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Node '" << node->Name()
+                           << "' (OpType: " << node->OpType()
+                           << ") excluded due to unsupported data types";
+      }
     }
 
     if (supported_node) {
@@ -2394,8 +2534,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
         size_t size = 0;
         const void* ptr = nullptr;
-        c_api.GetTensorSizeInBytes(&initializer_value, &size);
-        c_api.GetTensorData(&initializer_value, &ptr);
+        Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
+        Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
         userWeights.emplace_back(tp->name(), ptr, size);
       } else if (utils::HasExternalDataInMemory(*tp)) {
         // only copy and take ownership of the data if none of the above conditions are met
@@ -2631,8 +2771,10 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   //
   // Otherwise engine will be handled at inference time.
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
-  std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
+  tensorrt_ptr::unique_pointer_exec_ctx trt_context;
+  std::unique_ptr<nvinfer1::IRuntimeCache> trt_runtime_cache;
   std::unique_ptr<nvinfer1::IRuntimeConfig> trt_runtime_config;
+  std::string runtime_cache_file = "";
 
   // Generate file name for dumping ep context model
   if (dump_ep_context_model_ && ctx_model_path_.empty()) {
@@ -2661,6 +2803,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
     }
     trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
+    if (!runtime_cache_.empty()) {
+      runtime_cache_file = (runtime_cache_ / fused_node.Name()).string();
+      trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
+      auto cache_data = file_utils::ReadFile(runtime_cache_file);
+      if (!trt_runtime_cache->deserialize(cache_data.data(), cache_data.size())) {
+        trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
+        LOGS_DEFAULT(INFO) << "TensorRT RTX failed to deserialize the runtime cache, will overwrite with new one" << std::endl;
+      }
+      if (!trt_runtime_config->setRuntimeCache(*trt_runtime_cache)) {
+        LOGS_DEFAULT(INFO) << "TensorRT RTX failed to set the runtime cache" << std::endl;
+      }
+    }
 
     if (detailed_build_log_) {
       auto engine_build_stop = std::chrono::steady_clock::now();
@@ -2721,7 +2875,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // Build context
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(trt_runtime_config.get()));
+  trt_context = tensorrt_ptr::unique_pointer_exec_ctx(
+      trt_engine->createExecutionContext(trt_runtime_config.get()),
+      tensorrt_ptr::IExecutionContextDeleter(runtime_cache_file, std::move(trt_runtime_cache)));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "NvTensorRTRTX EP could not build execution context for fused node: " + fused_node.Name());
@@ -3002,7 +3158,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
                                                                        std::unordered_map<std::string, size_t>& output_map,
                                                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
-  std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
+  tensorrt_ptr::unique_pointer_exec_ctx trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
   std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
@@ -3024,11 +3180,33 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
   }
 
+  std::unique_ptr<nvinfer1::IRuntimeCache> trt_runtime_cache;
+  auto trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
+  if (trt_runtime_config && cuda_graph_enable_) {
+    trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
+  }
+  trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
+  std::string runtime_cache_file = "";
+  if (!runtime_cache_.empty()) {
+    runtime_cache_file = (runtime_cache_ / graph_body_viewer.GetNode(node_idx)->Name()).string();
+    trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
+    auto cache_data = file_utils::ReadFile(runtime_cache_file);
+    if (!trt_runtime_cache->deserialize(cache_data.data(), cache_data.size())) {
+      trt_runtime_cache = std::unique_ptr<nvinfer1::IRuntimeCache>(trt_runtime_config->createRuntimeCache());
+      LOGS_DEFAULT(INFO) << "TensorRT RTX failed to deserialize the runtime cache, will overwrite with new one" << std::endl;
+    }
+    if (!trt_runtime_config->setRuntimeCache(*trt_runtime_cache)) {
+      LOGS_DEFAULT(INFO) << "TensorRT RTX failed to set the runtime cache" << std::endl;
+    }
+  }
+
   // Build context
   //
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+  trt_context = tensorrt_ptr::unique_pointer_exec_ctx(
+      trt_engine->createExecutionContext(trt_runtime_config.get()),
+      tensorrt_ptr::IExecutionContextDeleter(runtime_cache_file, std::move(trt_runtime_cache)));
   if (!trt_context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "NvTensorRTRTX EP could not build execution context for fused node: " + fused_node.Name());

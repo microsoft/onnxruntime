@@ -245,6 +245,12 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Add HWCN Transpose node after input: " << input1_name;
 
+      if (!qnn_model_wrapper.IsQnnTensorWrapperExist(input1_name)) {
+        QnnTensorWrapper weight_tensor_wrapper;
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], weight_tensor_wrapper));
+        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)), "Failed to add weight tensor.");
+      }
+
       if (conv_type == OnnxConvType::kConv) {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddNchwToHwcnTranspose(node_unit.Index(),
                                                                      input1_name,
@@ -425,7 +431,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
   //
   // Input 1: weight
-  // We need to first reshape the weight inorder to handle 1D convolutions with the Conv2d operator.
+  // We need to first reshape the weight in order to handle 1D convolutions with the Conv2d operator.
   // Next, we have to transpose the weight because ORT layout transformations do not change the weight layout.
   //
   {
@@ -510,6 +516,12 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       // Dynamic weight: Add nodes to reshape to 2D, and then transpose.
       ORT_RETURN_IF(input_info.quant_param.IsPerChannel(),
                     "Non-constant Conv inputs only support per-tensor quantization");
+
+      if (!qnn_model_wrapper.IsQnnTensorWrapperExist(input1_name)) {
+        QnnTensorWrapper weight_tensor_wrapper;
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], weight_tensor_wrapper));
+        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)), "Failed to add weight tensor.");
+      }
 
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Adding Reshape (to 2D) and HWCN Transpose node after input: " << input1_name;

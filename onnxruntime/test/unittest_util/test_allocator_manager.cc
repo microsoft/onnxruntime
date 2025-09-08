@@ -10,7 +10,7 @@ namespace test {
 class DummyArena : public IAllocator {
  public:
   explicit DummyArena(std::unique_ptr<IAllocator> resource_allocator)
-      : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
+      : IAllocator(OrtMemoryInfo(resource_allocator->Info().name.c_str(),
                                  OrtAllocatorType::OrtDeviceAllocator,
                                  resource_allocator->Info().device,
                                  resource_allocator->Info().mem_type)),
