@@ -61,7 +61,7 @@ $MAIN {
         let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
-        var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
+        var b_value = get_input_b_from_offset(b_global * uniforms.K_of_b + k_offset);
 
 #if n_bits == 4
         var sum = output_element_t(0);

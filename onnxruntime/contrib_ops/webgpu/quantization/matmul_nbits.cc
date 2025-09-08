@@ -43,7 +43,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseGetByMultipleBuffer);
   shader.AddInput("scales", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -65,7 +65,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
-  const auto& b = shader.AddInput("input_b");
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseGetByMultipleBuffer);
   shader.AddInput("scales_b");
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);

@@ -120,7 +120,33 @@ class ComputeContext {
   //
   // Run a compute shader program.
   //
-  inline Status RunProgram(const ProgramBase& program) {
+  inline Status RunProgram(ProgramBase& program) {
+    // Create new inputs with segmentation
+    std::vector<ProgramInput> new_inputs;
+
+    const wgpu::Limits& limits = this->DeviceLimits();
+
+    const uint64_t maxStorageBufferBindingSize = limits.maxStorageBufferBindingSize;
+
+    for (const auto& input : program.Inputs()) {
+      if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
+        // Calculate number of segments needed
+        uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+
+        // Add multiple segmented inputs to new_inputs
+        for (uint32_t i = 0; i < segments; ++i) {
+          new_inputs.emplace_back(input);
+        }
+      } else {
+        new_inputs.emplace_back(input);
+      }
+    }
+
+    // Clear existing inputs and add new segmented inputs
+    program.ClearInputs();
+    for (auto&& new_input : new_inputs) {
+      program.AddInput(std::move(new_input));
+    }
     return webgpu_context_.Run(*this, program);
   }
 

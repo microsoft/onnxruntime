@@ -19,7 +19,7 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
 Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
-  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseGetByMultipleBuffer);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
@@ -37,7 +37,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
-  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseGetByMultipleBuffer);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
