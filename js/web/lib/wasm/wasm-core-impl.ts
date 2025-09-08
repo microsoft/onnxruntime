@@ -863,6 +863,8 @@ export const run = async (
     TRACE_EVENT_BEGIN('wasm ProcessOutputTensor');
     for (let i = 0; i < outputCount; i++) {
       const tensor = Number(wasm.getValue(outputValuesOffset + i * ptrSize, '*'));
+      // TODO: revisit this part to ensure it works for WebGPU when both pre-allocated outputs and
+      // preferred location are specified.
       // Certain pre-allocated tensors may already be bound in the IO binding. e.g. the WebNN backend
       // always binds its tensor to 'ml-tensor'. In such cases, the tensor ID might change after binding,
       // but copying data for these tensors should still be avoided.
