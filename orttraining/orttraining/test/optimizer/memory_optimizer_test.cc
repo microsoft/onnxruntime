@@ -22,7 +22,7 @@
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "core/util/math.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/graph_transform_test_builder.h"

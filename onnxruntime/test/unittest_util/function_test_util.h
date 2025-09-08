@@ -13,7 +13,7 @@
 
 #include "test/common/random_generator.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

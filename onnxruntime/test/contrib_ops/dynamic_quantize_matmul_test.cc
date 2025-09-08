@@ -5,10 +5,10 @@
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/default_providers.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/util/include/default_providers.h"
 #include "core/util/qmath.h"
 
 #include <chrono>

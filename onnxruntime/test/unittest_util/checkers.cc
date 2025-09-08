@@ -9,7 +9,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/int4.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/unittest_util/conversion.h"
 
 namespace onnxruntime {

@@ -10,7 +10,7 @@
 
 #include "core/graph/constants.h"
 #include "core/optimizer/transpose_optimizer.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"

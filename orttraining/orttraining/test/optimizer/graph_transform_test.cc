@@ -4,7 +4,7 @@
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"
 
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 
 #include "gtest/gtest.h"
