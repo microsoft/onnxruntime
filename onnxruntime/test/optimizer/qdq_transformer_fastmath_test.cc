@@ -23,9 +23,9 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
-#include "graph_transform_test_builder.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 
-#include "qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #if defined(__aarch64__) && defined(__linux__) && !defined(DISABLE_CONTRIB_OPS)
 

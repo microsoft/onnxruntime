@@ -8,7 +8,7 @@
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/unittest_util/test_allocator_manager.h"

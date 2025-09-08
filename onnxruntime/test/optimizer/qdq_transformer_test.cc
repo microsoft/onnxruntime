@@ -31,9 +31,9 @@
 #include "test/common/dnnl_op_test_utils.h"
 
 #include "gtest/gtest.h"
-#include "graph_transform_test_builder.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 
-#include "qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4127)

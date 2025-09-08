@@ -10,10 +10,10 @@
 
 #include "gtest/gtest.h"
 
-#include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/test_environment.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "asserts.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {

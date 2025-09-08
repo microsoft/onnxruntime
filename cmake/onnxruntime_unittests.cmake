@@ -356,30 +356,6 @@ file(GLOB onnxruntime_test_utils_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/util/*.cc"
 )
 
-if(onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
-  # some exclusions from a minimal or reduced ops build
-  list(REMOVE_ITEM onnxruntime_test_utils_src
-    "${TEST_SRC_DIR}/util/include/base_tester.h"
-    "${TEST_SRC_DIR}/util/include/function_test_util.h"
-    "${TEST_SRC_DIR}/util/include/graph_transform_test_builder.h"
-    "${TEST_SRC_DIR}/util/include/model_tester.h"
-    "${TEST_SRC_DIR}/util/include/op_tester.h"
-    "${TEST_SRC_DIR}/util/include/qdq_test_utils.h"
-    "${TEST_SRC_DIR}/util/base_tester.cc"
-    "${TEST_SRC_DIR}/util/function_test_util.cc"
-    "${TEST_SRC_DIR}/util/graph_transform_test_builder.cc"
-    "${TEST_SRC_DIR}/util/op_tester.cc"
-    "${TEST_SRC_DIR}/util/qdq_test_utils.cc"
-  )
-
-  if (onnxruntime_MINIMAL_BUILD)
-    list(REMOVE_ITEM onnxruntime_test_utils_src
-      "${TEST_SRC_DIR}/util/include/test_dynamic_plugin_ep.h"
-      "${TEST_SRC_DIR}/util/test_dynamic_plugin_ep.cc"
-    )
-  endif()
-endif()
-
 file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/*.cc"
   "${TEST_SRC_DIR}/common/*.h"
@@ -492,8 +468,6 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/providers/*.h"
     "${TEST_SRC_DIR}/providers/*.cc"
     "${TEST_SRC_DIR}/opaque_api/test_opaque_api.cc"
-    "${TEST_SRC_DIR}/framework/test_utils.cc"
-    "${TEST_SRC_DIR}/framework/test_utils.h"
     "${TEST_SRC_DIR}/contrib_ops/*.h"
     "${TEST_SRC_DIR}/contrib_ops/*.cc"
     "${TEST_SRC_DIR}/contrib_ops/math/*.h"
@@ -502,8 +476,6 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
 else()
   set(onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/framework/test_utils.cc"
-    "${TEST_SRC_DIR}/framework/test_utils.h"
     # TODO: Add anything that is needed for testing a minimal build
   )
 endif()
@@ -640,7 +612,7 @@ set (onnxruntime_webgpu_delay_load_test_SRC
 # the order of libraries should be maintained, with higher libraries being added first in the list
 
 set(onnxruntime_test_common_libs
-  onnxruntime_test_utils
+  onnxruntime_unittest_utils
   onnxruntime_common
 )
 
@@ -837,7 +809,10 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
 
-onnxruntime_add_object_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
+#This is a small wrapper library that shouldn't use any onnxruntime internal symbols(except onnxruntime_common).
+#Because it could dynamically link to onnxruntime. Otherwise you will have two copies of onnxruntime in the same
+#process and you won't know which one you are testing.
+onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -861,6 +836,57 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
         ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
+
+# onnxruntime_unittest_utils
+# This is an object library containing utilities that are specifically for unit tests.
+# Unlike onnxruntime_test_utils, the source files here may have dependencies on internal onnxruntime code.
+# Thus, onnxruntime_unittest_utils is not suitable for use in programs that don't link with internal onnxruntime
+# libraries.
+block()
+
+file(GLOB onnxruntime_unittest_utils_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/unittest_util/*.h"
+    "${TEST_SRC_DIR}/unittest_util/*.cc")
+
+if(onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
+  # some exclusions from a minimal or reduced ops build
+  list(REMOVE_ITEM onnxruntime_unittest_utils_src
+    "${TEST_SRC_DIR}/unittest_util/base_tester.cc"
+    "${TEST_SRC_DIR}/unittest_util/base_tester.h"
+    "${TEST_SRC_DIR}/unittest_util/function_test_util.cc"
+    "${TEST_SRC_DIR}/unittest_util/function_test_util.h"
+    "${TEST_SRC_DIR}/unittest_util/graph_transform_test_builder.cc"
+    "${TEST_SRC_DIR}/unittest_util/graph_transform_test_builder.h"
+    "${TEST_SRC_DIR}/unittest_util/model_tester.h"
+    "${TEST_SRC_DIR}/unittest_util/op_tester.cc"
+    "${TEST_SRC_DIR}/unittest_util/op_tester.h"
+    "${TEST_SRC_DIR}/unittest_util/qdq_test_utils.cc"
+    "${TEST_SRC_DIR}/unittest_util/qdq_test_utils.h"
+  )
+
+  if (onnxruntime_MINIMAL_BUILD)
+    list(REMOVE_ITEM onnxruntime_unittest_utils_src
+      "${TEST_SRC_DIR}/unittest_util/test_dynamic_plugin_ep.cc"
+      "${TEST_SRC_DIR}/unittest_util/test_dynamic_plugin_ep.h"
+    )
+  endif()
+endif()
+
+onnxruntime_add_object_library(onnxruntime_unittest_utils ${onnxruntime_unittest_utils_src})
+
+target_link_libraries(onnxruntime_unittest_utils PUBLIC
+                      onnx
+                      GTest::gtest
+                      GTest::gmock
+                      onnxruntime_test_utils
+                      ${ONNXRUNTIME_TEST_LIBS}
+                      )
+
+set_target_properties(onnxruntime_unittest_utils PROPERTIES FOLDER "ONNXRuntimeTest")
+
+source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_unittest_utils_src})
+
+endblock()
 
 if(NOT IOS)
     set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
@@ -1173,9 +1199,6 @@ block()
     ${TEST_SRC_DIR}/common/cuda_op_test_utils.h
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
-    ${TEST_SRC_DIR}/framework/dummy_allocator.cc
-    ${TEST_SRC_DIR}/framework/dummy_allocator.h
-    ${TEST_SRC_DIR}/framework/test_utils.cc
   )
 
   set(onnxruntime_provider_test_srcs
@@ -1574,9 +1597,7 @@ endif()
       TARGET onnxruntime_test_debug_node_inputs_outputs
       SOURCES
         "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
-        "${TEST_SRC_DIR}/framework/test_utils.cc"
         "${TEST_SRC_DIR}/providers/provider_test_utils.h"
-        "${TEST_SRC_DIR}/util/include/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS ${all_dependencies}
