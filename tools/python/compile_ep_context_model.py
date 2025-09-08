@@ -27,8 +27,6 @@ def compile(input_path, output_path, provider, embed_mode=False):
         os.remove(output_path)
 
     session_options = ort.SessionOptions()
-    ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-
     session_options.add_provider(provider, {})
 
     model_compiler = ort.ModelCompiler(session_options, input_path, embed_compiled_data_into_model=embed_mode)
@@ -46,7 +44,7 @@ def compile(input_path, output_path, provider, embed_mode=False):
 def load_session(model_path, provider):
     providers = [(provider, {})]
     start = time.perf_counter()
-    session = ort.InferenceSession(model_path, providers=providers)
+    _ = ort.InferenceSession(model_path, providers=providers)
     stop = time.perf_counter()
     print(f"> Session load time: {stop - start: .3f} sec")
     return
