@@ -18,7 +18,7 @@ namespace webgpu {
 namespace {
 // append the info of an input or output to the cachekey
 void AppendTensorInfo(std::ostream& ss, const TensorShape& tensor_shape, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
-                      bool& first) {
+                      bool& first, uint32_t segments = 1) {
   if (first) {
     first = false;
   } else {
@@ -33,6 +33,8 @@ void AppendTensorInfo(std::ostream& ss, const TensorShape& tensor_shape, Program
 #endif
     ss << ';';
   }
+
+  ss D("Segs=") << segments << ';';
 
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
     ss D("Dims=") << tensor_shape.ToString();
@@ -97,13 +99,18 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
   ss << ":" D("Inputs=");
   first = true;
   for (const auto& input : program.Inputs()) {
-    AppendTensorInfo(ss, input.use_override_shape ? input.override_shape : input.tensor->Shape(), input.var_type, input.dependency, first);
+    AppendTensorInfo(ss, input.use_override_shape ? input.override_shape : input.tensor->Shape(), input.var_type, input.dependency, first, input.segments);
   }
 
   ss << ":" D("Outputs=");
   first = true;
   for (const auto& output : program.Outputs()) {
-    AppendTensorInfo(ss, output.use_override_shape ? output.override_shape : output.tensor->Shape(), output.var_type, output.dependency, first);
+    AppendTensorInfo(ss,
+                     output.use_override_shape ? output.override_shape : output.tensor->Shape(),
+                     output.var_type,
+                     output.dependency,
+                     first,
+                     output.segments);
   }
 
   if (!program.Indices().empty()) {
