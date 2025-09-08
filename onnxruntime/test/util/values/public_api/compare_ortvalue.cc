@@ -166,7 +166,7 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
   }
 }
 
-// #if defined(__aarch64__) && defined(__linux__)
+#if defined(__aarch64__) && defined(__linux__)
 template <typename T>
 std::pair<COMPARE_RESULT, std::string> CheckCosineSimilarity(const Ort::ConstValue& actual, const Ort::ConstValue& expected) {
   const T* actual_output = actual.IsSparseTensor() ? actual.GetSparseTensorValues<T>() : actual.GetTensorData<T>();
@@ -229,7 +229,7 @@ std::pair<COMPARE_RESULT, std::string> CheckCloseMatch(const Ort::ConstValue& ac
   }
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
-// #endif
+#endif
 /**
  * @brief Check if two values are closely matched with given tolerance.
 
@@ -399,7 +399,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Ort::ConstValue& 
     return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
   }
 
-  // #if defined(__aarch64__) && defined(__linux__)
+  #if defined(__aarch64__) && defined(__linux__)
   if (isnan(per_sample_tolerance) || isnan(per_sample_tolerance)) {
     if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
       return CheckCosineSimilarity<float>(actual_value, expected_value);
@@ -427,7 +427,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Ort::ConstValue& 
       return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
     }
   }
-  // #endif
+  #endif
 
   if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     return CompareFloatResult<float>(actual_value, expected_value, per_sample_tolerance, relative_per_sample_tolerance,
