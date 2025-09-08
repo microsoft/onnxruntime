@@ -1,0 +1,60 @@
+steps:
+- bash: |    
+    export INPUT_CMAKE-VERSION='3.31.8'
+    export INPUT_CMAKE-HASH='99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8'4
+    export INPUT_VCPKG-VERSION='2025.06.13'
+    export INPUT_VCPKG-HASH='735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+    export INPUT_ADD-CMAKE-TO-PATH='true'
+    export INPUT_DISABLE-TERRAPIN='true'
+
+    ACTION_VERSION="v0.0.7"
+    echo "Downloading action version: $ACTION_VERSION"
+    curl -sSL "https://github.com/microsoft/onnxruntime-github-actions/releases/download/${ACTION_VERSION}/onnxruntime-actions-${ACTION_VERSION}.zip" -o onnxruntime-actions.zip
+    unzip -q onnxruntime-actions.zip -d ./unzipped_action
+    
+    # The main script is located in the 'dist' subdirectory of the action
+    ACTION_SCRIPT_PATH="./unzipped_action/setup-build-tools/dist/index.js"
+    chmod +x $ACTION_SCRIPT_PATH
+
+    # Run the action's JavaScript file and save the output to a log file
+    echo "Running the action script..."
+    node $ACTION_SCRIPT_PATH > action_output.log 2>&1
+
+    # Check the exit code of the node script
+    if [ $? -ne 0 ]; then
+      echo "##vso[task.logissue type=error]The action script failed. See the log below for details."
+      cat action_output.log
+      exit 1
+    fi
+
+    echo "Action script executed successfully."
+  displayName: 'Download and Run setup-build-tools Action'
+
+- bash: |
+    echo "Searching for paths added by the action..."
+    # Search the log file for the specific pattern indicating a path addition
+    # The grep command uses a lookbehind `(?<=Adding )` and a lookahead `(?= to PATH)` 
+    # to extract only the path itself.
+    added_paths=$(grep -oP '(?<=Adding ).*(?= to PATH.)' action_output.log)
+
+    if [ -z "$added_paths" ]; then
+      echo "No new paths were found in the action's output."
+    else
+      echo "Found paths to add:"
+      echo "$added_paths"
+      
+      # Loop through each found path and prepend it to the ADO job's PATH
+      while IFS= read -r path; do
+        if [ -n "$path" ]; then
+          echo "Prepending to PATH: $path"
+          # Use the special Azure Pipelines logging command to prepend a directory to the PATH
+          echo "##vso[task.prependpath]$path"
+        fi
+      done <<< "$added_paths"
+    fi
+  displayName: 'Update ADO Job PATH from Action Output'
+
+- bash: |
+    echo "Verifying CMake installation..."
+    cmake --version
+  displayName: 'Verify CMake'

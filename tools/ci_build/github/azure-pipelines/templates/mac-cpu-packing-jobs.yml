@@ -55,6 +55,8 @@ jobs:
 
   - template: use-xcode-version.yml
 
+  - template: setup-build-tools.yml
+
   - script: |
       set -e -x
       export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
