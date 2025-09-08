@@ -58,7 +58,8 @@ RunTiming OnnxRuntimeTestSession::Run() {
     for (auto& name : output_names_) {
       io_binding.BindOutput(name.c_str(), mem_info);
     }
-
+    // do not time IO binding creation
+    start = std::chrono::high_resolution_clock::now();
     session_.Run(run_options, io_binding);
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
     io_binding.SynchronizeOutputs();
