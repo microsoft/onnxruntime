@@ -297,7 +297,6 @@ class GQAAttentionBase {
         for (size_t seq = 0; seq < sequence_length; seq++) {
           size_t seq_causal_length = past_seqlen + seq + 1;
 
-          // local_window_size does not include the current query token, while window_size includes it.
           const bool should_apply_local_window = local_window_size_ >= 0 &&
                                                  seq_causal_length > static_cast<size_t>(local_window_size_);
 

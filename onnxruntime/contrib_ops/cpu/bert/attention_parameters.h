@@ -86,7 +86,7 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   int kv_hidden_size;           // hidden size of key or value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
-  int local_window_size;        // The window size includes new token. It only includes tokens on the left side.
+  int local_window_size;        // Mask out tokens prior to total_sequence_length - local_window_size
   bool kv_share_buffer;
   bool is_subsequent_prompt;  // indicates whether we have past context and seqlen > 1
   bool is_first_prompt;       // indicates whether this is first decoding step
