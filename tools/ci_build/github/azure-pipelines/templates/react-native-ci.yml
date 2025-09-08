@@ -179,7 +179,7 @@ stages:
   #   - template: explicitly-defined-final-tasks.yml
 
   - job: ReactNative_CI_iOS_e2e_tests
-    dependsOn: 'ReactNative_CI_iOS_build'
+    #dependsOn: 'ReactNative_CI_iOS_build'
 
     ${{ if eq(parameters.is1ES, false) }}:
       pool:
