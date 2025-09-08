@@ -68,7 +68,8 @@ stages:
       displayName: 'Prepare, Create Universal Binary, and Zip with Python'
       inputs:
         scriptSource: 'filePath'
-        scriptPath: 'tools/ci_build/prepare_macos_package.py' 
+        scriptPath: 'tools/ci_build/prepare_macos_package.py'
+        arguments: '--staging_dir $(Build.ArtifactStagingDirectory)'
 
     - template: mac-esrp-dylib.yml
       parameters:
