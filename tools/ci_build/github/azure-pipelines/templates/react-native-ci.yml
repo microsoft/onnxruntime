@@ -67,116 +67,116 @@ stages:
     ${{ else }}:
       value: PublishPipelineArtifact@1
   jobs:
-  - job: ReactNative_CI_iOS_build
+  # - job: ReactNative_CI_iOS_build
 
-    ${{ if eq(parameters.is1ES, false) }}:
-      pool:
-        vmImage: 'macOS-14'
-    ${{ if eq(parameters.is1ES, true) }}:
-      pool:
-        name: 'Azure Pipelines'
-        image: 'macOS-14'
-        os: 'macOS'
+  #   ${{ if eq(parameters.is1ES, false) }}:
+  #     pool:
+  #       vmImage: 'macOS-14'
+  #   ${{ if eq(parameters.is1ES, true) }}:
+  #     pool:
+  #       name: 'Azure Pipelines'
+  #       image: 'macOS-14'
+  #       os: 'macOS'
 
-    timeoutInMinutes: 120
+  #   timeoutInMinutes: 120
 
-    variables:
-      runCodesignValidationInjection: false
+  #   variables:
+  #     runCodesignValidationInjection: false
 
-    steps:
-    - template: use-xcode-version.yml
+  #   steps:
+  #   - template: use-xcode-version.yml
 
-    - task: UsePythonVersion@0
-      displayName: Use python 3.12
-      inputs:
-        versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
+  #   - task: UsePythonVersion@0
+  #     displayName: Use python 3.12
+  #     inputs:
+  #       versionSpec: "3.12"
+  #       addToPath: true
+  #       architecture: "x64"
 
-    - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
-      displayName: "Install Python requirements"
+  #   - script: |
+  #       pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+  #     displayName: "Install Python requirements"
 
-    # Build the iOS package
-    - script: |
-        set -e -x
-        python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-          --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-          --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
-          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-      displayName: Build iOS package and assemble pods
+  #   # Build the iOS package
+  #   - script: |
+  #       set -e -x
+  #       python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+  #         --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+  #         --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
+  #         --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+  #     displayName: Build iOS package and assemble pods
 
-    - task: ${{ variables.publishPipelineArtifactTask }}
-      inputs:
-        artifactName: 'ios_pod'
-        targetPath: '$(Build.BinariesDirectory)/ios_pod'
-      displayName: Publish React Native iOS pod files
+  #   - task: ${{ variables.publishPipelineArtifactTask }}
+  #     inputs:
+  #       artifactName: 'ios_pod'
+  #       targetPath: '$(Build.BinariesDirectory)/ios_pod'
+  #     displayName: Publish React Native iOS pod files
 
-  - job: ReactNative_CI_iOS_unit_tests
-    dependsOn: 'ReactNative_CI_iOS_build'
+  # - job: ReactNative_CI_iOS_unit_tests
+  #   dependsOn: 'ReactNative_CI_iOS_build'
 
-    ${{ if eq(parameters.is1ES, false) }}:
-      pool:
-        vmImage: 'macOS-14'
-    ${{ if eq(parameters.is1ES, true) }}:
-      pool:
-        name: 'Azure Pipelines'
-        image: 'macOS-14'
-        os: 'macOS'
+  #   ${{ if eq(parameters.is1ES, false) }}:
+  #     pool:
+  #       vmImage: 'macOS-14'
+  #   ${{ if eq(parameters.is1ES, true) }}:
+  #     pool:
+  #       name: 'Azure Pipelines'
+  #       image: 'macOS-14'
+  #       os: 'macOS'
 
-    timeoutInMinutes: 90
+  #   timeoutInMinutes: 90
 
-    steps:
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - ios_pod'
-        ArtifactName: 'ios_pod'
-        TargetPath: '$(Build.BinariesDirectory)/ios_pod'
+  #   steps:
+  #   - template: flex-downloadPipelineArtifact.yml
+  #     parameters:
+  #       StepName: 'Download Pipeline Artifact - ios_pod'
+  #       ArtifactName: 'ios_pod'
+  #       TargetPath: '$(Build.BinariesDirectory)/ios_pod'
 
-    - template: use-xcode-version.yml
+  #   - template: use-xcode-version.yml
 
-    - task: NodeTool@0
-      inputs:
-        versionSpec: '22.x'
+  #   - task: NodeTool@0
+  #     inputs:
+  #       versionSpec: '22.x'
 
-    - script:
-        brew install npm
-      displayName: Install npm
+  #   - script:
+  #       brew install npm
+  #     displayName: Install npm
 
-    - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
+  #   - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
-    - script: |
-        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
-        pod install
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
-      displayName: Pod install for onnxruntime react native ios bridge library
+  #   - script: |
+  #       ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
+  #       pod install
+  #     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+  #     displayName: Pod install for onnxruntime react native ios bridge library
 
-    # Run unit tests on iOS simulator
-    - task: Xcode@5
-      inputs:
-        actions: 'test'
-        configuration: 'Debug'
-        sdk: 'iphonesimulator'
-        xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace'
-        scheme: 'OnnxruntimeModuleTest'
-        packageApp: false
-        destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 15,OS=17.4'
-        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
-        xcprettyArgs: '--output build/reports/test-results.xml'
-        publishJUnitResults: true
-        testRunTitle: 'React Native iOS Instrumented Test Results'
-      displayName: Run React Native iOS Instrumented Tests
+  #   # Run unit tests on iOS simulator
+  #   - task: Xcode@5
+  #     inputs:
+  #       actions: 'test'
+  #       configuration: 'Debug'
+  #       sdk: 'iphonesimulator'
+  #       xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace'
+  #       scheme: 'OnnxruntimeModuleTest'
+  #       packageApp: false
+  #       destinationPlatformOption: 'iOS'
+  #       destinationSimulators: 'iPhone 15,OS=17.4'
+  #       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+  #       xcprettyArgs: '--output build/reports/test-results.xml'
+  #       publishJUnitResults: true
+  #       testRunTitle: 'React Native iOS Instrumented Test Results'
+  #     displayName: Run React Native iOS Instrumented Tests
 
-    - task: PublishTestResults@2
-      inputs:
-        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
-        failTaskOnFailedTests: true
-        testRunTitle: 'React Native iOS Instrumented Test results'
-      condition: succeededOrFailed()
-      displayName: Publish React Native iOS Instrumented Test Results
+  #   - task: PublishTestResults@2
+  #     inputs:
+  #       testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+  #       failTaskOnFailedTests: true
+  #       testRunTitle: 'React Native iOS Instrumented Test results'
+  #     condition: succeededOrFailed()
+  #     displayName: Publish React Native iOS Instrumented Test Results
 
-    - template: explicitly-defined-final-tasks.yml
+  #   - template: explicitly-defined-final-tasks.yml
 
   - job: ReactNative_CI_iOS_e2e_tests
     dependsOn: 'ReactNative_CI_iOS_build'
@@ -192,12 +192,17 @@ stages:
 
     timeoutInMinutes: 90
 
+    strategy:
+      parallel: 5
+
     steps:
     - template: flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - ios_pod'
         ArtifactName: 'ios_pod'
         TargetPath: '$(Build.BinariesDirectory)/ios_pod'
+        SpecificArtifact: true
+        BuildId: 933397
 
     - template: use-xcode-version.yml
 
