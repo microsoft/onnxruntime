@@ -92,7 +92,6 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec));
-  return Status::OK();
 }
 
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
