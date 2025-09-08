@@ -271,7 +271,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Ort::ConstValue&
   size_t element_count = 0;
   if (actual.IsSparseTensor()) {
     auto values_shape = actual.GetSparseTensorValuesTypeAndShapeInfo().GetShape();
-    element_count = values_shape.size() > 0 ? values_shape[0] : 0;  // non-zeros
+    element_count = values_shape.size() > 0 ? static_cast<size_t>(values_shape[0]) : 0;  // non-zeros
   } else {
     element_count = expected.GetTensorTypeAndShapeInfo().GetElementCount();
   }
@@ -399,7 +399,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Ort::ConstValue& 
     return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
   }
 
-  #if defined(__aarch64__) && defined(__linux__)
+#if defined(__aarch64__) && defined(__linux__)
   if (isnan(per_sample_tolerance) || isnan(per_sample_tolerance)) {
     if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
       return CheckCosineSimilarity<float>(actual_value, expected_value);
@@ -427,7 +427,7 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Ort::ConstValue& 
       return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "");
     }
   }
-  #endif
+#endif
 
   if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     return CompareFloatResult<float>(actual_value, expected_value, per_sample_tolerance, relative_per_sample_tolerance,
@@ -758,11 +758,6 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& actual_va
 
 static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& t,
                                                                                       const OrtValue* v) {
-  // below code doesn't work
-  // if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
-  //	return COMPARE_RESULT::TYPE_MISMATCH;
-  //}
-
   Ort::ConstValue o(v);
   auto info = o.GetTensorTypeAndShapeInfo();
   ONNXTensorElementDataType real_type = info.GetElementType();
@@ -809,7 +804,7 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* val_ptr) {
   Ort::ConstValue o{val_ptr};
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
-  if (v.type().has_tensor_type()) {
+  if (v.type().has_tensor_type()) {  // tensor
     if (!o.IsTensor()) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
@@ -817,11 +812,11 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     ::ONNX_NAMESPACE::TypeProto_Tensor t = v.type().tensor_type();
 
     return CompareTensorOrtValueAndTensorTypeProto(t, o);
-  } else if (v.type().has_sequence_type()) {
+  } else if (v.type().has_sequence_type()) {  // sequence
     // TODO: CXX API doesn't have IsTensorSequence() supported for Ort::Value
     // TODO: Repeat whatever we did for Tensor above in a loop ?
     return std::make_pair(COMPARE_RESULT::SUCCESS, "");
-  } else if (v.type().has_optional_type()) {
+  } else if (v.type().has_optional_type()) {  // optional
     const auto& tp = v.type().optional_type().elem_type();
 
     if (tp.has_tensor_type() && !o.IsTensor()) {
@@ -840,15 +835,13 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     // TODO: Deal with sequences the same way we choose to deal with it
     // in the above else if()
 
+  } else if (v.type().has_sparse_tensor_type()) {  // sparse tensor
+    // TODO: Current OnnxTestCase::LoadTestData doesn't support sparse tensor type.
+    // Need to add support in the future.
   } else {
-    // Cannot do this check for tensor/sequence of tensor type.
-    // For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
-    // For sequences of tensor type, o.Type() is SequenceTensorTypeBase*, but p points to a subclass of SequenceTensorTypeBase
-    // MLDataType p = DataTypeImpl::TypeFromProto(v.type());
-    // MLDataType q = ((OrtValue*)(const OrtValue*)o)->Type();
-    // if (q != p) {
-    //  return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
-    //}
+    std::ostringstream oss;
+    oss << "The value info is not one of the \"Tensor\", \"SparseTensor\", \"Sequence\" and \"Optional\" data types.";
+    oss << "Skip validating between output's value info and expected value info.";
   }
 
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
