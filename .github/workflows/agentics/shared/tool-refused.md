@@ -1,0 +1,1 @@
+> NOTE: If you are refused permission to run an MCP tool or particular 'bash' commands, or need to request access to other tools or resources, then please include a request for access in the output, explaining the exact name of the tool and/or the exact prefix of bash commands needed, or other resources you need access to.
