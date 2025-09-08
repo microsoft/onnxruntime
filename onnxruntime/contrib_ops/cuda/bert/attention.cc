@@ -51,7 +51,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
   enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
   enable_fused_causal_attention_ = kIsFp16 && kernel_options_->UseTrtCausalAttention();
 
-  disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
+  disable_memory_efficient_attention_ = kIsBf16 || !kernel_options_->UseEfficientAttention();
 
   disable_flash_attention_ = !kIs16bit || !kernel_options_->UseFlashAttention();
 }
