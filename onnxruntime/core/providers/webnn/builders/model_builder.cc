@@ -19,12 +19,11 @@ namespace onnxruntime {
 namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           const emscripten::val& context, const DataLayout preferred_layout,
-                           const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits)
+                           const emscripten::val& context, const WebnnDeviceType wnn_device_type,
+                           const emscripten::val& wnn_limits)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
-      preferred_layout_(preferred_layout),
       wnn_device_type_(wnn_device_type),
       wnn_limits_(wnn_limits) {
   // Create WebNN MLGraphBuilder for each ModelBuilder, because MLGraphBuilder.build()
@@ -373,66 +372,6 @@ Status ModelBuilder::AddOperations() {
     }
   }
 
-  return Status::OK();
-}
-
-Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
-    const std::string& name, const void* buffer, const size_t size,
-    const std::vector<uint32_t> shape, const int32_t data_type) {
-  auto persist_buffer = std::make_unique<uint8_t[]>(size);
-  uint8_t* dest = persist_buffer.get();
-  memcpy(dest, buffer, size);
-  emscripten::val view = emscripten::val::undefined();
-  emscripten::val desc = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
-  switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint8_t),
-                                                           reinterpret_cast<const uint8_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int8_t),
-                                                           reinterpret_cast<const int8_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint16_t),
-                                                           reinterpret_cast<const uint16_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(float),
-                                                           reinterpret_cast<const float*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int32_t),
-                                                           reinterpret_cast<const int32_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int64_t),
-                                                           reinterpret_cast<const int64_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint32_t),
-                                                           reinterpret_cast<const uint32_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint64_t),
-                                                           reinterpret_cast<const uint64_t*>(dest))};
-      break;
-    default:
-      break;
-  }
-
-  desc.set("dimensions", emscripten::val::array(shape));
-  desc.set("shape", emscripten::val::array(shape));
-  emscripten::val operand = emscripten::val::object();
-  // Wasm memory growth will cause all array buffers reallocation, which will be treated as detached
-  // buffers in JS side. Simply create a copy to fix it.
-  view = view.call<emscripten::val>("slice");
-  operand = wnn_builder_.call<emscripten::val>("constant", desc, view["buffer"]);
-
-  AddOperand(name, operand);
-  mem_persist_buffers_.push_back(std::move(persist_buffer));
   return Status::OK();
 }
 

@@ -4,14 +4,16 @@
 #include "core/platform/device_discovery.h"
 
 namespace onnxruntime {
+
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  std::unordered_set<OrtHardwareDevice> devices;
-  // get CPU devices
+  // This is a default implementation.
+  // We assume that there is a CPU device and do not attempt to discover anything else.
 
-  // get GPU devices
+  std::unordered_set<OrtHardwareDevice> devices{};
 
-  // get NPU devices
+  devices.emplace(GetCpuDeviceFromCPUIDInfo());
 
   return devices;
 }
+
 }  // namespace onnxruntime

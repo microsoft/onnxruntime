@@ -84,7 +84,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
           size_t tensor_offset;
           std::stringstream stream(entry.value());
           stream >> tensor_offset;
-          ORT_RETURN_IF_NOT(tensor_offset % model_saving_options.allocation_granularity == 0,
+          ORT_RETURN_IF_NOT(tensor_offset % model_saving_options.on_disk_alignment == 0,
                             "tensor offset not align");
         }
       }

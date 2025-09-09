@@ -4,8 +4,13 @@ steps:
   displayName: 'Download NPM_packages'
   artifact: 'NPM_packages'
 
-- script: |
-    mv $(Pipeline.Workspace)/build/NPM_packages '$(Build.BinariesDirectory)/nodejs-artifact'
+
+- task: PowerShell@2
+  displayName: 'Move Artifact Directory'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Move-Item -Path "$(Pipeline.Workspace)/build/NPM_packages" -Destination "$(Build.BinariesDirectory)/nodejs-artifact"
 
 - script: mkdir e2e_test
   workingDirectory: '$(Build.BinariesDirectory)'

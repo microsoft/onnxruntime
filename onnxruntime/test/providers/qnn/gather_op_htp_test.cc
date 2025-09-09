@@ -48,6 +48,38 @@ GetTestQDQModelFn<QuantType> BuildQDQGatherTestCase(const TestInputDef<float>& i
   };
 }
 
+template <typename QuantType, typename IndicesType>
+GetTestQDQModelFn<QuantType> BuildQDQGatherNdTestCase(const TestInputDef<float>& input_def,
+                                                      const TestInputDef<IndicesType>& indices_def,
+                                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                      bool use_contrib_qdq = false) {
+  return [input_def, indices_def, attrs, use_contrib_qdq](ModelTestBuilder& builder,
+                                                          std::vector<QuantParams<QuantType>>& output_qparams) {
+    // input -> Q -> DQ ->
+    NodeArg* input = MakeTestInput(builder, input_def);
+    QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                   use_contrib_qdq);
+
+    // indices input
+    NodeArg* indices_input = MakeTestInput(builder, indices_def);
+
+    // Gather op
+    NodeArg* gather_output = builder.MakeIntermediate();
+    Node& gather_node = builder.AddNode("GatherND", {input_qdq, indices_input}, {gather_output});
+
+    for (const auto& attr : attrs) {
+      gather_node.AddAttributeProto(attr);
+    }
+
+    // op_output -> Q -> DQ -> output
+    // NOTE: Input and output quantization parameters must be equal for Gather.
+    output_qparams[0] = input_qparams;  // Overwrite!
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, gather_output, input_qparams.scale,
+                                                     input_qparams.zero_point, use_contrib_qdq);
+  };
+}
+
 // Test the accuracy of a QDQ Gather model on QNN EP. Checks if the QDQ model on QNN EP as accurate as the QDQ model on CPU EP
 // (compared to float32 model).
 template <typename QuantType, typename IndicesType>
@@ -187,6 +219,75 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
                             {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                             13,
                             ExpectedEPNodeAssignment::All);
+}
+
+// Test the accuracy of a QDQ GatherND model on QNN EP. Checks if the QDQ model on QNN EP is as accurate as the QDQ model on CPU EP.
+template <typename QuantType, typename IndicesType>
+static void RunQDQGatherNDOpTest(const TestInputDef<float>& input_def,
+                                 const TestInputDef<IndicesType>& indices_def,
+                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                 int opset,
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
+                                 bool use_contrib_qdq = false) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  auto f32_model_builder = BuildOpTestCase<float, IndicesType>("GatherND", {input_def}, {indices_def}, attrs);
+  auto qdq_model_builder = BuildQDQGatherNdTestCase<QuantType, IndicesType>(input_def, indices_def, attrs,
+                                                                            use_contrib_qdq);
+
+  TestQDQModelAccuracy<QuantType>(f32_model_builder,
+                                  qdq_model_builder,
+                                  provider_options,
+                                  opset,
+                                  expected_ep_assignment);
+}
+
+// Non-QDQ model, GatherND with static input and dynamic int64 indices
+TEST_F(QnnHTPBackendTests, GatherNDOp_IndicesDynamicInt64) {
+  RunOpTest<float, int64_t>(
+      "GatherND",
+      TestInputDef<float>({2, 2, 2}, true,  // Static input
+                          {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),
+      TestInputDef<int64_t>({2, 2}, false,
+                            {0, 0, 1, 1}),
+      {},  // No attributes for GatherND
+      13,  // Opset version
+      ExpectedEPNodeAssignment::All);
+}
+
+// Static negative int64 indices with negative values and batch_dims = 0
+TEST_F(QnnHTPBackendTests, GatherNDOp_Negative_IndicesInt64_BatchDims0) {
+  RunOpTest<float, int64_t>(
+      "GatherND",
+      TestInputDef<float>({2, 2, 2}, true,  // Static input
+                          {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),
+      TestInputDef<int64_t>({2, 2}, true,  // Static -ve indices with negative values
+                            {-1, -1, 0, 0}),
+      {utils::MakeAttribute("batch_dims", static_cast<int64_t>(0))},  // Attribute for batch_dims
+      13,                                                             // Opset version
+      ExpectedEPNodeAssignment::All);
+}
+
+// Static int64 indices with batch_dims = 0
+TEST_F(QnnHTPBackendTests, GatherNDOp_QDQ_IndicesStaticInt64_BatchDims0) {
+  RunQDQGatherNDOpTest<uint8_t, int64_t>(
+      TestInputDef<float>({2, 2, 2}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),
+      TestInputDef<int64_t>({2, 2}, true, {0, 0, 1, 1}),
+      {utils::MakeAttribute("batch_dims", static_cast<int64_t>(0))},
+      13,
+      ExpectedEPNodeAssignment::All);
+}
+
+// Dynamic int64 indices with batch_dims = 0
+TEST_F(QnnHTPBackendTests, GatherNDOp_QDQ_IndicesDynamicInt64_BatchDims0) {
+  RunQDQGatherNDOpTest<uint8_t, int64_t>(
+      TestInputDef<float>({2, 2, 2}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),
+      TestInputDef<int64_t>({2, 2}, false, {0, 0, 1, 1}),
+      {utils::MakeAttribute("batch_dims", static_cast<int64_t>(0))},
+      13,
+      ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

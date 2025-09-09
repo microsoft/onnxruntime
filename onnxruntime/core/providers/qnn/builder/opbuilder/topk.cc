@@ -96,7 +96,7 @@ Status TopKOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   // Add Transpose to permute axis to the last.
-  std::string transpose_output_name = input_names[0] + "_ort_qnn_ep_transpose";
+  const std::string transpose_output_name = utils::GetUniqueName(input_names[0], "_transpose");
   std::vector<uint32_t> transpose_perm;
   ORT_RETURN_IF_ERROR(utils::GetPermToLastAxis(static_cast<uint32_t>(axis),
                                                static_cast<uint32_t>(input_rank),
@@ -175,7 +175,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     // Since user may not be aware of the additional Transpose, the original output name of TopK node must be used by
     // the additional Transpose node which has the same output as original TopK node.
     const std::string& output_name = output.node_arg.Name();
-    std::string transpose_input_name = output_name + "_ort_qnn_ep_transpose";
+    const std::string transpose_input_name = utils::GetUniqueName(output_name, "_transpose");
     transpose_input_names.push_back(std::move(transpose_input_name));
 
     // Since the input of TopK node is permuted, its output shape must be manually calculated.
@@ -197,7 +197,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   }
 
   // Add TopK node.
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
@@ -228,7 +228,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     bool is_cast_required = output_idx == 1 && output_info.qnn_data_type == QNN_DATATYPE_INT_64 && is_graph_output;
     std::string cast_input_name = "";
     if (is_cast_required) {
-      cast_input_name = transpose_output_name + "_ort_qnn_ep_cast";
+      cast_input_name = utils::GetUniqueName(transpose_output_name, "_cast");
       // For the same reason described above, the original output name is now used by this Cast.
       transpose_output_name = cast_input_name;
       // Since additional Cast is added, below Transpose is no longer graph output.
@@ -255,9 +255,9 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                  std::vector<uint32_t>(output_info.shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output_tensorwrapper)),
                         "Failed to add tensor.");
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_input_name,
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_CAST),
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                        "Cast",
+                                                        QNN_OP_CAST,
                                                         {cast_input_name},
                                                         {output_name},
                                                         {}),

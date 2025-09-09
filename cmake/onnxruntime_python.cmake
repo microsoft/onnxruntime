@@ -740,6 +740,21 @@ if (onnxruntime_USE_OPENVINO)
   )
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${MIGRAPHX_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${HIPSDK_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+  endif()
+endif()
+
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -1100,7 +1115,7 @@ if (onnxruntime_USE_WEBGPU)
       )
     endif()
   endif()
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy

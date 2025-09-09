@@ -138,7 +138,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }  // if-else
 
   const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
-  std::string shape_input_name(input_name + "_" + output_name);
+  std::string shape_input_name = utils::GetUniqueName(input_name, output_name);
   QnnTensorWrapper input_tensorwrapper(shape_input_name, QNN_TENSOR_TYPE_STATIC, qnn_data_type,
                                        std::move(quantize_param), std::move(input_shape),
                                        std::move(shape_data));

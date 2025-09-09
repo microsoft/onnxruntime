@@ -3,6 +3,7 @@
 
 #pragma once
 
+#cmakedefine HAS_ARRAY_BOUNDS
 #cmakedefine HAS_BITWISE_INSTEAD_OF_LOGICAL
 #cmakedefine HAS_CAST_FUNCTION_TYPE
 #cmakedefine HAS_CATCH_VALUE

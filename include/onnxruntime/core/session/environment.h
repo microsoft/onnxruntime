@@ -107,6 +107,15 @@ class Environment {
   }
 
   /**
+   * Returns an AllocatorPtr for a shared IAllocator based allocator if it matches the memory info.
+   * The OrtMemoryInfo name and whether it's an arena or device allocator is ignored in the lookup, as is the
+   * alignment.
+   * The user calling this function is not expected to know the alignment, and we expect the allocator instance to be
+   * created with a valid alignment for the device.
+   */
+  AllocatorPtr GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const;
+
+  /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
@@ -171,7 +180,7 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   // shared allocators from various sources.
   // CreateAndRegisterAllocator[V2]: IAllocator allocators created by ORT
@@ -189,23 +198,6 @@ class Environment {
   std::unique_ptr<OrtAllocatorImplWrappingIAllocator> default_cpu_ort_allocator_;
 
   using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
-
-  // if the user calls CreateSharedAllocator and wraps the plugin EP's allocator with an arena we end up with
-  // OrtAllocator from EP -> wrapped in IAllocatorImplWrappingOrtAllocator -> inside a BFCArena IAllocator.
-  // we can put that in shared_allocators_ for sessions to use, but to have an OrtAllocator available in
-  // shared_ort_allocators_ that can be used outside of a session we need to additionally wrap that in an
-  // OrtAllocatorImplWrappingIAllocator. way too many levels of indirection but that is what it is currently.
-  // we need something to own that final OrtAllocator, so we add it to arena_ort_allocators_.
-  //
-  // TODO: we could split out the BFCArena implementation so it can be plugged into either an IAllocator
-  // or an OrtAllocator instance to reduce the indirection a little.
-  // with that we get an OrtAllocator from the EP, wrap it with an OrtAllocator based BFCArena, and wrap that with the
-  // IAllocatorImplWrappingOrtAllocator which takes ownership of the OrtAllocator and is in shared_allocators_.
-  //
-  // Alternatively we can disable wrapping an EP's allocator with a BFCArena and say the EP should provide the arena
-  // implementation directly. They're free to copy BFCArena as it came from TF originally. Or we could provide a
-  // cut-and-paste BFCArena implementation that works using the EP API that can be included in the EP source.
-  std::unordered_map<const OrtMemoryInfo*, std::unique_ptr<OrtAllocatorImplWrappingIAllocator>> arena_ort_allocators_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection

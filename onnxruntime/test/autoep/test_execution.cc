@@ -54,12 +54,12 @@ void RunModelWithPluginEp(Ort::SessionOptions& session_options) {
 TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   RegisteredEpDeviceUniquePtr example_ep;
   Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
-  const OrtEpDevice* plugin_ep_device = example_ep.get();
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   // Create session with example plugin EP
   Ort::SessionOptions session_options;
   std::unordered_map<std::string, std::string> ep_options;
-  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(plugin_ep_device)}, ep_options);
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   RunModelWithPluginEp(session_options);
 }
@@ -83,7 +83,7 @@ TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
   RegisteredEpDeviceUniquePtr example_ep;
   Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
-  const OrtEpDevice* plugin_ep_device = example_ep.get();
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   {
     const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
@@ -94,7 +94,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     Ort::SessionOptions session_options;
     std::unordered_map<std::string, std::string> ep_options;
 
-    session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(plugin_ep_device)}, ep_options);
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
     // Create model compilation options from the session options.
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
@@ -102,9 +102,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     compile_options.SetOutputModelPath(output_model_file);
 
     // Compile the model.
-    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
-
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
     // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }

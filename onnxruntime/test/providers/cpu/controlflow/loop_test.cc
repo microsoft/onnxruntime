@@ -688,7 +688,7 @@ TEST(Loop, SubgraphTypeOverride) {
   Graph::ResolveOptions options;
   options.override_types = true;
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider}, &session_run_options, nullptr,
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options, nullptr,
            ExecutionMode::ORT_SEQUENTIAL, options);
 }
 
@@ -1162,7 +1162,7 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
   test.AddSeqOutput("loop_var_0_final", seq_output);
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)

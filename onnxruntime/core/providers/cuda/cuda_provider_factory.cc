@@ -586,7 +586,7 @@ struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
     Release = ReleaseImpl;
   }
 
-  cudaStream_t& stream_;
+  cudaStream_t stream_;
   cudaEvent_t event_;
 
   const OrtApi& ort_api;
@@ -632,9 +632,9 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
     *notification_impl = nullptr;
 
     std::unique_ptr<CudaSyncNotificationImpl> notification;
-    cudaStream_t* cuda_stream = static_cast<cudaStream_t*>(impl.stream_.GetHandle());
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.stream_.GetHandle());
 
-    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(*cuda_stream, impl.ort_api, notification));
+    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(cuda_stream, impl.ort_api, notification));
     *notification_impl = notification.release();
 
     return nullptr;
@@ -733,6 +733,10 @@ struct CudaEpFactory : OrtEpFactory {
       }
     }
     */
+
+    // guard against bad device discovery. max devices we expect to add is num_cuda_devices. if we're attempting
+    // to add more than that we have duplicates in the `devices` array.
+    max_ep_devices = std::min(max_ep_devices, static_cast<size_t>(num_cuda_devices));
 
     int16_t device_id = 0;
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {

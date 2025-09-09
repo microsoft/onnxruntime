@@ -12,6 +12,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
+#include "core/optimizer/qdq_transformer/where_dummy_dq.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
@@ -3220,6 +3221,79 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
 }
 
+template <typename ScaleType, typename ZpType>
+void TestWhereWithDqInput(bool is_dq_1,
+                          bool is_dq_2,
+                          int expected_num_where,
+                          int expected_num_dq,
+                          int expected_num_q,
+                          bool expected_modified) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("WhereDummyDqTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* where_in1 = nullptr;
+  NodeArg* where_in2 = nullptr;
+  if (is_dq_1) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    where_in1 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in1});
+  } else {
+    where_in1 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+  if (is_dq_2) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    where_in2 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in2});
+  } else {
+    where_in2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+
+  // Where
+  auto* where_cond = builder.MakeInputBool({4, 3, 32});
+  auto* where_out = builder.MakeIntermediate();
+  builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+
+  // Q
+  auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<uint16_t>({}, 0.0, 1.0);
+  auto* q_out = builder.MakeOutput();
+  builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto where_optimizer = std::make_unique<WhereDummyDq>();
+  bool modified = false;
+  ASSERT_STATUS_OK(where_optimizer->Apply(graph, modified, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Where"], expected_num_where);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], expected_num_dq);
+  ASSERT_EQ(op_to_count["QuantizeLinear"], expected_num_q);
+  ASSERT_EQ(modified, expected_modified);
+
+  return;
+};
+
+TEST(QDQTransformerTests, WhereDummyDqTest) {
+  TestWhereWithDqInput<float, uint8_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint8_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t>(false, false, 1, 0, 1, false);
+  TestWhereWithDqInput<float, uint16_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint16_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t>(false, false, 1, 0, 1, false);
+}
+
 TEST(QDQTransformerTests, Concat) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        int64_t axis,
@@ -5370,8 +5444,59 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Conv_Weight_Bias) {
 #endif
 }
 
+// Tests that the WeightBiasQuantization optimizer still processes nodes that contain a type-preserving no
+// branch ReLU op to QuantizeLinear e.g., Q -> DQ -> Conv (w/ float weight initializer) -> ReLU -> Q -> DQ
+TEST(QDQTransformerTests, WeightBiasQuantization_ConvWithReLU) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_fp32 = builder.MakeInput<float>({1, 1, 4, 4}, -1.0f, 1.0f);
+      NodeArg* weight_fp32 = builder.MakeInitializer<float>({2, 1, 3, 3}, -1.0f, 1.0f);
+      NodeArg* input_q = builder.MakeIntermediate();
+      NodeArg* input_dq = builder.MakeIntermediate();
+      NodeArg* conv_fp32 = builder.MakeIntermediate();
+      NodeArg* relu_fp32 = builder.MakeIntermediate();
+      NodeArg* relu_q = builder.MakeIntermediate();
+      NodeArg* relu_dq = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(input_fp32, 0.18f, static_cast<uint8_t>(127), input_q, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(input_q, 0.18f, static_cast<uint8_t>(127), input_dq, use_contrib_qdq);
+      auto& conv_node = builder.AddNode("Conv", {input_dq, weight_fp32}, {conv_fp32});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+      builder.AddNode("Relu", {conv_fp32}, {relu_fp32});
+      builder.AddQuantizeLinearNode<uint8_t>(relu_fp32, 0.69f, static_cast<uint8_t>(127), relu_q, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(relu_q, 0.69f, static_cast<uint8_t>(127), relu_dq, use_contrib_qdq);
+    };
+
+    // Conv's weights should be quantized and folded, one additional Q/DQ pair inserted for weight
+    auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"] + op_to_count["com.microsoft.QuantizeLinear"], 2 + 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 2 + 1);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["Relu"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      /*opset_version=*/20,
+                      /*per_sample_tolerance=*/0.01,
+                      /*relative_per_sample_tolerance=*/0.01,
+                      /*transformer=*/std::make_unique<WeightBiasQuantization>());
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
 // Tests that the WeightBiasQuantization optimizer does not process nodes that do not
-// already have an output that is consumed by a single QuantizeLinear node.
+// already have an output that is consumed by a valid path to QuantizeLinear node.
 TEST(QDQTransformerTests, WeightBiasQuantization_SkipIfOutputNotQuantized) {
   auto test_case = [](bool add_final_reshape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {

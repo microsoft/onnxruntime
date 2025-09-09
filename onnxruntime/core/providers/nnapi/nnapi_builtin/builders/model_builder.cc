@@ -283,7 +283,7 @@ Status ModelBuilder::RegisterInitializers() {
     auto [index, size, padded_size] = initializers[i++];
     const uint8_t* src = nullptr;
     // TensorProto_DataType_UINT8 or TensorProto_DataType_FLOAT:
-    Initializer unpacked_tensor(tensor, graph_viewer_.ModelPath());
+    Initializer unpacked_tensor(graph_viewer_.GetGraph(), tensor, graph_viewer_.ModelPath());
     size_t size_in_bytes = unpacked_tensor.DataAsByteSpan().size();
     ORT_RETURN_IF_NOT(size == size_in_bytes,
                       "initializer tensor: ", tensor.name(), "'s size: ",

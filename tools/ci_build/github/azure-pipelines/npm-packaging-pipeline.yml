@@ -50,6 +50,11 @@ extends:
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL causes the React Native Android tests to fail when trying to load Linux x64 .so'
+
     stages:
     - template: templates/web-ci.yml
       parameters:

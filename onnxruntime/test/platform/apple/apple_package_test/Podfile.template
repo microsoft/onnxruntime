@@ -15,7 +15,7 @@ if ENV['SKIP_MACOS_TEST'] != 'true'
       # Comment the next line if you don't want to use dynamic frameworks
       use_frameworks!
 
-      platform :osx, '13.3'
+      platform :osx, '13.4'
 
       target 'macos_package_testUITests' do
         inherit! :search_paths

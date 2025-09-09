@@ -1,0 +1,162 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    trigger: true
+    branch: main
+
+variables:
+  mavenVersion: '3.9.8'
+
+stages:
+- template: templates/final-jar-testing-win.yml
+  parameters:
+    PoolName: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/final-jar-testing-linux.yml
+  parameters:
+    OS: Linux
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+
+- template: templates/final-jar-testing-linux.yml
+  parameters:
+    OS: MacOS
+    PoolName: 'macOS-14'
+
+- stage: GPU_JAR_Testing
+  dependsOn: []
+  jobs:
+  - job: Final_Jar_Testing_Windows_GPU
+    workspace:
+      clean: all
+    pool: 'onnxruntime-Win2022-GPU-A10'
+    timeoutInMinutes: 60
+    variables:
+    - name: runCodesignValidationInjection
+      value: false
+
+    steps:
+    - template: templates/set-version-number-variables-step.yml
+
+    - template: templates/jobs/download_win_gpu_library.yml
+      parameters:
+        CudaVersion: 12.2
+        DownloadCUDA: true
+        DownloadTRT: true
+
+    - template: templates/download_maven_for_tests.yml
+    - download: build
+      artifact: 'onnxruntime-java-gpu'
+      displayName: 'Download Final Jar'
+    - script: |
+        move $(Pipeline.Workspace)\build\onnxruntime-java-gpu\*.jar $(Pipeline.Workspace)\build\onnxruntime-java\
+
+    - task: PowerShell@2
+      displayName: 'Run Java Tests with PowerShell'
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Exit script on any error
+          $ErrorActionPreference = "Stop"
+
+          cd $(Pipeline.Workspace)/build/onnxruntime-java
+          del *.asc
+          del *.sha256
+          del *.sha512
+          del *.pom
+          cd ..
+          mkdir tests
+          cd tests
+          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          del $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          dir $(Pipeline.Workspace)/build/tests
+          Write-Host "Running JUnit Tests..."
+          & java -DUSE_CUDA=1 `
+            -cp "$(Pipeline.Workspace)\build\tests;$(Pipeline.Workspace)\build\onnxruntime-java\*" org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)\build\tests `
+            --fail-if-no-tests --disable-banner --reports-dir "$($env:Build_ArtifactStagingDirectory)/TestResults"
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '$(Build.ArtifactStagingDirectory)/TestResults/TEST-junit-jupiter.xml'
+        failTaskOnFailedTests: true
+
+
+  - job: Final_Jar_Testing_Linux_GPU
+    workspace:
+      clean: all
+    pool:
+      name: 'Onnxruntime-Linux-GPU-A10'
+    variables:
+    - name: runCodesignValidationInjection
+      value: false
+    - name: docker_base_image
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
+    timeoutInMinutes: 60
+    steps:
+    - checkout: self
+      submodules: false
+
+    - template: templates/set-version-number-variables-step.yml
+
+    - bash: |
+       sudo apt-get install -y msopenjdk-17
+       dpkg -l msopenjdk-17
+
+    - bash: |
+        echo "Downloading and installing Maven $(mavenVersion) for Linux..."
+        MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
+        # Download Maven binary
+        wget https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz -O $(Agent.TempDirectory)/maven.tar.gz
+
+        # Extract to the temp directory
+        mkdir -p ${MAVEN_DIR}
+        tar -xzf $(Agent.TempDirectory)/maven.tar.gz -C $(Agent.TempDirectory)
+
+        # Add Maven's bin directory to the PATH for subsequent tasks in the job
+        echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
+      displayName: 'Install Maven (Linux)'
+
+    - script: |
+        echo "Maven is now on the PATH."
+        mvn --version
+
+    - download: build
+      artifact: 'onnxruntime-java-gpu'
+      displayName: 'Download Final Jar'
+
+    # Rename the downloaded folder
+    - script: |
+        mv $(Pipeline.Workspace)/build/onnxruntime-java-gpu $(Pipeline.Workspace)/build/onnxruntime-java
+
+    - task: Maven@4
+      displayName: 'Download Dependencies'
+      inputs:
+        mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
+        goals: 'dependency:copy-dependencies'
+        options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
+        publishJUnitTestResults: false
+        javaHomeOption: 'Path'
+        jdkDirectory: '/usr/lib/jvm/msopenjdk-17-amd64'
+        jdkVersionOption: 'Default'
+        mavenVersionOption: 'Default'
+
+    # Now all the jars are in the $(Pipeline.Workspace)/build folder
+
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
+        Context: tools/ci_build/github/linux/docker/
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }}"
+        Repository: onnxruntimeubi8packagestest
+
+    - bash: |
+        docker run --network=none --rm \
+          --gpus all \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Pipeline.Workspace)/build:/build \
+          --volume /data/models:/build/models:ro \
+          onnxruntimeubi8packagestest \
+          /bin/bash /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -r /build -v $(OnnxRuntimeVersion)
+      displayName: 'Test'

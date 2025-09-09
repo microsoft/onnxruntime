@@ -790,13 +790,33 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
   return Status::OK();
 }
 
-const std::string& GetNodeName(const NodeUnit& node_unit) {
-  const std::string& node_name = node_unit.Name();
-  if (node_name.empty()) {
-    return node_unit.Outputs()[0].node_arg.Name();
+std::string GetUniqueName(const std::string& base, std::string_view suffix) {
+  std::string name = base;
+  if (!suffix.empty()) {
+    name += suffix;
   }
+  {
+    static std::unordered_map<std::string, int> counter;
+    static std::mutex counter_mutex;
+    std::lock_guard<std::mutex> lock(counter_mutex);
 
-  return node_name;
+    int& count = counter[name];
+    if (count++ > 0) {
+      return name + "_" + std::to_string(count);
+    }
+  }
+  return name;
+}
+
+std::string GetUniqueName(const NodeUnit& node_unit, std::string_view suffix) {
+  // Preserve node name when exist. Otherwise, use op type with index
+  std::string base;
+  if (!node_unit.Name().empty()) {
+    base = node_unit.Name();
+  } else {
+    base = node_unit.OpType() + std::to_string(node_unit.Index());
+  }
+  return GetUniqueName(base, suffix);
 }
 
 bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {
@@ -1380,10 +1400,9 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                                                 QnnQuantParamsWrapper(scale, offset),
                                                 std::move(output_shape_copy));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
-
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(convert_output_name,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(convert_output_name, QNN_OP_CONVERT),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    "Convert",
+                                                    QNN_OP_CONVERT,
                                                     {convert_input_name},
                                                     {convert_output_name},
                                                     {},

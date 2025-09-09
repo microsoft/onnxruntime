@@ -63,7 +63,7 @@
 
     set(onnxruntime_providers_webgpu_dll_deps)
 
-    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       target_link_libraries(onnxruntime_providers_webgpu dawn::webgpu_dawn)
 
       if (WIN32)

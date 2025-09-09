@@ -3950,7 +3950,8 @@ TEST(ModOpTest, Fmod_float_mixed_sign) {
   test.AddInput<float>("Y", {6}, {2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f});
   test.AddOutput<float>("Z", {6}, {-0.1f, 0.4f, 5.f, 0.1f, -0.4f, 3.f});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Fmod_double_mixed_sign) {
@@ -3959,7 +3960,9 @@ TEST(ModOpTest, Fmod_double_mixed_sign) {
   test.AddInput<double>("X", {6}, {-4.3, 7.2, 5.0, 4.3, -7.2, 8.0});
   test.AddInput<double>("Y", {6}, {2.1f, -3.4, 8.0, -2.1, 3.4, 5.0});
   test.AddOutput<double>("Z", {6}, {-0.1, 0.4, 5., 0.1, -0.4, 3.});
-  test.Run();
+
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Fmod_float16_mixed_sign) {
@@ -3971,7 +3974,8 @@ TEST(ModOpTest, Fmod_float16_mixed_sign) {
   // The output above is {-0.1f, 0.4f, 5.f, 0.1f, -0.4f, 3.f} for float
   test.AddOutput<MLFloat16>("Z", {6}, MakeMLFloat16({-0.1015625f, 0.3984375f, 5.f, 0.1015625f, -0.3984375f, 3.f}));
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -3997,8 +4001,9 @@ TEST(ModOpTest, Int8_mixed_sign) {
   test.AddInput<int8_t>("X", {6}, {-4, 7, 5, 4, -7, 8});
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, -2, 5, 0, 2, 3});
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Int8 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int8_mixed_sign_fmod) {
@@ -4009,7 +4014,10 @@ TEST(ModOpTest, Int8_mixed_sign_fmod) {
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Int8 is not supported by Cast, so skip it now
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt8_mod) {
@@ -4027,7 +4035,8 @@ TEST(ModOpTest, Int16_mixed_sign) {
   test.AddInput<int16_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int16_t>("Z", {6}, {0, -2, 5, 0, 2, 3});
 
-  test.Run();
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Int16 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int16_mixed_sign_fmod) {
@@ -4038,7 +4047,9 @@ TEST(ModOpTest, Int16_mixed_sign_fmod) {
   test.AddInput<int16_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int16_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  // For QNN EP, when input is not fp32, fp16, ufxp16, ufxp8, sfxp8 Mod is lowered to Cast(a - b*floor(a/b)). And Int16 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt16_mod) {
@@ -4047,7 +4058,8 @@ TEST(ModOpTest, UInt16_mod) {
   test.AddInput<uint16_t>("Y", {6}, {2, 3, 8, 2, 3, 5});
   test.AddOutput<uint16_t>("Z", {6}, {0, 1, 5, 0, 1, 3});
 
-  test.Run();
+  // For QNN EP, when input is not fp32, fp16, ufxp16, ufxp8, sfxp8 Mod is lowered to Cast(a - b*floor(a/b)). And Uint16 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int32_mixed_sign) {
@@ -4067,7 +4079,8 @@ TEST(ModOpTest, Int32_mixed_sign_fmod) {
   test.AddInput<int32_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int32_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt32_mod) {
@@ -4096,7 +4109,8 @@ TEST(ModOpTest, Int64_mixed_sign_fmod) {
   test.AddInput<int64_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int64_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt64_mod) {
@@ -4105,7 +4119,8 @@ TEST(ModOpTest, UInt64_mod) {
   test.AddInput<uint64_t>("Y", {6}, {2, 3, 8, 2, 3, 5});
   test.AddOutput<uint64_t>("Z", {6}, {0, 1, 5, 0, 1, 3});
 
-  test.Run();
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Uint64 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int32_mod_bcast) {

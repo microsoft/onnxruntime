@@ -19,7 +19,7 @@ class IBackend {
   virtual ~IBackend() = default;
   virtual void RewindKVCache(size_t index) {}
 };
-using ptr_stream_t = std::unique_ptr<std::istream>;
+using ptr_stream_t = std::unique_ptr<ModelBlobWrapper>;
 class BackendFactory {
  public:
   static std::shared_ptr<IBackend>

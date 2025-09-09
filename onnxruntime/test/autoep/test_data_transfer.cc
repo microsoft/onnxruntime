@@ -23,16 +23,15 @@ namespace onnxruntime {
 namespace test {
 
 TEST(OrtEpLibrary, DataTransfer) {
-  const OrtApi& c_api = Ort::GetApi();
   RegisteredEpDeviceUniquePtr example_ep;
   Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
-  const OrtEpDevice* ep_device = example_ep.get();
+  Ort::ConstEpDevice ep_device(example_ep.get());
 
-  const OrtMemoryInfo* device_memory_info = c_api.EpDevice_MemoryInfo(ep_device, OrtDeviceMemoryType_DEFAULT);
+  auto device_memory_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
 
   // create a tensor using the default CPU allocator
   Ort::AllocatorWithDefaultOptions cpu_allocator;
-  std::vector<int64_t> shape{2, 3, 4};  // shape doesn't matter
+  constexpr const std::array<int64_t, 3U> shape{2, 3, 4};  // shape doesn't matter
   const size_t num_elements = 2 * 3 * 4;
 
   RandomValueGenerator random{};
@@ -44,24 +43,21 @@ TEST(OrtEpLibrary, DataTransfer) {
   // create an on-device Tensor using the example EPs alternative CPU allocator.
   // it has a different vendor to the default ORT CPU allocator so we can copy between them even though both are
   // really CPU based.
-  OrtAllocator* allocator = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, device_memory_info, &allocator));
+  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
   ASSERT_NE(allocator, nullptr);
   Ort::Value device_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
 
-  std::vector<const OrtValue*> src_tensor_ptrs{cpu_tensor};
-  std::vector<OrtValue*> dst_tensor_ptrs{device_tensor};
+  std::vector<Ort::Value> src_tensor;
+  src_tensor.push_back(std::move(cpu_tensor));
+  std::vector<Ort::Value> dst_tensor;
+  dst_tensor.push_back(std::move(device_tensor));
 
-  ASSERT_ORTSTATUS_OK(c_api.CopyTensors(*ort_env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), nullptr,
-                                        src_tensor_ptrs.size()));
+  ASSERT_CXX_ORTSTATUS_OK(ort_env->CopyTensors(src_tensor, dst_tensor, nullptr));
 
-  const float* src_data = nullptr;
-  const float* dst_data = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api.GetTensorData(cpu_tensor, reinterpret_cast<const void**>(&src_data)));
-  ASSERT_ORTSTATUS_OK(c_api.GetTensorData(device_tensor, reinterpret_cast<const void**>(&dst_data)));
+  const float* src_data = src_tensor[0].GetTensorData<float>();
+  const float* dst_data = dst_tensor[0].GetTensorData<float>();
 
-  size_t bytes;
-  ASSERT_ORTSTATUS_OK(c_api.GetTensorSizeInBytes(cpu_tensor, &bytes));
+  size_t bytes = src_tensor[0].GetTensorSizeInBytes();
   ASSERT_EQ(bytes, num_elements * sizeof(float));
 
   ASSERT_NE(src_data, dst_data) << "Should have copied between two different memory locations";
