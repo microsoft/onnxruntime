@@ -8,8 +8,9 @@ steps:
   displayName: 'Download Action Release ${{ parameters.actionVersion }}'
   inputs:
     connection: 'microsoft'
-    repository: 'microsoft/onnxruntime-github-actions'
-    tag: '${{ parameters.actionVersion }}'
+    userRepository: 'microsoft/onnxruntime-github-actions'
+    defaultVersionType: specificTag
+    version: '${{ parameters.actionVersion }}'
     itemPattern: '**/*.zip'
     downloadPath: '$(System.ArtifactsDirectory)/action-download'
 
