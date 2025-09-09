@@ -108,6 +108,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+        ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -429,6 +431,8 @@ else()
           ${MLAS_SRC_DIR}/softmax_kernel_neon.cpp
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
         )
         if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
@@ -449,8 +453,6 @@ else()
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
             ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
-            ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-            ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
