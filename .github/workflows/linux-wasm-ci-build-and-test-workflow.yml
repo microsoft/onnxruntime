@@ -52,8 +52,8 @@ jobs:
           architecture: ${{ env.buildArch }}
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
-          vcpkg-version: '2025.03.19'
-          vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
