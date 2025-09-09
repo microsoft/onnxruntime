@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include "core/common/status.h"
@@ -34,7 +35,7 @@ class ModelCompilationOptions {
   /// Overrides any previous call to SetInputModelPath() or SetInputModelFromBuffer().
   /// </summary>
   /// <param name="input_model_path">The input model's path</param>
-  void SetInputModelPath(const std::string& input_model_path);
+  void SetInputModelPath(const std::filesystem::path& input_model_path);
 
   /// <summary>
   /// Sets the buffer that stores the input ONNX model to compile.
@@ -50,7 +51,7 @@ class ModelCompilationOptions {
   /// </summary>
   /// <param name="output_model_path"></param>
   /// <returns>Status indicating potential error</returns>
-  Status SetOutputModelPath(const std::string& output_model_path);
+  Status SetOutputModelPath(const std::filesystem::path& output_model_path);
 
   /// <summary>
   /// Sets the file path to the file that will store external ONNX initializers for the compiled model.
@@ -58,7 +59,7 @@ class ModelCompilationOptions {
   /// </summary>
   /// <param name="external_initializers_path">Path to the external initializers file to generate</param>
   /// <param name="external_initializer_size_threshold">Initializers that exceed this threshold are external</param>
-  void SetOutputModelExternalInitializersFile(const std::string& external_initializers_path,
+  void SetOutputModelExternalInitializersFile(const std::filesystem::path& external_initializers_path,
                                               size_t external_initializer_size_threshold);
 
   /// <summary>
@@ -73,6 +74,21 @@ class ModelCompilationOptions {
                               size_t* output_model_buffer_size_ptr);
 
   /// <summary>
+  /// Sets an output stream (write function + state) used to write out the compiled model bytes.
+  /// </summary>
+  /// <param name="write_func">Write function</param>
+  /// <param name="state">The user's state</param>
+  void SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
+  /// <summary>
+  /// Sets a user-provided function to handle serialization of ONNX initializers.
+  /// </summary>
+  /// <param name="get_initializer_location_func">The user-provided function called for every initializer</param>
+  /// <param name="state">The user's state.</param>
+  void SetOutputModelGetInitializerLocationFunc(OrtGetInitializerLocationFunc get_initializer_location_func,
+                                                void* state);
+
+  /// <summary>
   /// Sets information relate to EP context binary file.
   /// EP use this information to decide the location and context binary file name.
   /// Used while compiling model with input and output in memory buffer
@@ -80,7 +96,8 @@ class ModelCompilationOptions {
   /// <param name="output_directory">The folder path to the generated context binary file</param>
   /// <param name="model_name">Model name used to decide the context binary file name: [model_name]_[ep].bin</param>
   /// <returns>Status indicating potential error</returns>
-  Status SetEpContextBinaryInformation(const std::string& output_directory, const std::string& model_name);
+  Status SetEpContextBinaryInformation(const std::filesystem::path& output_directory,
+                                       const std::filesystem::path& model_name);
 
   /// <summary>
   /// Enables or disables the embedding of EPContext binary data into the `ep_cache_context` attribute of EPContext
@@ -107,7 +124,7 @@ class ModelCompilationOptions {
   /// Returns the file path to the input ONNX model.
   /// </summary>
   /// <returns>input model's path</returns>
-  const std::string& GetInputModelPath() const;
+  const std::filesystem::path& GetInputModelPath() const;
 
   /// <summary>
   /// Returns true if the input model is read from a file.
@@ -144,13 +161,10 @@ class ModelCompilationOptions {
 
  private:
   void ResetInputModelSettings();
-  Status ResetOutputModelSettings();
-  Status CheckInputModelSettings() const;
-  Status CheckOutputModelSettings() const;
 
   const onnxruntime::Environment& env_;
   OrtSessionOptions session_options_;
-  std::string input_model_path_;
+  std::filesystem::path input_model_path_;
   const void* input_model_data_ = nullptr;
   size_t input_model_data_size_ = 0;
 };

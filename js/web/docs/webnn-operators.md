@@ -57,6 +57,8 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | HardSwish | ai.onnx(14+) | hardSwish | |
 | Identity | ai.onnx(7-13, 14-15, 16-18, 19-20, 21+) | identity | |
 | InstanceNormalization | ai.onnx(7+) | instanceNormalization | |
+| IsNaN | ai.onnx(9-12, 13-19, 20+) | isNaN | |
+| IsInf | ai.onnx(10-19, 20+) | isInfinite, equal, greater | |
 | LayerNormalization | ai.onnx(7-16, 17+) | layerNormalization | |
 | LeakyRelu | ai.onnx(7-15, 16+) | leakyRelu | |
 | Less | ai.onnx(7-8, 9-12, 13+) | lesser | |

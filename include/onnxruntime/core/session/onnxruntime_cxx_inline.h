@@ -589,6 +589,24 @@ inline size_t ConstExternalInitializerInfoImpl<T>::GetByteSize() const {
 }
 }  // namespace detail
 
+inline ExternalInitializerInfo::ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset,
+                                                        size_t byte_size) {
+  ThrowOnError(GetApi().CreateExternalInitializerInfo(filepath, file_offset, byte_size, &this->p_));
+}
+
+inline Status ExternalInitializerInfo::Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
+                                              /*out*/ ExternalInitializerInfo& out) {
+  OrtExternalInitializerInfo* info = nullptr;
+  OrtStatus* status = GetApi().CreateExternalInitializerInfo(filepath, file_offset, byte_size, &info);
+  if (status != nullptr) {
+    return Status{status};
+  }
+
+  out = ExternalInitializerInfo(info);
+
+  return Status{nullptr};
+}
+
 namespace detail {
 template <typename T>
 inline const char* KeyValuePairsImpl<T>::GetValue(const char* key) const {
@@ -1024,11 +1042,27 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalI
   return *this;
 }
 
+inline ModelCompilationOptions&
+ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
+    OrtGetInitializerLocationFunc get_initializer_location_func, void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc(
+      this->p_,
+      get_initializer_location_func,
+      state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
     OrtAllocator* allocator, void** output_model_buffer_ptr, size_t* output_model_buffer_size_ptr) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelBuffer(this->p_, allocator,
                                                                                  output_model_buffer_ptr,
                                                                                  output_model_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_func,
+                                                                                 void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelWriteFunc(this->p_, write_func, state));
   return *this;
 }
 
@@ -2596,8 +2630,10 @@ struct GetValueImpl<std::string> {
     std::string result;
     if (size > 0) {
       result.resize(size);
+      // some compilers in use do not support std::string::data() non-const
+      auto* buffer = &result[0];
       status = Status{GetApi().ReadOpAttr(
-          attr, OrtOpAttrType::ORT_OP_ATTR_STRING, result.data(), size, &size)};
+          attr, OrtOpAttrType::ORT_OP_ATTR_STRING, buffer, size, &size)};
       if (!status.IsOK()) return status;
     }
     out.swap(result);
@@ -2607,16 +2643,15 @@ struct GetValueImpl<std::string> {
     auto status = CheckAttrType(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
     if (!status.IsOK()) return status;
 
-    size_t total_buffer_size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
-
-    // Create a temporary buffer to hold the string data
-    std::vector<char> buffer(total_buffer_size);
-    status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, buffer.data(),
-                                        total_buffer_size, &total_buffer_size)};
-    if (!status.IsOK()) return status;
-
     std::vector<std::string> result;
+    size_t total_buffer_size = GetDataSize(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
     if (total_buffer_size > 0) {
+      // Create a temporary buffer to hold the string data
+      std::vector<char> buffer(total_buffer_size);
+      status = Status{GetApi().ReadOpAttr(attr, OrtOpAttrType::ORT_OP_ATTR_STRINGS, buffer.data(),
+                                          total_buffer_size, &total_buffer_size)};
+      if (!status.IsOK()) return status;
+
       const char* data = buffer.data();
       const char* end = data + total_buffer_size;
       while (data < end) {

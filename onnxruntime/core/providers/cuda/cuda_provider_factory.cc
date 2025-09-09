@@ -586,7 +586,7 @@ struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
     Release = ReleaseImpl;
   }
 
-  cudaStream_t& stream_;
+  cudaStream_t stream_;
   cudaEvent_t event_;
 
   const OrtApi& ort_api;
@@ -632,9 +632,9 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
     *notification_impl = nullptr;
 
     std::unique_ptr<CudaSyncNotificationImpl> notification;
-    cudaStream_t* cuda_stream = static_cast<cudaStream_t*>(impl.stream_.GetHandle());
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.stream_.GetHandle());
 
-    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(*cuda_stream, impl.ort_api, notification));
+    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(cuda_stream, impl.ort_api, notification));
     *notification_impl = notification.release();
 
     return nullptr;
