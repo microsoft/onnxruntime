@@ -1,19 +1,35 @@
+parameters:
+- name: actionVersion
+  type: string
+  default: 'v0.0.7' # Default version if not specified by the calling pipeline
+
 steps:
+- task: DownloadGitHubRelease@0
+  displayName: 'Download Action Release ${{ parameters.actionVersion }}'
+  inputs:
+    connection: 'github.com' # Use 'github.com' for public repos
+    repository: 'microsoft/onnxruntime-github-actions'
+    tag: '${{ parameters.actionVersion }}'
+    itemPattern: '**/*.zip'
+    downloadPath: '$(System.ArtifactsDirectory)/action-download'
+
+- task: ExtractFiles@1
+  displayName: 'Extract Action Files'
+  inputs:
+    archiveFilePatterns: '$(System.ArtifactsDirectory)/action-download/**/*.zip'
+    destinationFolder: '$(System.ArtifactsDirectory)/action-unzipped'
+    cleanDestinationFolder: true
+
 - task: PythonScript@0
-  displayName: 'Download and Run setup-build-tools Action'
+  displayName: 'Run setup-build-tools Action'
   inputs:
     scriptSource: 'inline'
     script: |
       import os
       import subprocess
-      import requests
-      import zipfile
-      import shutil
       import glob
 
       # --- 1. Define Action Inputs ---
-      # These will be set as environment variables for the node script.
-      # NOTE: Replace the placeholder hashes with actual, valid SHA512 hashes.
       action_inputs = {
           'INPUT_CMAKE-VERSION': '3.31.8',
           'INPUT_CMAKE-HASH': '99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8',
@@ -23,38 +39,21 @@ steps:
           'INPUT_DISABLE-TERRAPIN': 'true'
       }
 
-      # --- 2. Download and Extract the Action Source ---
-      action_version = "v0.0.7" # Specify the release tag to use
-      zip_url = f"https://github.com/microsoft/onnxruntime-github-actions/archive/refs/tags/{action_version}.zip"
-      zip_path = "onnxruntime-actions.zip"
-      extract_dir = "unzipped_action_src"
+      # --- 2. Locate and Run the Action Script ---
+      unzipped_dir = '$(System.ArtifactsDirectory)/action-unzipped'
       
-      print(f"Downloading action source from: {zip_url}")
-      response = requests.get(zip_url, stream=True)
-      response.raise_for_status()
-      with open(zip_path, 'wb') as f:
-          shutil.copyfileobj(response.raw, f)
-      
-      print(f"Extracting {zip_path} to {extract_dir}")
-      if os.path.exists(extract_dir):
-          shutil.rmtree(extract_dir)
-      with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-          zip_ref.extractall(extract_dir)
-
-      # --- 3. Run the Action Script (No Build Step Needed) ---
-      # Find the actual extracted folder name (it's usually repo-name-tag)
-      extracted_folders = glob.glob(os.path.join(extract_dir, 'onnxruntime-github-actions-*'))
+      # The unzipped contents are in a versioned sub-directory
+      search_pattern = os.path.join(unzipped_dir, 'onnxruntime-github-actions-*')
+      extracted_folders = glob.glob(search_pattern)
       if not extracted_folders:
-          raise Exception("Could not find extracted action source directory.")
+          raise Exception(f"Could not find extracted action directory matching '{search_pattern}'")
       action_base_path = extracted_folders[0]
-      print(f"Found action source at: {action_base_path}")
+      print(f"Found action base path: {action_base_path}")
       
       action_script_path = os.path.join(action_base_path, 'actions', 'setup-build-tools', 'dist', 'index.js')
-
       if not os.path.exists(action_script_path):
-          raise FileNotFoundError(f"Action script not found at the expected path: {action_script_path}")
+          raise FileNotFoundError(f"Action script not found at expected path: {action_script_path}")
           
-      # Set environment variables for the action
       env = os.environ.copy()
       env.update(action_inputs)
 
@@ -77,7 +76,6 @@ steps:
 
 - bash: |
     echo "Searching for paths added by the action..."
-    # Search the log file for the specific pattern indicating a path addition.
     added_paths=$(grep -oP '(?<=Adding ).*(?= to PATH.)' action_output.log)
 
     if [ -z "$added_paths" ]; then
@@ -86,11 +84,9 @@ steps:
       echo "Found paths to add to the environment:"
       echo "$added_paths"
       
-      # Loop through each found path and prepend it to the ADO job's PATH
       while IFS= read -r path; do
         if [ -n "$path" ]; then
           echo "Prepending to PATH: $path"
-          # Use the special Azure Pipelines logging command to prepend a directory to the PATH
           echo "##vso[task.prependpath]$path"
         fi
       done <<< "$added_paths"
@@ -98,10 +94,8 @@ steps:
   displayName: 'Update ADO Job PATH from Action Output'
 
 - bash: |
-    echo "Verifying CMake installation by checking its version..."
+    echo "Verifying CMake installation..."
     cmake --version
-    echo "Verifying vcpkg installation by checking its version..."
-    # The action sets VCPKG_INSTALLATION_ROOT as an environment variable for the script,
-    # and ADO should pick it up for subsequent steps if it was exported correctly.
+    echo "Verifying vcpkg installation..."
     $VCPKG_INSTALLATION_ROOT/vcpkg version
   displayName: 'Verify Tools'
