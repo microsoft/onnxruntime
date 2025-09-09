@@ -27,7 +27,8 @@ def run():
 
 
     # --- 2. Download and Extract the Action ---
-    zip_url = f"https://github.com/microsoft/onnxruntime-github-actions/archive/refs/tags/{action_version}.zip"
+    # zip_url = f"https://github.com/microsoft/onnxruntime-github-actions/archive/refs/tags/{action_version}.zip"
+    zip_url = "https://github.com/microsoft/onnxruntime-github-actions/archive/0e4007c285f5d78de5496953aa8696dc80f8f735.zip"
     artifacts_dir = os.environ.get('SYSTEM_ARTIFACTSDIRECTORY', '.')
     zip_path = os.path.join(artifacts_dir, "action.zip")
     extract_dir = os.path.join(artifacts_dir, "action-unzipped")
