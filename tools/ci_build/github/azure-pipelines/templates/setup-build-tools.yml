@@ -1,8 +1,14 @@
+pool:
+  vmImage: 'ubuntu-latest'
+
 steps:
-- script: python3 -m pip install requests
+- task: NodeTool@0
+  inputs:
+    versionSpec: '20.x'
+  displayName: 'Install Node.js 20'
 
 - task: PythonScript@0
-  displayName: 'Download, Build, and Run setup-build-tools Action'
+  displayName: 'Download and Run setup-build-tools Action'
   inputs:
     scriptSource: 'inline'
     script: |
@@ -14,14 +20,15 @@ steps:
       import glob
 
       # --- 1. Define Action Inputs ---
-      # These will be set as environment variables for the node script
+      # These will be set as environment variables for the node script.
+      # NOTE: Replace the placeholder hashes with actual, valid SHA512 hashes.
       action_inputs = {
-          'INPUT_CMAKE-VERSION': '3.29.0',
-          'INPUT_CMAKE-HASH': 'YOUR_CMAKE_SHA512_HASH', # Replace with the actual SHA512 hash for the Linux x86_64 version
-          'INPUT_VCPKG-VERSION': '2023.10.19',
-          'INPUT_VCPKG-HASH': 'YOUR_VCPKG_SHA512_HASH', # Replace with the actual SHA512 hash
+          'INPUT_CMAKE-VERSION': '3.31.8',
+          'INPUT_CMAKE-HASH': '99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8',
+          'INPUT_VCPKG-VERSION': '2025.06.13',
+          'INPUT_VCPKG-HASH': '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc',
           'INPUT_ADD-CMAKE-TO-PATH': 'true',
-          'INPUT_DISABLE-TERRAPIN': 'true' # Terrapin is not expected to be on ADO agent
+          'INPUT_DISABLE-TERRAPIN': 'true'
       }
 
       # --- 2. Download and Extract the Action Source ---
@@ -34,33 +41,26 @@ steps:
       response = requests.get(zip_url, stream=True)
       response.raise_for_status()
       with open(zip_path, 'wb') as f:
-          for chunk in response.iter_content(chunk_size=8192):
-              f.write(chunk)
+          shutil.copyfileobj(response.raw, f)
       
       print(f"Extracting {zip_path} to {extract_dir}")
       if os.path.exists(extract_dir):
-          shutil.rmtree(extract_dir) # Clean up previous extraction
+          shutil.rmtree(extract_dir)
       with zipfile.ZipFile(zip_path, 'r') as zip_ref:
           zip_ref.extractall(extract_dir)
 
-      # Find the actual extracted folder name (it's usually repo-name-commit-hash)
+      # --- 3. Run the Action Script (No Build Step Needed) ---
+      # Find the actual extracted folder name (it's usually repo-name-tag)
       extracted_folders = glob.glob(os.path.join(extract_dir, 'onnxruntime-github-actions-*'))
       if not extracted_folders:
           raise Exception("Could not find extracted action source directory.")
-      action_source_path = extracted_folders[0]
-      print(f"Found action source at: {action_source_path}")
-
-      # --- 3. Build the Action ---
-      print("Installing npm dependencies...")
-      subprocess.run(['npm', 'ci'], check=True, cwd=action_source_path)
+      action_base_path = extracted_folders[0]
+      print(f"Found action source at: {action_base_path}")
       
-      print("Building the action with esbuild...")
-      subprocess.run(['npm', 'run', 'build'], check=True, cwd=action_source_path)
+      action_script_path = os.path.join(action_base_path, 'actions', 'setup-build-tools', 'dist', 'index.js')
 
-      # --- 4. Run the Action Script ---
-      action_script_path = os.path.join(action_source_path, 'build', 'setup-build-tools', 'dist', 'index.js')
       if not os.path.exists(action_script_path):
-          raise FileNotFoundError(f"Action script not found at {action_script_path} after build.")
+          raise FileNotFoundError(f"Action script not found at the expected path: {action_script_path}")
           
       # Set environment variables for the action
       env = os.environ.copy()
@@ -86,14 +86,12 @@ steps:
 - bash: |
     echo "Searching for paths added by the action..."
     # Search the log file for the specific pattern indicating a path addition.
-    # The grep command uses a lookbehind `(?<=Adding )` and a lookahead `(?= to PATH.)` 
-    # to extract only the path itself.
     added_paths=$(grep -oP '(?<=Adding ).*(?= to PATH.)' action_output.log)
 
     if [ -z "$added_paths" ]; then
       echo "No new paths were found in the action's output."
     else
-      echo "Found paths to add:"
+      echo "Found paths to add to the environment:"
       echo "$added_paths"
       
       # Loop through each found path and prepend it to the ADO job's PATH
@@ -110,4 +108,8 @@ steps:
 - bash: |
     echo "Verifying CMake installation by checking its version..."
     cmake --version
-  displayName: 'Verify CMake'
+    echo "Verifying vcpkg installation by checking its version..."
+    # The action sets VCPKG_INSTALLATION_ROOT as an environment variable for the script,
+    # and ADO should pick it up for subsequent steps if it was exported correctly.
+    $VCPKG_INSTALLATION_ROOT/vcpkg version
+  displayName: 'Verify Tools'
