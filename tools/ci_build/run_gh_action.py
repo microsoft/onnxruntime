@@ -16,15 +16,15 @@ def run():
         
     action_version = sys.argv[1]
     
-    # NOTE: Replace placeholder hashes with actual, valid SHA512 hashes for the chosen versions and platform.
     action_inputs = {
-        'INPUT_CMAKE-VERSION': '3.29.0',
-        'INPUT_CMAKE-HASH': '8482e754bf5bf45349ba2f2184999f81f8754ed3d281e1708f1f9a3b2fcd05c3aa5368e6247930495722ffc5982aadbe489630c5716241ab1702c3cf866483cf',
-        'INPUT_VCPKG-VERSION': '2023.10.19',
-        'INPUT_VCPKG-HASH': '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114',
-        'INPUT_ADD-CMAKE-TO-PATH': 'true',
-        'INPUT_DISABLE-TERRAPIN': 'true'
+      'INPUT_CMAKE-VERSION': '3.31.8',
+      'INPUT_CMAKE-HASH': '99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8',
+      'INPUT_VCPKG-VERSION': '2025.06.13',
+      'INPUT_VCPKG-HASH': '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc',
+      'INPUT_ADD-CMAKE-TO-PATH': 'true',
+      'INPUT_DISABLE-TERRAPIN': 'true'
     }
+
 
     # --- 2. Download and Extract the Action ---
     zip_url = f"https://github.com/microsoft/onnxruntime-github-actions/archive/refs/tags/{action_version}.zip"
