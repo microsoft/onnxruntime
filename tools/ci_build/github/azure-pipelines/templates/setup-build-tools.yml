@@ -1,4 +1,6 @@
 steps:
+- script: python3 -m pip install requests
+
 - task: PythonScript@0
   displayName: 'Download, Build, and Run setup-build-tools Action'
   inputs:
