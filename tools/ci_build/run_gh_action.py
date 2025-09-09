@@ -1,4 +1,3 @@
-# scripts/run_action.py
 import os
 import subprocess
 import requests
@@ -14,7 +13,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 from util import run
-def run():
+def main():
     # --- 1. Configuration ---
     if len(sys.argv) < 2:
         print("::error::Action version argument was not provided.")
@@ -79,4 +78,4 @@ def run():
     process = run(['node', action_script_path], env=env)
 
 if __name__ == "__main__":
-    run()
+    main()
