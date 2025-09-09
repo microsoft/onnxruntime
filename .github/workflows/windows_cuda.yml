@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
           submodules: 'none'
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: x64
@@ -163,7 +163,7 @@ jobs:
           name: build-artifacts
           path: ${{ runner.temp }}\build
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: x64
