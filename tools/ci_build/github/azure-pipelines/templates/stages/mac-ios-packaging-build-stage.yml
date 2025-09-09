@@ -89,6 +89,10 @@ stages:
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
+    - script: |
+        pip install cmake==3.36.1
+      displayName: "Install CMake 3.36.1"
+
     # create and test mobile pods
     - script: |
         python tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
