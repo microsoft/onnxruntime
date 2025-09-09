@@ -10,26 +10,10 @@ Module Name:
 
 Abstract:
 
-    This module contains the private data structures and procedure prototypes
-    for the single precision convolution operation.
+    This module defines convolution kernel flags for configuring convolution
+    operations including output accumulation, bias addition, and activations.
 
 --*/
-
-#pragma once
-
-#include <cstddef>
-
-//
-// Define the calling convention for MLAS functions.
-//
-
-#ifndef MLASCALL
-#if defined(_WIN32) && !defined(_WIN64)
-#define MLASCALL __stdcall
-#else
-#define MLASCALL
-#endif
-#endif
 
 //
 // Define the convolution kernel flags.

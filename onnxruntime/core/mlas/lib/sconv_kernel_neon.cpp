@@ -14,14 +14,10 @@ Abstract:
 
 --*/
 
+#include "mlasi.h"
 #include "sconv.h"
 
-#if defined(__aarch64__) || defined(_M_ARM64)
-
-#include <algorithm>
-#include <cstddef>
-
-#include "mlasi.h"
+#if defined(MLAS_TARGET_ARM64)
 
 // Common implementation for NCHW and NCHWC convolution kernels
 template <bool IsNchwcFormat>
@@ -276,6 +272,39 @@ void
 }
 
 //
+// Helper function to load input vector with bounds checking
+//
+static inline float32x4_t
+LoadInputVectorWithBounds(
+    const float* input_base,
+    size_t offset,
+    bool is_main_region,
+    const float* InputBase,
+    size_t kh,
+    size_t DilatedInputWidthElements,
+    size_t InputWidthElements
+)
+{
+    if (is_main_region) {
+        return MlasLoadFloat32x4(input_base + offset);
+    } else {
+        float input_values[4];
+        for (size_t i = 0; i < 4; i++) {
+            const float* input_element = input_base + offset + i;
+            const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+            const float* input_row_end = input_row_start + InputWidthElements;
+
+            if (input_element >= input_row_start && input_element < input_row_end) {
+                input_values[i] = *input_element;
+            } else {
+                input_values[i] = 0.0f;
+            }
+        }
+        return MlasLoadFloat32x4(input_values);
+    }
+}
+
+//
 // Implementation of MlasConvDepthwiseFloatKernelNeon
 //
 // This kernel performs depthwise separable convolution where each input channel
@@ -358,81 +387,10 @@ void
                 const float* input_base = Input + output_idx * StrideWidthElements +
                                           kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
-                float32x4_t InputVector0;
-                if (is_main_region) {
-                    InputVector0 = MlasLoadFloat32x4(input_base);
-                } else {
-                    float input_values[4];
-                    for (size_t i = 0; i < 4; i++) {
-                        const float* input_element = input_base + i;
-                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                        const float* input_row_end = input_row_start + InputWidthElements;
-
-                        if (input_element >= input_row_start && input_element < input_row_end) {
-                            input_values[i] = *input_element;
-                        } else {
-                            input_values[i] = 0.0f;
-                        }
-                    }
-                    InputVector0 = MlasLoadFloat32x4(input_values);
-                }
-
-                float32x4_t InputVector1;
-                if (is_main_region) {
-                    InputVector1 = MlasLoadFloat32x4(input_base + 4);
-                } else {
-                    float input_values[4];
-                    for (size_t i = 0; i < 4; i++) {
-                        const float* input_element = input_base + 4 + i;
-                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                        const float* input_row_end = input_row_start + InputWidthElements;
-
-                        if (input_element >= input_row_start && input_element < input_row_end) {
-                            input_values[i] = *input_element;
-                        } else {
-                            input_values[i] = 0.0f;
-                        }
-                    }
-                    InputVector1 = MlasLoadFloat32x4(input_values);
-                }
-
-                float32x4_t InputVector2;
-                if (is_main_region) {
-                    InputVector2 = MlasLoadFloat32x4(input_base + 8);
-                } else {
-                    float input_values[4];
-                    for (size_t i = 0; i < 4; i++) {
-                        const float* input_element = input_base + 8 + i;
-                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                        const float* input_row_end = input_row_start + InputWidthElements;
-
-                        if (input_element >= input_row_start && input_element < input_row_end) {
-                            input_values[i] = *input_element;
-                        } else {
-                            input_values[i] = 0.0f;
-                        }
-                    }
-                    InputVector2 = MlasLoadFloat32x4(input_values);
-                }
-
-                float32x4_t InputVector3;
-                if (is_main_region) {
-                    InputVector3 = MlasLoadFloat32x4(input_base + 12);
-                } else {
-                    float input_values[4];
-                    for (size_t i = 0; i < 4; i++) {
-                        const float* input_element = input_base + 12 + i;
-                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                        const float* input_row_end = input_row_start + InputWidthElements;
-
-                        if (input_element >= input_row_start && input_element < input_row_end) {
-                            input_values[i] = *input_element;
-                        } else {
-                            input_values[i] = 0.0f;
-                        }
-                    }
-                    InputVector3 = MlasLoadFloat32x4(input_values);
-                }
+                float32x4_t InputVector0 = LoadInputVectorWithBounds(input_base, 0, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
+                float32x4_t InputVector1 = LoadInputVectorWithBounds(input_base, 4, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
+                float32x4_t InputVector2 = LoadInputVectorWithBounds(input_base, 8, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
+                float32x4_t InputVector3 = LoadInputVectorWithBounds(input_base, 12, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
 
                 const float32x4_t FilterVector0 = MlasLoadFloat32x4(&Filter[kernel_pos * BlockSize]);
                 const float32x4_t FilterVector1 = MlasLoadFloat32x4(&Filter[kernel_pos * BlockSize + 4]);

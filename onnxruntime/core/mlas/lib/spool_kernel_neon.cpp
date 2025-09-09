@@ -14,13 +14,9 @@ Abstract:
 
 --*/
 
-#if defined(__aarch64__) || defined(_M_ARM64)
-
-#include <cstddef>
-#include <limits>
-#include <vector>
-
 #include "mlasi.h"
+
+#if defined(MLAS_TARGET_ARM64)
 
 void
     MLASCALL
