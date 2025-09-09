@@ -76,7 +76,7 @@ void
                     MaxVector2 = MlasMaximumFloat32x4(MaxVector2, InputVector2);
                     MaxVector3 = MlasMaximumFloat32x4(MaxVector3, InputVector3);
                 } else {
-                    std::vector<float> values(BlockSize);
+                    float values[BlockSize];
                     for (size_t i = 0; i < BlockSize; i++) {
                         const float* element_ptr = input_ptr + i;
                         if (element_ptr >= row_start && element_ptr < row_end) {
@@ -169,7 +169,7 @@ MlasPoolAverageFloatKernelNeonImpl(
                         }
                     }
                 } else {
-                    std::vector<float> values(BlockSize);
+                    float values[BlockSize];
                     for (size_t i = 0; i < BlockSize; i++) {
                         const float* element_ptr = input_ptr + i;
                         if (element_ptr >= row_start && element_ptr < row_end) {
@@ -196,7 +196,7 @@ MlasPoolAverageFloatKernelNeonImpl(
         }
 
         if (ExcludePad) {
-            std::vector<float> results(BlockSize);
+            float results[BlockSize];
 
             MlasStoreFloat32x4(&results[0], SumVector0);
             MlasStoreFloat32x4(&results[4], SumVector1);
