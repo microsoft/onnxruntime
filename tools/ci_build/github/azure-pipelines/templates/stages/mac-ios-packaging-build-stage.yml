@@ -90,8 +90,8 @@ stages:
       displayName: "Install Python requirements"
 
     - script: |
-        pip install cmake==3.36.1
-      displayName: "Install CMake 3.36.1"
+        pip install cmake==3.31.6
+      displayName: "Install CMake 3.31.6"
 
     # create and test mobile pods
     - script: |
