@@ -479,9 +479,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       fprintf(stderr, "Disabling mem pattern and forcing single-threaded execution since DML is used");
       sf.DisableMemPattern();
       sf.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-      p_models = 1;
-      concurrent_session_runs = 1;
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sf, device_id));
+      test_config.p_models = 1;
+      test_config.concurrent_session_runs = 1;
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sf, test_config.device_id));
 #else
       fprintf(stderr, "DML is not supported in this build");
       return -1;
