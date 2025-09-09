@@ -14,7 +14,7 @@ runs:
   steps:
 
     - name: Setup VCPKG
-      uses: microsoft/onnxruntime-github-actions/setup-build-tools@5c76312ec9fb974da926e31bb5492f9b0c482f8b
+      uses: microsoft/onnxruntime-github-actions/setup-build-tools@97d94bf1e1d4a810d7b94cb00a58a94837978f3d
       with:
         vcpkg-version: '2025.06.13'
         vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
