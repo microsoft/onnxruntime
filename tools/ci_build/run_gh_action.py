@@ -7,6 +7,12 @@ import shutil
 import glob
 import sys
 import re
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
+
 from util import run
 def run():
     # --- 1. Configuration ---
