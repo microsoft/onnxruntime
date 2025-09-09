@@ -1,27 +1,10 @@
 parameters:
 - name: actionVersion
   type: string
-  default: 'v0.0.7' # Default version if not specified by the calling pipeline
+  default: 'v0.0.7'
 
 steps:
-- task: DownloadGitHubRelease@0
-  displayName: 'Download Action Release ${{ parameters.actionVersion }}'
-  inputs:
-    connection: 'microsoft'
-    userRepository: 'microsoft/onnxruntime-github-actions'
-    defaultVersionType: specificTag
-    version: '${{ parameters.actionVersion }}'
-    itemPattern: '**/*.zip'
-    downloadPath: '$(System.ArtifactsDirectory)/action-download'
-
-- task: ExtractFiles@1
-  displayName: 'Extract Action Files'
-  inputs:
-    archiveFilePatterns: '$(System.ArtifactsDirectory)/action-download/**/*.zip'
-    destinationFolder: '$(System.ArtifactsDirectory)/action-unzipped'
-    cleanDestinationFolder: true
-
-- script: ls '$(System.ArtifactsDirectory)/action-unzipped'
+- script: python3 -m pip install requests
 
 - task: PythonScript@0
   displayName: 'Run GitHub Action via Python Wrapper'
