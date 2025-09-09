@@ -53,11 +53,11 @@ void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
 static std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtMemoryInfo& mem_info) {
   std::unique_ptr<IDataTransfer> data_transfer;
 
-  if (strcmp(mem_info.name, onnxruntime::CPU) == 0) {
+  if (mem_info.name == onnxruntime::CPU) {
     return data_transfer;
   }
 
-  if (strcmp(mem_info.name, onnxruntime::CUDA) == 0) {
+  if (mem_info.name == onnxruntime::CUDA) {
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     auto* cuda_provider_info = TryGetProviderInfo_CUDA();
     if (cuda_provider_info != nullptr) {

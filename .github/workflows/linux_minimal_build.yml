@@ -36,12 +36,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
@@ -90,13 +84,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Run Build 2 (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
         with:
@@ -144,13 +131,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
+    
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
           vcpkg-version: '2025.06.13'
@@ -184,12 +165,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
@@ -222,12 +197,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
@@ -274,12 +243,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Run Build 5 (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
@@ -344,13 +307,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: gen config
         shell: bash
         run: |
@@ -369,7 +325,7 @@ jobs:
             --build_wheel
             --use_binskim_compliant_compile_flags
             --disable_ml_ops
-            --disable_types sparsetensor float8 optional
+            --disable_types sparsetensor float4 float8 optional
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -385,7 +341,7 @@ jobs:
             --build_wheel
             --use_binskim_compliant_compile_flags
             --disable_ml_ops
-            --disable_types sparsetensor float8 optional
+            --disable_types sparsetensor float4 float8 optional
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -402,7 +358,7 @@ jobs:
             --build_wheel
             --use_binskim_compliant_compile_flags
             --disable_ml_ops
-            --disable_types sparsetensor float8 optional
+            --disable_types sparsetensor float4 float8 optional
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -437,13 +393,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Run Build 6b (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
         with:
@@ -459,7 +408,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float8
+            --disable_types sparsetensor optional float4 float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -478,7 +427,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float8
+            --disable_types sparsetensor optional float4 float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -513,12 +462,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       - name: gen config
         shell: bash
         run: |
@@ -540,7 +483,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float8
+            --disable_types sparsetensor optional float4 float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -559,7 +502,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float8
+            --disable_types sparsetensor optional float4 float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -604,13 +547,6 @@ jobs:
           ndk-version: 28.0.13004108
           # Use default android-sdk-root if not specified
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Run Build 7 (Using docker run)
         shell: bash
         run: |
@@ -636,7 +572,7 @@ jobs:
             --volume $ANDROID_HOME:/android_home \
             --volume $NDK_HOME_REALPATH:/ndk_home \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-            -e NIGHTLY_BUILD=1 -e ACTIONS_CACHE_URL -e ACTIONS_RUNTIME_TOKEN -e RUNNER_TEMP=/build \
+            -e NIGHTLY_BUILD=1 -e RUNNER_TEMP=/build \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt \
             && python3 /onnxruntime_src/tools/ci_build/build.py \
