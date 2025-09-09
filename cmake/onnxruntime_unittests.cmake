@@ -885,6 +885,7 @@ target_link_libraries(onnxruntime_unittest_utils PUBLIC
                       GTest::gmock
                       onnxruntime_test_utils
                       ${ONNXRUNTIME_TEST_LIBS}
+                      ${onnxruntime_EXTERNAL_LIBRARIES}
                       )
 
 set_target_properties(onnxruntime_unittest_utils PROPERTIES FOLDER "ONNXRuntimeTest")
