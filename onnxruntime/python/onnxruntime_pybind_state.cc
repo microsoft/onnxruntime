@@ -1589,14 +1589,15 @@ void addGlobalMethods(py::module& m) {
 
   m.def(
       "copy_tensors",
-      [](const std::vector<const OrtValue*>& src, const std::vector<OrtValue*>& dest, OrtSyncStream* stream) {
+      [](const std::vector<const OrtValue*>& src, const std::vector<OrtValue*>& dest, py::object& py_arg) {
         const OrtEnv* ort_env = GetOrtEnv();
-        auto status = Ort::Status(Ort::GetApi().CopyTensors(ort_env, src.data(), dest.data(), stream, src.size()));
-        if (!status.IsOK()) {
-          throw Ort::Exception(status.GetErrorMessage(), status.GetErrorCode());
+        OrtSyncStream* stream = nullptr;
+        if (!py_arg.is_none()) {
+          stream = py_arg.cast<OrtSyncStream*>();
         }
+        Ort::ThrowOnError(Ort::GetApi().CopyTensors(ort_env, src.data(), dest.data(), stream, src.size()));
       },
-      R"pbdoc("Copy tensors from sources to destinations using specified stream handle)pbdoc");
+      R"pbdoc("Copy tensors from sources to destinations using specified stream handle (or None))pbdoc");
 
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
@@ -1936,8 +1937,7 @@ for model inference.)pbdoc");
             Ort::SyncStream stream = ep_dev.CreateSyncStream();
             return std::unique_ptr<OrtSyncStream>(stream.release());
           },
-          R"pbdoc(The OrtSyncStream instance for the OrtEpDevice.)pbdoc",
-          py::return_value_policy::reference_internal);
+          R"pbdoc(The OrtSyncStream instance for the OrtEpDevice.)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.

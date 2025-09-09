@@ -228,9 +228,11 @@ class TestAutoEP(AutoEpTestCase):
 
         test_mem_info = test_ep_device.memory_info(onnxrt.OrtDeviceMemoryType.DEFAULT)
         self.assertIsNotNone(test_mem_info)
+        del test_mem_info
 
         test_sync_stream = test_ep_device.create_sync_stream()
         self.assertIsNotNone(test_sync_stream)
+        del test_sync_stream
 
         # Add EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()

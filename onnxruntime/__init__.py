@@ -44,7 +44,6 @@ try:
         RunOptions,  # noqa: F401
         SessionIOBinding,  # noqa: F401
         SessionOptions,  # noqa: F401
-        copy_tensors,  # noqa: F401
         create_and_register_allocator,  # noqa: F401
         create_and_register_allocator_v2,  # noqa: F401
         disable_telemetry_events,  # noqa: F401
@@ -81,6 +80,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     OrtDevice,  # noqa: F401
     OrtValue,  # noqa: F401
     SparseTensor,  # noqa: F401
+    copy_tensors,  # noqa: F401
 )
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end

@@ -199,6 +199,18 @@ class Session:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
 
+    def get_inputs_memory_info(self) -> Sequence[onnxruntime.MemoryInfo]:
+        "Return the memory info for the inputs."
+        return self._inputs_meminfo
+
+    def get_outputs_memory_info(self) -> Sequence[onnxruntime.MemoryInfo]:
+        "Return the memory info for the outputs."
+        return self._outputs_meminfo
+
+    def get_inputs_epdevices(self) -> Sequence[onnxruntime.OrtEpDevice]:
+        "Return the execution providers for the inputs."
+        return self._inputs_epdevices
+
     def get_providers(self) -> Sequence[str]:
         "Return list of registered execution providers."
         return self._providers
@@ -576,6 +588,9 @@ class InferenceSession(Session):
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
         self._overridable_initializers = self._sess.overridable_initializers
+        self._inputs_meminfo = self._sess.inputs_meminfo
+        self._outputs_meminfo = self._sess.outputs_meminfo
+        self._inputs_epdevices = self._sess.inputs_epdevices
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
@@ -589,6 +604,9 @@ class InferenceSession(Session):
         self._inputs_meta = None
         self._outputs_meta = None
         self._overridable_initializers = None
+        self._inputs_meminfo = None
+        self._outputs_meminfo = None
+        self._inputs_epdevices = None
         self._model_meta = None
         self._providers = None
         self._provider_options = None
@@ -1062,6 +1080,15 @@ class OrtValue:
         self._ortvalue.update_inplace(np_arr)
 
 
+def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream: OrtSyncStream = None) -> None:
+    """
+    Copy tensor data from source OrtValue sequence to destination OrtValue sequence.
+    """
+    c_sources = [s._get_c_value() for s in src]
+    c_dsts = [d._get_c_value() for d in dst]
+    C.copy_tensors(c_sources, c_dsts, stream)
+
+
 class OrtDevice:
     """
     A data structure that exposes the underlying C++ OrtDevice
@@ -1074,6 +1101,7 @@ class OrtDevice:
         if isinstance(c_ort_device, C.OrtDevice):
             self._ort_device = c_ort_device
         else:
+            # An end user won't hit this error
             raise ValueError(
                 "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
             )

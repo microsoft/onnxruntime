@@ -269,6 +269,7 @@ class TestInferenceSession(unittest.TestCase):
         src_list = [a_ort, b_ort]
         dst_list = [a_ort_copy, b_ort_copy]
         # Passing None for stream as we copy between CPU
+        # Test None as allowed.
         onnxrt.copy_tensors(src_list, dst_list, None)
 
         # Verify the contents
@@ -718,22 +719,22 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(inputs[0].name, "X")
         self.assertEqual(inputs[0].shape, [3, 2])
 
-        inputs_meminfo = sess.inputs_meminfo
+        inputs_meminfo = sess.get_inputs_memory_info()
         self.assertEqual(len(inputs_meminfo), 1)
         self.assertIsNotNone(inputs_meminfo[0])
 
-        inputs_epdevices = sess.inputs_epdevices
+        inputs_epdevices = sess.get_inputs_epdevices()
         self.assertEqual(len(inputs_epdevices), 1)
         self.assertIsNotNone(inputs_epdevices[0])
-
-        outputs_meminfo = sess.outputs_meminfo
-        self.assertEqual(len(outputs_meminfo), 1)
-        self.assertIsNotNone(outputs_meminfo[0])
 
         outputs = sess.get_outputs()
         self.assertEqual(len(outputs), 1)
         self.assertEqual(outputs[0].name, "Y")
         self.assertEqual(outputs[0].shape, [3, 2])
+
+        outputs_meminfo = sess.get_outputs_memory_info()
+        self.assertEqual(len(outputs_meminfo), 1)
+        self.assertIsNotNone(outputs_meminfo[0])
 
         res = sess.run([outputs[0].name], {inputs[0].name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
