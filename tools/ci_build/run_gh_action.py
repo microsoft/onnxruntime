@@ -7,7 +7,7 @@ import shutil
 import glob
 import sys
 import re
-
+from util import run
 def run():
     # --- 1. Configuration ---
     if len(sys.argv) < 2:
@@ -68,44 +68,8 @@ def run():
         env['RUNNER_TEMP'] = env['AGENT_TEMPDIRECTORY']
         print(f"Mapped RUNNER_TEMP to AGENT_TEMPDIRECTORY: {env['RUNNER_TEMP']}")
 
-    print(f"Running action script and saving output to {output_log_path}...")
-    with open(output_log_path, 'w') as log_file:
-        process = subprocess.run(
-            ['node', action_script_path],
-            env=env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
 
-    # --- 4. Process the Action's Output Log ---
-    print("\n--- Processing Action Output ---")
-    if process.returncode != 0:
-        print(f"##vso[task.logissue type=error]Action script failed with exit code {process.returncode}.")
-        with open(output_log_path, 'r') as log_file:
-            print(log_file.read())
-        sys.exit(1)
-
-    with open(output_log_path, 'r') as log_file:
-        for line in log_file:
-            line = line.strip()
-            # Handle setting environment variables
-            if line.startswith('::set-env name='):
-                match = re.match(r'::set-env name=([^:]+)::(.*)', line)
-                if match:
-                    var_name, var_value = match.groups()
-                    print(f"Found set-env command for '{var_name}'. Emitting VSO command.")
-                    # Emitting the ADO command to set a variable for subsequent steps
-                    print(f"##vso[task.setvariable variable={var_name}]{var_value}")
-            
-            # Handle adding to PATH
-            elif line.startswith('::add-path::'):
-                path_to_add = line[len('::add-path::'):]
-                print(f"Found add-path command for '{path_to_add}'. Emitting VSO command.")
-                # Emitting the ADO command to prepend to the PATH
-                print(f"##vso[task.prependpath]{path_to_add}")
-
-    print("--- Finished Processing Action Output ---")
+    process = run(['node', action_script_path], env=env)
 
 if __name__ == "__main__":
     run()
