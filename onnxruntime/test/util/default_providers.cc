@@ -16,7 +16,6 @@
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/providers.h"
-#include "test/unittest_util/test_dynamic_plugin_ep.h"
 
 namespace onnxruntime {
 
@@ -332,13 +331,6 @@ std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool) {
   return nullptr;
-}
-
-std::unique_ptr<IExecutionProvider> DefaultDynamicPluginExecutionProvider() {
-  if (!dynamic_plugin_ep_infra::IsInitialized()) {
-    return nullptr;
-  }
-  return dynamic_plugin_ep_infra::MakeEp();
 }
 
 }  // namespace test

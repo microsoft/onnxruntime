@@ -13,11 +13,11 @@
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "test/util/include/asserts.h"
-#include "test/util/include/default_providers.h"
 #include "test/unittest_util/run_options_config_keys.h"
 #include "test/unittest_util/test_allocator_manager.h"
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
 
@@ -40,11 +40,6 @@ void DebugTrap() {
 #endif
 }
 #endif
-
-const std::optional<std::string>& GetDynamicPluginEpName() {
-  static const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
-  return dynamic_plugin_ep_name;
-};
 
 }  // namespace
 
@@ -656,41 +651,29 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kTensorrtExecutionProvider,
       };
 #else
-      static const std::vector<std::string> all_provider_types = [&]() {
-        std::vector<std::string> provider_types{
-            kCpuExecutionProvider,
-            kCudaExecutionProvider,
+      static const std::vector<std::string> all_provider_types = {
+          kCpuExecutionProvider,
+          kCudaExecutionProvider,
 #ifdef ENABLE_CUDA_NHWC_OPS
-            kCudaNHWCExecutionProvider,
+          kCudaNHWCExecutionProvider,
 #endif
-            kDnnlExecutionProvider,
-            kTensorrtExecutionProvider,
-            kNvTensorRTRTXExecutionProvider,
-            kOpenVINOExecutionProvider,
-            kDmlExecutionProvider,
-            kAclExecutionProvider,
-            kArmNNExecutionProvider,
-            kNnapiExecutionProvider,
-            kVSINPUExecutionProvider,
-            kRocmExecutionProvider,
-            kCoreMLExecutionProvider,
-            kCoreMLExecutionProviderMLProgram,
-            kQnnExecutionProvider,
-            kSnpeExecutionProvider,
-            kXnnpackExecutionProvider,
-            kWebGpuExecutionProvider,
-        };
-
-        const auto& dynamic_plugin_ep_name = GetDynamicPluginEpName();
-        if (dynamic_plugin_ep_name.has_value()) {
-          ORT_ENFORCE(std::find(provider_types.begin(), provider_types.end(),
-                                *dynamic_plugin_ep_name) == provider_types.end(),
-                      "Dynamic plugin EP name conflicts with a known EP name: ", *dynamic_plugin_ep_name);
-          provider_types.push_back(*dynamic_plugin_ep_name);
-        }
-
-        return provider_types;
-      }();
+          kDnnlExecutionProvider,
+          kTensorrtExecutionProvider,
+          kNvTensorRTRTXExecutionProvider,
+          kOpenVINOExecutionProvider,
+          kDmlExecutionProvider,
+          kAclExecutionProvider,
+          kArmNNExecutionProvider,
+          kNnapiExecutionProvider,
+          kVSINPUExecutionProvider,
+          kRocmExecutionProvider,
+          kCoreMLExecutionProvider,
+          kCoreMLExecutionProviderMLProgram,
+          kQnnExecutionProvider,
+          kSnpeExecutionProvider,
+          kXnnpackExecutionProvider,
+          kWebGpuExecutionProvider,
+      };
 
       // need to special case any synthetic EP names in the exclude list
       if (ctx_.excluded_provider_types.count(kCoreMLExecutionProvider) > 0) {
@@ -698,9 +681,25 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       }
 #endif
 
+      const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+
+      std::optional<std::vector<std::string>> provider_types_including_dynamic_plugin_ep{};
+      if (dynamic_plugin_ep_name.has_value()) {
+        ORT_ENFORCE(std::find(all_provider_types.begin(), all_provider_types.end(),
+                              *dynamic_plugin_ep_name) == all_provider_types.end(),
+                    "Dynamic plugin EP name conflicts with a known EP name: ", *dynamic_plugin_ep_name);
+        provider_types_including_dynamic_plugin_ep = all_provider_types;
+        provider_types_including_dynamic_plugin_ep->push_back(*dynamic_plugin_ep_name);
+      }
+
+      const auto all_provider_types_span =
+          provider_types_including_dynamic_plugin_ep.has_value()
+              ? gsl::span<const std::string>{*provider_types_including_dynamic_plugin_ep}
+              : gsl::span<const std::string>{all_provider_types};
+
       bool has_run = false;
 
-      for (const std::string& provider_type : all_provider_types) {
+      for (const std::string& provider_type : all_provider_types_span) {
         if (ctx_.excluded_provider_types.count(provider_type) > 0)
           continue;
 
@@ -749,8 +748,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultDmlExecutionProvider();
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
-        else if (provider_type == GetDynamicPluginEpName())
-          execution_provider = DefaultDynamicPluginExecutionProvider();
+        else if (provider_type == dynamic_plugin_ep_name) {
+          execution_provider = dynamic_plugin_ep_infra::MakeEp();
+        }
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
@@ -872,7 +872,7 @@ void BaseTester::ExecuteModelForEps(
       }
 
       // assume that a dynamic plugin EP which does not return a kernel registry does not use one
-      if (provider_type == GetDynamicPluginEpName() &&
+      if (provider_type == dynamic_plugin_ep_infra::GetEpName() &&
           ep.GetKernelRegistry() == nullptr) {
         return false;
       }
