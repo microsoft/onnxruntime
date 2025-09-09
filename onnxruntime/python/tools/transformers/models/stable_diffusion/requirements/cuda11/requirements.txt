@@ -15,8 +15,8 @@ pywin32; platform_system == "Windows"
 # For windows, run `conda install -c conda-forge nvtx` instead
 nvtx; platform_system != "Windows"
 
-# Please install PyTorch >=2.1 and <2.4 for CUDA 11.8 like the following:
-# pip install torch==2.3.1 --index-url https://download.pytorch.org/whl/cu118
+# Please install PyTorch >=2.8.0 for CUDA 11.8 like the following:
+# pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu118
 
 # Run the following command to install some extra packages for onnx graph optimization for TensorRT manually.
 # pip3 install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
