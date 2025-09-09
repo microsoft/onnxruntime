@@ -16,6 +16,7 @@ typedef void* cudnnStatus_t;
 #include <mutex>
 #include "core/providers/cuda/cuda_graph.h"
 #include "nv_execution_provider_info.h"
+#include "core/providers/nv_tensorrt_rtx/nv_file_utils.h"
 
 namespace onnxruntime {
 
@@ -58,6 +59,26 @@ class TensorrtLogger : public nvinfer1::ILogger {
 };
 
 namespace tensorrt_ptr {
+/*
+ * custom deleter that will dump the optimized runtime cache when the execution context is destructed
+ */
+struct IExecutionContextDeleter {
+  IExecutionContextDeleter() = default;
+  IExecutionContextDeleter(const std::string& runtime_cache_path, std::unique_ptr<nvinfer1::IRuntimeCache>&& runtime_cache) : runtime_cache_path_(runtime_cache_path), runtime_cache_(std::move(runtime_cache)) {};
+  void operator()(nvinfer1::IExecutionContext* context) {
+    if (context != nullptr) {
+      if (!runtime_cache_path_.empty()) {
+        auto serialized_cache_data = std::unique_ptr<nvinfer1::IHostMemory>(runtime_cache_->serialize());
+        file_utils::WriteFile(runtime_cache_path_, serialized_cache_data->data(), serialized_cache_data->size());
+      }
+      delete context;
+    }
+  }
+
+ private:
+  std::string runtime_cache_path_;
+  std::unique_ptr<nvinfer1::IRuntimeCache> runtime_cache_;
+};
 
 struct TensorrtInferDeleter {
   template <typename T>
@@ -70,6 +91,7 @@ struct TensorrtInferDeleter {
 
 template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
+using unique_pointer_exec_ctx = std::unique_ptr<nvinfer1::IExecutionContext, IExecutionContextDeleter>;
 };  // namespace tensorrt_ptr
 
 //
@@ -196,7 +218,7 @@ struct TensorrtFuncState {
   std::string fused_node_name;
   nvinfer1::IBuilder* builder;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
-  std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
+  tensorrt_ptr::unique_pointer_exec_ctx* context = nullptr;
   std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
@@ -233,7 +255,7 @@ struct TensorrtShortFuncState {
   AllocatorHandle allocator = nullptr;
   std::string fused_node_name;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
-  std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
+  tensorrt_ptr::unique_pointer_exec_ctx* context = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::mutex* tensorrt_mu_ptr = nullptr;
@@ -285,6 +307,7 @@ class NvExecutionProvider : public IExecutionProvider {
                 IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return device_id_; }
+  Status Sync() const;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -356,6 +379,7 @@ class NvExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   bool multi_profile_enable_ = false;
+  std::filesystem::path runtime_cache_;
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
   int nv_profile_index_ = 0;
@@ -386,7 +410,7 @@ class NvExecutionProvider : public IExecutionProvider {
   // But there are still some thread safe operations, please see here https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   // For those non thread safe operations, TRT EP uses (1) lock_guard or (2) PerThreadContext to make sure synchronization.
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
-  std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
+  std::unordered_map<std::string, tensorrt_ptr::unique_pointer_exec_ctx> contexts_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
@@ -424,7 +448,7 @@ class NvExecutionProvider : public IExecutionProvider {
 
     bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
-    bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
+    bool UpdateTensorRTContext(std::string fused_node, tensorrt_ptr::unique_pointer_exec_ctx context);
     void ResetTensorRTContext(std::string fused_node);
 
     // CUDA Graph management
@@ -454,7 +478,7 @@ class NvExecutionProvider : public IExecutionProvider {
     // See more details here:
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_execution_context.html#a63cd95430852038ce864e17c670e0b36
-    std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
+    std::unordered_map<std::string, tensorrt_ptr::unique_pointer_exec_ctx> trt_context_map_;
 
     // The profile shape ranges for the engine that the execution context maintained by the PerThreadContext is built with.
     // TRT EP needs this info to determine whether to rebuild the execution context.

@@ -455,6 +455,14 @@ def main():
             nightly_override = "0"
             release_override = "true"
 
+        # If pre-release flags are used, it implies a release build.
+        if args.pre_release_suffix_string:
+            print("Pre-release suffix provided. Forcing 'release' build mode.")
+            if args.build_mode and args.build_mode != "release":
+                print(f"Warning: --build-mode={args.build_mode} is overridden by pre-release flags.")
+            nightly_override = "0"
+            release_override = "true"
+
         for result in pipelines_to_trigger:
             pipeline = result["pipeline"]
             packaging_type = result["packaging_type"]
