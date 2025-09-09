@@ -75,7 +75,7 @@ def main():
         print(f"Mapped RUNNER_TEMP to AGENT_TEMPDIRECTORY: {env['RUNNER_TEMP']}")
 
 
-    process = run(['node', action_script_path], env=env)
+    process = run('node', action_script_path, env=env)
 
 if __name__ == "__main__":
     main()
