@@ -1,12 +1,4 @@
-pool:
-  vmImage: 'ubuntu-latest'
-
 steps:
-- task: NodeTool@0
-  inputs:
-    versionSpec: '20.x'
-  displayName: 'Install Node.js 20'
-
 - task: PythonScript@0
   displayName: 'Download and Run setup-build-tools Action'
   inputs:
