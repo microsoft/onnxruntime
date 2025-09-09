@@ -1080,7 +1080,7 @@ class OrtValue:
         self._ortvalue.update_inplace(np_arr)
 
 
-def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream: OrtSyncStream = None) -> None:
+def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
     """
     Copy tensor data from source OrtValue sequence to destination OrtValue sequence.
     """

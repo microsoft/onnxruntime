@@ -252,30 +252,6 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
 
-    def test_copy_tensors(self):
-        # Generate 2 numpy arrays
-        a = np.random.rand(3, 2).astype(np.float32)
-        b = np.random.rand(3, 2).astype(np.float32)
-
-        # Create OrtValue from numpy arrays
-        a_ort = onnxrt.OrtValue.ortvalue_from_numpy(a)
-        b_ort = onnxrt.OrtValue.ortvalue_from_numpy(b)
-
-        # Create destination ort values with the same shape
-        a_ort_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(a.shape, a.dtype)
-        b_ort_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(b.shape, b.dtype)
-
-        # source list
-        src_list = [a_ort, b_ort]
-        dst_list = [a_ort_copy, b_ort_copy]
-        # Passing None for stream as we copy between CPU
-        # Test None as allowed.
-        onnxrt.copy_tensors(src_list, dst_list, None)
-
-        # Verify the contents
-        np.testing.assert_array_equal(a, a_ort_copy.numpy())
-        np.testing.assert_array_equal(b, b_ort_copy.numpy())
-
     def test_enabling_and_disabling_telemetry(self):
         onnxrt.disable_telemetry_events()
 

@@ -290,6 +290,55 @@ class TestAutoEP(AutoEpTestCase):
 
         self.unregister_execution_provider_library(ep_name)
 
+    def test_copy_tensors(self):
+        """
+        Test global api copy_tensors between OrtValue objects
+        using EP plug-in data transfoer
+        """
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
+
+        ep_lib_path = "example_plugin_ep.dll"
+        try:
+            ep_lib_path = get_name("example_plugin_ep.dll")
+        except FileNotFoundError:
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        ep_name = "example_ep"
+        self.register_execution_provider_library(ep_name, os.path.realpath(ep_lib_path))
+
+        # Generate 2 numpy arrays
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+
+        # Create OrtValue from numpy arrays on EP device
+        # the example EP pretends to use GPU memory, so we place it there
+        a_device = onnxrt.OrtValue.ortvalue_from_numpy(a, "gpu", 0, 0xBE57)
+        b_device = onnxrt.OrtValue.ortvalue_from_numpy(b, "gpu", 0, 0xBE57)
+
+        # Create destination ort values with the same shape on CPU
+        a_cpu_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(a.shape, a.dtype)
+        b_cpu_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(b.shape, b.dtype)
+
+        # source list
+        src_list = [a_device, b_device]
+        dst_list = [a_cpu_copy, b_cpu_copy]
+        # Passing None for stream as we copy between CPU
+        # Test None because it is allowed
+        onnxrt.copy_tensors(src_list, dst_list, None)
+
+        # Release the OrtValue on the EP device
+        # before the EP library is unregistered
+        del src_list
+        del a_device
+        del b_device
+
+        # Verify the contents
+        np.testing.assert_array_equal(a, a_cpu_copy.numpy())
+        np.testing.assert_array_equal(b, b_cpu_copy.numpy())
+
+        self.unregister_execution_provider_library(ep_name)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
