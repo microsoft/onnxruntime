@@ -21,6 +21,8 @@ steps:
     destinationFolder: '$(System.ArtifactsDirectory)/action-unzipped'
     cleanDestinationFolder: true
 
+- script: ls '$(System.ArtifactsDirectory)/action-unzipped'
+    
 - task: PythonScript@0
   displayName: 'Run setup-build-tools Action'
   inputs:
