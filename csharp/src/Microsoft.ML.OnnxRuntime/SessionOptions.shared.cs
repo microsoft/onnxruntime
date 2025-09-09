@@ -274,36 +274,42 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr[] keyPtrs = new IntPtr[count];
             IntPtr[] valuePtrs = new IntPtr[count];
 
+            GCHandle[] pinnedKeyHandles = new GCHandle[count];
+            GCHandle[] pinnedValueHandles = new GCHandle[count];
+
             string[] keys = config.Keys.ToArray();
             string[] values = config.Values.ToArray();
 
-            for (int i = 0; i < count; ++i) {
-                keyPtrs[i] = Marshal.StringToHGlobalAnsi(keys[i]);
-                valuePtrs[i] = Marshal.StringToHGlobalAnsi(values[i]);
-            }
-
-            IntPtr keysNative = Marshal.AllocHGlobal(IntPtr.Size * count);
-            IntPtr valuesNative = Marshal.AllocHGlobal(IntPtr.Size * count);
-
-            Marshal.Copy(keyPtrs, 0, keysNative, count);
-            Marshal.Copy(valuePtrs, 0, valuesNative, count);
-
             try
             {
+                for (int i = 0; i < count; i++)
+                {
+                    byte[] keyBytes = System.Text.Encoding.UTF8.GetBytes(keys[i] + "\0");
+                    byte[] valueBytes = System.Text.Encoding.UTF8.GetBytes(values[i] + "\0");
+
+                    pinnedKeyHandles[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
+                    pinnedValueHandles[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+
+                    keyPtrs[i] = pinnedKeyHandles[i].AddrOfPinnedObject();
+                    valuePtrs[i] = pinnedValueHandles[i].AddrOfPinnedObject();
+                }
+
+                GCHandle pinnedKeyArray = GCHandle.Alloc(keyPtrs, GCHandleType.Pinned);
+                GCHandle pinnedValueArray = GCHandle.Alloc(valuePtrs, GCHandleType.Pinned);
                 UIntPtr numKeys = new UIntPtr((uint)count);
                 NativeApiStatus.VerifySuccess(
                     NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
-                        handle, keysNative, valuesNative, numKeys));
+                        handle, pinnedKeyArray.AddrOfPinnedObject(), pinnedValueArray.AddrOfPinnedObject(), numKeys));
             }
             finally
             {
-                for (int i = 0; i < count; ++i)
+                for (int i = 0; i < count; i++)
                 {
-                    Marshal.FreeHGlobal(keyPtrs[i]);
-                    Marshal.FreeHGlobal(valuePtrs[i]);
+                    if (pinnedKeyHandles[i].IsAllocated)
+                        pinnedKeyHandles[i].Free();
+                    if (pinnedValueHandles[i].IsAllocated)
+                        pinnedValueHandles[i].Free();
                 }
-                Marshal.FreeHGlobal(keysNative);
-                Marshal.FreeHGlobal(valuesNative);
             }
 #endif
         }
@@ -478,20 +484,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Select execution providers from the list of available execution providers and devices returned by 
+        /// Select execution providers from the list of available execution providers and devices returned by
         /// GetEpDevices.
-        /// 
-        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same 
+        ///
+        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same
         /// execution provider.
-        /// 
+        ///
         /// Make multiple calls to AppendExecutionProvider if you wish to use multiple execution providers.
-        /// 
-        /// e.g. 
+        ///
+        /// e.g.
         ///   - if execution provider 'A' has an OrtEpDevice for NPU and one for GPU and you wish to use it for
         ///     both devices, pass the two OrtEpDevice instances in the epDevices list in one call.
-        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU, 
+        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU,
         ///     make two calls to AppendExecutionProvider, with one OrtEpDevice in the epDevices list in each call.
-        ///     
+        ///
         /// The priority of the execution providers is set by the order in which they are appended.
         /// Highest priority is first.
         /// </summary>
@@ -501,7 +507,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
         /// <exception cref="ArgumentException">epDevices was empty.</exception>
         /// <see cref="OrtEnv.GetEpDevices" />
-        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices,
                                             IReadOnlyDictionary<string, string> epOptions)
         {
             if (epDevices == null || epDevices.Count == 0)
@@ -533,7 +539,7 @@ namespace Microsoft.ML.OnnxRuntime
                         env.Handle,
                         epDevicePtrs,
                         (UIntPtr)epDevices.Count,
-                        epOptionsKeys,  
+                        epOptionsKeys,
                         epOptionsValues,
                         epOptionsCount));
             }
@@ -711,7 +717,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
-                    handle, 
+                    handle,
                     funcPtr,
                     GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
         }
@@ -1213,7 +1219,7 @@ namespace Microsoft.ML.OnnxRuntime
         EpSelectionPolicyConnector _epSelectionPolicyConnector = null;
 
         /// <summary>
-        /// Handle to the EP selection policy connector that is passed to the C API as state for the 
+        /// Handle to the EP selection policy connector that is passed to the C API as state for the
         /// EP selection policy delegate.
         /// </summary>
         GCHandle _epSelectionPolicyConnectorHandle = default;
