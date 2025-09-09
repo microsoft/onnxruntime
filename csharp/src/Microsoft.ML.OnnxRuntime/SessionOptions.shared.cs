@@ -274,39 +274,46 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr[] keyPtrs = new IntPtr[count];
             IntPtr[] valuePtrs = new IntPtr[count];
 
+            GCHandle[] pinnedKeyHandles = new GCHandle[count];
+            GCHandle[] pinnedValueHandles = new GCHandle[count];
+
             string[] keys = config.Keys.ToArray();
             string[] values = config.Values.ToArray();
 
-            for (int i = 0; i < count; ++i) {
-                keyPtrs[i] = Marshal.StringToHGlobalAnsi(keys[i]);
-                valuePtrs[i] = Marshal.StringToHGlobalAnsi(values[i]);
-            }
-
-            IntPtr keysNative = Marshal.AllocHGlobal(IntPtr.Size * count);
-            IntPtr valuesNative = Marshal.AllocHGlobal(IntPtr.Size * count);
-
-            Marshal.Copy(keyPtrs, 0, keysNative, count);
-            Marshal.Copy(valuePtrs, 0, valuesNative, count);
-
             try
             {
+                for (int i = 0; i < count; i++)
+                {
+                    byte[] keyBytes = System.Text.Encoding.UTF8.GetBytes(keys[i] + "\0");
+                    byte[] valueBytes = System.Text.Encoding.UTF8.GetBytes(values[i] + "\0");
+
+                    pinnedKeyHandles[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
+                    pinnedValueHandles[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+
+                    keyPtrs[i] = pinnedKeyHandles[i].AddrOfPinnedObject();
+                    valuePtrs[i] = pinnedValueHandles[i].AddrOfPinnedObject();
+                }
+
+                GCHandle pinnedKeyArray = GCHandle.Alloc(keyPtrs, GCHandleType.Pinned);
+                GCHandle pinnedValueArray = GCHandle.Alloc(valuePtrs, GCHandleType.Pinned);
                 UIntPtr numKeys = new UIntPtr((uint)count);
                 NativeApiStatus.VerifySuccess(
                     NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
-                        handle, keysNative, valuesNative, numKeys));
+                        handle, pinnedKeyArray.AddrOfPinnedObject(), pinnedValueArray.AddrOfPinnedObject(), numKeys));
             }
             finally
             {
-                for (int i = 0; i < count; ++i)
+                for (int i = 0; i < count; i++)
                 {
-                    Marshal.FreeHGlobal(keyPtrs[i]);
-                    Marshal.FreeHGlobal(valuePtrs[i]);
+                    if (pinnedKeyHandles[i].IsAllocated)
+                        pinnedKeyHandles[i].Free();
+                    if (pinnedValueHandles[i].IsAllocated)
+                        pinnedValueHandles[i].Free();
                 }
-                Marshal.FreeHGlobal(keysNative);
-                Marshal.FreeHGlobal(valuesNative);
             }
 #endif
         }
+
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
