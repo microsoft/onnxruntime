@@ -206,8 +206,8 @@ stages:
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
       outputs:
       - output: pipelineArtifact
-        targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: onnxruntime-java-gpu
+        targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
+        artifactName: onnxruntime-java
 
     steps:
     - template: jar-packaging.yml

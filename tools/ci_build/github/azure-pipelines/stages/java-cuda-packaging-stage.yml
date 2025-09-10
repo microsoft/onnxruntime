@@ -20,7 +20,7 @@ stages:
         
       outputs:
       - output: pipelineArtifact
-        targetPath: $(Build.ArtifactStagingDirectory)
+        targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
         artifactName: onnxruntime-java-gpu
     pool: 'onnxruntime-Win-CPU-2022'
     dependsOn: []
