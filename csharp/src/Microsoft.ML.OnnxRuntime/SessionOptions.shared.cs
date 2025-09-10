@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -256,6 +257,63 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA_V2(handle, cudaProviderOptions.Handle));
 #endif
         }
+
+        /// <summary>
+        /// Append a VitisAI EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="keys">Native keys instance</param>
+        /// <param name="values">Native values instance</param>
+        /// <param name="numEntries">Native numEntries instance</param>
+        public void AppendExecutionProvider_VitisAI(Dictionary<string, string> config)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The VitisAI Execution Provider is not supported in this build");
+#else
+            int count = config.Count;
+            IntPtr[] keyPtrs = new IntPtr[count];
+            IntPtr[] valuePtrs = new IntPtr[count];
+
+            GCHandle[] pinnedKeyHandles = new GCHandle[count];
+            GCHandle[] pinnedValueHandles = new GCHandle[count];
+
+            string[] keys = config.Keys.ToArray();
+            string[] values = config.Values.ToArray();
+
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    byte[] keyBytes = System.Text.Encoding.UTF8.GetBytes(keys[i] + "\0");
+                    byte[] valueBytes = System.Text.Encoding.UTF8.GetBytes(values[i] + "\0");
+
+                    pinnedKeyHandles[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
+                    pinnedValueHandles[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+
+                    keyPtrs[i] = pinnedKeyHandles[i].AddrOfPinnedObject();
+                    valuePtrs[i] = pinnedValueHandles[i].AddrOfPinnedObject();
+                }
+
+                GCHandle pinnedKeyArray = GCHandle.Alloc(keyPtrs, GCHandleType.Pinned);
+                GCHandle pinnedValueArray = GCHandle.Alloc(valuePtrs, GCHandleType.Pinned);
+                UIntPtr numKeys = new UIntPtr((uint)count);
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
+                        handle, pinnedKeyArray.AddrOfPinnedObject(), pinnedValueArray.AddrOfPinnedObject(), numKeys));
+            }
+            finally
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (pinnedKeyHandles[i].IsAllocated)
+                        pinnedKeyHandles[i].Free();
+                    if (pinnedValueHandles[i].IsAllocated)
+                        pinnedValueHandles[i].Free();
+                }
+            }
+#endif
+        }
+
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
