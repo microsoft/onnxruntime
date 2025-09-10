@@ -12,9 +12,9 @@ from pathlib import Path
 def get_gpg_path() -> Path:
     """Finds the path to the GPG executable."""
     if platform.system() == "Windows":
-        program_files_x86 = os.environ.get("ProgramFiles(x86)")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)")  # noqa: SIM112
         if not program_files_x86:
-            raise EnvironmentError("ProgramFiles(x86) environment variable not found.")
+            raise OSError("ProgramFiles(x86) environment variable not found.")
         return Path(program_files_x86) / "gnupg/bin/gpg.exe"
 
     gpg_path_str = shutil.which("gpg")
@@ -74,8 +74,8 @@ def main() -> None:
     print(f"Found {len(files_to_process)} files.")
 
     print("\nGetting GnuPG signing keys from environment variables.")
-    gpg_passphrase = os.environ.get("java-pgp-pwd")
-    gpg_private_key = os.environ.get("java-pgp-key")
+    gpg_passphrase = os.environ.get("java-pgp-pwd")  # noqa: SIM112
+    gpg_private_key = os.environ.get("java-pgp-key")  # noqa: SIM112
 
     if not gpg_passphrase or not gpg_private_key:
         print(
@@ -89,8 +89,10 @@ def main() -> None:
         print(f"Error: GPG executable not found at '{gpg_exe_path}'.", file=sys.stderr)
         sys.exit(1)
 
-    with tempfile.NamedTemporaryFile(mode="w", delete=True, suffix=".txt", encoding="utf-8") as passphrase_file, \
-         tempfile.NamedTemporaryFile(mode="w", delete=True, suffix=".txt", encoding="utf-8") as private_key_file:
+    with (
+        tempfile.NamedTemporaryFile(mode="w", delete=True, suffix=".txt", encoding="utf-8") as passphrase_file,
+        tempfile.NamedTemporaryFile(mode="w", delete=True, suffix=".txt", encoding="utf-8") as private_key_file,
+    ):
         print("Writing GnuPG key and passphrase to temporary files.")
         private_key_file.write(gpg_private_key)
         private_key_file.flush()
@@ -111,8 +113,10 @@ def main() -> None:
             run_command(
                 [
                     str(gpg_exe_path),
-                    "--pinentry-mode", "loopback",
-                    "--passphrase-file", passphrase_file.name,
+                    "--pinentry-mode",
+                    "loopback",
+                    "--passphrase-file",
+                    passphrase_file.name,
                     "--detach-sign",
                     "--armor",
                     str(file_path),
