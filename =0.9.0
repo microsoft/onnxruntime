@@ -1,0 +1,6 @@
+Collecting onnxruntime-extensions
+  Using cached onnxruntime_extensions-0.14.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.6 kB)
+Downloading onnxruntime_extensions-0.14.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (4.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.6/4.6 MB 10.0 MB/s eta 0:00:00
+Installing collected packages: onnxruntime-extensions
+Successfully installed onnxruntime-extensions-0.14.0
