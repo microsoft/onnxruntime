@@ -64,6 +64,8 @@ stages:
           del *.sha256
           del *.sha512
           del *.pom
+          del *.sha1
+          del *.pom
           cd ..
           mkdir tests
           cd tests
