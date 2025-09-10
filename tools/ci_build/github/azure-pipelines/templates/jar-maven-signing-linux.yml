@@ -19,6 +19,9 @@ steps:
 
   - task: PythonScript@0
     displayName: "Sign files: GnuPG, sha1, and md5"
+    env:
+      JAVA_PGP_PWD: $(java-pgp-pwd)
+      JAVA_PGP_KEY: $(java-pgp-key)
     inputs:
       scriptPath: "$(Build.SourcesDirectory)/tools/ci_build/github/windows/sign_java_artifacts.py"
       arguments: "${{ parameters.JarFileDirectory }}"

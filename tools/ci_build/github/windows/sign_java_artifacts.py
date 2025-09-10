@@ -74,8 +74,8 @@ def main() -> None:
     print(f"Found {len(files_to_process)} files.")
 
     print("\nGetting GnuPG signing keys from environment variables.")
-    gpg_passphrase = os.environ.get("java-pgp-pwd")  # noqa: SIM112
-    gpg_private_key = os.environ.get("java-pgp-key")  # noqa: SIM112
+    gpg_passphrase = os.environ.get("JAVA_PGP_PWD")  # noqa: SIM112
+    gpg_private_key = os.environ.get("JAVA_PGP_KEY")  # noqa: SIM112
 
     if not gpg_passphrase or not gpg_private_key:
         print(
