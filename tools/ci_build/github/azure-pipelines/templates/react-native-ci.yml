@@ -23,14 +23,13 @@ parameters:
   displayName: 'Stage that the initial stage of react-native-ci depends on'
   type: string
   default: ''
-
 - name: enable_code_sign
   displayName: Use GPG to sign the jars
   type: boolean
-
 - name: is1ES
   type: boolean
   default: false
+
 stages:
 - stage: Build_Android_Packages
   displayName: Build_Android_Packages
@@ -46,6 +45,7 @@ stages:
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
       is1ES: '${{parameters.is1ES}}'
+
 - stage: ReactNative_CI_Android
   displayName: ReactNative_CI_Android
   dependsOn: Build_Android_Packages
@@ -60,8 +60,15 @@ stages:
 - stage: ReactNative_CI_iOS
   displayName: ReactNative_CI_iOS
   dependsOn: '${{parameters.InitialStageDependsOn}}'
+  variables:
+  - name: publishPipelineArtifactTask
+    ${{ if eq(parameters.is1ES, true) }}:
+      value: 1ES.PublishPipelineArtifact@1
+    ${{ else }}:
+      value: PublishPipelineArtifact@1
   jobs:
-  - job: ReactNative_CI_iOS
+  - job: ReactNative_CI_iOS_build
+
     ${{ if eq(parameters.is1ES, false) }}:
       pool:
         vmImage: 'macOS-14'
@@ -75,11 +82,10 @@ stages:
 
     variables:
       runCodesignValidationInjection: false
-      TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-      ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
 
     steps:
     - template: use-xcode-version.yml
+
     - task: UsePythonVersion@0
       displayName: Use python 3.12
       inputs:
@@ -90,70 +96,58 @@ stages:
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
+
     # Build the iOS package
-    - template: mac-build-step-with-cache.yml
+    - script: |
+        set -e -x
+        python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+          --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+          --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
+          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+      displayName: Build iOS package and assemble pods
+
+    - task: ${{ variables.publishPipelineArtifactTask }}
+      inputs:
+        artifactName: 'ios_pod'
+        targetPath: '$(Build.BinariesDirectory)/ios_pod'
+      displayName: Publish React Native iOS pod files
+
+  - job: ReactNative_CI_iOS_unit_tests
+    dependsOn: 'ReactNative_CI_iOS_build'
+
+    ${{ if eq(parameters.is1ES, false) }}:
+      pool:
+        vmImage: 'macOS-14'
+    ${{ if eq(parameters.is1ES, true) }}:
+      pool:
+        name: 'Azure Pipelines'
+        image: 'macOS-14'
+        os: 'macOS'
+
+    timeoutInMinutes: 90
+
+    steps:
+    - template: flex-downloadPipelineArtifact.yml
       parameters:
-        WithCache: true
-        Today: $(TODAY)
-        AdditionalKey: react_${{parameters.BuildConfig}}
-        CacheDir: $(ORT_CACHE_DIR)
-        BuildStep:
-        - script: |
-            set -e -x
-            python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-              --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-              --staging-dir "$(Build.BinariesDirectory)/ios-full-pod" \
-              --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-          displayName: Build iOS package and assemble pods
-          env:
-            CC: clang
-            CXX: clang++
-            CCACHE_CPP2: 1
-            CCACHE_DEPEND: 1
-            CCACHE_SLOPPINESS: modules
-            CCACHE_DIR: $(ORT_CACHE_DIR)
-    # Test the iOS package
+        StepName: 'Download Pipeline Artifact - ios_pod'
+        ArtifactName: 'ios_pod'
+        TargetPath: '$(Build.BinariesDirectory)/ios_pod'
+
+    - template: use-xcode-version.yml
+
     - task: NodeTool@0
       inputs:
         versionSpec: '22.x'
-    - script:
-        brew install coreutils ninja npm
-      displayName: Install coreutils, ninja, npm
-    - script:
-        brew tap wix/brew
-      displayName: brew tap wix/brew
-
-    - script:
-        brew install applesimutils
-      displayName: Install applesimutils tools required by detox ios
 
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
-        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios-full-pod/onnxruntime-c \
+        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
-    - script: |
-        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios-full-pod/onnxruntime-c \
-        pod install
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-      displayName: Pod install for onnxruntime react native ios e2e tests
-
-    - script: |
-        detox build --configuration ios.sim.release
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: Build React Native Detox iOS e2e Tests
-    #
-    # Unit tests and E2E tests with iOS simulator
-    #
-    - script: |
-        set -e
-        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
-        xcrun simctl create iPhoneRNTest com.apple.CoreSimulator.SimDeviceType.iPhone-13 > "${DEVICE_ID_FILE}"
-      displayName: Start iOS Simulator
-
+    # Run unit tests on iOS simulator
     - task: Xcode@5
       inputs:
         actions: 'test'
@@ -178,29 +172,71 @@ stages:
       condition: succeededOrFailed()
       displayName: Publish React Native iOS Instrumented Test Results
 
+    - template: explicitly-defined-final-tasks.yml
+
+  - job: ReactNative_CI_iOS_e2e_tests
+    dependsOn: 'ReactNative_CI_iOS_build'
+
+    ${{ if eq(parameters.is1ES, false) }}:
+      pool:
+        vmImage: 'macOS-14'
+    ${{ if eq(parameters.is1ES, true) }}:
+      pool:
+        name: 'Azure Pipelines'
+        image: 'macOS-14'
+        os: 'macOS'
+
+    timeoutInMinutes: 90
+
+    steps:
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - ios_pod'
+        ArtifactName: 'ios_pod'
+        TargetPath: '$(Build.BinariesDirectory)/ios_pod'
+
+    - template: use-xcode-version.yml
+
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '22.x'
+
+    - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
+
     - script: |
-        xcrun simctl list devices
-      displayName: List iOS Simulators
-      continueOnError: true
+        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
+        pod install
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+      displayName: Pod install for onnxruntime react native ios bridge library
+
+    # Run E2E tests with Detox on iOS simulator
+    - script:
+        brew tap wix/brew
+      displayName: brew tap wix/brew
+
+    - script:
+        brew install applesimutils
+      displayName: Install applesimutils tools required by detox ios
+
+    - script: |
+        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
+        pod install
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+      displayName: Pod install for onnxruntime react native ios e2e tests
+
+    - script: |
+        detox build --configuration ios.sim.release
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: Build React Native Detox iOS e2e Tests
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
           detox test --record-logs all \
                      --configuration ios.sim.release \
-                     --loglevel trace \
+                     --loglevel verbose \
                      --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox iOS e2e Tests
-
-    - script: |
-        set -e
-        DEVICE_ID_FILE="$(Build.BinariesDirectory)/ios_simulator_device_id.txt"
-        if [[ -f "${DEVICE_ID_FILE}" ]]; then
-          xcrun simctl delete "$(cat "${DEVICE_ID_FILE}")"
-          rm "${DEVICE_ID_FILE}"
-        fi
-      displayName: Stop iOS Simulator
-      condition: always()
 
     - task: PublishTestResults@2
       inputs:
@@ -209,19 +245,12 @@ stages:
         testRunTitle: 'React Native Detox iOS e2e Test Results'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox iOS e2e Test Results
-    - ${{ if eq(parameters.is1ES, true) }}:
-      - task: 1ES.PublishPipelineArtifact@1
-        inputs:
-          artifactName: 'ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)'
-          targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-        condition: succeededOrFailed()
-        displayName: Publish React Native Detox E2E test logs
-    - ${{ if eq(parameters.is1ES, false) }}:
-      - task: PublishPipelineArtifact@1
-        inputs:
-          artifact: ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
-          targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-        condition: succeededOrFailed()
-        displayName: Publish React Native Detox E2E test logs
+
+    - task: ${{ variables.publishPipelineArtifactTask }}
+      inputs:
+        artifactName: 'ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)'
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
 
     - template: explicitly-defined-final-tasks.yml
