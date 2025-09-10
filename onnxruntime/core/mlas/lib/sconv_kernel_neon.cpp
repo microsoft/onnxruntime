@@ -19,6 +19,8 @@ Abstract:
 
 #if defined(MLAS_TARGET_ARM64)
 
+constexpr size_t BlockSize = MLAS_NEON_BLOCK_SIZE;
+
 // Common implementation for NCHW and NCHWC convolution kernels
 template <bool IsNchwcFormat>
 void
@@ -49,7 +51,6 @@ void
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
 
-    const size_t BlockSize = MlasNchwcGetBlockSize();
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
@@ -337,7 +338,6 @@ void
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
 
-    const size_t BlockSize = MlasNchwcGetBlockSize();
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
@@ -452,7 +452,6 @@ void
     const size_t FilterStrideElements = FilterStride / sizeof(float);
     const size_t OutputStrideElements = OutputStride / sizeof(float);
 
-    const size_t BlockSize = MlasNchwcGetBlockSize();
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
 
     for (size_t output_idx = 0; output_idx < OutputCount; output_idx++) {

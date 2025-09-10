@@ -15,8 +15,11 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "sconv.h"
 
 #if defined(MLAS_TARGET_ARM64)
+
+constexpr size_t BlockSize = MLAS_NEON_BLOCK_SIZE;
 
 void
     MLASCALL
@@ -39,8 +42,6 @@ void
 {
     MLAS_UNREFERENCED_PARAMETER(ActualKernelSize);
     MLAS_UNREFERENCED_PARAMETER(InputStride);
-
-    const size_t BlockSize = MlasNchwcGetBlockSize();
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
     const size_t InputWidthElements = InputWidth / sizeof(float);
@@ -124,7 +125,6 @@ MlasPoolAverageFloatKernelNeonImpl(
     bool ExcludePad
 )
 {
-    const size_t BlockSize = MlasNchwcGetBlockSize();
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
     const size_t InputWidthElements = InputWidth / sizeof(float);
