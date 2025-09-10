@@ -192,7 +192,7 @@ struct TensorCheck<Float4E2M1x2> {
       ORT_THROW("Shape mismatch");
     }
 
-    const auto size = actual.Shape().Size();
+    const auto size = narrow<size_t>(actual.Shape().Size());
 
     const Float4E2M1x2* expected_data = expected.Data<Float4E2M1x2>();
     const Float4E2M1x2* actual_data = actual.Data<Float4E2M1x2>();
@@ -201,7 +201,7 @@ struct TensorCheck<Float4E2M1x2> {
     // For now, using float tolerance is fine
     auto tolerance_params = get_tolerance_params<float>(params, provider_type);
 
-    for (int64_t i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       size_t r = i >> 1;
       size_t c = i & 0x1;
 
