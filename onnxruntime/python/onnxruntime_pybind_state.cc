@@ -2297,7 +2297,73 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         ORT_UNUSED_PARAMETER(ort_values);
         ORT_THROW("External initializers are not supported in this build.");
 #endif
-      });
+      })
+      .def("add_external_initializers_from_files_in_memory", [](PySessionOptions* options, py::object names, py::object buffers, py::object lengths) -> void {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+        // Validate top-level container types first to avoid pybind printing large reprs
+        ORT_ENFORCE(py::isinstance<py::list>(names),
+                    "add_external_initializers_from_files_in_memory: 'names' must be a list[str]");
+        ORT_ENFORCE(py::isinstance<py::list>(buffers),
+                    "add_external_initializers_from_files_in_memory: 'buffers' must be a list of bytes-like objects (buffer protocol)");
+        ORT_ENFORCE(py::isinstance<py::list>(lengths),
+                    "add_external_initializers_from_files_in_memory: 'lengths' must be a list[int]");
+
+        auto names_list = names.cast<py::list>();
+        auto buffers_list = buffers.cast<py::list>();
+        auto lengths_list = lengths.cast<py::list>();
+
+        const auto num = names_list.size();
+        ORT_ENFORCE(num == buffers_list.size() && num == lengths_list.size(),
+                    "add_external_initializers_from_files_in_memory: expecting 'names', 'buffers' and 'lengths' to have equal length");
+
+        InlinedVector<PathString> file_names;
+        InlinedVector<std::pair<char*, const size_t>> files_buffers;
+        file_names.reserve(num);
+        files_buffers.reserve(num);
+
+        for (size_t i = 0; i < num; ++i) {
+          // names[i] must be str
+          ORT_ENFORCE(py::isinstance<py::str>(names_list[i]),
+                      "add_external_initializers_from_files_in_memory: each entry in 'names' must be a str");
+          file_names.emplace_back(ToPathString(py::str(names_list[i])));
+
+          // buffers[i] must support the buffer protocol (bytes, bytearray, memoryview, numpy array, etc.)
+          py::handle buf_obj = buffers_list[i];
+          ORT_ENFORCE(PyObject_CheckBuffer(buf_obj.ptr()) != 0,
+                      "add_external_initializers_from_files_in_memory: each entry in 'buffers' must be bytes-like (supports the buffer protocol)");
+          py::buffer buf = py::reinterpret_borrow<py::buffer>(buf_obj);
+          py::buffer_info info = buf.request();
+          char* data_ptr = reinterpret_cast<char*>(info.ptr);
+
+          // lengths[i] must be int
+          ORT_ENFORCE(py::isinstance<py::int_>(lengths_list[i]),
+                      "add_external_initializers_from_files_in_memory: each entry in 'lengths' must be an int");
+          size_t len = py::cast<size_t>(lengths_list[i]);
+
+          files_buffers.emplace_back(std::make_pair(data_ptr, len));
+        }
+
+        ORT_THROW_IF_ERROR(options->value.AddExternalInitializersFromFilesInMemory(file_names, files_buffers));
+#else
+        ORT_UNUSED_PARAMETER(options);
+        ORT_UNUSED_PARAMETER(names);
+        ORT_UNUSED_PARAMETER(buffers);
+        ORT_UNUSED_PARAMETER(lengths);
+        ORT_THROW("External initializers are not supported in this build.");
+#endif
+      },
+           R"pbdoc(
+Provide external initializer file contents from memory.
+
+Args:
+  names: list[str] of external file names (as referenced by the model's external_data locations).
+  buffers: list[bytes-like] objects exposing the buffer protocol (e.g., bytes, bytearray, memoryview, numpy uint8 array) containing the corresponding file contents.
+  lengths: list[int] sizes in bytes for each buffer.
+
+Notes:
+  - Keep the provided buffers alive until after session creation completes. ONNX Runtime copies needed data during session creation.
+  - The bytestream must match the external file layout expected by the model (raw tensor bytes at the specified offsets).
+)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
