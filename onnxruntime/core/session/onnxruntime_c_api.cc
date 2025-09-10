@@ -3671,7 +3671,7 @@ OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
 
   InlinedVector<const OrtMemoryInfo*> mem_info;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      session->GetInputOutputMemoryInfo(InferenceSession::SessionInputOutputType::kInput, mem_info));
+      session->GetInputOutputMemoryInfo(type, mem_info));
 
   auto num_found = mem_info.size();
   if (num_found > num_values) {
