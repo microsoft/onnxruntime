@@ -208,6 +208,7 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const BFloat16* tensor_in,
                                   const BFloat16* tensor_add,
                                   BFloat16* tensor_out) {
+  assert(num_heads <= max_threads_per_block);
   const dim3 grid(all_sequence_length, batch_size, matrix_num);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;

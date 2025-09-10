@@ -99,6 +99,7 @@ __global__ void TransposeCtxLarge(const int H, const bool reversed_bs, const T* 
 Status LaunchTransCtx(cudaStream_t stream,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
+  assert(num_heads <= max_threads_per_block);
   const dim3 grid(sequence_length, batch_size, 1);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
@@ -337,6 +338,7 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int max_threads_per_block, const bool reversed_bs,
                       const BFloat16* input, BFloat16* output,
                       int total_matrix_count) {
+  assert(num_heads <= max_threads_per_block);
   total_matrix_count = max(total_matrix_count, matrix_num);
   const dim3 grid(sequence_length, batch_size, matrix_num);
 
