@@ -50,8 +50,8 @@ class MoEBaseCPU {
 
     swiglu_fusion_ = op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0);
     swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
-    activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.702f);
-    activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 1.0f);
+    activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
+    activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 0.0f);
   }
 
   bool normalize_routing_weights_;
