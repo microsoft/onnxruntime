@@ -6,7 +6,7 @@
 Prepares native shared libraries for the ONNX Runtime Java package.
 
 This script is a build utility that run as part of a packaging pipeline and takes compiled C/C++ shared libraries
-(.so, .dylib) and stages them for packaging into a Java JAR file. 
+(.so, .dylib) and stages them for packaging into a Java JAR file.
 
 It expected the following inputs:
 <binary_dir>/
@@ -47,10 +47,11 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
+
 # --- Helper Functions ---
 def run_command(command: list[str | Path]):
     """Runs an external command and exits the script if the command fails."""
-    str_command = ' '.join(map(str, command))
+    str_command = " ".join(map(str, command))
     logging.info(f"Running command: '{str_command}'")
     try:
         proc = subprocess.run(command, check=True, text=True, capture_output=True)
@@ -67,6 +68,7 @@ def run_command(command: list[str | Path]):
         if e.stderr:
             logging.error(f"STDERR: {e.stderr.strip()}")
         raise
+
 
 # --- Main Execution ---
 def main():
@@ -99,20 +101,20 @@ def main():
     # Map architecture names for macOS to align with Java conventions
     arch = args.arch
     if args.lib_name.endswith(".dylib"):
-        if arch == 'osx-x86_64':
-            arch = 'osx-x64'
-        elif arch == 'osx-arm64':
-            arch = 'osx-aarch64'
+        if arch == "osx-x86_64":
+            arch = "osx-x64"
+        elif arch == "osx-arm64":
+            arch = "osx-aarch64"
 
     # --- Library Processing ---
     native_folder = target_artifact_dir / "ai" / "onnxruntime" / "native" / arch
     native_folder.mkdir(parents=True, exist_ok=True)
     logging.info(f"Staging native libraries in: {native_folder}")
-    
+
     # Validate that all required library files exist before processing.
     main_lib_src = source_build_dir / args.lib_name
     jni_lib_src = source_build_dir / args.native_lib_name
-    
+
     required_files = [main_lib_src, jni_lib_src]
     lib_suffix = ".dylib" if args.lib_name.endswith(".dylib") else ".so"
     custom_op_lib_src = source_build_dir / f"libcustom_op_library{lib_suffix}"
@@ -139,17 +141,17 @@ def main():
 
     elif lib_suffix == ".so":  # Linux
         logging.info("Processing Linux libraries (.so)...")
-        
+
         # Main library
         main_lib_dest = native_folder / "libonnxruntime.so"
         shutil.copy2(main_lib_src, main_lib_dest)
         run_command(["strip", "-S", main_lib_dest])
-        
+
         # JNI library
         jni_lib_dest = native_folder / "libonnxruntime4j_jni.so"
         shutil.copy2(jni_lib_src, jni_lib_dest)
         run_command(["strip", "-S", jni_lib_dest])
-        
+
         # Custom op library (not stripped as it's for testing)
         shutil.copy2(custom_op_lib_src, target_artifact_dir)
 
@@ -158,14 +160,14 @@ def main():
             provider_lib_src = source_build_dir / f"libonnxruntime_providers_{provider}.so"
             if provider_lib_src.exists():
                 logging.info(f"Found optional {provider} provider library. Copying and stripping...")
-                
+
                 # Shared provider library
                 shared_provider_lib_src = source_build_dir / "libonnxruntime_providers_shared.so"
                 if shared_provider_lib_src.exists():
                     shared_provider_dest = native_folder / shared_provider_lib_src.name
                     shutil.copy2(shared_provider_lib_src, shared_provider_dest)
                     run_command(["strip", "-S", shared_provider_dest])
-                
+
                 # Specific provider library
                 provider_lib_dest = native_folder / provider_lib_src.name
                 shutil.copy2(provider_lib_src, provider_lib_dest)
@@ -175,7 +177,7 @@ def main():
 
     # --- Finalization ---
     logging.info(f"--- Final contents of '{target_artifact_dir}' ---")
-    for path in sorted(target_artifact_dir.rglob('*')):
+    for path in sorted(target_artifact_dir.rglob("*")):
         logging.info(f"  - {path.relative_to(target_artifact_dir)}")
     logging.info("--- End of contents ---")
 

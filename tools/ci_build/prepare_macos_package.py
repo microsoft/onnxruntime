@@ -116,7 +116,7 @@ def main():
     if arm64_files != x64_files:
         difference = arm64_files.symmetric_difference(x64_files)
         print(f"ERROR: File tree structures do not match. Found {len(difference)} differing files:", file=sys.stderr)
-        for f in sorted(list(difference)):
+        for f in sorted(difference):
             print(f"- {f}", file=sys.stderr)
         sys.exit(1)
 

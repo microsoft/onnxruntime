@@ -40,22 +40,23 @@ Outputs:
 """
 
 import argparse
-import os
 import glob
+import os
 import shutil
 import sys
 import zipfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 # --- Helper Functions for Archiving ---
+
 
 def add_file_to_archive(archive_path: Path, file_to_add: Path, description: str):
     """Appends a single file to a zip archive (JAR file)."""
     print(f"  -> {description}...")
     try:
         # Open in append mode 'a' to add files to an existing archive.
-        with zipfile.ZipFile(archive_path, 'a', compression=zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(archive_path, "a", compression=zipfile.ZIP_DEFLATED) as zf:
             # arcname ensures the path inside the zip is just the filename,
             # not the full path from the filesystem.
             zf.write(file_to_add, arcname=file_to_add.name)
@@ -64,13 +65,14 @@ def add_file_to_archive(archive_path: Path, file_to_add: Path, description: str)
         print(f"Reason: {e}", file=sys.stderr)
         raise
 
+
 def archive_directory_contents(archive_path: Path, source_dir: Path, description: str):
     """Archives all contents of a directory into a zip file (JAR file)."""
     print(f"  -> {description}...")
     try:
         # Open in append mode 'a' to add files from multiple platforms
         # into the same archive.
-        with zipfile.ZipFile(archive_path, 'a', compression=zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(archive_path, "a", compression=zipfile.ZIP_DEFLATED) as zf:
             for root, _, files in os.walk(source_dir):
                 for file in files:
                     file_path = Path(root) / file
@@ -86,12 +88,13 @@ def archive_directory_contents(archive_path: Path, source_dir: Path, description
 
 # --- Core Logic Function ---
 
+
 def process_platform_archive(
     platform_path: Path,
     main_archive_file: Path,
     test_archive_file: Path,
     custom_lib_file: str,
-    archive_custom_lib: bool
+    archive_custom_lib: bool,
 ):
     """
     Processes a single platform directory, handling all archiving logic.
@@ -116,7 +119,7 @@ def process_platform_archive(
             add_file_to_archive(
                 archive_path=test_archive_file,
                 file_to_add=custom_lib_path,
-                description=f"Archiving '{custom_lib_file}' to test JAR"
+                description=f"Archiving '{custom_lib_file}' to test JAR",
             )
 
         print(f"  -> Removing '{custom_lib_file}'...")
@@ -126,13 +129,14 @@ def process_platform_archive(
     archive_directory_contents(
         archive_path=main_archive_file,
         source_dir=platform_path,
-        description=f"Archiving all contents to main JAR '{main_archive_file.name}'"
+        description=f"Archiving all contents to main JAR '{main_archive_file.name}'",
     )
     print(f"Finished platform: {platform_path}")
     print("--------------------------------")
 
 
 # --- Main Execution ---
+
 
 def main():
     """Main script entry point."""
@@ -141,22 +145,20 @@ def main():
         print("Error: This script is intended to be run on Windows.", file=sys.stderr)
         sys.exit(1)
 
-    parser = argparse.ArgumentParser(
-        description="Package ONNX Runtime Java artifacts."
-    )
+    parser = argparse.ArgumentParser(description="Package ONNX Runtime Java artifacts.")
     parser.add_argument(
         "--package_type",
         type=str,
-        choices=['cpu', 'gpu'],
-        default='cpu',
-        help="The type of package to build ('cpu' or 'gpu')."
+        choices=["cpu", "gpu"],
+        default="cpu",
+        help="The type of package to build ('cpu' or 'gpu').",
     )
     args = parser.parse_args()
 
     # --- Configuration ---
     try:
         # Base directory where all unzipped artifacts are.
-        build_dir = os.environ['BUILD_BINARIESDIRECTORY']
+        build_dir = os.environ["BUILD_BINARIESDIRECTORY"]
         artifacts_base_dir = Path(build_dir) / "java-artifact"
     except KeyError:
         print("Error: Environment variable BUILD_BINARIESDIRECTORY is not set.", file=sys.stderr)
@@ -173,13 +175,13 @@ def main():
     # --- Version Discovery ---
     print(f"Discovering version from JAR files in '{primary_package_dir}'...")
     jar_pattern = str(primary_package_dir / "onnxruntime*-*.jar")
-    jar_files = [
-        Path(f) for f in glob.glob(jar_pattern)
-        if "-sources.jar" not in f and "-javadocs.jar" not in f
-    ]
+    jar_files = [Path(f) for f in glob.glob(jar_pattern) if "-sources.jar" not in f and "-javadocs.jar" not in f]
 
     if not jar_files:
-        print(f"Error: Could not find a main JAR file in '{primary_package_dir}' to determine the version.", file=sys.stderr)
+        print(
+            f"Error: Could not find a main JAR file in '{primary_package_dir}' to determine the version.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     main_cpu_jar_file = jar_files[0]
@@ -195,41 +197,47 @@ def main():
         print(f"Error: Failed to parse version from filename '{main_cpu_jar_file.name}'. Reason: {e}", file=sys.stderr)
         sys.exit(1)
 
-
     print(f"Version discovered: {version}")
 
     # --- Package Definitions ---
     # Defines the platforms and libraries for each package type (cpu/gpu).
-    package_definitions: Dict[str, Dict[str, Any]] = {
-        'cpu': {
-            'package_name': 'onnxruntime',
-            'platforms': [
-                {'path': 'onnxruntime-java-linux-x64', 'lib': 'libcustom_op_library.so', 'archive_lib': True},
-                {'path': 'onnxruntime-java-osx-x86_64', 'lib': 'libcustom_op_library.dylib', 'archive_lib': True},
-                {'path': 'onnxruntime-java-linux-aarch64', 'lib': 'libcustom_op_library.so', 'archive_lib': False},
-                {'path': 'onnxruntime-java-osx-arm64', 'lib': 'libcustom_op_library.dylib', 'archive_lib': False}
-            ]
+    package_definitions: dict[str, dict[str, Any]] = {
+        "cpu": {
+            "package_name": "onnxruntime",
+            "platforms": [
+                {"path": "onnxruntime-java-linux-x64", "lib": "libcustom_op_library.so", "archive_lib": True},
+                {"path": "onnxruntime-java-osx-x86_64", "lib": "libcustom_op_library.dylib", "archive_lib": True},
+                {"path": "onnxruntime-java-linux-aarch64", "lib": "libcustom_op_library.so", "archive_lib": False},
+                {"path": "onnxruntime-java-osx-arm64", "lib": "libcustom_op_library.dylib", "archive_lib": False},
+            ],
         },
-        'gpu': {
-            'package_name': 'onnxruntime_gpu',
-            'platforms': [
+        "gpu": {
+            "package_name": "onnxruntime_gpu",
+            "platforms": [
                 {
-                    'path': 'onnxruntime-java-linux-x64-tensorrt',
-                    'lib': 'libcustom_op_library.so',
-                    'archive_lib': False,
-                    'gpu_libs': [
-                        {'source': artifacts_base_dir / 'onnxruntime-java-linux-x64/ai/onnxruntime/native/linux-x64/libonnxruntime_providers_cuda.so', 'dest': 'ai/onnxruntime/native/linux-x64'},
-                        {'source': artifacts_base_dir / 'onnxruntime-java-linux-x64/ai/onnxruntime/native/linux-x64/libonnxruntime_providers_tensorrt.so', 'dest': 'ai/onnxruntime/native/linux-x64'}
-                    ]
-                }                
-            ]
-        }
+                    "path": "onnxruntime-java-linux-x64-tensorrt",
+                    "lib": "libcustom_op_library.so",
+                    "archive_lib": False,
+                    "gpu_libs": [
+                        {
+                            "source": artifacts_base_dir
+                            / "onnxruntime-java-linux-x64/ai/onnxruntime/native/linux-x64/libonnxruntime_providers_cuda.so",
+                            "dest": "ai/onnxruntime/native/linux-x64",
+                        },
+                        {
+                            "source": artifacts_base_dir
+                            / "onnxruntime-java-linux-x64/ai/onnxruntime/native/linux-x64/libonnxruntime_providers_tensorrt.so",
+                            "dest": "ai/onnxruntime/native/linux-x64",
+                        },
+                    ],
+                }
+            ],
+        },
     }
-
 
     # --- Processing Loop ---
     package = package_definitions[args.package_type]
-    package_name = package['package_name']
+    package_name = package["package_name"]
     print(f"\n## Configuring for {args.package_type.upper()} package build...")
     print(f"## Processing Package: {package_name}")
 
@@ -241,14 +249,14 @@ def main():
     main_archive_file.unlink(missing_ok=True)
     test_archive_file.unlink(missing_ok=True)
 
-    for platform in package['platforms']:
-        platform_full_path = artifacts_base_dir / platform['path']
+    for platform in package["platforms"]:
+        platform_full_path = artifacts_base_dir / platform["path"]
 
         # --- GPU Pre-processing Step ---
-        if 'gpu_libs' in platform:
-            for gpu_lib in platform['gpu_libs']:
-                dest_dir = platform_full_path / gpu_lib['dest']
-                source_file = Path(gpu_lib['source'])
+        if "gpu_libs" in platform:
+            for gpu_lib in platform["gpu_libs"]:
+                dest_dir = platform_full_path / gpu_lib["dest"]
+                source_file = Path(gpu_lib["source"])
                 print(f"  -> Copying GPU library '{source_file.name}' to '{dest_dir}'")
 
                 if not source_file.is_file():
@@ -263,10 +271,10 @@ def main():
             platform_path=platform_full_path,
             main_archive_file=main_archive_file,
             test_archive_file=test_archive_file,
-            custom_lib_file=platform['lib'],
-            archive_custom_lib=platform['archive_lib']
+            custom_lib_file=platform["lib"],
+            archive_custom_lib=platform["archive_lib"],
         )
-    
+
     print("\nScript completed successfully.")
 
 
