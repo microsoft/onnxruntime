@@ -46,14 +46,14 @@ __device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
 }
 
 struct __align__(8) nv_bfloat164 {
-  __nv_bfloat162 lo;
-  __nv_bfloat162 hi;
+  __nv_bfloat162 x;
+  __nv_bfloat162 y;
 };
 
 __device__ __forceinline__ nv_bfloat164 operator+(const nv_bfloat164& a, const nv_bfloat164& b) {
   nv_bfloat164 r;
-  r.lo = __hadd2(a.lo, b.lo);
-  r.hi = __hadd2(a.hi, b.hi);
+  r.x = __hadd2(a.x, b.x);
+  r.y = __hadd2(a.y, b.y);
   return r;
 }
 

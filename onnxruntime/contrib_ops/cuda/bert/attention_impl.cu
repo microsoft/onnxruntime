@@ -952,6 +952,13 @@ Status QkvToContext(
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data) {
+  if constexpr (std::is_same<T, BFloat16>::value || std::is_same<QK, BFloat16>::value) {
+    if (device_prop.major < 8) {
+      ORT_THROW("BF16 Attention requires Ampere (sm_80)+ with BF16 support. This GPU (",
+                device_prop.name, ", cc ", device_prop.major, ".", device_prop.minor, ") is not supported.");
+    }
+  }
+
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
