@@ -20,28 +20,14 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
-#include <memory_resource>  // For memory pool optimizations
+#include <memory_resource>
 
-// Debugging constants: to enable local debug, set kQmoeDebugEnabled=true.
-// We intentionally do NOT read environment variables here to avoid runtime
-// dependencies in test/CI environments.
-static constexpr bool kQmoeDebugEnabled = false;  // Disabled for performance
-// Debug caps to prevent excessive logging when enabled.
-static constexpr int kQmoeDebugMaxRowsDump = 4;  // max rows (output features) to print
-static constexpr int kQmoeDebugMaxVecDump = 8;   // max elements of per-token output to print
-// Auto-detect mode: prints debug info for all selected experts without requiring specific indices
-static constexpr bool kQmoeDebugAutoDetect = false;  // Disabled for performance
-
-// Performance optimization constants
-static constexpr size_t kCacheLineSize = 64;
-static constexpr size_t kMemoryAlignment = 32;                     // Memory alignment for better cache performance
-static constexpr size_t kMinTokensForParallelGather = 64;          // Threshold for parallel gather
-static constexpr size_t kWorkspacePoolingThreshold = 1024 * 1024;  // 1MB threshold for workspace pooling
+static constexpr size_t kMemoryAlignment = 32;
+static constexpr size_t kMinTokensForParallelGather = 64;
 
 namespace onnxruntime {
 namespace contrib {
 
-// Use MLAS for dequantization where possible, with fallback for custom block-wise quantization
 template <typename TScale>
 void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              const TScale* scales,
@@ -54,7 +40,6 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
   const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
 
   if (num_bits == 8 && block_size == 0) {
-    // Use MLAS for simple row-wise 8-bit dequantization
     for (int64_t r = 0; r < rows; ++r) {
       const float scale = static_cast<float>(scales[r]);
       const uint8_t zero_pt = static_cast<uint8_t>(zero_point);
@@ -67,7 +52,6 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
           zero_pt);
     }
   } else {
-    // Fall back to custom implementation for block-wise or 4-bit quantization
     if (num_bits == 8) {
       for (int64_t r = 0; r < rows; ++r) {
         for (int64_t c = 0; c < cols; ++c) {
@@ -78,7 +62,6 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
         }
       }
     } else if (num_bits == 4) {
-      // 4-bit dequantization - no MLAS support, use custom implementation
       const int64_t packed_cols = (cols + 1) / 2;
       for (int64_t r = 0; r < rows; ++r) {
         for (int64_t c = 0; c < cols; ++c) {
@@ -95,7 +78,6 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
   }
 }
 
-// Optimized memory pool for workspace allocation
 class WorkspacePool {
  public:
   explicit WorkspacePool(AllocatorPtr allocator) : allocator_(allocator) {}
@@ -105,7 +87,6 @@ class WorkspacePool {
       return current_workspace_.get();
     }
 
-    // Allocate with some extra space to reduce future reallocations
     size_t new_capacity = std::max(size_in_floats, current_capacity_ * 2);
     current_workspace_ = IAllocator::MakeUniquePtr<float>(allocator_, new_capacity);
     current_capacity_ = new_capacity;
@@ -118,13 +99,6 @@ class WorkspacePool {
   size_t current_capacity_ = 0;
 };
 
-// Helper function to dequantize weights. Supports 4-bit and 8-bit symmetric quantization.
-// The source quantized weights are stored as a row-major representation of the transposed
-// logical weight matrix (W^T). This function dequantizes it into a float row-major W^T matrix.
-//
-// Block-wise quantization: When block_size > 0, weights are quantized in blocks of consecutive
-// elements within each row. Each block has its own scale factor.
-// Row-wise quantization: When block_size == 0, each entire row shares one scale factor.
 template <typename TScale>
 void DequantizeBlock(const uint8_t* quantized_data,
                      const TScale* scales,
@@ -133,7 +107,6 @@ void DequantizeBlock(const uint8_t* quantized_data,
                      int64_t rows,
                      int64_t cols,
                      float* dequantized_data) {
-  // Use MLAS-optimized dequantization for better performance
   DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, dequantized_data);
 }
 
@@ -146,17 +119,14 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
               "Attribute 'expert_weight_bits' must be 4 or 8.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
 
-  // Validate block_size according to QMoE specification
   if (block_size_ > 0) {
     ORT_ENFORCE(block_size_ >= 16, "block_size must be >= 16 when provided.");
-    // Check if block_size is a power of 2
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
   }
 }
 
 template <typename T>
 Status QMoECPU<T>::Compute(OpKernelContext* context) const {
-  // --- 1. Get Inputs and Attributes ---
   const auto* input = context->Input<Tensor>(0);
   const auto* router_probs = context->Input<Tensor>(1);
   const auto* fc1_experts_weights = context->Input<Tensor>(2);
@@ -199,9 +169,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const size_t output_buffer_size = static_cast<size_t>(output->Shape().Size());
 
   const T* input_data = input->Data<T>();
-  const T* router_probs_data = router_probs->Data<T>();
 
-  // --- 2. Optimized Routing Logic: Assign tokens to experts ---
   IAllocatorUniquePtr<float> router_logits_float_buffer;
   const float* router_logits_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -219,14 +187,13 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   auto route_scale_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * k_));
   float* route_scale = route_scale_ptr.get();
 
-  // Optimized parallel routing with better load balancing
   const int num_routing_threads = (tp == nullptr || num_tokens < 512) ? 1 : std::min(static_cast<int>(num_tokens / 64), concurrency::ThreadPool::DegreeOfParallelism(tp));
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
   for (auto& map : thread_local_expert_token_maps) {
     map.resize(static_cast<size_t>(num_experts));
     for (auto& expert_tokens : map) {
-      expert_tokens.reserve(32);  // Pre-reserve to reduce allocations
+      expert_tokens.reserve(32);
     }
   }
 
@@ -234,22 +201,19 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     auto work = concurrency::ThreadPool::PartitionWork(static_cast<int>(thread_id), num_routing_threads, static_cast<std::ptrdiff_t>(num_tokens));
     auto& local_expert_token_map = thread_local_expert_token_maps[thread_id];
 
-    // Pre-allocate buffers for this thread to reuse, avoiding allocations inside the loop.
     std::vector<std::pair<float, int64_t>> sorted_logits(static_cast<size_t>(num_experts));
     std::vector<float> top_k_exp(static_cast<size_t>(k_));
 
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
 
-      // Use partial_sort for better performance when k << num_experts
       for (int64_t j = 0; j < num_experts; ++j) {
         sorted_logits[static_cast<size_t>(j)] = {logits[j], j};
       }
       std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_),
                         sorted_logits.end(), std::greater<>());
 
-      // Optimized softmax computation with better numerical stability
-      float max_logit = sorted_logits[0].first;  // Already sorted, so first is max
+      float max_logit = sorted_logits[0].first;
 
       float sum_exp = 0.0f;
       for (int64_t j = 0; j < k_; ++j) {
@@ -270,7 +234,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     }
   });
 
-  // Optimized merge with better memory access patterns
   std::vector<std::vector<int64_t>> expert_token_map(static_cast<size_t>(num_experts));
   for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
     size_t total_tokens_for_expert = 0;
@@ -289,7 +252,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // --- 3. Optimized Parallel Expert Computation ---
   IAllocatorUniquePtr<float> input_float_buffer;
   const float* input_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -302,43 +264,37 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     input_float = reinterpret_cast<const float*>(input_data);
   }
 
-  // Optimize thread count based on workload characteristics
   int num_expert_threads = (tp == nullptr) ? 1 : std::min(static_cast<int>(num_experts), concurrency::ThreadPool::DegreeOfParallelism(tp));
   if (num_expert_threads == 0) num_expert_threads = 1;
 
-  // Use aligned allocation for better SIMD performance
   auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * output_buffer_size);
   float* thread_local_outputs = thread_local_outputs_ptr.get();
   std::memset(thread_local_outputs, 0, static_cast<size_t>(num_expert_threads) * output_buffer_size * sizeof(float));
 
-  // Pre-calculate optimized workspace sizes with memory alignment
   size_t max_tokens_per_expert = 0;
   for (const auto& tokens : expert_token_map) {
     max_tokens_per_expert = std::max(max_tokens_per_expert, tokens.size());
   }
 
-  // Add padding for better cache alignment
   const auto align_size = [](size_t size) -> size_t {
     return (size + kMemoryAlignment - 1) & ~(kMemoryAlignment - 1);
   };
 
-  const size_t A1_size = align_size(max_tokens_per_expert * hidden_size);
-  const size_t C1_size = align_size(max_tokens_per_expert * fc1_out_features);
-  const size_t A2_size = align_size(max_tokens_per_expert * inter_size);
-  const size_t C2_size = align_size(max_tokens_per_expert * hidden_size);
-  const size_t B1_dequant_size = align_size(fc1_out_features * hidden_size);
-  const size_t B2_dequant_size = align_size(hidden_size * inter_size);
-  const size_t bias1_size = align_size(fc1_out_features);
-  const size_t bias2_size = align_size(hidden_size);
+  const size_t A1_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(hidden_size));
+  const size_t C1_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(fc1_out_features));
+  const size_t A2_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(inter_size));
+  const size_t C2_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(hidden_size));
+  const size_t B1_dequant_size = align_size(static_cast<size_t>(fc1_out_features) * static_cast<size_t>(hidden_size));
+  const size_t B2_dequant_size = align_size(static_cast<size_t>(hidden_size) * static_cast<size_t>(inter_size));
+  const size_t bias1_size = align_size(static_cast<size_t>(fc1_out_features));
+  const size_t bias2_size = align_size(static_cast<size_t>(hidden_size));
 
   const size_t workspace_elements_per_thread = A1_size + C1_size + A2_size + C2_size +
                                                B1_dequant_size + B2_dequant_size + bias1_size + bias2_size;
 
-  // Use workspace pooling for large allocations
   auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * workspace_elements_per_thread);
   float* workspace = workspace_ptr.get();
 
-  // Cache frequently accessed tensor shapes and data pointers
   const auto& fc1_scales_dims = fc1_scales->Shape().GetDims();
   const auto& fc2_scales_dims = fc2_scales->Shape().GetDims();
   const bool is_fc1_block_wise = (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1);
@@ -365,7 +321,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       const int64_t num_expert_tokens = static_cast<int64_t>(routes.size());
 
-      // Partition the workspace for the current expert with alignment
       float* A1 = thread_workspace;
       float* C1 = A1 + A1_size;
       float* A2 = C1 + C1_size;
@@ -375,9 +330,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       float* bias1_float = B2_dequant + B2_dequant_size;
       float* bias2_float = bias1_float + bias1_size;
 
-      // --- Optimized input token gathering ---
       if (num_expert_tokens >= kMinTokensForParallelGather) {
-        // Parallel gather for large batches
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_expert_tokens), [&](std::ptrdiff_t i) {
           const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
           std::memcpy(A1 + i * hidden_size,
@@ -385,7 +338,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                       static_cast<size_t>(hidden_size) * sizeof(float));
         });
       } else {
-        // Sequential gather for small batches
         for (int64_t i = 0; i < num_expert_tokens; ++i) {
           const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
           std::memcpy(A1 + i * hidden_size,
@@ -394,7 +346,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         }
       }
 
-      // --- Optimized FC1 GEMM (X * W1^T) ---
       const T* fc1_scales_ptr;
       if (is_fc1_block_wise) {
         const int64_t fc1_blocks_per_row = fc1_scales_dims[2];
@@ -418,7 +369,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                0.0f, C1, static_cast<size_t>(fc1_out_features),
                nullptr);
 
-      // Optimized bias addition
       if (fc1_bias_data) {
         const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
         if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -427,7 +377,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           std::memcpy(bias1_float, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
         }
 
-        // Optimized bias addition (without SIMD)
         for (int64_t i = 0; i < num_expert_tokens; ++i) {
           float* C1_row = C1 + i * fc1_out_features;
           for (int64_t j = 0; j < fc1_out_features; ++j) {
@@ -436,14 +385,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         }
       }
 
-      // --- Optimized Activation ---
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
         const float* C1_token = C1 + i * fc1_out_features;
         float* A2_token = A2 + i * inter_size;
         ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
       }
 
-      // --- Optimized FC2 GEMM (A2 * W2^T) ---
       const T* fc2_scales_ptr;
       if (is_fc2_block_wise) {
         const int64_t fc2_blocks_per_row = fc2_scales_dims[2];
@@ -467,7 +414,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                0.0f, C2, static_cast<size_t>(hidden_size),
                nullptr);
 
-      // Prepare bias for FC2
       if (fc2_bias_data) {
         const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
         if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -477,13 +423,11 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         }
       }
 
-      // --- Optimized output accumulation with bounds checking ---
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
         const int64_t route_idx = routes[static_cast<size_t>(i)];
         const int64_t token_idx = route_idx / k_;
         const float weight = route_scale[route_idx];
 
-        // Bounds checking
         if (token_idx < 0 || token_idx >= num_tokens) continue;
 
         const size_t buffer_offset = static_cast<size_t>(token_idx) * static_cast<size_t>(hidden_size);
@@ -494,17 +438,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + buffer_offset;
         const float* src = C2 + i * hidden_size;
 
-        // Optimized accumulation (without SIMD)
         for (int64_t j = 0; j < hidden_size; ++j) {
           dest[j] += weight * (src[j] + (fc2_bias_data ? bias2_float[j] : 0.0f));
         }
       }
     }
-  });  // --- 4. Optimized Final Reduction (accumulate expert outputs) ---
+  });
   auto accumulate = [&](float* buffer) {
     std::memset(buffer, 0, output_buffer_size * sizeof(float));
 
-    // Optimized reduction for better performance
     for (int i = 0; i < num_expert_threads; ++i) {
       const size_t thread_offset = static_cast<size_t>(i) * output_buffer_size;
       const float* src = thread_local_outputs + thread_offset;
@@ -520,7 +462,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     float* final_output_float = final_output_float_ptr.get();
     accumulate(final_output_float);
 
-    // --- 5. Optimized type conversion ---
     MlasConvertFloatToHalfBuffer(final_output_float,
                                  reinterpret_cast<MLFloat16*>(output->MutableData<T>()),
                                  static_cast<size_t>(output_buffer_size));
@@ -531,7 +472,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-// Explicit template instantiation
 template QMoECPU<float>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<float>::Compute(OpKernelContext* context) const;
 template QMoECPU<MLFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
