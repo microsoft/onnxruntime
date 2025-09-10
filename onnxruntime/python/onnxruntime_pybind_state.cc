@@ -6,11 +6,8 @@
 #include <mutex>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
-#include "python/onnxruntime_pybind_state_common.h"
-
-#if !defined(ORT_MINIMAL_BUILD)
 #include "python/onnxruntime_pybind_model_compiler.h"
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#include "python/onnxruntime_pybind_state_common.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
@@ -45,6 +42,7 @@
 #include "core/session/lora_adapters.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/abi_graph_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
@@ -1575,6 +1573,17 @@ void addGlobalMethods(py::module& m) {
       R"pbdoc(Get the list of available OrtEpDevice instances.)pbdoc",
       py::return_value_policy::reference);
 
+  m.def(
+      "get_model_compatibility_for_ep_devices",
+      [](const std::vector<const OrtEpDevice*>& ep_devices,
+         const std::string& compatibility_info) -> OrtCompiledModelCompatibility {
+        OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        Ort::ThrowOnError(Ort::GetApi().GetModelCompatibilityForEpDevices(
+            ep_devices.data(), ep_devices.size(), compatibility_info.c_str(), &status));
+        return status;
+      },
+      R"pbdoc("Validate a compiled model's compatibility information for one or more EP devices.)pbdoc");
+
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {
@@ -1759,6 +1768,12 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED)
       .value("MEMORY_EFFICIENT", ExecutionOrder::MEMORY_EFFICIENT);
 
+  py::enum_<OrtCompiledModelCompatibility>(m, "OrtCompiledModelCompatibility")
+      .value("EP_NOT_APPLICABLE", OrtCompiledModelCompatibility_EP_NOT_APPLICABLE)
+      .value("EP_SUPPORTED_OPTIMAL", OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL)
+      .value("EP_SUPPORTED_PREFER_RECOMPILATION", OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION)
+      .value("EP_UNSUPPORTED", OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)
       .value("ORT_DEVICE_ALLOCATOR", OrtDeviceAllocator)
@@ -1782,7 +1797,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
                type = OrtDevice::GPU;
                vendor = OrtDevice::VendorIds::MICROSOFT;
              } else if (type == OrtDevice::GPU) {
-#if USE_CUDA
+#if USE_CUDA || USE_NV || USE_NV_PROVIDER_INTERFACE || USE_CUDA_PROVIDER_INTERFACE
                vendor = OrtDevice::VendorIds::NVIDIA;
 #elif USE_ROCM || USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
@@ -2713,6 +2728,35 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
 
+  // Must use a std::shared_ptr to hold OrtExternalInitializerInfo because the same instances is passed
+  // between C++ and Python (and Python cannot transfer ownership to C++).
+  py::class_<OrtExternalInitializerInfo, std::shared_ptr<OrtExternalInitializerInfo>> ort_external_initializer_info_binding(
+      m, "OrtExternalInitializerInfo",
+      R"pbdoc(Location information for initializer data stored in an external file)pbdoc");
+  ort_external_initializer_info_binding
+      .def(py::init([](const std::basic_string<ORTCHAR_T>& filepath, int64_t file_offset, size_t byte_size) {
+#if !defined(ORT_MINIMAL_BUILD)
+        return std::make_shared<OrtExternalInitializerInfo>(filepath, file_offset, byte_size);
+#else
+        ORT_UNUSED_PARAMETER(filepath);
+        ORT_UNUSED_PARAMETER(file_offset);
+        ORT_UNUSED_PARAMETER(byte_size);
+        ORT_THROW("OrtExternalInitializerInfo creation is not supported in this build");
+#endif
+      }))
+      .def_property_readonly(
+          "filepath",
+          [](OrtExternalInitializerInfo* info) -> std::basic_string<ORTCHAR_T> { return info->GetRelPath(); },
+          R"pbdoc(The relative path to the file in which initializer data is stored.)pbdoc")
+      .def_property_readonly(
+          "file_offset",
+          [](OrtExternalInitializerInfo* info) -> int64_t { return info->GetOffset(); },
+          R"pbdoc(The file byte offset where the initializer data is stored.)pbdoc")
+      .def_property_readonly(
+          "byte_size",
+          [](OrtExternalInitializerInfo* info) -> size_t { return info->GetLength(); },
+          R"pbdoc(The byte size of the initializer data in the file.)pbdoc");
+
   py::enum_<OrtCompileApiFlags>(m, "OrtCompileApiFlags", py::arithmetic())
       .value("NONE", OrtCompileApiFlags_NONE)
       .value("ERROR_IF_NO_NODES_COMPILED", OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED)
@@ -2726,7 +2770,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        bool embed_compiled_data_into_model = false,
                        std::string external_initializers_file_path = {},
                        size_t external_initializers_size_threshold = 1024,
-                       size_t flags = OrtCompileApiFlags_NONE) {
+                       uint32_t flags = OrtCompileApiFlags_NONE,
+                       GraphOptimizationLevel graph_optimization_level = GraphOptimizationLevel::ORT_DISABLE_ALL,
+                       const PyGetInitializerLocationFunc& py_get_initializer_location_func = nullptr) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;
         OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
@@ -2734,7 +2780,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                                       embed_compiled_data_into_model,
                                                       external_initializers_file_path,
                                                       external_initializers_size_threshold,
-                                                      flags));
+                                                      flags, graph_optimization_level,
+                                                      py_get_initializer_location_func));
         return result;
 #else
         ORT_UNUSED_PARAMETER(sess_options);
@@ -2744,6 +2791,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(external_initializers_file_path);
         ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
         ORT_UNUSED_PARAMETER(flags);
+        ORT_UNUSED_PARAMETER(graph_optimization_level);
+        ORT_UNUSED_PARAMETER(py_get_initializer_location_func);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))
@@ -2771,7 +2820,19 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
+          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc")
+      .def(
+          "compile_to_stream",
+          [](PyModelCompiler* model_compiler, PyOutStreamWriteFunc& py_stream_write_func) {
+#if !defined(ORT_MINIMAL_BUILD)
+            OrtPybindThrowIfError(model_compiler->CompileToOutStream(py_stream_write_func));
+#else
+            ORT_UNUSED_PARAMETER(model_compiler);
+            ORT_UNUSED_PARAMETER(py_stream_write_func);
+            ORT_THROW("Compile API is not supported in this build.");
+#endif
+          },
+          R"pbdoc(Compile an ONNX model into an output stream using the provided write functor.)pbdoc");
 }
 
 bool InitArray() {

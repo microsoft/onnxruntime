@@ -368,6 +368,89 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_Device;
         public IntPtr GetEpApi;
         public IntPtr GetTensorSizeInBytes;
+
+        public IntPtr AllocatorGetStats;
+
+        public IntPtr CreateMemoryInfo_V2;
+        public IntPtr MemoryInfoGetDeviceMemType;
+        public IntPtr MemoryInfoGetVendorId;
+
+        public IntPtr ValueInfo_GetValueProducer;
+        public IntPtr ValueInfo_GetValueNumConsumers;
+        public IntPtr ValueInfo_GetValueConsumers;
+        public IntPtr ValueInfo_GetInitializerValue;
+        public IntPtr ValueInfo_GetExternalInitializerInfo;
+        public IntPtr ValueInfo_IsRequiredGraphInput;
+        public IntPtr ValueInfo_IsOptionalGraphInput;
+        public IntPtr ValueInfo_IsGraphOutput;
+        public IntPtr ValueInfo_IsConstantInitializer;
+        public IntPtr ValueInfo_IsFromOuterScope;
+        public IntPtr Graph_GetName;
+        public IntPtr Graph_GetModelPath;
+        public IntPtr Graph_GetOnnxIRVersion;
+        public IntPtr Graph_GetNumOperatorSets;
+        public IntPtr Graph_GetOperatorSets;
+        public IntPtr Graph_GetNumInputs;
+        public IntPtr Graph_GetInputs;
+        public IntPtr Graph_GetNumOutputs;
+        public IntPtr Graph_GetOutputs;
+        public IntPtr Graph_GetNumInitializers;
+        public IntPtr Graph_GetInitializers;
+        public IntPtr Graph_GetNumNodes;
+        public IntPtr Graph_GetNodes;
+        public IntPtr Graph_GetParentNode;
+        public IntPtr Graph_GetGraphView;
+        public IntPtr Node_GetId;
+        public IntPtr Node_GetName;
+        public IntPtr Node_GetOperatorType;
+        public IntPtr Node_GetDomain;
+        public IntPtr Node_GetSinceVersion;
+        public IntPtr Node_GetNumInputs;
+        public IntPtr Node_GetInputs;
+        public IntPtr Node_GetNumOutputs;
+        public IntPtr Node_GetOutputs;
+        public IntPtr Node_GetNumImplicitInputs;
+        public IntPtr Node_GetImplicitInputs;
+        public IntPtr Node_GetNumAttributes;
+        public IntPtr Node_GetAttributes;
+        public IntPtr Node_GetAttributeByName;
+        public IntPtr Node_GetTensorAttributeAsOrtValue;
+        public IntPtr OpAttr_GetType;
+        public IntPtr OpAttr_GetName;
+        public IntPtr Node_GetNumSubgraphs;
+        public IntPtr Node_GetSubgraphs;
+        public IntPtr Node_GetGraph;
+        public IntPtr Node_GetEpName;
+        public IntPtr ReleaseExternalInitializerInfo;
+        public IntPtr ExternalInitializerInfo_GetFilePath;
+        public IntPtr ExternalInitializerInfo_GetFileOffset;
+        public IntPtr ExternalInitializerInfo_GetByteSize;
+
+        public IntPtr GetRunConfigEntry;
+
+        public IntPtr EpDevice_MemoryInfo;
+
+        public IntPtr CreateSharedAllocator;
+        public IntPtr GetSharedAllocator;
+        public IntPtr ReleaseSharedAllocator;
+
+        public IntPtr GetTensorData;
+
+        public IntPtr GetSessionOptionsConfigEntries;
+
+        public IntPtr SessionGetMemoryInfoForInputs;
+        public IntPtr SessionGetMemoryInfoForOutputs;
+        public IntPtr SessionGetEpDeviceForInputs;
+
+        public IntPtr CreateSyncStreamForEpDevice;
+        public IntPtr SyncStream_GetHandle;
+        public IntPtr ReleaseSyncStream;
+
+        public IntPtr CopyTensors;
+
+        public IntPtr Graph_GetModelMetadata;
+        public IntPtr GetModelCompatibilityForEpDevices;
+        public IntPtr CreateExternalInitializerInfo;
     }
 
     internal static class NativeMethods
@@ -704,6 +787,36 @@ namespace Microsoft.ML.OnnxRuntime
                 (DSessionOptionsSetEpSelectionPolicyDelegate)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsSetEpSelectionPolicyDelegate,
                     typeof(DSessionOptionsSetEpSelectionPolicyDelegate));
+
+            OrtReleaseExternalInitializerInfo =
+                (DOrtReleaseExternalInitializerInfo)Marshal.GetDelegateForFunctionPointer(
+                    api_.ReleaseExternalInitializerInfo,
+                    typeof(DOrtReleaseExternalInitializerInfo));
+
+            OrtExternalInitializerInfo_GetFilePath =
+                (DOrtExternalInitializerInfo_GetFilePath)Marshal.GetDelegateForFunctionPointer(
+                    api_.ExternalInitializerInfo_GetFilePath,
+                    typeof(DOrtExternalInitializerInfo_GetFilePath));
+
+            OrtExternalInitializerInfo_GetFileOffset =
+                (DOrtExternalInitializerInfo_GetFileOffset)Marshal.GetDelegateForFunctionPointer(
+                    api_.ExternalInitializerInfo_GetFileOffset,
+                    typeof(DOrtExternalInitializerInfo_GetFileOffset));
+
+            OrtExternalInitializerInfo_GetByteSize =
+                (DOrtExternalInitializerInfo_GetByteSize)Marshal.GetDelegateForFunctionPointer(
+                    api_.ExternalInitializerInfo_GetByteSize,
+                    typeof(DOrtExternalInitializerInfo_GetByteSize));
+
+            OrtGetModelCompatibilityForEpDevices = (DOrtGetModelCompatibilityForEpDevices)Marshal.GetDelegateForFunctionPointer(
+                api_.GetModelCompatibilityForEpDevices,
+                typeof(DOrtGetModelCompatibilityForEpDevices));
+
+            OrtCreateExternalInitializerInfo =
+                (DOrtCreateExternalInitializerInfo)Marshal.GetDelegateForFunctionPointer(
+                    api_.CreateExternalInitializerInfo,
+                    typeof(DOrtCreateExternalInitializerInfo));
+
         }
 
         internal class NativeLib
@@ -2296,6 +2409,70 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate ref CompileApi.OrtCompileApi DOrtGetCompileApi();
 #endif
         public static DOrtGetCompileApi OrtGetCompileApi;
+
+        /// <summary>
+        /// Delegate called by ORT to write a buffer (ONNX model bytes) to a custom destination (e.g., file or stream).
+        /// </summary>
+        /// <param name="state">State that was provided in when the delegate was registered.</param>
+        /// <param name="buffer">The buffer to write.</param>
+        /// <param name="bufferNumBytes">The size of the buffer in bytes.</param>
+        /// <returns>OrtStatus*</returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtWriteBufferToDestinationDelegate(
+            IntPtr /* void* */ state,
+            IntPtr /* const void* */ buffer,
+            UIntPtr /* size_t */ bufferNumBytes
+        );
+
+        /// <summary>
+        /// Function called by ORT to allow user to specify how an initializer should be saved while compiling
+        /// a model, that is, either written to an external file or stored within the model. ORT calls this function
+        /// for every initializer.
+        /// </summary>
+        /// <param name="state">State that was provided when the delegate was registered.</param>
+        /// <param name="initializerName">The initializer's name.</param>
+        /// <param name="initializerValue">The OrtValue containing the initializer's data, type, and shape</param>
+        /// <param name="externalInfo">The original initializer's location in an external file, or NULL.</param>
+        /// <param name="newExternalInfo">Output parameter set to a new OrtExternalInitializerInfo instance
+        /// indicating the location where the function implementation stored the initializer data. If the function
+        /// implementation sets `newExternalInfo` to NULL, ORT stores the initializer within the generated model.</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetInitializerLocationDelegate(
+            IntPtr /* void* */ state,
+            IntPtr /* const char* */ initializerName,
+            IntPtr /* const OrtValue* */ initializerValue,
+            IntPtr /* const OrtExternalInitializerInfo* */ externalInfo,
+            out IntPtr /* OrtExternalInitializerInfo** */ newExternalInfo
+        );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseExternalInitializerInfo(IntPtr /* OrtExternalInitializerInfo* */ info);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateExternalInitializerInfo(
+            byte[] /* const ORTCHAR_T* */ filePath,
+            long /* int64_t */ fileOffset,
+            UIntPtr /* size_t */ byteSize,
+            out IntPtr /* OrtExternalInitializerInfo** */ outInfo);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* const ORTCHAR_T* */ DOrtExternalInitializerInfo_GetFilePath(
+            IntPtr /* const OrtExternalInitializerInfo* */ info);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate long /* int64_t */ DOrtExternalInitializerInfo_GetFileOffset(
+            IntPtr /* const OrtExternalInitializerInfo* */ info);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate UIntPtr /* size_t */ DOrtExternalInitializerInfo_GetByteSize(
+            IntPtr /* const OrtExternalInitializerInfo* */ info);
+
+        public static DOrtReleaseExternalInitializerInfo OrtReleaseExternalInitializerInfo;
+        public static DOrtCreateExternalInitializerInfo OrtCreateExternalInitializerInfo;
+        public static DOrtExternalInitializerInfo_GetFilePath OrtExternalInitializerInfo_GetFilePath;
+        public static DOrtExternalInitializerInfo_GetFileOffset OrtExternalInitializerInfo_GetFileOffset;
+        public static DOrtExternalInitializerInfo_GetByteSize OrtExternalInitializerInfo_GetByteSize;
 #endregion
 
 #region Auto EP API related
@@ -2455,6 +2632,18 @@ namespace Microsoft.ML.OnnxRuntime
             out UIntPtr /* size_t* */ num_ep_devices);
 
         public static DOrtGetEpDevices OrtGetEpDevices;
+
+        /// <summary>
+        /// Validate compiled model compatibility for the provided EP devices.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetModelCompatibilityForEpDevices(
+            IntPtr[] /* const OrtEpDevice* const* */ ep_devices,
+            UIntPtr /* size_t */ num_ep_devices,
+            byte[] /* const char* */ compatibility_info,
+            out int /* OrtCompiledModelCompatibility */ out_status);
+
+        public static DOrtGetModelCompatibilityForEpDevices OrtGetModelCompatibilityForEpDevices;
 
         /// <summary>
         /// Add execution provider devices to the session options.

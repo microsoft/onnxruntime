@@ -31,8 +31,10 @@ enum class OrtGraphIrApi {
   kEpApi,
 };
 
-// Alias OrtExternalInitializerInfo to the internal type.
-struct OrtExternalInitializerInfo : onnxruntime::ExternalDataInfo {};
+// Alias OrtExternalInitializerInfo to the internal onnxruntime::ExternalDataInfo type.
+struct OrtExternalInitializerInfo : onnxruntime::ExternalDataInfo {
+  using onnxruntime::ExternalDataInfo::ExternalDataInfo;  // inherit constructors
+};
 
 /// <summary>
 /// Public type that represents an ONNX value info.
@@ -251,16 +253,6 @@ struct OrtNode {
   /// <param name="attrs">Buffer into which to copy the attributes.</param>
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const = 0;
-
-  /// <summary>
-  /// Gets the node's 'TENSOR' attribute as an OrtValue.
-  /// </summary>
-  /// <param name="attr">Node's 'TENSOR' attribute.</param>
-  /// <param name="value">Output parameter is set to a newly created OrtValue containing the 'TENSOR' attribute value,
-  ///                     only if the attribute is of type 'TENSOR'</param>
-  /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attr,
-                                                           OrtValue*& value) const = 0;
 
   /// <summary>
   /// Gets the number of node subgraphs.

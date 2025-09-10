@@ -108,9 +108,22 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     bool);
 
 // Opset 23 added support for float4e2m1.
-// TODO(titaiwang): Add support for float4e2m1.
+// TODO: Add support for float4e2m1.
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 23, Input, 0,
+    float,
+    double,
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+    int8_t,
+    uint8_t,
+    bool);
+
+// Opset 24
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 24, Input, 0,
     float,
     double,
     int32_t,
@@ -133,6 +146,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 21, Input, 0, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 23, Input, 0, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 24, Input, 0, int32_t, int64_t);
+
 }  // namespace op_kernel_type_control
 
 using EnabledPad2Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
@@ -149,6 +165,9 @@ using EnabledPad21Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 21, Input, 0);
 using EnabledPad23Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 23, Input, 0);
+
+using EnabledPad24Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 24, Input, 0);
 
 using AllEnabledPadTypes =
     utils::TypeSetUnion<
@@ -212,13 +231,22 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
             BuildKernelDefConstraintsFromTypeList<EnabledPad21Types>()),
     Pad);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    23,
+    23, 23,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
             BuildKernelDefConstraintsFromTypeList<EnabledPad23Types>()),
+    Pad);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Pad,
+    24,
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<EnabledPad24Types>()),
     Pad);
 
 using PadsVector = PadBase::PadsVector;

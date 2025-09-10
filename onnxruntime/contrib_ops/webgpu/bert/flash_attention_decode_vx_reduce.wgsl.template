@@ -3,6 +3,17 @@
 
 #param tile_size
 
+// Inputs are splits of the GQA output, split into num_total_seq_length_tiles
+// rows. This shader needs to add these splits across the row dimension to
+// arrive at the final result. The column is head size wide. The reduction
+// achieves maximum parallelization by splitting this task first into tile_size
+// columns that each workgroup is responsible for. Then within each workgroup
+// the task of summation over the num_total_seq_length_tile for the tile_size
+// columns is further split in two ways. First across the row dimension to have
+// WORKGROUP_SIZE/TILE_SIZE parallel computations of summation of TILE_SIZE
+// rows. Then across the column dimension where each thread is responsible for 1
+// column of the TILE_SIZE columns the workgroup is responsible for.
+
 var<workgroup> tile_input: array<array<output_value_t, tile_size>, tile_size>;
 
 $MAIN {

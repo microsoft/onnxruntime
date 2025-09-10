@@ -52,6 +52,7 @@ namespace Ort {
  * If <tt>ORT_NO_EXCEPTIONS</tt> is defined, then any error will result in a call to abort()
  */
 struct Exception : std::exception {
+  Exception(const std::string& string, OrtErrorCode code) : message_{string}, code_{code} {}
   Exception(std::string&& string, OrtErrorCode code) : message_{std::move(string)}, code_{code} {}
 
   OrtErrorCode GetOrtErrorCode() const { return code_; }
@@ -79,22 +80,19 @@ struct Exception : std::exception {
   throw Ort::Exception(string, code)
 #endif
 
-// This is used internally by the C++ API. This class holds the global variable that points to the OrtApi,
-//  it's in a template so that we can define a global variable in a header and make
-// it transparent to the users of the API.
-template <typename T>
-struct Global {
-  static const OrtApi* api_;
-};
-
-// If macro ORT_API_MANUAL_INIT is defined, no static initialization will be performed. Instead, user must call InitApi() before using it.
-template <typename T>
 #ifdef ORT_API_MANUAL_INIT
-const OrtApi* Global<T>::api_{};
-inline void InitApi() noexcept { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
+// If the macro ORT_API_MANUAL_INIT is defined, no static initialization
+// will be performed. Instead, users must call InitApi() before using the
+// ORT C++ APIs..
+//
+// InitApi() sets the global API object using the default initialization
+// logic. Users call this to initialize the ORT C++ APIs at a time that
+// makes sense in their program.
+inline void InitApi() noexcept;
 
-// Used by custom operator libraries that are not linked to onnxruntime. Sets the global API object, which is
-// required by C++ APIs.
+// InitApi(const OrtApi*) is used by custom operator libraries that are not
+// linked to onnxruntime. It sets the global API object, which is required
+// by the ORT C++ APIs.
 //
 // Example mycustomop.cc:
 //
@@ -107,22 +105,88 @@ inline void InitApi() noexcept { Global<void>::api_ = OrtGetApiBase()->GetApi(OR
 //   // ...
 // }
 //
-inline void InitApi(const OrtApi* api) noexcept { Global<void>::api_ = api; }
-#else
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// "Global initializer calls a non-constexpr function." Therefore you can't use ORT APIs in the other global initializers.
-// Please define ORT_API_MANUAL_INIT if it conerns you.
-#pragma warning(disable : 26426)
-#endif
-const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
+inline void InitApi(const OrtApi* api) noexcept;
 #endif
 
+namespace detail {
+// This is used internally by the C++ API. This class holds the global
+// variable that points to the OrtApi.
+struct Global {
+  static const OrtApi* Api(const OrtApi* newValue = nullptr) noexcept {
+    // This block-level static will be initialized once when this function is
+    // first executed, delaying the call to DefaultInit() until it is first needed.
+    //
+    // When ORT_API_MANUAL_INIT is not defined, DefaultInit() calls
+    // OrtGetApiBase()->GetApi(), which may result in a shared library being
+    // loaded.
+    //
+    // Using a block-level static instead of a class-level static helps
+    // avoid issues with static initialization order and dynamic libraries
+    // loading other dynamic libraries.
+    //
+    // This makes it safe to include the C++ API headers in a shared library
+    // that is delay loaded or delay loads its dependencies.
+    //
+    // This DOES NOT make it safe to _use_ arbitrary ORT C++ APIs when
+    // initializing static members, however.
+    static const OrtApi* api = DefaultInit();
+
+    if (newValue) {
+      api = newValue;
+    }
+
+    return api;
+  }
+
+ private:
+  // Has different definitions based on ORT_API_MANUAL_INIT
+  static const OrtApi* DefaultInit() noexcept;
+
+#ifdef ORT_API_MANUAL_INIT
+  // Public APIs to set the OrtApi* to use.
+  friend void ::Ort::InitApi() noexcept;
+  friend void ::Ort::InitApi(const OrtApi*) noexcept;
+#endif
+};
+}  // namespace detail
+
+#ifdef ORT_API_MANUAL_INIT
+
+// See comments on declaration above for usage.
+inline void InitApi(const OrtApi* api) noexcept { detail::Global::Api(api); }
+inline void InitApi() noexcept { InitApi(OrtGetApiBase()->GetApi(ORT_API_VERSION)); }
+
+#ifdef _MSC_VER
+// If you get a linker error about a mismatch here, you are trying to
+// link two compilation units that have different definitions for
+// ORT_API_MANUAL_INIT together. All compilation units must agree on the
+// definition of ORT_API_MANUAL_INIT.
+#pragma detect_mismatch("ORT_API_MANUAL_INIT", "enabled")
+#endif
+
+inline const OrtApi* detail::Global::DefaultInit() noexcept {
+  // When ORT_API_MANUAL_INIT is defined, there's no default init that can
+  // be done.
+  return nullptr;
+}
+
+#else  // ORT_API_MANUAL_INIT
+
+#ifdef _MSC_VER
+// If you get a linker error about a mismatch here, you are trying to link
+// two compilation units that have different definitions for
+// ORT_API_MANUAL_INIT together. All compilation units must agree on the
+// definition of ORT_API_MANUAL_INIT.
+#pragma detect_mismatch("ORT_API_MANUAL_INIT", "disabled")
+#endif
+
+inline const OrtApi* detail::Global::DefaultInit() noexcept {
+  return OrtGetApiBase()->GetApi(ORT_API_VERSION);
+}
+#endif  // ORT_API_MANUAL_INIT
+
 /// This returns a reference to the ORT C API.
-inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
+inline const OrtApi& GetApi() noexcept { return *detail::Global::Api(); }
 
 /// <summary>
 /// This function returns the onnxruntime version string
@@ -549,33 +613,35 @@ namespace detail {
   inline void OrtRelease(Ort##NAME* ptr) { API_GETTER().Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(Allocator);
-ORT_DEFINE_RELEASE(MemoryInfo);
+ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(CustomOpDomain);
-ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(Env);
-ORT_DEFINE_RELEASE(RunOptions);
+ORT_DEFINE_RELEASE(ExternalInitializerInfo);
+ORT_DEFINE_RELEASE(Graph);
+ORT_DEFINE_RELEASE(IoBinding);
+ORT_DEFINE_RELEASE(KernelInfo);
+ORT_DEFINE_RELEASE(KeyValuePairs);
 ORT_DEFINE_RELEASE(LoraAdapter);
+ORT_DEFINE_RELEASE(MemoryInfo);
+ORT_DEFINE_RELEASE(MapTypeInfo);
+ORT_DEFINE_RELEASE(Model);
+ORT_DEFINE_RELEASE(ModelMetadata);
+ORT_DEFINE_RELEASE(Node);
+ORT_DEFINE_RELEASE(Op);
+ORT_DEFINE_RELEASE(OpAttr);
+ORT_DEFINE_RELEASE(PrepackedWeightsContainer);
+ORT_DEFINE_RELEASE(RunOptions);
 ORT_DEFINE_RELEASE(Session);
 ORT_DEFINE_RELEASE(SessionOptions);
-ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(SequenceTypeInfo);
-ORT_DEFINE_RELEASE(MapTypeInfo);
-ORT_DEFINE_RELEASE(TypeInfo);
-ORT_DEFINE_RELEASE(Value);
-ORT_DEFINE_RELEASE(ModelMetadata);
-ORT_DEFINE_RELEASE(IoBinding);
-ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(Status);
 ORT_DEFINE_RELEASE(SyncStream);
-ORT_DEFINE_RELEASE(OpAttr);
-ORT_DEFINE_RELEASE(Op);
-ORT_DEFINE_RELEASE(KernelInfo);
+ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
+ORT_DEFINE_RELEASE(ThreadingOptions);
+ORT_DEFINE_RELEASE(TypeInfo);
+ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
-ORT_DEFINE_RELEASE(Node);
-ORT_DEFINE_RELEASE(Graph);
-ORT_DEFINE_RELEASE(Model);
-ORT_DEFINE_RELEASE(KeyValuePairs);
-ORT_DEFINE_RELEASE(PrepackedWeightsContainer);
+
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 
@@ -701,6 +767,7 @@ struct AllocatedFree {
 struct AllocatorWithDefaultOptions;
 struct Env;
 struct EpDevice;
+struct ExternalInitializerInfo;
 struct Graph;
 struct Model;
 struct Node;
@@ -816,6 +883,46 @@ struct PrepackedWeightsContainer : detail::Base<OrtPrepackedWeightsContainer> {
   explicit PrepackedWeightsContainer(OrtPrepackedWeightsContainer* p) : Base{p} {}
   /// \brief Wraps OrtApi::CreatePrepackedWeightsContainer
   PrepackedWeightsContainer();
+};
+
+namespace detail {
+template <typename T>
+struct ConstExternalInitializerInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  // Wraps OrtApi::ExternalInitializerInfo_GetFilePath
+  const std::basic_string<ORTCHAR_T> GetFilePath() const;
+  // Wraps OrtApi::ExternalInitializerInfo_GetFileOffset
+  int64_t GetFileOffset() const;
+  // Wraps OrtApi::ExternalInitializerInfo_GetByteSize
+  size_t GetByteSize() const;
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstExternalInitializerInfo =
+    detail::ConstExternalInitializerInfoImpl<detail::Unowned<const OrtExternalInitializerInfo>>;
+
+/** \brief Wrapper around ::OrtExternalInitializerInfo
+ *
+ */
+struct ExternalInitializerInfo : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo> {
+  using Base = detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>;
+  using Base::Base;
+
+  explicit ExternalInitializerInfo(std::nullptr_t) {}
+  explicit ExternalInitializerInfo(OrtExternalInitializerInfo* p)
+      : detail::ConstExternalInitializerInfoImpl<OrtExternalInitializerInfo>{p} {}
+
+  ConstExternalInitializerInfo GetConst() const { return ConstExternalInitializerInfo{this->p_}; }
+
+  ///< Wraps OrtApi::CreateExternalInitializerInfo
+  ExternalInitializerInfo(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size);
+
+  ///< Wrapper around CreateExternalInitializerInfo that does not throw an exception.
+  static Status Create(const ORTCHAR_T* filepath, int64_t file_offset, size_t byte_size,
+                       /*out*/ ExternalInitializerInfo& out);
 };
 
 namespace detail {
@@ -1012,6 +1119,16 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
   EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
            ConstKeyValuePairs ep_metadata = {}, ConstKeyValuePairs ep_options = {});
 };
+
+/** \brief Validate a compiled model's compatibility for one or more EP devices.
+ *
+ * Throws on error. Returns the resulting compatibility status.
+ * /// \param ep_devices The EP devices to check compatibility against.
+ * /// \param compatibility_info The compatibility string from the precompiled model to validate.
+ */
+OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
+    const std::vector<ConstEpDevice>& ep_devices,
+    const char* compatibility_info);
 
 /** \brief The Env (Environment)
  *
@@ -1347,11 +1464,23 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelPath(const ORTCHAR_T* output_model_path);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelPath
   ModelCompilationOptions& SetOutputModelExternalInitializersFile(const ORTCHAR_T* file_path,
                                                                   size_t initializer_size_threshold);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelExternalInitializersFile
+
+  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc
+  ModelCompilationOptions& SetOutputModelGetInitializerLocationFunc(
+      OrtGetInitializerLocationFunc get_initializer_location_func,
+      void* state);
+
   ModelCompilationOptions& SetOutputModelBuffer(OrtAllocator* allocator, void** output_model_buffer_ptr,
                                                 size_t* output_model_buffer_size_ptr);  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelBuffer
+
+  ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
+  ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
-  ModelCompilationOptions& SetFlags(size_t flags);                                      ///< Wraps OrtApi::ModelCompilationOptions_SetFlags
+  ModelCompilationOptions& SetFlags(uint32_t flags);                                    ///< Wraps OrtApi::ModelCompilationOptions_SetFlags
+
+  ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
@@ -2356,15 +2485,46 @@ struct ArenaCfg : detail::Base<OrtArenaCfg> {
 // Custom OPs (only needed to implement custom OPs)
 //
 
+namespace detail {
+// Need to define a templated ConstOpAttr with const members
+template <typename T>
+struct ConstOpAttrImpl : Base<T> {
+  using B = detail::Base<T>;
+  using B::B;
+
+  // Wraps OrtApi::OpAttr_GetName
+  std::string GetName() const;
+  // Wraps OrtApi::OpAttr_GetType
+  OrtOpAttrType GetType() const;
+
+  // Wraps OrtApi::ReadAttr for a single value
+  // This does not support Tensor Attribute
+  // Call GetTensorAttributeAsOrtValue() instead.
+  template <typename R>
+  Status GetValue(R& out) const;
+
+  // Wraps OrtApi::ReadAttr for an array of values
+  template <typename R>
+  Status GetValueArray(std::vector<R>& out) const;
+  // Wraps OrtApi::OpAttr_GetTensorAttributeAsOrtValue
+  Status GetTensorAttributeAsOrtValue(Value&) const;
+};
+}  // namespace detail
+
+using ConstOpAttr = detail::ConstOpAttrImpl<detail::Unowned<const OrtOpAttr>>;
+
 /// <summary>
 /// This struct provides life time management for custom op attribute
 /// </summary>
-struct OpAttr : detail::Base<OrtOpAttr> {
-  using Base = detail::Base<OrtOpAttr>;
+struct OpAttr : detail::ConstOpAttrImpl<OrtOpAttr> {
+  using Base = detail::ConstOpAttrImpl<OrtOpAttr>;
   using Base::Base;
 
+  OpAttr() = default;  // Enable storing it in the container for resize()
   explicit OpAttr(std::nullptr_t) {}
   OpAttr(const char* name, const void* data, int len, OrtOpAttrType type);
+
+  ConstOpAttr GetConst() const { return ConstOpAttr{this->p_}; }
 };
 
 /**
@@ -2710,7 +2870,7 @@ struct ShapeInferContext {
   Strings GetAttrStrings(const char* attr_name);
 
  private:
-  const OrtOpAttr* GetAttrHdl(const char* attr_name) const;
+  ConstOpAttr GetAttrHdl(const char* attr_name) const;
   const OrtApi* ort_api_;
   OrtShapeInferContext* ctx_;
   std::vector<Shape> input_shapes_;
@@ -2861,48 +3021,114 @@ struct CustomOpBase : OrtCustomOp {
   int end_ver_ = MAX_CUSTOM_OP_END_VER;
 };
 
+// Forward declaration to resolve circular dependency
+// on ConstNode
+struct ValueInfoConsumerProducerInfo;
+
 namespace detail {
 template <typename T>
-struct ValueInfoImpl : Ort::detail::Base<T> {
-  using B = Ort::detail::Base<T>;
+struct ConstValueInfoImpl : Base<T> {
+  using B = Base<T>;
   using B::B;
 
-  std::string Name() const;
+  /// < A wrapper around OrtApi::GetValueInfoName
+  std::string GetName() const;
+  /// < A wrapper around OrtApi::GetValueInfoTypeInfo
   ConstTypeInfo TypeInfo() const;
+  ///< Wraps OrtApi::ValueInfo_GetProducerNode
+  ValueInfoConsumerProducerInfo GetProducerNode() const;
+  /// < A wrapper around OrtApi::ValueInfo_GetValueConsumers
+  std::vector<ValueInfoConsumerProducerInfo> GetConsumers() const;
+  /// < A wrapper around OrtApi::ValueInfo_GetInitializerValue
+  Status GetInitializer(ConstValue& value) const;
+  /// < A wrapper around OrtApi::ValueInfo_GetExternalInitializerInfo
+  Status GetExternalInitializerInfo(ExternalInitializerInfo& info) const;
+  /// < A wrapper around OrtApi::ValueInfo_IsRequiredGraphInput
+  bool IsRequiredGraphInput() const;
+  /// < A wrapper around OrtApi::ValueInfo_IsOptionalGraphInput
+  bool IsOptionalGraphInput() const;
+  /// < A wrapper around OrtApi::ValueInfo_IsGraphOutput
+  bool IsGraphOutput() const;
+  /// < A wrapper around OrtApi::ValueInfo_IsConstantInitializer
+  bool IsConstantInitializer() const;
+  /// < A wrapper around OrtApi::ValueInfo_IsFromOuterScope
+  bool IsFromOuterScope() const;
 };
 }  // namespace detail
 
 // Const object holder that does not own the underlying object
-using ConstValueInfo = detail::ValueInfoImpl<Ort::detail::Unowned<const OrtValueInfo>>;
+using ConstValueInfo = detail::ConstValueInfoImpl<detail::Unowned<const OrtValueInfo>>;
 
 /** \brief Wrapper around ::OrtValueInfo
  *
  */
-struct ValueInfo : detail::ValueInfoImpl<OrtValueInfo> {
+struct ValueInfo : detail::ConstValueInfoImpl<OrtValueInfo> {
+  ValueInfo() = default;                 // Same thing as with nullptr
   explicit ValueInfo(std::nullptr_t) {}  ///< No instance is created
   /// Take ownership of a pointer created by C API
-  explicit ValueInfo(OrtValueInfo* p) : ValueInfoImpl<OrtValueInfo>{p} {}
+  explicit ValueInfo(OrtValueInfo* p) : ConstValueInfoImpl<OrtValueInfo>{p} {}
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Create ValueInfo for a tensor
   explicit ValueInfo(const std::string& name, const ConstTypeInfo& type_info);
-
+#endif
   ConstValueInfo GetConst() const { return ConstValueInfo{this->p_}; }
 };
 
+// Forward declaration
+struct AttrNameSubgraph;
+
 namespace detail {
+// Forward decl
 template <typename T>
-struct NodeImpl : Ort::detail::Base<T> {
-  using B = Ort::detail::Base<T>;
+struct ConstGraphImpl;
+
+template <typename T>
+struct ConstNodeImpl : Base<T> {
+  using B = Base<T>;
   using B::B;
+
+  // <Wraps OrtApi::Node_GetId
+  size_t GetId() const;
+  // <Wraps OrtApi::Node_GetName
+  std::string GetName() const;
+  // <Wraps OrtApi::Node_GetOperatorType
+  std::string GetOperatorType() const;
+  // <Wraps OrtApi::Node_GetDomain
+  std::string GetDomain() const;
+  // <Wraps OrtApi::Node_GetSinceVersion
+  int GetSinceVersion() const;
+
+  // <Wraps OrtApi::Node_Inputs
+  std::vector<ConstValueInfo> GetInputs() const;
+  // <Wraps OrtApi::Node_Outputs
+  std::vector<ConstValueInfo> GetOutputs() const;
+  // <Wraps OrtApi::Node_ImplicitInputs
+  std::vector<ConstValueInfo> GetImplicitInputs() const;
+  // <Wraps OrtApi::Node_GetAttributes
+  std::vector<ConstOpAttr> GetAttributes() const;
+  // <Wraps OrtApi::Node_GetAttributeByName
+  // Please, read C API doc for details
+  Status GetAttributeByName(const std::string& name, ConstOpAttr& attr) const;
+  // <Wraps OrtApi::Node_GetSubgraphs
+  std::vector<AttrNameSubgraph> GetSubgraphs() const;
+  // <Wraps OrtApi::Node_GetGraph
+  // ConstGraph is not available yet
+  ConstGraphImpl<detail::Unowned<const OrtGraph>> GetGraph() const;
+  // <Wraps OrtApi::Node_GetEpName
+  std::string GetEpName() const;
 };
 }  // namespace detail
+
+using ConstNode = detail::ConstNodeImpl<detail::Unowned<const OrtNode>>;
 
 /** \brief Wrapper around ::OrtNode
  *
  */
-struct Node : detail::NodeImpl<OrtNode> {
-  explicit Node(std::nullptr_t) {}                     ///< No instance is created
-  explicit Node(OrtNode* p) : NodeImpl<OrtNode>{p} {}  ///< Take ownership of a pointer created by C API
+struct Node : detail::ConstNodeImpl<OrtNode> {
+  Node() = default;                                         // Same thing as with nullptr
+  explicit Node(std::nullptr_t) {}                          ///< No instance is created
+  explicit Node(OrtNode* p) : ConstNodeImpl<OrtNode>{p} {}  ///< Take ownership of a pointer created by C API
 
 #if !defined(ORT_MINIMAL_BUILD)
   Node(const std::string& operator_name, const std::string& operator_domain,
@@ -2929,21 +3155,77 @@ struct Node : detail::NodeImpl<OrtNode> {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
+// Return struct for some of ValueInfo APIs.
+// Must be declared after ConstNode is available.
+struct ValueInfoConsumerProducerInfo {
+  ConstNode node;
+  // either producer output or consumer output index
+  // producer is unsigned only, output can be -1
+  int64_t index;
+};
+
+// Represents a return value for Graph::GetOperatorSets()
+struct OperatorSet {
+  std::string domain;
+  int64_t version;
+};
+
 namespace detail {
 template <typename T>
-struct GraphImpl : Ort::detail::Base<T> {
-  using B = Ort::detail::Base<T>;
+struct ConstGraphImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  // <Wraps OrtApi::Graph_GetName
+  std::string GetName() const;
+  // <Wraps OrtApi::Graph_GetModelPath
+  std::basic_string<ORTCHAR_T> GetModelPath() const;
+  // <Wraps OrtApi::Graph_GetOnnxIRVersion
+  int64_t GetOnnxIRVersion() const;
+  // <Wraps OrtApi::Graph_GetOperatorSets
+  std::vector<OperatorSet> GetOperatorSets() const;
+  // <Wraps OrtApi::Graph_Inputs
+  std::vector<ConstValueInfo> GetInputs() const;
+  // <Wraps OrtApi::Graph_Outputs
+  std::vector<ConstValueInfo> GetOutputs() const;
+  // <Wraps OrtApi::Graph_Initializers
+  std::vector<ConstValueInfo> GetInitializers() const;
+  // <Wraps OrtApi::Graph_GetNodes
+  std::vector<ConstNode> GetNodes() const;
+  // <Wraps OrtApi::Graph_GetParentGraph
+  ConstNode GetParentNode() const;
+  // <Wraps OrtApi::Graph_GetGraphView
+  Graph GetGraphView(const std::vector<ConstNode>& nodes) const;
+  // <Wraps OrtApi::Graph_GetModelMetadata
+  ModelMetadata GetModelMetadata() const;  ///< Wraps OrtApi::Graph_GetModelMetadata
+};
+
+template <typename T>
+struct GraphImpl : ConstGraphImpl<T> {
+  using B = ConstGraphImpl<T>;
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().SetGraphInputs()
   void SetInputs(std::vector<ValueInfo>& inputs);
+  // <Wraps GetModelEditorApi().SetGraphOutputs()
   void SetOutputs(std::vector<ValueInfo>& outputs);
+  // <Wraps GetModelEditorApi().AddInitializerToGraph()
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
-  void AddNode(Node& node);                                                                 // Graph takes ownership of Node
-  ModelMetadata GetModelMetadata() const;                                                   ///< Wraps OrtApi::Graph_GetModelMetadata
-#endif                                                                                      // !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().AddNodeToGraph()
+  void AddNode(Node& node);  // Graph takes ownership of Node
+#endif                       // !defined(ORT_MINIMAL_BUILD)
 };
 }  // namespace detail
+
+using ConstGraph = detail::ConstGraphImpl<detail::Unowned<const OrtGraph>>;
+
+// Return value for Node API
+// Must be declared after ConstGraph
+struct AttrNameSubgraph {
+  std::string attr_name;
+  ConstGraph sub_graph;
+};
 
 /** \brief Wrapper around ::OrtGraph
  *
@@ -2952,25 +3234,26 @@ struct Graph : detail::GraphImpl<OrtGraph> {
   explicit Graph(std::nullptr_t) {}                        ///< No instance is created
   explicit Graph(OrtGraph* p) : GraphImpl<OrtGraph>{p} {}  ///< Take ownership of a pointer created by C API
 #if !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().CreateGraph()
   Graph();
 #endif
 };
-using ConstGraph = detail::GraphImpl<Ort::detail::Unowned<const OrtGraph>>;
 
 namespace detail {
 template <typename T>
-struct ModelImpl : Ort::detail::Base<T> {
+struct ModelImpl : detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // <Wraps GetModelEditorApi().AddGraphToModel()
   void AddGraph(Graph& graph);
 #endif
 };
 }  // namespace detail
 
 // Const object holder that does not own the underlying object
-using ConstModel = detail::ModelImpl<Ort::detail::Unowned<const OrtModel>>;
+using UnownedModel = detail::ModelImpl<detail::Unowned<OrtModel>>;
 
 /** \brief Wrapper around ::OrtModel
  *
@@ -2982,10 +3265,9 @@ struct Model : detail::ModelImpl<OrtModel> {
   explicit Model(OrtModel* p) : ModelImpl<OrtModel>{p} {}  ///< Take ownership of a pointer created by C API
 
 #if !defined(ORT_MINIMAL_BUILD)
+  //< Wraps GetModelEditorApi().CreateModel()
   explicit Model(const std::vector<DomainOpsetPair>& opsets);
 #endif
-
-  ConstModel GetConst() const { return ConstModel{this->p_}; }
 };
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"
