@@ -74,8 +74,8 @@ def main() -> None:
     print(f"Found {len(files_to_process)} files.")
 
     print("\nGetting GnuPG signing keys from environment variables.")
-    gpg_passphrase = os.environ.get("JAVA_PGP_PWD")  # noqa: SIM112
-    gpg_private_key = os.environ.get("JAVA_PGP_KEY")  # noqa: SIM112
+    gpg_passphrase = os.environ.get("JAVA_PGP_PWD")
+    gpg_private_key = os.environ.get("JAVA_PGP_KEY")
 
     if not gpg_passphrase or not gpg_private_key:
         print(
@@ -89,9 +89,15 @@ def main() -> None:
         print(f"Error: GPG executable not found at '{gpg_exe_path}'.", file=sys.stderr)
         sys.exit(1)
 
+    agent_temp_dir = os.environ.get("AGENT_TEMPDIRECTORY")
+
     with (
-        tempfile.NamedTemporaryFile(mode="w", delete=True, suffix=".txt", encoding="utf-8") as passphrase_file,
-        tempfile.NamedTemporaryFile(mode="w", delete=True, suffix=".txt", encoding="utf-8") as private_key_file,
+        tempfile.NamedTemporaryFile(
+            mode="w", delete=True, suffix=".txt", encoding="utf-8", dir=agent_temp_dir
+        ) as passphrase_file,
+        tempfile.NamedTemporaryFile(
+            mode="w", delete=True, suffix=".txt", encoding="utf-8", dir=agent_temp_dir
+        ) as private_key_file,
     ):
         print("Writing GnuPG key and passphrase to temporary files.")
         private_key_file.write(gpg_private_key)
