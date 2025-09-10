@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
-#include <memory_resource>
 
 static constexpr size_t kMemoryAlignment = 32;
 static constexpr size_t kMinTokensForParallelGather = 64;
@@ -77,27 +76,6 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
     }
   }
 }
-
-class WorkspacePool {
- public:
-  explicit WorkspacePool(AllocatorPtr allocator) : allocator_(allocator) {}
-
-  float* GetWorkspace(size_t size_in_floats) {
-    if (size_in_floats <= current_capacity_) {
-      return current_workspace_.get();
-    }
-
-    size_t new_capacity = std::max(size_in_floats, current_capacity_ * 2);
-    current_workspace_ = IAllocator::MakeUniquePtr<float>(allocator_, new_capacity);
-    current_capacity_ = new_capacity;
-    return current_workspace_.get();
-  }
-
- private:
-  AllocatorPtr allocator_;
-  IAllocatorUniquePtr<float> current_workspace_;
-  size_t current_capacity_ = 0;
-};
 
 template <typename TScale>
 void DequantizeBlock(const uint8_t* quantized_data,
