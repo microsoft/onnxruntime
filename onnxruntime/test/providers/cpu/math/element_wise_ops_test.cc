@@ -10,11 +10,11 @@
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
+#include "test/common/random_generator.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <limits>
 #include <math.h>
-#include <random>
 
 namespace onnxruntime {
 namespace test {
@@ -1613,7 +1613,7 @@ TEST(MathOpTest, Sum_6) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1640,7 +1640,7 @@ TEST(MathOpTest, Sum_6_double) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1666,7 +1666,7 @@ TEST(MathOpTest, Sum_8_Test1) {
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
 #endif
 }
 
@@ -1692,7 +1692,7 @@ TEST(MathOpTest, Sum_8_Test1_double) {
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
 #endif
 }
 TEST(MathOpTest, Sum_8_Test2) {
@@ -3953,23 +3953,14 @@ TEST(MathOpTest, ErfMoreData) {
 
 TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
   OpTester test("Erf", 9);
-  static constexpr int64_t size = 100000;
-  std::vector<float> inputs(size);
-  std::vector<float> outputs(size);
-
-  float low = -5.0f, high = 5.0f;
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dist(low, high);
-
-  for (size_t i = 0; i != size; ++i) {
-    float val = dist(gen);
-    inputs[i] = val;
-    outputs[i] = std::erf(val);
+  static constexpr int64_t size = 100;
+  std::vector<int64_t> dims{size};
+  RandomValueGenerator random(42);
+  std::vector<float> inputs = random.Uniform<float>(dims, -5.0f, 5.0f);
+  std::vector<float> outputs(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    outputs[i] = std::erf(inputs[i]);
   }
-
-  std::vector<int64_t> dims{static_cast<int64_t>(inputs.size())};
-
   test.AddInput<float>("A", dims, inputs);
   test.AddOutput<float>("B", dims, outputs);
   test.Run();

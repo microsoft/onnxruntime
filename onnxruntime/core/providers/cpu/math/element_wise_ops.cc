@@ -1999,13 +1999,13 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
   int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
   concurrency::ThreadPool::TryBatchParallelFor(
-      tp, static_cast<int32_t>(task_count),
+      tp, narrow<std::ptrdiff_t>(task_count),
       [&](ptrdiff_t task_idx) {
         const auto start = task_idx * length_per_task;
         const float* p_input = input_data + start;
         float* p_output = output_data + start;
         int64_t count = std::min(length_per_task, elem_count - start);
-        MlasComputeErf(p_input, p_output, narrow<size_t>(count));
+        MlasComputeErf(p_input, p_output, narrow<std::ptrdiff_t>(count));
       },
       0);
 
@@ -2014,6 +2014,36 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
 
 template <>
 Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const auto* input_data = X->Data<MLFloat16>();
+  auto* output_data = Y->MutableData<MLFloat16>();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  int64_t elem_count = X->Shape().Size();
+  constexpr int64_t length_per_task = 4096;
+  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+
+  concurrency::ThreadPool::TryBatchParallelFor(
+      tp, narrow<std::ptrdiff_t>(task_count),
+      [&](ptrdiff_t task_idx) {
+        const auto start = task_idx * length_per_task;
+        const int64_t count = std::min(length_per_task, elem_count - start);
+        const MLFloat16* p_input = input_data + start;
+        MLFloat16* p_output = output_data + start;
+
+        // Temporary buffers for float32
+        std::vector<float> input_fp32(count);
+        std::vector<float> output_fp32(count);
+        // Convert input from MLFloat16 to float32 (bulk, SIMD-capable)
+        MlasConvertHalfToFloatBuffer(p_input, input_fp32.data(), narrow<std::ptrdiff_t>(count));
+        // Compute ERF in float32
+        MlasComputeErf(input_fp32.data(), output_fp32.data(), narrow<std::ptrdiff_t>(count));
+        // Convert output from float32 to MLFloat16 (bulk, SIMD-capable)
+        MlasConvertFloatToHalfBuffer(output_fp32.data(), p_output, narrow<std::ptrdiff_t>(count));
+      },
+      0);
+
   return Status::OK();
 }
 

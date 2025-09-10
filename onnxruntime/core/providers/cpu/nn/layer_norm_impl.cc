@@ -11,7 +11,6 @@
 #include "core/providers/common.h"
 #include "core/util/force_inline.h"
 #include "core/util/math_cpuonly.h"
-#include <Eigen/Core>
 
 namespace onnxruntime {
 
@@ -83,7 +82,7 @@ void ComputeJob(
 
 // Helper to convert int64_t -> Eigen::Index safely
 inline Eigen::Index ToEigenIndex(int64_t v) {
-  return static_cast<Eigen::Index>(v);
+  return gsl::narrow<Eigen::Index>(v);
 }
 
 template <typename U>
@@ -121,12 +120,12 @@ void ComputeJob(
   float mean_square = 0.0f;
 
   for (int64_t i = 0; i < norm_size; ++i) {
-    float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
+    float val = gsl::narrow_cast<float>(input_vec[ToEigenIndex(i)]);
     mean += val;
     mean_square += val * val;
   }
 
-  mean /= static_cast<float>(norm_size);
+  mean /= gsl::narrow_cast<float>(norm_size);
   if (simplified) {
     mean_square = std::sqrt(mean_square / norm_size + epsilon);
   } else {
@@ -137,7 +136,7 @@ void ComputeJob(
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (int64_t h = 0; h < norm_size; ++h, ++i) {
-    float x = static_cast<float>(input_vec[ToEigenIndex(h)]);
+    float x = gsl::narrow_cast<float>(input_vec[ToEigenIndex(h)]);
 
     float y = 0.0f;
     if (simplified) {
@@ -148,7 +147,7 @@ void ComputeJob(
       y = (x - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
     }
 
-    output_vec[ToEigenIndex(h)] = static_cast<Eigen::half>(y);
+    output_vec[ToEigenIndex(h)] = gsl::narrow_cast<Eigen::half>(y);
   }
 
   if (mean_data != nullptr) {

@@ -395,28 +395,7 @@ struct TensorCaster<float, MLFloat16> {
     auto out_data = out.MutableData<MLFloat16>();
     auto in_data = in.Data<float>();
     const size_t shape_size = narrow<size_t>(shape.Size());
-
-    // Check if the tensor is long enough to use threads
-    if (shape_size <= 128000) {
-      MlasConvertFloatToHalfBuffer(in_data, out_data, shape_size);
-      return;
-    }
-    // Calculate the number of compute cyles per implementation
-    auto cpu_info = CPUIDInfo::GetCPUIDInfo();
-    double num_compute_cycles;
-    if (cpu_info.HasSSE3()) {
-      num_compute_cycles = static_cast<double>(shape_size >> 1);
-    } else if (cpu_info.HasAVX2()) {
-      num_compute_cycles = static_cast<double>(shape_size >> 2);
-    } else {
-      num_compute_cycles = static_cast<double>(shape_size * 10);
-    }
-
-    concurrency::ThreadPool::TryParallelFor(ctx.GetOperatorThreadPool(), shape_size,
-                                            {shape_size * 2.f, shape_size * 4.f, num_compute_cycles},
-                                            [in_data, out_data](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
-                                              MlasConvertFloatToHalfBuffer(in_data + first_span, out_data + first_span, static_cast<size_t>(last_span - first_span));
-                                            });
+    MlasConvertFloatToHalfBufferInParallel(in_data, out_data, shape_size, ctx.GetOperatorThreadPool());
   }
 };
 
