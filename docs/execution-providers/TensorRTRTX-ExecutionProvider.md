@@ -2,7 +2,7 @@
 title: NVIDIA - TensorRT RTX
 description: Instructions to execute ONNX Runtime on NVIDIA RTX GPUs with the Nvidia TensorRT RTX execution provider
 parent: Execution Providers
-nav_order: 17
+nav_order: 3
 redirect_from: /docs/reference/execution-providers/TensorRTRTX-ExecutionProvider
 ---
 
@@ -15,7 +15,7 @@ Just some of the things that make it a better fit on RTX PCs than our legacy Ten
 * Much faster model compile/load times.
 * Better usability in terms of use of cached models across multiple RTX GPUs.
 
-The Nvidia TensorRT RTX execution provider in the ONNX Runtime makes use of NVIDIA's [TensorRT](https://developer.nvidia.com/tensorrt) RTX Deep Learning inferencing engine (TODO: correct link to TRT RTX documentation once available) to accelerate ONNX models on RTX GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT RTX execution provider with ONNX Runtime.
+The Nvidia TensorRT RTX execution provider in the ONNX Runtime makes use of NVIDIA's [TensorRT RTX](https://developer.nvidia.com/tensorrt-rtx) Deep Learning inferencing engine to accelerate ONNX models on RTX GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT RTX execution provider with ONNX Runtime.
 
 Currently TensorRT RTX supports RTX GPUs from Ampere or later architectures. Support for Turing GPUs is coming soon.
 
