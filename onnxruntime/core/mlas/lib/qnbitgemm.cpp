@@ -51,8 +51,8 @@ GetQNBitGemmVariant(
 {
     if ((BlkLen == 16 || BlkLen == 32 || BlkLen == 64 || BlkLen == 128 || BlkLen == 256)) {
         if (BlkBitWidth == 2) {
-            if (ComputeType == SQNBIT_CompInt8) {
-                return SQNBitGemmVariant_BitWidth2_CompInt8;
+            if (ComputeType == TMAC) {
+                return SQNBitGemmVariant_BitWidth2_CompInt8; // TODO: rename this kernel
             }
         } else if (BlkBitWidth == 4) {
             if (ComputeType == SQNBIT_CompFp32) {

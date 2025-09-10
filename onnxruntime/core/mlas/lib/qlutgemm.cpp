@@ -9,11 +9,12 @@ module includes kernel functions for generating LUT for T-MAC GEMM optimization 
 
 bool MLASCALL MlasIsTMACAvailable(
     size_t /*BlkBitWidth*/,
-    size_t BlkLen
+    size_t /*BlkLen*/
 )
 {
     const auto* Dispatch = GetMlasPlatform().LUTGenKernel;
-    return Dispatch != nullptr && BlkLen == 4; // only support group sizes of 4 for now
+    return Dispatch != nullptr;
+    // return Dispatch != nullptr && BlkLen == 4; // only support group sizes of 4 for now
 }
 
 bool MLASCALL MlasTmacInitializeTable(

@@ -180,7 +180,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
-  if (has_g_idx_ || has_unquantized_zero_point_) {
+  // if (has_g_idx_ || has_unquantized_zero_point_) {
+  // TODO: this part modified so i can test matmulnbits
+  if (has_g_idx_) {
     return Status::OK();
   }
 
