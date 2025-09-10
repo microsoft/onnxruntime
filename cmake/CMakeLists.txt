@@ -88,11 +88,6 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
-# disable explicitly on unsupported Apple x86_64 targets
-if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
-    message(WARNING "Disabling SVE: not supported on Apple x86_64 platforms")
-    set(onnxruntime_USE_SVE OFF CACHE BOOL "" FORCE)
-endif()
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 # iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so

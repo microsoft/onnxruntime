@@ -596,7 +596,7 @@ Return Value:
 
 #if defined(USE_SVE)
     this->ErfKernelRoutine = MlasSveErfKernel;
-    this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->LogisticKernelRoutine = MlasSveLogisticKernel;
     this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
     this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
     this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;

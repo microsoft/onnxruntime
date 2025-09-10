@@ -899,7 +899,7 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
 
     if not args.no_sve:
-        if "aarch64" in platform.machine().lower() and not args.build_wasm:
+        if "aarch64" in platform.machine().lower() and not args.build_wasm and is_linux():
             cmake_args += ["-Donnxruntime_USE_SVE=ON"]
 
     if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
