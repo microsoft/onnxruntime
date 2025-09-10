@@ -330,7 +330,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       float* bias1_float = B2_dequant + B2_dequant_size;
       float* bias2_float = bias1_float + bias1_size;
 
-      if (num_expert_tokens >= kMinTokensForParallelGather) {
+      if (static_cast<size_t>(num_expert_tokens) >= kMinTokensForParallelGather) {
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_expert_tokens), [&](std::ptrdiff_t i) {
           const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
           std::memcpy(A1 + i * hidden_size,
