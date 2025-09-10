@@ -37,10 +37,18 @@ void ApplySwiGLUActivation(const float* input_data, float* output_data, int64_t 
       gate_val = std::min(gate_val, clamp_limit);
       linear_val = std::clamp(linear_val, -clamp_limit, clamp_limit);
 
+      // Use numerically stable sigmoid computation (matches CUDA kernel behavior)
       float sigmoid_arg = activation_alpha * gate_val;
-      float sigmoid_out = 1.0f / (1.0f + std::exp(-sigmoid_arg));
-      float swish_out = gate_val * sigmoid_out;
+      float sigmoid_out;
+      if (sigmoid_arg > 0) {
+        float exp_neg = std::exp(-sigmoid_arg);
+        sigmoid_out = 1.0f / (1.0f + exp_neg);
+      } else {
+        float exp_pos = std::exp(sigmoid_arg);
+        sigmoid_out = exp_pos / (1.0f + exp_pos);
+      }
 
+      float swish_out = gate_val * sigmoid_out;
       output_data[i] = swish_out * (linear_val + activation_beta);
     }
   } else {
