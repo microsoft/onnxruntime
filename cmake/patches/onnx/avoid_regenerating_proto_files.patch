@@ -43,3 +43,4 @@ index 479955793..cc3ef1400 100644
 +        DEPENDS ${GENERATED_FILES}
          COMMENT "Running C++ protocol buffer compiler on ${GENERATED_PROTO}")
    endforeach()
+
