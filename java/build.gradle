@@ -14,7 +14,7 @@ allprojects {
 }
 
 project.group = "com.microsoft.onnxruntime"
-version = rootProject.file('../VERSION_NUMBER').text.trim()
+version = project.hasProperty('version') ? project.version : rootProject.file('../VERSION_NUMBER').text.trim()
 
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
