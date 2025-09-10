@@ -7,7 +7,6 @@ from pathlib import Path
 
 import requests
 
-# --- Modernized: Use pathlib for path manipulation ---
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_DIR = (SCRIPT_DIR / ".." / "..").resolve()
 
@@ -31,7 +30,6 @@ CMAKE_HASHES = {
 
 def get_platform_keys() -> tuple[str | None, str | None]:
     """Detects the OS and CPU architecture and returns normalized keys."""
-    # --- Modernized: Use match/case for platform detection ---
     os_key: str | None = None
     match sys.platform:
         case "win32":
@@ -52,7 +50,6 @@ def get_platform_keys() -> tuple[str | None, str | None]:
 
 
 def main() -> None:
-    # --- 1. Configuration ---
     if len(sys.argv) < 2:
         print("::error::Action version argument was not provided.")
         sys.exit(1)
@@ -95,7 +92,7 @@ def main() -> None:
         "INPUT_DISABLE-TERRAPIN": disable_terrapin_value,
     }
 
-    # --- 2. Download and Extract the Action ---
+    # --- Download and Extract the Action ---
     zip_url = f"https://github.com/microsoft/onnxruntime-github-actions/archive/refs/tags/{action_version}.zip"
 
     artifacts_dir = Path(os.environ.get("SYSTEM_ARTIFACTSDIRECTORY", ".")).resolve()
@@ -114,28 +111,37 @@ def main() -> None:
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(extract_dir)
 
-    # --- 3. Locate and Run the Action Script ---
+    # --- Locate, Run, and Cleanup the Action Script ---
     try:
-        action_base_path = next(extract_dir.glob("onnxruntime-github-actions-*"))
-        print(f"Found action base path: {action_base_path}")
-    except StopIteration:
-        raise FileNotFoundError(f"Could not find extracted action directory in '{extract_dir}'")
+        try:
+            action_base_path = next(extract_dir.glob("onnxruntime-github-actions-*"))
+            print(f"Found action base path: {action_base_path}")
+        except StopIteration as e:
+            raise FileNotFoundError(f"Could not find extracted action directory in '{extract_dir}'") from e
 
-    action_script_path = action_base_path / "setup-build-tools" / "dist" / "index.js"
-    if not action_script_path.exists():
-        raise FileNotFoundError(f"Action script not found at expected path: {action_script_path}")
+        action_script_path = action_base_path / "setup-build-tools" / "dist" / "index.js"
+        if not action_script_path.exists():
+            raise FileNotFoundError(f"Action script not found at expected path: {action_script_path}")
 
-    env = os.environ.copy()
-    env.update(action_inputs)
+        env = os.environ.copy()
+        env.update(action_inputs)
 
-    if "AGENT_TOOLSDIRECTORY" in env:
-        env["RUNNER_TOOL_CACHE"] = env["AGENT_TOOLSDIRECTORY"]
-        print(f"Mapped RUNNER_TOOL_CACHE to AGENT_TOOLSDIRECTORY: {env['RUNNER_TOOL_CACHE']}")
-    if "AGENT_TEMPDIRECTORY" in env:
-        env["RUNNER_TEMP"] = env["AGENT_TEMPDIRECTORY"]
-        print(f"Mapped RUNNER_TEMP to AGENT_TEMPDIRECTORY: {env['RUNNER_TEMP']}")
+        if "AGENT_TOOLSDIRECTORY" in env:
+            env["RUNNER_TOOL_CACHE"] = env["AGENT_TOOLSDIRECTORY"]
+            print(f"Mapped RUNNER_TOOL_CACHE to AGENT_TOOLSDIRECTORY: {env['RUNNER_TOOL_CACHE']}")
+        if "AGENT_TEMPDIRECTORY" in env:
+            env["RUNNER_TEMP"] = env["AGENT_TEMPDIRECTORY"]
+            print(f"Mapped RUNNER_TEMP to AGENT_TEMPDIRECTORY: {env['RUNNER_TEMP']}")
 
-    run("node", str(action_script_path), env=env)
+        run("node", str(action_script_path), env=env)
+
+    finally:
+        # --- Cleanup ---
+        # This block ensures the extracted directory is removed, even if the node script fails.
+        if extract_dir.exists():
+            print(f"\nCleaning up extracted action directory: {extract_dir}")
+            shutil.rmtree(extract_dir)
+            print("Cleanup complete.")
 
 
 if __name__ == "__main__":
