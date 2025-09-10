@@ -843,7 +843,7 @@ set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest"
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
 # onnxruntime_unittest_utils
-# This is an object library containing utilities that are specifically for unit tests.
+# This is static library containing utilities that are specifically for unit tests.
 # Unlike onnxruntime_test_utils, the source files here may have dependencies on internal onnxruntime code.
 # Thus, onnxruntime_unittest_utils is not suitable for use in programs that don't link with internal onnxruntime
 # libraries.
@@ -877,7 +877,7 @@ if(onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
   endif()
 endif()
 
-onnxruntime_add_object_library(onnxruntime_unittest_utils ${onnxruntime_unittest_utils_src})
+onnxruntime_add_static_library(onnxruntime_unittest_utils ${onnxruntime_unittest_utils_src})
 
 target_link_libraries(onnxruntime_unittest_utils PUBLIC
                       onnx
