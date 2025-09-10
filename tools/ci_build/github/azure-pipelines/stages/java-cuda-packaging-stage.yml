@@ -21,7 +21,7 @@ stages:
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: onnxruntime-java
+        artifactName: onnxruntime-java-gpu
     pool: 'onnxruntime-Win-CPU-2022'
     dependsOn: []
     condition: succeeded()
