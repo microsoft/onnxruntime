@@ -719,10 +719,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast);
 
 // Opset 23 added support for float4e2m1.
-// TODO(titaiwang): Implement support for float4e2m1.
-ONNX_CPU_OPERATOR_KERNEL(
+// TODO: Implement support for float4e2m1.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
     23,
+    23,
+    KernelDefBuilder()
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
+    Cast);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Cast,
+    24,
     KernelDefBuilder()
         .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
         .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())

@@ -137,6 +137,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Logical
     CreateLogicalOpBuilder("And", op_registrations);
     CreateLogicalOpBuilder("Equal", op_registrations);
+    CreateLogicalOpBuilder("IsInf", op_registrations);
+    CreateLogicalOpBuilder("IsNaN", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
     CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);

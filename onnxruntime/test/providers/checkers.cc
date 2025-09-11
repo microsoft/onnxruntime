@@ -8,6 +8,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/int4.h"
+#include "core/framework/float4.h"
 
 #include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -179,12 +180,52 @@ struct TensorCheck {
   }
 };
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+struct TensorCheck<Float4E2M1x2> {
+  void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
+                  const std::string& provider_type) const {
+    // TODO(hasesh): Implement sorting and other requests the `params` may be holding
+    ORT_UNUSED_PARAMETER(params);
+
+    if (actual.Shape() != expected.Shape()) {
+      ORT_THROW("Shape mismatch");
+    }
+
+    const auto size = actual.Shape().Size();
+
+    const Float4E2M1x2* expected_data = expected.Data<Float4E2M1x2>();
+    const Float4E2M1x2* actual_data = actual.Data<Float4E2M1x2>();
+
+    // TODO(hasesh): Add separate per-EP tolerance for Float4 types
+    // For now, using float tolerance is fine
+    auto tolerance_params = get_tolerance_params<float>(params, provider_type);
+
+    for (int64_t i = 0; i < size; ++i) {
+      size_t r = i >> 1;
+      size_t c = i & 0x1;
+
+      float expected_f = expected_data[r].GetElem(c);
+      float actual_f = actual_data[r].GetElem(c);
+
+      if (std::isnan(expected_f)) {
+        EXPECT_TRUE(std::isnan(actual_f)) << "Expected NaN. i:" << i;
+      } else if (std::isinf(expected_f)) {  // Test infinity for equality
+        EXPECT_EQ(expected_f, actual_f) << "Expected infinity. i:" << i;
+      } else {
+        float tolerance = get_tolerance<float>(tolerance_params, expected_f);
+        EXPECT_NEAR(expected_f, actual_f, tolerance) << "i:" << i;
+      }
+    }
+  }
+};
+#endif
+
 template <>
 struct TensorCheck<Int4x2> {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
                   const std::string& /*provider_type*/) const {
     ORT_UNUSED_PARAMETER(params);
-    Tensor expected_sorted, actual_sorted;
     const Int4x2* cur_expected;
     const Int4x2* cur_actual;
     const auto size = actual.Shape().Size();
@@ -204,7 +245,6 @@ struct TensorCheck<UInt4x2> {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
                   const std::string& /*provider_type*/) const {
     ORT_UNUSED_PARAMETER(params);
-    Tensor expected_sorted, actual_sorted;
     const UInt4x2* cur_expected;
     const UInt4x2* cur_actual;
     const auto size = actual.Shape().Size();
@@ -498,8 +538,10 @@ void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor
                               int8_t, int16_t, int32_t, int64_t, std::string,
                               Int4x2, UInt4x2,
 #if !defined(DISABLE_FLOAT8_TYPES)
-
                               Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ,
+#endif
+#if !defined(DISABLE_FLOAT4_TYPES)
+                              Float4E2M1x2,
 #endif
                               MLFloat16, BFloat16>
       t_disp(actual.GetElementType());

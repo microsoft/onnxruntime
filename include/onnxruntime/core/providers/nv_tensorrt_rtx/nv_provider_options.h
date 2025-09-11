@@ -34,6 +34,7 @@ constexpr const char* kProfilesOptShapes = "nv_profile_opt_shapes";
 constexpr const char* kCudaGraphEnable = "enable_cuda_graph";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
 constexpr const char* kUseExternalDataInitializer = "nv_use_external_data_initializer";
+constexpr const char* kRuntimeCacheFile = "nv_runtime_cache_path";
 
 }  // namespace provider_option_names
 namespace run_option_names {
