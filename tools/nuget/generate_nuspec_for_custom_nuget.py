@@ -14,8 +14,6 @@ def generate_files(lines, args):
     platform_map = {
         "win-arm64": args.win_arm64,
         "win-x64": args.win_x64,
-        "osx-x64": args.osx_x64,
-        "osx-arm64": args.osx_arm64,
     }
 
     avoid_keywords = {"pdb"}
