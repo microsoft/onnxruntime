@@ -12,7 +12,7 @@ from pathlib import Path
 def get_gpg_path() -> Path:
     """Finds the path to the GPG executable."""
     if platform.system() == "Windows":
-        program_files_x86 = os.environ.get("ProgramFiles(x86)")  # noqa: SIM112
+        program_files_x86 = os.environ.get("ProgramFiles(x86)")
         if not program_files_x86:
             raise OSError("ProgramFiles(x86) environment variable not found.")
         return Path(program_files_x86) / "gnupg/bin/gpg.exe"
@@ -79,7 +79,7 @@ def main() -> None:
 
     if not gpg_passphrase or not gpg_private_key:
         print(
-            "Error: GPG passphrase or private key not found in environment variables ('java-pgp-pwd', 'java-pgp-key').",
+            "Error: GPG passphrase or private key not found in environment variables ('JAVA_PGP_PWD', 'JAVA_PGP_KEY').",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -91,22 +91,20 @@ def main() -> None:
 
     agent_temp_dir = os.environ.get("AGENT_TEMPDIRECTORY")
 
-    with (
-        tempfile.NamedTemporaryFile(
-            mode="w", delete=True, suffix=".txt", encoding="utf-8", dir=agent_temp_dir
-        ) as passphrase_file,
-        tempfile.NamedTemporaryFile(
-            mode="w", delete=True, suffix=".txt", encoding="utf-8", dir=agent_temp_dir
-        ) as private_key_file,
-    ):
+    # Use a single temporary directory to manage all temporary files
+    with tempfile.TemporaryDirectory(dir=agent_temp_dir) as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        print(f"Created temporary directory: {temp_dir_path}")
+
+        private_key_file = temp_dir_path / "private.key"
+        passphrase_file = temp_dir_path / "passphrase.txt"
+
         print("Writing GnuPG key and passphrase to temporary files.")
-        private_key_file.write(gpg_private_key)
-        private_key_file.flush()
-        passphrase_file.write(gpg_passphrase)
-        passphrase_file.flush()
+        private_key_file.write_text(gpg_private_key, encoding="utf-8")
+        passphrase_file.write_text(gpg_passphrase, encoding="utf-8")
 
         print("Importing GnuPG private key.")
-        run_command([str(gpg_exe_path), "--batch", "--import", private_key_file.name])
+        run_command([str(gpg_exe_path), "--batch", "--import", str(private_key_file)])
         print("Successfully imported GnuPG private key.")
 
         print(f"\nProcessing {len(files_to_process)} files in '{jar_file_directory}'.")
@@ -122,7 +120,7 @@ def main() -> None:
                     "--pinentry-mode",
                     "loopback",
                     "--passphrase-file",
-                    passphrase_file.name,
+                    str(passphrase_file),
                     "--detach-sign",
                     "--armor",
                     str(file_path),
@@ -134,7 +132,7 @@ def main() -> None:
             create_hash_file(file_path, "md5")
 
     print("\nFile signing and checksum generation completed.")
-    print("Temporary GnuPG key files have been deleted.")
+    print("Temporary directory and its contents have been deleted.")
 
 
 if __name__ == "__main__":
