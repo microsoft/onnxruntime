@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           # Use the version configured in target-version of [tool.black] section in pyproject.toml.
           python-version: "3.10"
