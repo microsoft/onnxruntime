@@ -5108,7 +5108,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  const OrtModelEditorApi*(ORT_API_CALL* GetModelEditorApi)();
+  const OrtModelEditorApi*(ORT_API_CALL* GetModelEditorApi)(void);
 
   /** \brief Create an OrtValue for a Tensor that uses pre-existing memory.
    *
@@ -5166,7 +5166,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  const OrtCompileApi*(ORT_API_CALL* GetCompileApi)();
+  const OrtCompileApi*(ORT_API_CALL* GetCompileApi)(void);
 
   //
   // OrtKeyValuePairs
@@ -5434,7 +5434,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  const OrtEpApi*(ORT_API_CALL* GetEpApi)();
+  const OrtEpApi*(ORT_API_CALL* GetEpApi)(void);
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
