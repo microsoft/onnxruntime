@@ -2,6 +2,7 @@ import os
 import platform
 import shutil
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -92,27 +93,30 @@ def main() -> None:
         "INPUT_DISABLE-TERRAPIN": disable_terrapin_value,
     }
 
-    # --- Download and Extract the Action ---
+    # --- Download and Extract the Action to a Temporary Directory ---
     zip_url = f"https://github.com/microsoft/onnxruntime-github-actions/archive/refs/tags/{action_version}.zip"
 
-    artifacts_dir = Path(os.environ.get("SYSTEM_ARTIFACTSDIRECTORY", ".")).resolve()
-    zip_path = artifacts_dir / "action.zip"
-    extract_dir = artifacts_dir / "action-unzipped"
+    # Use AGENT_TEMPDIRECTORY, with a fallback to the system's default temp directory.
+    temp_dir = Path(os.environ.get("AGENT_TEMPDIRECTORY", tempfile.gettempdir())).resolve()
+    zip_path = temp_dir / "action.zip"
+    extract_dir = temp_dir / "action-unzipped"
 
-    print(f"Downloading action source from: {zip_url}")
-    response = requests.get(zip_url, stream=True)
-    response.raise_for_status()
-    with open(zip_path, "wb") as f:
-        shutil.copyfileobj(response.raw, f)
-
-    print(f"Extracting {zip_path} to {extract_dir}")
-    if extract_dir.exists():
-        shutil.rmtree(extract_dir)
-    with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(extract_dir)
+    print(f"Using temporary directory: {temp_dir}")
 
     # --- Locate, Run, and Cleanup the Action Script ---
     try:
+        print(f"Downloading action source from: {zip_url}")
+        response = requests.get(zip_url, stream=True)
+        response.raise_for_status()
+        with open(zip_path, "wb") as f:
+            shutil.copyfileobj(response.raw, f)
+
+        print(f"Extracting {zip_path} to {extract_dir}")
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
+
         try:
             action_base_path = next(extract_dir.glob("onnxruntime-github-actions-*"))
             print(f"Found action base path: {action_base_path}")
@@ -137,11 +141,17 @@ def main() -> None:
 
     finally:
         # --- Cleanup ---
-        # This block ensures the extracted directory is removed, even if the node script fails.
+        # This block ensures the zip file and extracted directory are always removed.
+        print("\nStarting cleanup...")
+        if zip_path.exists():
+            print(f"Removing temporary zip file: {zip_path}")
+            zip_path.unlink()
+
         if extract_dir.exists():
-            print(f"\nCleaning up extracted action directory: {extract_dir}")
+            print(f"Removing extracted action directory: {extract_dir}")
             shutil.rmtree(extract_dir)
-            print("Cleanup complete.")
+        
+        print("Cleanup complete.")
 
 
 if __name__ == "__main__":
