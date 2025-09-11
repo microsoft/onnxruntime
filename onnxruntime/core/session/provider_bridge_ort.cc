@@ -2504,9 +2504,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
     // arbitrary length to validate the key/value. adjust if/when needed.
     // TODO: are any other input validation checks required here (and in the other functions that process
     // provider options)?
-    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 2048) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Maximum string length for a provider options key/value is 1024.");
+                                   "Maximum string length for a provider options key is 1024 and value is 2048.");
     }
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
