@@ -798,11 +798,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             // pending ONNX update
             ORT_TSTR("attention_3d_gqa"),
             ORT_TSTR("attention_3d_gqa_attn_mask"),
+            ORT_TSTR("attention_3d_gqa_causal"),
             ORT_TSTR("attention_3d_gqa_scaled"),
             ORT_TSTR("attention_3d_gqa_softcap"),
             ORT_TSTR("attention_3d_gqa_with_past_and_present"),
             ORT_TSTR("attention_4d_gqa"),
             ORT_TSTR("attention_4d_gqa_attn_mask"),
+            ORT_TSTR("attention_4d_gqa_causal"),
             ORT_TSTR("attention_4d_gqa_scaled"),
             ORT_TSTR("attention_4d_gqa_softcap"),
             ORT_TSTR("attention_4d_gqa_with_past_and_present"),
