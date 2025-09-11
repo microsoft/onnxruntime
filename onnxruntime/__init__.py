@@ -33,6 +33,7 @@ try:
         OrtCompileApiFlags,  # noqa: F401
         OrtEpDevice,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
+        OrtExternalInitializerInfo,  # noqa: F401
         OrtHardwareDevice,  # noqa: F401
         OrtHardwareDeviceType,  # noqa: F401
         OrtMemoryInfo,  # noqa: F401

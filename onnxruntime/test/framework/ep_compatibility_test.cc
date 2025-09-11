@@ -15,6 +15,7 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/utils.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/framework/error_code_helper.h"
 #include "dummy_provider.h"
@@ -498,4 +499,32 @@ TEST(EpCompatibilityCapiTest, CpuEpReturnsNotApplicableIfNoValidation) {
   api->ReleaseStatus(st);
 
   api->ReleaseEnv(env);
+}
+
+// -----------------------------
+// C++ API unit tests
+// -----------------------------
+
+TEST(EpCompatibilityCxxApiTest, SingleDeviceCpuProvider) {
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpCompatCxx"};
+  auto devices = env.GetEpDevices();
+  ASSERT_FALSE(devices.empty());
+
+  std::vector<Ort::ConstEpDevice> selected;
+  for (const auto& d : devices) {
+    if (std::string{d.EpName()} == "CPUExecutionProvider") {
+      selected.push_back(d);
+      break;
+    }
+  }
+
+  ASSERT_FALSE(selected.empty());
+
+  // Pick a status that the CPU EP would never return to ensure the value is set correctly.
+  OrtCompiledModelCompatibility status = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+  ASSERT_NO_FATAL_FAILURE({
+    status = Ort::GetModelCompatibilityForEpDevices(selected, "arbitrary-compat-string");
+  });
+
+  ASSERT_TRUE(status == OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
 }

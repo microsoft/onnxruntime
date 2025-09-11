@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <filesystem>
+#include <optional>
+#include <utility>
+
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
@@ -12,12 +16,14 @@
 namespace onnxruntime {
 class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
  public:
-  ProviderBridgeEpFactory(OrtEpFactory& ep_factory, ProviderLibrary& provider_library)
+  ProviderBridgeEpFactory(OrtEpFactory& ep_factory, ProviderLibrary& provider_library,
+                          std::optional<std::filesystem::path> library_path = std::nullopt)
       : EpFactoryInternalImpl(ep_factory.GetName(&ep_factory),
                               ep_factory.GetVendor(&ep_factory),
                               ep_factory.GetVendorId(&ep_factory)),
         ep_factory_{ep_factory},
-        provider_library_{provider_library} {
+        provider_library_{provider_library},
+        library_path_{std::move(library_path)} {
   }
 
  private:
@@ -59,8 +65,9 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.CreateSyncStreamForDevice(&ep_factory_, device, stream_options, stream);
   }
 
-  OrtEpFactory& ep_factory_;           // OrtEpFactory from the provider bridge EP
-  ProviderLibrary& provider_library_;  // ProviderLibrary from the provider bridge EP
+  OrtEpFactory& ep_factory_;
+  ProviderLibrary& provider_library_;
+  std::optional<std::filesystem::path> library_path_;
 };
 
 }  // namespace onnxruntime

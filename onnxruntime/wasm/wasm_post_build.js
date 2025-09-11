@@ -47,49 +47,4 @@ if (path.basename(mjsFilePath).includes('-threaded')) {
     );
 }
 
-// STEP.2 - Workaround the issue referred in https://issues.chromium.org/issues/435879324
-
-// Closure compiler will minimize the key of object `FeatureNameString2Enum`, turning `subgroup` into something else.
-
-// This workaround is to replace the generated code as following:
-//
-// (for debug build)
-//
-// > subgroups: "18",
-// --- change to -->
-// > "subgroups": "18",
-//
-// (for release build)
-//
-// > Pe:"18",
-// --- change to -->
-// > "subgroups":"18",
-//
-
-// This step should only be applied for WebGPU EP builds
-if (path.basename(mjsFilePath).includes('.async')) {
-    const regexDebug = 'subgroups: "18"';
-    const regexRelease = '[a-zA-Z_$][a-zA-Z0-9_$]*:"18"';
-
-    const matchesDebug = [...contents.matchAll(new RegExp(regexDebug, 'g'))];
-    const matchesRelease = [...contents.matchAll(new RegExp(regexRelease, 'g'))];
-
-    if (matchesDebug.length === 1 && matchesRelease.length === 0) {
-        contents = contents.replace(
-            new RegExp(regexDebug),
-            '"subgroups": "18"',
-        );
-    } else if (matchesDebug.length === 0 && matchesRelease.length === 1) {
-        contents = contents.replace(
-            new RegExp(regexRelease),
-            '"subgroups":"18"',
-        );
-    } else {
-        throw new Error(
-            `Unexpected number of matches for "${regexDebug}" and "${regexRelease}" in "${mjsFilePath}": Debug=${matchesDebug.length}, Release=${matchesRelease.length}.`,
-        );
-    }
-}
-
-
 fs.writeFileSync(mjsFilePath, contents);

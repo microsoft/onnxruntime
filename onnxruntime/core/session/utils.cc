@@ -136,13 +136,11 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
   // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
   if (options && model_path == nullptr) {
-    EpContextModelGenerationOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
+    epctx::ModelGenOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
 
     // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
     // the user used the older SessionOptions' configuration entries to generate a compiled model.
-    if (ep_ctx_gen_options.enable &&
-        ep_ctx_gen_options.output_model_file_path.empty() &&
-        ep_ctx_gen_options.output_model_buffer_ptr == nullptr) {
+    if (ep_ctx_gen_options.enable && !ep_ctx_gen_options.HasOutputModelLocation()) {
       return OrtApis::CreateStatus(ORT_FAIL,
                                    "Inference session was configured with EPContext model generation enabled but "
                                    "without a valid location (e.g., file or buffer) for the output model. "
@@ -383,7 +381,7 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 
   if (model_compile_options.InputModelComesFromFile()) {
-    PathString input_model_path = ToPathString(model_compile_options.GetInputModelPath());
+    const std::filesystem::path& input_model_path = model_compile_options.GetInputModelPath();
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
                                                                          input_model_path.c_str(),
                                                                          nullptr, 0, session)));
@@ -421,13 +419,14 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
                      << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
 
   // create EpLibraryPlugin to ensure CreateEpFactories and ReleaseEpFactory are available
-  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, std::move(resolved_library_path));
+  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, resolved_library_path);
   ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
 
   if (is_provider_bridge) {
     // wrap the EpLibraryPlugin with EpLibraryProviderBridge to add to directly create an IExecutionProvider
     auto ep_library_provider_bridge = std::make_unique<EpLibraryProviderBridge>(std::move(provider_library),
-                                                                                std::move(ep_library_plugin));
+                                                                                std::move(ep_library_plugin),
+                                                                                resolved_library_path);
     ORT_RETURN_IF_ERROR(ep_library_provider_bridge->Load());
     internal_factories = ep_library_provider_bridge->GetInternalFactories();
     ep_library = std::move(ep_library_provider_bridge);

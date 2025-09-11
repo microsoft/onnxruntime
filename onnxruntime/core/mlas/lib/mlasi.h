@@ -1200,7 +1200,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH;
 
 const MLAS_QNBIT_GEMM_DISPATCH&
 GetMlasQNBitGemmDispatchNeon(
-    bool InitializeWithDotSupport
+    bool InitializeWithDotSupport,
+    bool InitializeWithI8MMSupport
 );
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
@@ -1297,6 +1298,8 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    bool ArmNeonIsQuantActivationsUnsigned = false;
+
     // Mlas overrides initialisation
     MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
     MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
@@ -2280,7 +2283,12 @@ MLAS_FLOAT32X4
 MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FLOAT32X4 Vector3)
 {
 #if defined(MLAS_NEON_INTRINSICS)
+#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
+    // Android armeabi-v7a ABI doesn't have vfmaq_f32()
     return vmlaq_f32(Vector3, Vector1, Vector2);
+#else
+    return vfmaq_f32(Vector3, Vector1, Vector2);
+#endif
 #elif defined(MLAS_FMA3_INTRINSICS)
     return _mm_fmadd_ps(Vector1, Vector2, Vector3);
 #elif defined(MLAS_SSE2_INTRINSICS)
