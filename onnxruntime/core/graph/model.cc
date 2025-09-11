@@ -803,9 +803,9 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
                                                   std::unique_ptr<Model>& model) {
   model = std::make_unique<Model>();
   model->model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  // The optimizer Initializer class requires a path if external data is used, however in the Graph API usage the
+  // The optimizer Initializer class requires a path if external data is used, however in Model Editor API usage the
   // external data is pointing to pre-allocated memory and does not require a path. Set a dummy value to make it happy.
-  model->model_path_ = std::filesystem::path("_GRAPH_API_MODEL_");
+  model->model_path_ = std::filesystem::path("_MODEL_EDITOR_API_MODEL_");
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
   if (local_registries != nullptr) {
@@ -814,9 +814,51 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
     }
   }
 
+  // add the other domains that might be used by ORT internally.
+  auto domain_to_version = model_editor_api_model.domain_to_version;  // copy
+  auto allow_official_onnx_release_only_final = options.allow_released_opsets_only &&
+                                                model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+
+  for (const auto& [domain, version] : domain_to_version) {
+    model_load_utils::ValidateOpsetForDomain(schema_registry->GetLastReleasedOpsetVersions(false), logger,
+                                             allow_official_onnx_release_only_final, domain, version);
+  }
+
+  // convert kOnnxDomainAlias to kOnnxDomain if needed and remove the alias entry
+  auto onnx_alias_iter = domain_to_version.find(kOnnxDomainAlias);
+  if (onnx_alias_iter != domain_to_version.end()) {
+    if (domain_to_version.find(kOnnxDomain) == domain_to_version.end()) {
+      domain_to_version[kOnnxDomain] = onnx_alias_iter->second;
+    }
+
+    domain_to_version.erase(onnx_alias_iter);
+  }
+
+  // special-case the internal NHWC domain as it must match the ONNX opset if not explicitly imported
+  if (domain_to_version.find(kMSInternalNHWCDomain) == domain_to_version.end()) {
+    auto onnx_version = domain_to_version.find(kOnnxDomain);
+    if (onnx_version != domain_to_version.end()) {
+      domain_to_version[kMSInternalNHWCDomain] = onnx_version->second;
+    }
+  }
+
+  auto domain_map = allow_official_onnx_release_only_final ? schema_registry->GetLastReleasedOpsetVersions(false)
+                                                           : schema_registry->GetLatestOpsetVersions(false);
+
+  for (const auto& [domain, version] : domain_map) {
+    if (domain_to_version.find(domain) == domain_to_version.end()) {
+      domain_to_version[domain] = version;
+    }
+
+    // add to the model proto so that if we save the optimized model it has the required opset imports
+    const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model->model_proto_.add_opset_import()};
+    opset_id_proto->set_domain(domain);
+    opset_id_proto->set_version(version);
+  }
+
   ORT_RETURN_IF_ERROR(Graph::LoadFromModelEditorApiModel(*model_editor_api_model.graph,
                                                          *model,
-                                                         model_editor_api_model.domain_to_version,
+                                                         domain_to_version,
                                                          schema_registry,
                                                          options.strict_shape_type_inference,
                                                          logger,
