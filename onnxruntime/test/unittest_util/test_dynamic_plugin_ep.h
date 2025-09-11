@@ -36,7 +36,15 @@ namespace dynamic_plugin_ep_infra {
 struct InitializationConfig {
   std::string ep_library_registration_name{};
   std::string ep_library_path{};
-  std::vector<size_t> selected_ep_device_indices{0};
+
+  // Note: Exactly one of `selected_ep_name` or `selected_ep_device_indices` should be set.
+  // An empty value for either means it is unset.
+
+  // Specifies the EP devices matching this EP name as the selected EP devices.
+  std::string selected_ep_name{};
+  // Specifies the selected EP devices by their indices.
+  std::vector<size_t> selected_ep_device_indices{};
+
   std::map<std::string, std::string> default_ep_options{};
 };
 
@@ -46,7 +54,7 @@ struct InitializationConfig {
 // {
 //   "ep_library_registration_name": "example_plugin_ep",
 //   "ep_library_path": "/path/to/example_plugin_ep.dll",
-//   "selected_ep_device_indices": [1],
+//   "selected_ep_name": "example_plugin_ep",
 //   "default_ep_options": { "option_key": "option_value" }
 // }
 Status ParseInitializationConfig(std::string_view json_str, InitializationConfig& config);

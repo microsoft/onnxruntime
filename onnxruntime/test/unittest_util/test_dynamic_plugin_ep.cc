@@ -84,10 +84,12 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
     // required keys
     parsed_json.at("ep_library_registration_name").get_to(config.ep_library_registration_name);
     parsed_json.at("ep_library_path").get_to(config.ep_library_path);
-    parsed_json.at("selected_ep_device_indices").get_to(config.selected_ep_device_indices);
 
     // optional keys
     config.default_ep_options = parsed_json.value<decltype(config.default_ep_options)>("default_ep_options", {});
+    config.selected_ep_name = parsed_json.value<decltype(config.selected_ep_name)>("selected_ep_name", {});
+    config.selected_ep_device_indices =
+        parsed_json.value<decltype(config.selected_ep_device_indices)>("selected_ep_device_indices", {});
 
     config_out = std::move(config);
     return Status::OK();
@@ -98,7 +100,7 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
           "{\n"
           "  \"ep_library_registration_name\": \"example_plugin_ep\",\n"
           "  \"ep_library_path\": \"/path/to/example_plugin_ep.dll\",\n"
-          "  \"selected_ep_device_indices\": [1]\n"
+          "  \"selected_ep_name\": \"example_plugin_ep\"\n"
           "}";
 
       status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -115,15 +117,25 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
   auto ep_library_registration_handle = RegisterPluginEpLibrary(env, config.ep_library_registration_name,
                                                                 ToPathString(config.ep_library_path));
 
-  ORT_RETURN_IF(config.selected_ep_device_indices.empty(), "At least one EP device must be selected.");
+  ORT_RETURN_IF(config.selected_ep_device_indices.empty() == config.selected_ep_name.empty(),
+                "Exactly one of selected_ep_device_indices or selected_ep_name should be specified.");
 
   const auto ep_devices = env.GetEpDevices();
   std::vector<const OrtEpDevice*> selected_c_ep_devices{};
 
-  for (const auto idx : config.selected_ep_device_indices) {
-    ORT_RETURN_IF(idx >= ep_devices.size(), "Selected EP device index is out of range: ", idx);
-    selected_c_ep_devices.push_back(ep_devices[idx]);
+  if (!config.selected_ep_device_indices.empty()) {
+    for (const auto idx : config.selected_ep_device_indices) {
+      ORT_RETURN_IF(idx >= ep_devices.size(), "Selected EP device index is out of range: ", idx);
+      selected_c_ep_devices.push_back(ep_devices[idx]);
+    }
+  } else {
+    std::copy_if(ep_devices.begin(), ep_devices.end(), std::back_inserter(selected_c_ep_devices),
+                 [&selected_ep_name = std::as_const(config.selected_ep_name)](Ort::ConstEpDevice ep_device) {
+                   return ep_device.EpName() == selected_ep_name;
+                 });
   }
+
+  ORT_RETURN_IF(selected_c_ep_devices.empty(), "No EP devices were selected.");
 
   std::unique_ptr<IExecutionProviderFactory> ep_factory{};
   ORT_RETURN_IF_ERROR(
