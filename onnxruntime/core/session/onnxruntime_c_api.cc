@@ -2538,6 +2538,23 @@ ORT_API(void, OrtApis::ReleaseExternalInitializerInfo, _Frees_ptr_opt_ OrtExtern
   delete static_cast<onnxruntime::ExternalDataInfo*>(info);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath,
+                    _In_ int64_t file_offset, _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto ext_data_info = std::make_unique<OrtExternalInitializerInfo>(filepath, file_offset, byte_size);
+  *out = ext_data_info.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(filepath);
+  ORT_UNUSED_PARAMETER(file_offset);
+  ORT_UNUSED_PARAMETER(byte_size);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateExternalInitializerInfo() is not supported in this build.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API(const ORTCHAR_T*, OrtApis::ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info) {
   return info->GetRelPath().c_str();
 }
@@ -3654,7 +3671,7 @@ OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
 
   InlinedVector<const OrtMemoryInfo*> mem_info;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      session->GetInputOutputMemoryInfo(InferenceSession::SessionInputOutputType::kInput, mem_info));
+      session->GetInputOutputMemoryInfo(type, mem_info));
 
   auto num_found = mem_info.size();
   if (num_found > num_values) {
@@ -4202,6 +4219,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::Graph_GetModelMetadata,
     &OrtApis::GetModelCompatibilityForEpDevices,
+    &OrtApis::CreateExternalInitializerInfo,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

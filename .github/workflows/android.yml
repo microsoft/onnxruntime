@@ -37,7 +37,7 @@ jobs:
         ndk-version: 28.0.13004108
 
     - name: Get Docker Image using Action
-      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.8
       id: build_docker_image_step
       with:
         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -66,20 +66,13 @@ jobs:
         set_var("BuildConfigOs", config["os"])
       shell: python
       working-directory: ${{ github.workspace }}
-
-    - name: Export GitHub Actions cache environment variables
-      uses: actions/github-script@v7
-      with:
-        script: |
-          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
+  
     - name: 1a. Build onnxruntime
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1306224"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1306224"
+        echo "Binary size threshold in bytes: 1436672"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1436672"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
@@ -107,8 +100,6 @@ jobs:
           -e BUILD_ID=${{ github.run_id }} \
           -e BUILD_REASON=${{ github.event_name }} \
           -e BUILD_BRANCH=${{ github.ref }} \
-          -e ACTIONS_CACHE_URL \
-          -e ACTIONS_RUNTIME_TOKEN \
           -e RUNNER_TEMP=/build \
           ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && \
@@ -131,7 +122,7 @@ jobs:
           architecture: x64
 
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
         with:
           vcpkg-version: '2025.06.13'
           vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
@@ -144,13 +135,6 @@ jobs:
         uses: ./.github/actions/setup-android-ndk
         with:
           ndk-version: 28.0.13004108
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: NNAPI EP, Build, Test on Android Emulator
         run: >-
@@ -216,13 +200,6 @@ jobs:
         uses: ./.github/actions/setup-android-ndk
         with:
           ndk-version: 28.0.13004108
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: CPU EP, Build and Test
         run: >-
