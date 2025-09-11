@@ -46,6 +46,16 @@ OrtEnv::~OrtEnv() {
 #endif
 }
 
+/*static*/
+OrtEnv::UniquePtr OrtEnv::GetInstanceIfExists() {
+  std::lock_guard<std::mutex> lock(m_);
+  if (p_instance_) {
+    ++ref_count_;
+  }
+
+  return OrtEnv::UniquePtr(p_instance_, OrtEnv::Release);
+}
+
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
                             onnxruntime::common::Status& status,
                             const OrtThreadingOptions* tp_options) {

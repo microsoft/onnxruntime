@@ -35,6 +35,9 @@ struct OrtEnv {
                              onnxruntime::common::Status& status,
                              const OrtThreadingOptions* tp_options = nullptr);
 
+  using UniquePtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
+  static UniquePtr GetInstanceIfExists();
+
   static void Release(OrtEnv* env_ptr);
 
   const onnxruntime::Environment& GetEnvironment() const {
