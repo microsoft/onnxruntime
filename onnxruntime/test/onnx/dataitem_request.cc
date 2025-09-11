@@ -6,6 +6,7 @@
 #include "heap_buffer.h"
 #include "TestCase.h"
 #include "test/compare_ortvalue.h"
+#include "utils/macros.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/common.h"
@@ -29,7 +30,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::Run(const ITestCase
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       result = std::make_pair(EXECUTE_RESULT::WITH_EXCEPTION, ctx.GetTimeSpent());
-      LOGS_DEFAULT(ERROR) << ctx.test_case_.GetTestCaseName() << ":" << ex.what();
+      TEST_LOG_ERROR(ctx.test_case_.GetTestCaseName() + ":" + ex.what());
     });
   }
   return result;
@@ -54,7 +55,7 @@ void DataTaskRequestContext::RunAsync() {
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       result = std::make_pair(EXECUTE_RESULT::WITH_EXCEPTION, spent_time_);
-      LOGS_DEFAULT(ERROR) << test_case_.GetTestCaseName() << ":" << ex.what();
+      TEST_LOG_ERROR(test_case_.GetTestCaseName() + ":" + ex.what());
     });
   }
 
@@ -145,7 +146,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
     auto iter = name_fetch_output_map.find(output_name);
     if (iter == name_fetch_output_map.end()) {
       res = EXECUTE_RESULT::INVALID_GRAPH;
-      LOGF_DEFAULT(ERROR, "cannot find %s in the outputs", output_name.c_str());
+      TEST_LOG_ERROR("cannot find %s in the outputs" + output_name);
       break;
     }
     OrtValue* actual_output_value = iter->second;
@@ -155,7 +156,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
     // Expected output is not None
     if (expected_output_value != nullptr) {
       // Actual output is None
-      if (!actual_output_value->IsAllocated()) {
+      if (!Ort::ConstValue(actual_output_value).HasValue()) {
         ret = std::pair<COMPARE_RESULT, std::string>{
             COMPARE_RESULT::RESULT_DIFFERS,
             "Expected non-None output but received an OrtValue that is None"};
@@ -165,7 +166,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
                             relative_per_sample_tolerance, post_procesing);
       }
     } else {  // Expected output is None, ensure that the received output OrtValue is None as well
-      if (actual_output_value->IsAllocated()) {
+      if (Ort::ConstValue(actual_output_value).HasValue()) {
         ret = std::pair<COMPARE_RESULT, std::string>{
             COMPARE_RESULT::RESULT_DIFFERS,
             "Expected None output but received an OrtValue that is not None"};
@@ -213,7 +214,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
     }
 
     if (compare_result != COMPARE_RESULT::SUCCESS && !ret.second.empty()) {
-      LOGS_DEFAULT(ERROR) << test_case_.GetTestCaseName() << ":output=" << output_name << ":" << ret.second;
+      TEST_LOG_ERROR(test_case_.GetTestCaseName() + ":output=" + output_name + ":" + ret.second);
     }
     if (compare_result != COMPARE_RESULT::SUCCESS) {
       break;

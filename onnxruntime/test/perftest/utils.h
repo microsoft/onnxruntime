@@ -23,16 +23,6 @@ class ICPUUsage {
 
 std::unique_ptr<ICPUUsage> CreateICPUUsage();
 
-std::vector<std::string> ConvertArgvToUtf8Strings(int argc, ORTCHAR_T* argv[]);
-
-std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args);
-
-void RegisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
-
-void UnregisterExecutionProviderLibrary(Ort::Env& env, PerformanceTestConfig& test_config);
-
-void ListEpDevices(const Ort::Env& env);
-
 }  // namespace utils
 }  // namespace perftest
 }  // namespace onnxruntime
