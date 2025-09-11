@@ -11,10 +11,17 @@ on:
       do_linux_x86_64:
         type: boolean
         default: false
+      do_windows_arm64:
+        type: boolean
+        default: false
       # If true, build with NIGHTLY_BUILD=1, etc. to enable --nightly_build
       nightly_build:
         type: boolean
         default: false
+      # Cross-compiling from X64 to ARM64 is faster with our runners, but cannot produce a wheel.
+      windows_arm64_runner_arch:
+        type: string
+        default: "X64"
 
 env:
   ORT_NIGHTLY_BUILD: "${{ inputs.nightly_build == true && '1' || '0' }}"
@@ -76,8 +83,8 @@ jobs:
           python3 qcom/build_and_test.py build_ort_linux_aarch64_oe_gcc11_2
 
   build-windows-arm64:
-    if: ${{ inputs.do_all }}
-    runs-on: ["self-hosted", "Windows", "X64", "Build"]
+    if: ${{ inputs.do_all || inputs.do_windows_arm64 }}
+    runs-on: ["self-hosted", "Windows", "${{ inputs.windows_arm64_runner_arch }}", "Build"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -93,6 +100,14 @@ jobs:
           name: ORT Windows ARM64 Tests
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-windows-arm64.zip
+
+      # Building an ARM64 wheel requires running ARM64 Python, so only native builds produce this.
+      - uses: actions/upload-artifact@v3
+        if: ${{ inputs.windows_arm64_runner_arch == 'ARM64' }}
+        with:
+          name: ORT Windows ARM64 Python Wheel
+          path: |
+            ${{ github.workspace }}/build/windows-arm64/Release/dist/onnxruntime_qnn*.whl
 
   # ARM64EC tests are horribly broken so this is a build-only config in CI.
   build-windows-arm64ec:

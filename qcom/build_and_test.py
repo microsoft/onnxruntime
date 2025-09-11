@@ -167,18 +167,6 @@ class TaskLibrary:
                     "archive",
                 )
             )
-        elif is_host_windows():
-            return plan.add_step(
-                BuildEpWindowsTask(
-                    "Archiving ONNX Runtime for Android",
-                    self.__venv_path,
-                    "android",
-                    "aarch64",
-                    "Release",
-                    self.__qairt_sdk_root,
-                    "archive",
-                )
-            )
         else:
             raise NotImplementedError("Archiving for Android on this host is not supported.")
 
@@ -203,7 +191,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Archiving ONNX Runtime for Windows on ARM64",
                 self.__venv_path,
-                "windows",
                 "arm64",
                 "Release",
                 self.__qairt_sdk_root,
@@ -218,7 +205,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Archiving ONNX Runtime for Windows on ARM64EC",
                 self.__venv_path,
-                "windows",
                 "arm64ec",
                 "Release",
                 self.__qairt_sdk_root,
@@ -233,7 +219,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Archiving ONNX Runtime for Windows on x86_64",
                 self.__venv_path,
-                "windows",
                 "x86_64",
                 "Release",
                 self.__qairt_sdk_root,
@@ -261,18 +246,6 @@ class TaskLibrary:
                     self.__venv_path,
                     "android",
                     "aarch64",
-                    self.__qairt_sdk_root,
-                    "build",
-                )
-            )
-        elif is_host_windows():
-            return plan.add_step(
-                BuildEpWindowsTask(
-                    "Building ONNX Runtime for Android",
-                    self.__venv_path,
-                    "android",
-                    "aarch64",
-                    "Release",
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -320,7 +293,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Building ONNX Runtime for Windows on ARM64",
                 self.__venv_path,
-                "windows",
                 "arm64",
                 "Release",
                 self.__qairt_sdk_root,
@@ -335,7 +307,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Building ONNX Runtime for Windows on ARM64EC",
                 self.__venv_path,
-                "windows",
                 "arm64ec",
                 "Release",
                 self.__qairt_sdk_root,
@@ -360,7 +331,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Building ONNX Runtime for Windows on x86_64",
                 self.__venv_path,
-                "windows",
                 "x86_64",
                 "Release",
                 self.__qairt_sdk_root,
@@ -409,7 +379,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Generating Visual Studio .sln",
                 self.__venv_path,
-                "windows",
                 "x86_64",
                 "Debug",
                 self.__qairt_sdk_root,
@@ -546,7 +515,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Testing ONNX Runtime for Windows on ARM64",
                 self.__venv_path,
-                "windows",
                 "arm64",
                 "Release",
                 self.__qairt_sdk_root,
@@ -561,7 +529,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Testing ONNX Runtime for Windows on ARM64EC",
                 self.__venv_path,
-                "windows",
                 "arm64ec",
                 "Release",
                 self.__qairt_sdk_root,
@@ -576,7 +543,6 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Testing ONNX Runtime for Windows on x86_64",
                 self.__venv_path,
-                "windows",
                 "x86_64",
                 "Release",
                 self.__qairt_sdk_root,

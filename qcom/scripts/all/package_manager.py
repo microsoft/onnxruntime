@@ -52,6 +52,7 @@ class FileCache:
         url: str,
         expected_sha256: str | None = None,
         expected_sha1: str | None = None,
+        expected_md5: str | None = None,
     ) -> Path:
         """
         Get path to a local copy of the given URL.
@@ -90,6 +91,7 @@ class FileCache:
                 for expected_sha, sha_name, sha_fn in [
                     (expected_sha1, "SHA1", hashlib.sha1),
                     (expected_sha256, "SHA256", hashlib.sha256),
+                    (expected_md5, "MD5", hashlib.md5),
                 ]:
                     if expected_sha is not None:
                         tmp_file.seek(0)
@@ -215,7 +217,13 @@ class PackageManager:
         # Fetch the package archive
         cache_key = str(self.get_rel_package_dir())
         url = self.__format(self.__config["url"])
-        package_path = self.__cache.fetch(cache_key, url, self.__config.get("sha256", None))
+        package_path = self.__cache.fetch(
+            cache_key,
+            url,
+            self.__config.get("sha256", None),
+            self.__config.get("sha1", None),
+            self.__config.get("md5", None),
+        )
 
         # Similar to downloads, we extract to a temporary directory and rename on
         # success to avoid partial extrations if we get killed.

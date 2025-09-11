@@ -1,14 +1,17 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
+import logging
 import os
+import subprocess
+import sys
 from collections.abc import Collection, Iterable
 from pathlib import Path
 from typing import Literal
 
 from ..github import is_host_github_runner
 from ..task import BashScriptsWithVenvTask, RunExecutablesWithVenvTask
-from ..util import REPO_ROOT, git_head_sha
+from ..util import REPO_ROOT, git_head_sha, run_and_get_output
 from .windows import RunPowershellScriptsTask
 
 
@@ -37,13 +40,15 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
         super().__init__(group_name, venv, [cmd], env=ort_build_env_vars())
 
 
+TargetArchWindowsT = Literal["arm64", "arm64ec", "x86_64"]
+
+
 class BuildEpWindowsTask(RunPowershellScriptsTask):
     def __init__(
         self,
         group_name: str | None,
         venv: Path | None,
-        target_platform: Literal["android", "windows"],
-        target_arch: Literal["aarch64", "arm64", "arm64ec", "x86_64"],
+        target_arch: TargetArchWindowsT,
         config: Literal["Debug", "Release", "RelWithDebInfo"],
         qairt_sdk_root: Path | None,
         mode: str,
@@ -54,18 +59,32 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
             target_arch,
             "-Config",
             config,
-            "-TargetPlatform",
-            target_platform,
             "-Mode",
             mode,
         ]
 
         if venv is not None:
-            cmd.extend(["-PyVEnv", str(venv)])
+            cmd.extend(["-PyVEnv", str(venv).replace(" ", "` ")])
         if qairt_sdk_root is not None:
-            cmd.extend(["-QairtSdkRoot", str(qairt_sdk_root)])
+            cmd.extend(["-QairtSdkRoot", str(qairt_sdk_root).replace(" ", "` ")])
+
+        target_py_exe = self.__target_py_exe(target_arch)
+        if target_py_exe is not None:
+            cmd.extend(["-TargetPyExe", str(target_py_exe).replace(" ", "` ")])
 
         super().__init__(group_name, [cmd], env=ort_build_env_vars())
+
+    @staticmethod
+    def __target_py_exe(target_arch: TargetArchWindowsT) -> Path | None:
+        if target_arch == "arm64":
+            try:
+                return Path(
+                    run_and_get_output(["py", "-3.12-arm64", "-c", "import sys; print(sys.executable)"], quiet=True)
+                )
+            except subprocess.CalledProcessError:
+                logging.warning(f"Could not find native Python for {target_arch}.")
+                return None
+        return Path(sys.executable)
 
 
 class QdcTestsTask(RunExecutablesWithVenvTask):

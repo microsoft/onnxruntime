@@ -92,13 +92,16 @@ Run the installer, ensuring to add the following:
 
 #### Other Software
 
-* [Python 3.12.10 for Windows](https://www.python.org/downloads/windows/)
+* [Python 3.12.10 for Windows (64-bit)](https://www.python.org/downloads/windows/)
   * Note: Uses the same version of Python as Microsoft's external CI
+  * Install the 64-bit (AMD64) version, _even on ARM64 runners_.
   * Check `Add python.exe to PATH`
   * Customize Installation
     * `for all users (requires admin privileges)`
     * `Install Python 3.12 for all users` (yes, a second time on the second page)
   * (After files are copied): `Disable path length limit`
+* _ARM64 only_: Python 3.12.10 for ARM64
+  * Same as above, except **do not `Add python.exe to PATH`**.
 * [Git for Windows](https://git-scm.com/download/win)
   * Select "Git from the command line and also from 3rd-party software" during install.
   * Use bundled OpenSSH.

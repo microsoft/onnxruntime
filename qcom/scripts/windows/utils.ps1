@@ -47,32 +47,35 @@ function Enter-PyVenv() {
     }
 }
 
+function Exit-PyVenv() {
+    if (-not $env:VIRTUAL_ENV) {
+        throw "Cannot deactivate: no virtual environment is active."
+    }
+
+    # If we simply deactivate, any changes we've made to $env:PATH since we activated will be lost.
+
+    # Figure out what $env:Path should be
+    $PathNoVenv = (($env:Path.Split(";") | Where-Object { $_ -ne "${env:VIRTUAL_ENV}\Scripts"}) -join ";")
+
+    deactivate
+
+    $env:Path = $PathNoVenv
+}
+
 function Get-DefaultCMakeGenerator() {
     param (
         [Parameter(Mandatory = $true)]
-        [string]$TargetPlatform,
-        [Parameter(Mandatory = $true)]
         [string]$Arch
     )
-    switch ($TargetPlatform) {
-        "android" {
-            "Ninja"
-        }
-        "windows" {
-            $HostArch = (Get-HostArch)
-            # It's entirely possible that $Arch is "arm64ec" and $HostArch is "arm64".
-            # Unfortunately, Launch-VsDevShell.ps1 doesn't support arm64ec so we cannot
-            # use Ninja.
-            if ($Arch -eq $HostArch) {
-                "Ninja"
-            } else {
-                Write-Host "Cross compiling for $Arch on $HostArch host. Cannot use Ninja."
-                "Visual Studio 17 2022"
-            }
-        }
-        default {
-            throw "Unknown target platform $TargetPlatform."
-        }
+    $HostArch = (Get-HostArch)
+    # It's entirely possible that $Arch is "arm64ec" and $HostArch is "arm64".
+    # Unfortunately, Launch-VsDevShell.ps1 doesn't support arm64ec so we cannot
+    # use Ninja.
+    if ($Arch -eq $HostArch) {
+        "Ninja"
+    } else {
+        Write-Host "Cross compiling for $Arch on $HostArch host. Cannot use Ninja."
+        "Visual Studio 17 2022"
     }
 }
 
@@ -92,6 +95,46 @@ function Get-QairtSdkFilePath() {
         [string]$Config
     )
     "$BuildDir\qairt-sdk-path-$Config.txt"
+}
+
+function Invoke-Directory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [scriptblock]$Code
+    )
+
+    Push-Location $Path
+    try {
+        Invoke-Command $Code
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Invoke-PyVEnv() {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PyVEnv,
+        [scriptblock]$Code
+    )
+
+    if ($null -ne $env:VIRTUAL_ENV) {
+        $PrevVenv = $env:VIRTUAL_ENV
+        Exit-PyVenv
+    }
+
+    try {
+        Enter-PyVenv -PyVEnv $PyVEnv
+        Invoke-Command $Code
+    }
+    finally {
+        Exit-PyVenv
+        if ($null -ne $PrevVenv) {
+            Enter-PyVenv $PrevVenv
+        }
+    }
 }
 
 function Save-QairtSdkFilePath() {
@@ -130,8 +173,6 @@ function Test-UpdateNeeded() {
     param (
         [Parameter(Mandatory = $true)]
         [string]$BuildDir,
-        [Parameter(Mandatory = $true)]
-        [string]$TargetPlatform,
         [Parameter(Mandatory = $true)]
         [string]$Config,
         [Parameter(Mandatory = $true)]

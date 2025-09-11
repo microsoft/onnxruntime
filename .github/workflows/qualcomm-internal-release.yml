@@ -17,7 +17,9 @@ jobs:
     with:
       do_all: false
       do_linux_x86_64: true
+      do_windows_arm64: true  # We don't build wheels with every push. Do it at least once a day.
       nightly_build: true
+      windows_arm64_runner_arch: "ARM64"
 
   publish-wheel-workflow:
     name: "Publish distribution to PyPI"
