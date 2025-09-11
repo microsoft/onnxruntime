@@ -293,7 +293,7 @@ class TestAutoEP(AutoEpTestCase):
     def test_copy_tensors(self):
         """
         Test global api copy_tensors between OrtValue objects
-        using EP plug-in data transfoer
+        using EP plug-in data transfer
         """
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
