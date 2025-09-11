@@ -15,7 +15,6 @@ from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import check_op_type_order
 
 from onnxruntime.quantization.onnx_model import ONNXModel
-from onnxruntime.quantization.utils import update_tensor_metadata_for_permutation
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -169,117 +168,57 @@ class TestONNXModel(unittest.TestCase):
         onnx_model.topological_sort()
         check_op_type_order(self, onnx_model.model, ["Op1", "Op1", "Op2", "Op3"])
 
-class TestUpdateTensorMetadataForPermutation(unittest.TestCase):
-    def _make_dim_value(self, val: int):
-        d = onnx.TensorShapeProto.Dimension()
-        d.dim_value = val
-        return d
-    def _make_dim_param(self, name: str):
-        d = onnx.TensorShapeProto.Dimension()
-        d.dim_param = name
-        return d
-    def _make_value_info(self, name: str, dims):
-        vi = helper.make_tensor_value_info(name, TensorProto.FLOAT, None)
-        # overwrite with explicit dims to mix value/param
-        shape = onnx.TensorShapeProto()
-        for d in dims:
-            shape.dim.append(d)
-        vi.type.tensor_type.shape.CopyFrom(shape)
-        return vi
-    def test_updates_value_info_input_output(self):
-        # Create a graph where the same tensor name B is input, output, and has a value_info
-        dims = [self._make_dim_value(2), self._make_dim_value(3)]
-        g_in = self._make_value_info("B", dims)
-        g_out = self._make_value_info("B", dims)
-        vinfo = self._make_value_info("B", dims)
-        graph = helper.make_graph(nodes=[], name="g", inputs=[g_in], outputs=[g_out], initializer=[])
-        graph.value_info.extend([vinfo])
-        pre_counts = (len(graph.value_info), len(graph.input), len(graph.output))
-        updated = update_tensor_metadata_for_permutation(graph, "B", [1, 0])
-        self.assertEqual(updated, 3)
-        for coll in (graph.value_info, graph.input, graph.output):
-            vi = next(v for v in coll if v.name == "B")
-            self.assertEqual(vi.type.tensor_type.shape.dim[0].dim_value, 3)
-            self.assertEqual(vi.type.tensor_type.shape.dim[1].dim_value, 2)
-        post_counts = (len(graph.value_info), len(graph.input), len(graph.output))
-        self.assertEqual(pre_counts, post_counts)
-    def test_preserves_dim_semantics(self):
-        # First dim symbolic M, second is concrete 3 -> after perm becomes [3, M]
-        dims = [self._make_dim_param("M"), self._make_dim_value(3)]
-        vinfo = self._make_value_info("B", dims)
-        graph = helper.make_graph([], "g", [], [])
-        graph.value_info.extend([vinfo])
-        updated = update_tensor_metadata_for_permutation(graph, "B", [1, 0])
-        self.assertEqual(updated, 1)
-        vi = next(v for v in graph.value_info if v.name == "B")
-        self.assertTrue(vi.type.tensor_type.shape.dim[0].HasField("dim_value"))
-        self.assertEqual(vi.type.tensor_type.shape.dim[0].dim_value, 3)
-        self.assertTrue(vi.type.tensor_type.shape.dim[1].HasField("dim_param"))
-        self.assertEqual(vi.type.tensor_type.shape.dim[1].dim_param, "M")
-    def test_invalid_perm_strict(self):
-        dims = [self._make_dim_value(2), self._make_dim_value(3)]
-        vinfo = self._make_value_info("B", dims)
-        graph = helper.make_graph([], "g", [], [])
-        graph.value_info.extend([vinfo])
-        with self.assertRaises(ValueError):
-            update_tensor_metadata_for_permutation(graph, "B", [0, 2], strict=True)
-        with self.assertRaises(ValueError):
-            update_tensor_metadata_for_permutation(graph, "B", [0, 0], strict=True)
-        # Non-strict: invalid indices out of range -> no update
-        self.assertEqual(update_tensor_metadata_for_permutation(graph, "B", [0, 2], strict=False), 0)
-    def test_rank_mismatch_behavior(self):
-        # Rank 1 value for B, perm requires rank 2
-        dims = [self._make_dim_value(5)]
-        vinfo = self._make_value_info("B", dims)
-        graph = helper.make_graph([], "g", [], [])
-        graph.value_info.extend([vinfo])
-        # Non-strict: no-op
-        self.assertEqual(update_tensor_metadata_for_permutation(graph, "B", [1, 0], strict=False), 0)
-        # Strict: error
-        with self.assertRaises(ValueError):
-            update_tensor_metadata_for_permutation(graph, "B", [1, 0], strict=True)
-    def test_scoped_updates_only(self):
-        dims_b = [self._make_dim_value(2), self._make_dim_value(3)]
-        dims_c = [self._make_dim_value(4), self._make_dim_value(5)]
-        vb = self._make_value_info("B", dims_b)
-        vc = self._make_value_info("C", dims_c)
-        graph = helper.make_graph([], "g", [], [])
-        graph.value_info.extend([vb, vc])
-        updated = update_tensor_metadata_for_permutation(graph, "B", [1, 0])
-        self.assertEqual(updated, 1)
-        b = next(v for v in graph.value_info if v.name == "B")
-        c = next(v for v in graph.value_info if v.name == "C")
-        self.assertEqual([d.dim_value for d in b.type.tensor_type.shape.dim], [3, 2])
-        self.assertEqual([d.dim_value for d in c.type.tensor_type.shape.dim], [4, 5])
-    def test_subgraph_update(self):
-        # Create a subgraph on its own and update that, verifying parent graph is unchanged.
-        dims = [self._make_dim_value(2), self._make_dim_value(3)]
-        sub_vi = self._make_value_info("B", dims)
-        subgraph = helper.make_graph([], "sub", [], [])
-        subgraph.value_info.extend([sub_vi])
-        parent_vi = self._make_value_info("B", [self._make_dim_value(2), self._make_dim_value(3)])
-        parent = helper.make_graph([], "parent", [], [])
-        parent.value_info.extend([parent_vi])
-        updated = update_tensor_metadata_for_permutation(subgraph, "B", [1, 0])
-        self.assertEqual(updated, 1)
-        # subgraph updated
-        sv = next(v for v in subgraph.value_info if v.name == "B")
-        self.assertEqual([d.dim_value for d in sv.type.tensor_type.shape.dim], [3, 2])
-        # parent unchanged
-        pv = next(v for v in parent.value_info if v.name == "B")
-        self.assertEqual([d.dim_value for d in pv.type.tensor_type.shape.dim], [2, 3])
-    def test_repeat_application_safe(self):
-        # Applying permutation twice with [1,0] returns to original shape
-        dims = [self._make_dim_value(2), self._make_dim_value(3)]
-        vinfo = self._make_value_info("B", dims)
-        graph = helper.make_graph([], "g", [], [])
-        graph.value_info.extend([vinfo])
-        update_tensor_metadata_for_permutation(graph, "B", [1, 0])
-        vi = next(v for v in graph.value_info if v.name == "B")
-        self.assertEqual([d.dim_value for d in vi.type.tensor_type.shape.dim], [3, 2])
-        update_tensor_metadata_for_permutation(graph, "B", [1, 0])
-        vi2 = next(v for v in graph.value_info if v.name == "B")
-        self.assertEqual([d.dim_value for d in vi2.type.tensor_type.shape.dim], [2, 3])
+
+class TestReplaceGemmWithMatmul(unittest.TestCase):
+    def test_replace_gemm_with_matmul_transB_initializer_metadata_updated(self):
+        # Build minimal Gemm with transB=1 and B as initializer with value_info
+        A = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
+        weight = numpy_helper.from_array(
+            np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32), name="B"
+        )
+        # ValueInfo for B with original dims [2, 3]
+        B_vi = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
+        gemm = helper.make_node("Gemm", ["A", "B"], ["Y"], transB=1, alpha=1.0, beta=1.0, name="Gemm0")
+        graph = helper.make_graph([gemm], "g", [A], [Y], initializer=[weight])
+        graph.value_info.extend([B_vi])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
+        onnx_model = ONNXModel(model)
+        onnx_model.replace_gemm_with_matmul()
+
+        # Confirm Gemm was replaced by MatMul
+        ops = [n.op_type for n in onnx_model.model.graph.node]
+        assert "MatMul" in ops and "Gemm" not in ops
+
+        # Initializer B should now have transposed dims [3, 2]
+        b_init = next(i for i in onnx_model.model.graph.initializer if i.name == "B")
+        assert list(b_init.dims) == [3, 2]
+
+        # ValueInfo for B should be updated to [3, 2]
+        b_vi = next(vi for vi in onnx_model.model.graph.value_info if vi.name == "B")
+        assert [d.dim_value for d in b_vi.type.tensor_type.shape.dim] == [3, 2]
+
+        # Shape inference should succeed without mismatch
+        onnx.shape_inference.infer_shapes(onnx_model.model)
+
+    def test_replace_gemm_with_matmul_transB_dynamic_B_inserts_transpose(self):
+        # B is a graph input (not initializer) so a Transpose should be inserted
+        A = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
+        B = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
+        gemm = helper.make_node("Gemm", ["A", "B"], ["Y"], transB=1, alpha=1.0, beta=1.0, name="Gemm0")
+        graph = helper.make_graph([gemm], "g", [A, B], [Y], initializer=[])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
+        onnx_model = ONNXModel(model)
+        onnx_model.replace_gemm_with_matmul()
+
+        ops = [n.op_type for n in onnx_model.model.graph.node]
+        assert "Transpose" in ops and "MatMul" in ops and "Gemm" not in ops
+
+        # Shape inference should succeed
+        onnx.shape_inference.infer_shapes(onnx_model.model)
 
 
 if __name__ == "__main__":
