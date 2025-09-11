@@ -498,7 +498,13 @@ else()
 endif()
 
 if(Patch_FOUND)
-  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND
+      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch &&
+      # Patch changes from https://github.com/onnx/onnx/pull/7253 to avoid unnecessary rebuilding.
+      # This change should be included in ONNX 1.19.1.
+      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/onnx/avoid_regenerating_proto_files.patch
+      )
 else()
   set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
 endif()
