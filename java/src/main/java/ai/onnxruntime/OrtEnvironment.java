@@ -618,9 +618,13 @@ public final class OrtEnvironment implements AutoCloseable {
 
   /** Enum representing a compiled model's compatibility with a set of {@link OrtEpDevice}s. */
   public enum OrtCompiledModelCompatibility {
+    /** The EP is not applicable for the model. */
     EP_NOT_APPLICABLE(0),
+    /** The EP supports the model optimally. */
     EP_SUPPORTED_OPTIMAL(1),
+    /** The EP supports the model, but the model would perform better if recompiled. */
     EP_SUPPORTED_PREFER_RECOMPILATION(2),
+    /** The EP does not support the model. */
     EP_UNSUPPORTED(3);
 
     private final int value;
