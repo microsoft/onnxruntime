@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -107,6 +107,42 @@ jint convertFromOrtSparseFormat(OrtSparseFormat format) {
       default:
         return 0;
     }
+}
+
+/**
+ * Must be kept in sync with convertToCompiledModelCompatibility.
+ */
+jint convertFromCompiledModelCompatibility(OrtCompiledModelCompatibility compat) {
+  switch (compat) {
+    case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+      return 0;
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+      return 1;
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+      return 2;
+    case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+      return 3;
+    default:
+      // if this value is observed the enum has changed and the code should be updated.
+      return -1;
+  }
+}
+
+/**
+ * Must be kept in sync with convertFromCompiledModelCompatibility.
+ */
+OrtCompiledModelCompatibility convertToCompiledModelCompatibility(jint compat) {
+  switch (compat) {
+    case 0:
+      return OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    case 1:
+      return OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+    case 2:
+      return OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+    case 3:
+    default:
+      return OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+  }
 }
 
 /**

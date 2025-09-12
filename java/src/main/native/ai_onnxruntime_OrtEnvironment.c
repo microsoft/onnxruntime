@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -128,6 +128,42 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OrtEnvironment_getEpDevices
         (*jniEnv)->SetLongArrayRegion(jniEnv, outputArr, 0, numDevicesInt, (jlong*)devicesArr);
         return outputArr;
     }
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtEnvironment
+ * Method:    getModelCompatibilityForEpDevices
+ * Signature: (J[JLjava/lang/String;)I
+ */
+JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtEnvironment_getModelCompatibilityForEpDevices
+    (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlongArray epHandles, jstring modelInfo) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+
+  // convert pointers for EpDevice handles
+  jsize deviceCount = (*jniEnv)->GetArrayLength(jniEnv, epHandles);
+  const OrtEpDevice** devicePtrs = allocarray(deviceCount, sizeof(OrtEpDevice *));
+  jlong* deviceHandleElements = (*jniEnv)->GetLongArrayElements(jniEnv, epHandles, NULL);
+  for (jsize i = 0; i < deviceCount; i++) {
+    devicePtrs[i] = (OrtEpDevice*) deviceHandleElements[i];
+  }
+  (*jniEnv)->ReleaseLongArrayElements(jniEnv, epHandles, deviceHandleElements, JNI_ABORT);
+
+  // get utf-8 string
+  const char* modelStr = (*jniEnv)->GetStringUTFChars(jniEnv, modelInfo, NULL);
+
+  OrtCompiledModelCompatibility compatibility;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetModelCompatibilityForEpDevices(devicePtrs, deviceCount, modelStr, &compatibility));
+
+  // cleanup
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, modelInfo, modelStr);
+  free((void*)devicePtrs);
+  if (code != ORT_OK) {
+    return -1;
+  } else {
+    jint returnVal = convertFromCompiledModelCompatibility(compatibility);
+    return returnVal;
+  }
 }
 
 /*
