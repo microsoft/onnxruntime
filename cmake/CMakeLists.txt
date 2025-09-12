@@ -87,6 +87,8 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
+
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 # iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
 if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
@@ -612,6 +614,19 @@ else()
      message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
    endif()
   endif()
+
+  if(onnxruntime_USE_SVE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+      include(CheckCXXCompilerFlag)
+      check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
+      if(HAS_ARM64_SVE)
+        message(STATUS "Compiler supports SVE!")
+      else()
+        message(STATUS "Compiler does not support SVE!")
+      endif()
+    endif()
+  endif()
+
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
@@ -1046,6 +1061,10 @@ function(onnxruntime_set_compile_flags target_name)
     # TODO: Narrow scope for Kleidiai compile
     if (onnxruntime_USE_KLEIDIAI)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
+    endif()
+
+    if (HAS_ARM64_SVE)
+      target_compile_definitions(${target_name} PRIVATE USE_SVE)
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
