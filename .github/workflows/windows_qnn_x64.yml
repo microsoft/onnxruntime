@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - rel-*
+      - test-windows-qnn-workflow
   pull_request:
     branches:
       - main
