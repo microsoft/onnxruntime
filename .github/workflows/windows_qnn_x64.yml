@@ -67,13 +67,13 @@ jobs:
 
       - name: Run ONNX Tests
         shell: cmd
-        working-directory: ${{ runner.temp }}\build\RelWithDebInfo
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
         run: |
           .\RelWithDebInfo\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ github.workspace }}\cmake\external\onnx\onnx\backend\test\data\node
 
       - name: Run float32 model tests
         shell: cmd
-        working-directory: ${{ runner.temp }}\build\RelWithDebInfo
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
         run: |
           rem This step assumes the model data exists at C:\data\float32_models on the runner
           if exist C:\data\float32_models (
