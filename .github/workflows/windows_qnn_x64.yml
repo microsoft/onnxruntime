@@ -27,7 +27,6 @@ jobs:
     env:
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-      OnnxRuntimeBuildDirectory: ${{ runner.temp }}\build
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
       BuildConfig: 'RelWithDebInfo'
@@ -54,13 +53,17 @@ jobs:
           dir
         shell: pwsh
             
-      - name: Set QNN_SDK_ROOT environment variable
+      - name: Set environment variables
         shell: pwsh
         run: |
           $qnn_sdk_path = Join-Path $env:RUNNER_TEMP "qnn-v2.38.0.250901"
           echo "QNN_SDK_ROOT=$qnn_sdk_path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "QNN SDK Root: $qnn_sdk_path"
           dir $qnn_sdk_path
+          $build_dir = Join-Path $env:RUNNER_TEMP "build"
+          echo "OnnxRuntimeBuildDirectory=$build_dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "Build directory: $build_dir"
+
 
       - name: Build and Test
         shell: cmd
