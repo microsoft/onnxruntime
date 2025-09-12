@@ -7,11 +7,12 @@ $extracted_file_directory = Join-Path $jar_file_directory "jar_extracted_full_fi
 $state_file = Join-Path $jar_file_directory "repack_list.txt"
 
 if ($instruction -eq "extract") {
-    # Find the main jar file(s) by excluding common suffixes for sources and javadocs.
-    $main_jar_files = Get-ChildItem -Path $jar_file_directory -Filter *.jar | Where-Object { $_.Name -notlike '*-sources.jar' -and $_.Name -notlike '*-javadoc.jar' }
+    # Find the main jar file(s) by looking for names that start with 'onnxruntime'
+    # and excluding common suffixes for sources and javadocs.
+    $main_jar_files = Get-ChildItem -Path $jar_file_directory -Filter onnxruntime*.jar | Where-Object { $_.Name -notlike '*-sources.jar' -and $_.Name -notlike '*-javadoc.jar' }
 
     if ($main_jar_files.Count -eq 0) {
-        Write-Error "No main JAR file found in directory: $jar_file_directory"
+        Write-Error "No main ONNX Runtime JAR file found in directory: $jar_file_directory"
         exit 1
     }
 

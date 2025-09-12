@@ -12,7 +12,7 @@ from pathlib import Path
 def get_gpg_path() -> Path:
     """Finds the path to the GPG executable."""
     if platform.system() == "Windows":
-        program_files_x86 = os.environ.get("ProgramFiles(x86)")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)")  # noqa: SIM112
         if not program_files_x86:
             raise OSError("ProgramFiles(x86) environment variable not found.")
         return Path(program_files_x86) / "gnupg/bin/gpg.exe"

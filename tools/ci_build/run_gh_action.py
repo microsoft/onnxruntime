@@ -150,7 +150,7 @@ def main() -> None:
         if extract_dir.exists():
             print(f"Removing extracted action directory: {extract_dir}")
             shutil.rmtree(extract_dir)
-        
+
         print("Cleanup complete.")
 
 

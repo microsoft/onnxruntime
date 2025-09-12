@@ -59,10 +59,10 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64    
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
 
   - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64

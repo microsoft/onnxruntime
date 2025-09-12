@@ -158,8 +158,8 @@ def main():
             raise ValueError(
                 "Pre-release version suffix number must be a positive integer if a suffix string is provided."
             )
-        # Append the suffix, conforming to Maven standards (e.g., 1.2.3-rc.1)
-        full_version += f"-{args.pre_release_version_suffix_string}.{args.pre_release_version_suffix_number}"
+        # Append the suffix, conforming to Maven standards (e.g., 1.2.3-rc1)
+        full_version += f"-{args.pre_release_version_suffix_string}{args.pre_release_version_suffix_number}"
 
     logging.info(f"Using full version: {full_version}")
 

@@ -27,6 +27,8 @@ steps:
 
 - template: set-version-number-variables-step.yml
 
+- script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+
 - task: PythonScript@0
   displayName: 'Package Java Artifacts'
   inputs:
