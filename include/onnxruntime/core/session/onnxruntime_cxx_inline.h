@@ -1585,11 +1585,13 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForInputs(
 
   auto num_inputs = GetInputCount();
   std::vector<ConstMemoryInfo> mem_infos;
-  mem_infos.resize(num_inputs);
+  if (num_inputs > 0) {
+    mem_infos.resize(num_inputs);
 
-  ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_,
-                                                      reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
-                                                      num_inputs));
+    ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_,
+                                                        reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
+                                                        num_inputs));
+  }
 
   return mem_infos;
 }
@@ -1601,11 +1603,13 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForOutputs
 
   auto num_outputs = GetOutputCount();
   std::vector<ConstMemoryInfo> mem_infos;
-  mem_infos.resize(num_outputs);
+  if (num_outputs > 0) {
+    mem_infos.resize(num_outputs);
 
-  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_,
-                                                       reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
-                                                       num_outputs));
+    ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_,
+                                                         reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
+                                                         num_outputs));
+  }
   return mem_infos;
 }
 
@@ -1634,12 +1638,12 @@ template <typename T>
 inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() const {
   auto num_inputs = GetInputCount();
   std::vector<ConstEpDevice> input_devices;
-  input_devices.resize(num_inputs);
-
-  ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_,
-                                                    reinterpret_cast<const OrtEpDevice**>(input_devices.data()),
-                                                    num_inputs));
-
+  if (num_inputs > 0) {
+    input_devices.resize(num_inputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_,
+                                                      reinterpret_cast<const OrtEpDevice**>(input_devices.data()),
+                                                      num_inputs));
+  }
   return input_devices;
 }
 
