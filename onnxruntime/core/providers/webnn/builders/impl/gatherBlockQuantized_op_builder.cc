@@ -134,7 +134,7 @@ bool GatherBlockQuantizedOpBuilder::HasSupportedInputsImpl(const GraphViewer&, c
   }
 
   // Only need to check the input data type of ops that consume the inputs of GatherBlockQuantized.
-  // WebNN dequantizeLinear's input should be same as input, gather's input should be same as scales input.
+  // WebNN dequantizeLinear's input should be same as input. WebNN gather's input should be same as scales input.
   return IsDataTypeSupportedByWebNNOp(op_type, "dequantizeLinear", input_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByWebNNOp(op_type, "gather", scales_type, wnn_limits, "input", "scales", logger);
 
