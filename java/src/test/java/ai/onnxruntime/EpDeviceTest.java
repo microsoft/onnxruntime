@@ -120,4 +120,34 @@ public class EpDeviceTest {
     // dummy options
     runTest.accept(() -> Collections.singletonMap("random_key", "value"));
   }
+
+  @Test
+  public void GetEpCompatibilityInvalidArgs() {
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> ortEnv.getModelCompatibilityForEpDevices(null, "info"));
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> ortEnv.getModelCompatibilityForEpDevices(Collections.emptyList(), "info"));
+  }
+
+  @Test
+  public void GetEpCompatibilitySingleDeviceCpuProvider() throws OrtException {
+    List<OrtEpDevice> epDevices = ortEnv.getEpDevices();
+    String someInfo = "arbitrary-compat-string";
+
+    // Use CPU device
+    OrtEpDevice cpu =
+        epDevices.stream()
+            .filter(d -> d.getName().equals("CPUExecutionProvider"))
+            .findFirst()
+            .get();
+    Assertions.assertNotNull(cpu);
+    List<OrtEpDevice> selected = Collections.singletonList(cpu);
+    OrtEnvironment.OrtCompiledModelCompatibility status =
+        ortEnv.getModelCompatibilityForEpDevices(selected, someInfo);
+
+    // CPU defaults to not applicable in this scenario
+    Assertions.assertEquals(OrtEnvironment.OrtCompiledModelCompatibility.EP_NOT_APPLICABLE, status);
+  }
 }
