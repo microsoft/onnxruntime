@@ -37,6 +37,10 @@
 #define HWCAP2_I8MM (1 << 13)
 #endif
 
+#ifndef HWCAP_SVE
+#define HWCAP_SVE (1 << 22)
+#endif
+
 #ifndef HWCAP2_SVEI8MM
 #define HWCAP2_SVEI8MM (1 << 9)
 #endif
@@ -229,7 +233,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
     has_arm_sve_ = ((getauxval(AT_HWCAP) & HWCAP_SVE) != 0);
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
-
+    has_arm_sve_ = ((getauxval(AT_HWCAP) & HWCAP_SVE) != 0);
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
   }
 }

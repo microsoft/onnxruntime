@@ -198,6 +198,8 @@ class MLASCPUIDInfo
 
     bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
 
+    bool HasArmSVE() const { return has_arm_sve_; }
+    
    private:
     MLASCPUIDInfo();
 
@@ -1319,7 +1321,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) 
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
 #endif
 #if defined(MLAS_TARGET_LARCH64)

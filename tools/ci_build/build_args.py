@@ -628,6 +628,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable CUDA kernel profiling (requires CUPTI in PATH).",
     )
+    
+    # --- CPU ---
+    cpu_group = parser.add_argument_group("CPU Execution Provider")
+    cpu_group.add_argument(
+        "--no_sve", action="store_true", help="Disable building with SVE support."
+    )
 
     cpu_group = parser.add_argument_group("CPU Execution Provider")
     cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
