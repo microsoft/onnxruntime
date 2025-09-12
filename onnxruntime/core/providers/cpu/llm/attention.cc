@@ -62,14 +62,14 @@ void make_copy<MLFloat16, MLFloat16>(MLFloat16* mask_data, const MLFloat16* mask
 template <>
 void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? 0.0f : -std::numeric_limits<float>::infinity();
+    mask_data[i] = mask_index[i] ? 0.0f : negative_infinity<float>();
   }
 }
 
 template <>
 void make_copy<MLFloat16, bool>(MLFloat16* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? MLFloat16(0.f) : MLFloat16(-std::numeric_limits<float>::infinity());
+    mask_data[i] = mask_index[i] ? MLFloat16(0.f) : negative_infinity<MLFloat16>();
   }
 }
 
@@ -186,16 +186,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                               output_qk,      // Q*K output tensor (if returning Q*K value)
                               parameters      // attention parameters
   );
-}
-
-template <typename T>
-T negative_infinity() {
-  return -std::numeric_limits<T>::infinity();
-}
-
-template <>
-MLFloat16 negative_infinity() {
-  return MLFloat16(-std::numeric_limits<float>::infinity());
 }
 
 template <typename T>
