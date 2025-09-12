@@ -31,14 +31,17 @@ try:
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
         OrtCompileApiFlags,  # noqa: F401
+        OrtDeviceMemoryType,  # noqa: F401
         OrtEpDevice,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
         OrtExternalInitializerInfo,  # noqa: F401
         OrtHardwareDevice,  # noqa: F401
         OrtHardwareDeviceType,  # noqa: F401
         OrtMemoryInfo,  # noqa: F401
+        OrtMemoryInfoDeviceType,  # noqa: F401
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
+        OrtSyncStream,  # noqa: F401
         RunOptions,  # noqa: F401
         SessionIOBinding,  # noqa: F401
         SessionOptions,  # noqa: F401
@@ -78,6 +81,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     OrtDevice,  # noqa: F401
     OrtValue,  # noqa: F401
     SparseTensor,  # noqa: F401
+    copy_tensors,  # noqa: F401
 )
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end

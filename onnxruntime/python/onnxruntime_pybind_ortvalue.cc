@@ -333,7 +333,7 @@ void addOrtValueMethods(pybind11::module& m) {
       })
 #endif
       // Get a pointer to Tensor data
-      .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
+      .def("data_ptr", [](OrtValue* ml_value) -> uintptr_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
@@ -344,7 +344,7 @@ void addOrtValueMethods(pybind11::module& m) {
         }
 
         // Should cover x86 and x64 platforms
-        return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
+        return reinterpret_cast<uintptr_t>(tensor->MutableDataRaw());
       })
       .def("device_name", [](const OrtValue* ort_value) -> std::string {
         if (ort_value->IsTensor()) {
