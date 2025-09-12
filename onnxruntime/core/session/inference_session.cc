@@ -3383,17 +3383,54 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
 
   for (const auto* def : def_list) {
     InlinedVector<SessionState::NodeInfo> node_info_vec;
+    Status status;
     if (type == SessionInputOutputType::kOutput) {
-      ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(def->Name(), node_info_vec));
+      status = session_state_->GetOutputNodeInfo(def->Name(), node_info_vec);
     } else {
-      ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
     }
 
-    // all entries are for the same OrtDevice so use the first one.
-    // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
-    // from the session state and use its OrtMemoryInfo.
-    auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
-    memory_info.push_back(&allocator->Info());
+    if (!status.IsOK()) {
+      if (type == SessionInputOutputType::kInput) {
+        return status;
+      }
+
+      // Check first if this output is produced by an input that directly
+      // propagates to output with the same name.
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
+      if (status.IsOK()) {
+        auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+        memory_info.push_back(&allocator->Info());
+      } else {
+        // Check if this output is produced by a constant initializer
+        // Pick the MemoryInfo from the initializer's OrtValue
+        const auto& ort_value_map = session_state_->GetOrtValueNameIdxMap();
+
+        OrtValueIndex ort_value_index;
+        status = ort_value_map.GetIdx(def->Name(), ort_value_index);
+        if (!status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+
+        const auto& idx_to_ort_value = session_state_->GetInitializedTensors();
+        auto it = idx_to_ort_value.find(ort_value_index);
+        if (it == idx_to_ort_value.end()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+        const auto& tensor = it->second.Get<Tensor>();
+        memory_info.push_back(&tensor.Location());
+      }
+    } else {
+      // all entries are for the same OrtDevice so use the first one.
+      // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+      // from the session state and use its OrtMemoryInfo.
+      auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+      memory_info.push_back(&allocator->Info());
+    }
   }
 
   return Status::OK();
