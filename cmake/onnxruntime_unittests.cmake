@@ -1021,11 +1021,12 @@ if(NOT onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   list(REMOVE_ITEM all_tests ${TEST_SRC_DIR}/providers/cuda/cuda_provider_test.cc)
 endif()
 
-partition_provider_test_srcs(all_tests provider_test_srcs onnxruntime_test_all_srcs)
+partition_provider_test_srcs(all_tests onnxruntime_provider_test_srcs onnxruntime_test_all_srcs)
 
+list(APPEND onnxruntime_test_all_srcs ${onnxruntime_unittest_main_src})
 AddTest(
   TARGET onnxruntime_test_all
-  SOURCES ${onnxruntime_test_all_srcs} ${onnxruntime_unittest_main_src}
+  SOURCES ${onnxruntime_test_all_srcs}
   LIBS
     ${onnx_test_runner_common_lib} ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto
@@ -1207,11 +1208,8 @@ block()
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
   )
 
-  set(onnxruntime_provider_test_srcs
-    ${provider_test_srcs}
-
+  list(APPEND onnxruntime_provider_test_srcs
     ${supporting_test_srcs}
-
     ${onnxruntime_unittest_main_src}
   )
 
