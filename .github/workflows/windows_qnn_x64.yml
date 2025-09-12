@@ -27,10 +27,8 @@ jobs:
     env:
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-      OnnxRuntimeBuildDirectory: ${{ runner.temp }}\build
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-      BuildConfig: 'RelWithDebInfo'
 
     steps:
       - name: Checkout repository
@@ -65,17 +63,17 @@ jobs:
       - name: Build and Test
         shell: cmd
         run: |
-          python ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir ${{ env.OnnxRuntimeBuildDirectory }} --cmake_generator "Visual Studio 17 2022" --build_java --build_shared_lib --use_qnn ${{ matrix.QnnLibKind }} --qnn_home %QNN_SDK_ROOT% --use_binskim_compliant_compile_flags --update --build --test --enable_onnx_tests --parallel
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --cmake_generator "Visual Studio 17 2022" --build_java --build_shared_lib --use_qnn ${{ matrix.QnnLibKind }} --qnn_home %QNN_SDK_ROOT% --use_binskim_compliant_compile_flags --update --build --test --enable_onnx_tests --parallel
 
       - name: Run ONNX Tests
         shell: cmd
-        working-directory: ${{ env.OnnxRuntimeBuildDirectory }}\${{ env.BuildConfig }}
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo
         run: |
           .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ github.workspace }}\cmake\external\onnx\onnx\backend\test\data\node
 
       - name: Run float32 model tests
         shell: cmd
-        working-directory: ${{ env.OnnxRuntimeBuildDirectory }}\${{ env.BuildConfig }}
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo
         run: |
           rem This step assumes the model data exists at C:\data\float32_models on the runner
           if exist C:\data\float32_models (
