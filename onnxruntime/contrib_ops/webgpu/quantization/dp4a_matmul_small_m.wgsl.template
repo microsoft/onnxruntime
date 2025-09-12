@@ -8,6 +8,9 @@
 #param n_bits
 #param has_zero_points
 
+#use .getByOffset
+
+
 #include "quantization/dp4a_matmul_common.wgsl.template"
 
 // This algorithm works to compute dot product of k in parallel, by processing k at each step amongst tile_size_k_vec threads,
@@ -98,13 +101,13 @@ $MAIN {
                 let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + block_idx];
 #endif
 #if n_bits == 4
-                let b_value = get_input_b_from_offset(b_offset);
+                let b_value = b.getByOffset(b_offset);
                 let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy, zero);
                 let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw, zero);
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #elif n_bits == 8
-                let own_b = AlignWithZeroPoint(get_input_b_from_offset(b_offset * 2));
-                let own_b1 = AlignWithZeroPoint(get_input_b_from_offset(b_offset * 2 + 1));
+                let own_b = AlignWithZeroPoint(b.getByOffset(b_offset * 2));
+                let own_b1 = AlignWithZeroPoint(b.getByOffset(b_offset * 2 + 1));
 #if has_zero_points
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero);
 #else
@@ -112,7 +115,7 @@ $MAIN {
 #endif
 
 #elif n_bits == 2
-                let b_value = get_input_b_from_offset(b_offset);
+                let b_value = b.getByOffset(b_offset);
                 let own_b = DequantizedFrom2BitsTo8Bits(b_value.x);
                 let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y);
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);

@@ -302,7 +302,7 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
     }
   }
   // Implementation of "fn get_{name}_from_offset" for multi-buffer segmented inputs
-  if ((usage_ & ShaderUsage::UseGetByMultipleBuffer) && segments_ > 1) {
+  if (usage_ & ShaderUsage::UseGetByMultipleBuffer) {
     // Multi-buffer segmented input accessor.
     // Compute which physical storage buffer chunk the global linear element offset belongs to.
     // We assume each element occupies 16 bytes (128 bits) currently; TODO: derive from actual element/value type size instead of fixed 128.
@@ -319,16 +319,15 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
     SS_APPEND(ss, "    default: { return ", name_, "[local_offset]; }\n");
     SS_APPEND(ss, "  }\n");
     SS_APPEND(ss, "}\n");
-  } else if ((usage_ & ShaderUsage::UseGetByMultipleBuffer) && segments_ == 1) {
-    std::string element_t = std::string(ElementType());
-    SS_APPEND(ss, "fn get_", name_, "_from_offset(offset: u32) -> ", ValueType(), " {\n");
-    SS_APPEND(ss, "  return ", name_, "[offset];\n}\n");
   }
 }
 
 std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const {
   SS(ss, kStringInitialSizeGetByOffsetImpl);
 
+  if (usage_ & ShaderUsage::UseGetByMultipleBuffer) {
+    return MakeStringWithClassicLocale("get_", name_, "_from_offset(", offset, ")");
+  }
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
       ORT_THROW("Invalid type");

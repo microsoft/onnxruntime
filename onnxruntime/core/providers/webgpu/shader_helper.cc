@@ -92,33 +92,14 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& prog_input = program_.Inputs()[input_index];
   const TensorShape& dims = prog_input.use_override_shape ? prog_input.override_shape : prog_input.tensor->Shape();
-  const ProgramVariableDataType type = prog_input.var_type;
 
-  uint64_t segments = 1;
-  if (prog_input.tensor) {
-    const uint64_t size_in_bytes = static_cast<uint64_t>(prog_input.tensor->SizeInBytes());
-    const uint64_t max_binding_size = static_cast<uint64_t>(limits_.maxStorageBufferBindingSize);
-    if (max_binding_size > 0) {
-      segments = (size_in_bytes + max_binding_size - 1) / max_binding_size;
-      if (segments == 0) segments = 1;
-    }
+  ShaderVariableHelper& var_helper = AddVariableImpl(true, name, usage, dims);
+
+  if (prog_input.segments > 1) {
+    var_helper.SetSegments(prog_input.segments, limits_.maxStorageBufferBindingSize);
   }
 
-  ShaderVariableHelper* first_var = nullptr;
-  for (uint64_t seg = 0; seg < segments; ++seg) {
-    std::string seg_name = (seg == 0) ? name : (name + std::to_string(seg));
-    const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
-                                                                         : program_.Inputs()[input_index].tensor->Shape();
-    ShaderVariableHelper& var_ptr = AddVariableImpl(true, seg_name, usage, dims);
-    input_index++;
-    if (!first_var) first_var = &var_ptr;
-  }
-
-  if (usage & ShaderUsage::UseGetByMultipleBuffer && first_var) {
-    first_var->SetSegments(segments, limits_.maxStorageBufferBindingSize);
-  }
-
-  return *first_var;
+  return var_helper;
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -445,28 +426,49 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Input/output variables
   //
+  size_t binding_index = 0;  // running binding index accounting for segmented buffers
+  // inputs
   for (size_t i = 0; i < input_vars_.size(); ++i) {
     const auto& input = input_vars_[i];
-    ss << "@group(0) @binding(" << i << ") var<storage, read> " << input->name_ << ": array<" << input->StorageType() << ">;\n";
+    int segments = std::max(1, input->segments_);  // segments_ >=1
+    for (int seg = 0; seg < segments; ++seg) {
+      ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read> ";
+      if (seg == 0) {
+        ss << input->name_;
+      } else {
+        ss << input->name_ << seg;  // naming convention matches ShaderVariableHelper::Impl usage (name + index)
+      }
+      ss << ": array<" << input->StorageType() << ">;\n";
+    }
   }
+  // outputs (currently not segmented, but handle generically if future segmentation added)
   for (size_t i = 0; i < output_vars_.size(); ++i) {
     const auto& output = output_vars_[i];
     bool is_atomic = program_.Outputs()[i].is_atomic;
-    ss << "@group(0) @binding(" << input_vars_.size() + i << ") var<storage, read_write> " << output->name_ << ": array<";
-    if (is_atomic) {
-      if (output->type_ == ProgramVariableDataType::Float32) {
-        ss << "atomic<i32>";
-      } else if (output->type_ == ProgramVariableDataType::Uint32) {
-        ss << "atomic<u32>";
-      } else if (output->type_ == ProgramVariableDataType::Int32) {
-        ss << "atomic<i32>";
+    int segments = std::max(1, output->segments_);
+    for (int seg = 0; seg < segments; ++seg) {
+      ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read_write> ";
+      if (seg == 0) {
+        ss << output->name_;
       } else {
-        ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
+        ss << output->name_ << seg;
       }
-    } else {
-      ss << output->StorageType();
+      ss << ": array<";
+      if (is_atomic) {
+        if (output->type_ == ProgramVariableDataType::Float32) {
+          ss << "atomic<i32>";  // emulate float atomic via i32
+        } else if (output->type_ == ProgramVariableDataType::Uint32) {
+          ss << "atomic<u32>";
+        } else if (output->type_ == ProgramVariableDataType::Int32) {
+          ss << "atomic<i32>";
+        } else {
+          ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
+        }
+      } else {
+        ss << output->StorageType();
+      }
+      ss << ">;\n";
     }
-    ss << ">;\n";
   }
 
   //
@@ -586,7 +588,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 
     ss << "\n};\n"
           "@group(0) @binding("
-       << input_vars_.size() + output_vars_.size() << ") var<uniform> uniforms: Uniforms;\n";
+       << binding_index << ") var<uniform> uniforms: Uniforms;\n";
   }
 
   //

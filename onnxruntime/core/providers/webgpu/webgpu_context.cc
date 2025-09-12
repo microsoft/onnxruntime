@@ -431,18 +431,27 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   WriteTimestamp(num_pending_dispatches_ * 2);
 
   std::vector<WGPUBuffer> bind_buffers;
+  std::vector<int> bind_buffers_segments;
   bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
+  bind_buffers_segments.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
   for (const auto& input : inputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
+    const uint64_t size_in_bytes = static_cast<uint64_t>(input.tensor->SizeInBytes());
+    const uint64_t max_binding_size = static_cast<uint64_t>(device_limits_.maxStorageBufferBindingSize);
+    uint64_t segments = (size_in_bytes + max_binding_size - 1) / max_binding_size;
+    if (segments == 0) segments = 1;
+    bind_buffers_segments.push_back(segments);
   }
   for (const auto& output : outputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
+    bind_buffers_segments.push_back(1);  // outputs currently don't have segments, so default to 1
   }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
+    bind_buffers_segments.push_back(1);  // uniform buffer also defaults to 1 segment
   }
 
-  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_segments, *program_artifact, x, y, z);
   if (uniform_buffer) {
     buffer_mgr.Release(uniform_buffer);
   }
@@ -528,7 +537,7 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
-  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxStorageBufferBindingSize = 536870912;  // adapter_limits.maxStorageBufferBindingSize;
   required_limits.maxBufferSize = adapter_limits.maxBufferSize;
   required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
   required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
@@ -721,27 +730,30 @@ void WebGpuContext::OnRunEnd() {
 
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                                           const std::vector<WGPUBuffer>& bind_buffers,
+                                          const std::vector<int>& bind_buffers_segments,
                                           const ProgramArtifact& program_artifact,
                                           uint32_t x, uint32_t y, uint32_t z) {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
 
-  for (size_t buffer_idx = 0; buffer_idx < bind_buffers.size();) {
+  for (size_t buffer_idx = 0; buffer_idx < bind_buffers.size(); ++buffer_idx) {
     WGPUBuffer buffer = bind_buffers[buffer_idx];
     uint64_t buffer_size = wgpuBufferGetSize(buffer);
     const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
-
-    if (buffer_size > kMaxBufferSize) {
+    const int total_segments = bind_buffers_segments[buffer_idx];
+    // `total_segments` we used is calculated by tensor size, not actual buffer size. Because for bucketed buffer,
+    // the actual buffer size may be larger than the tensor size, an extreme case is that tensor size = 127MB, buffer size = 256MB,
+    // maxStorageBufferBindingSize = 128MB, in this case we only need to bind 1 segment instead of 2 segments because
+    // there is no data for the second segment.
+    if (total_segments > 1) {
       uint64_t offset = 0;
-      while (offset < buffer_size) {
+      for (int segment = 0; segment < total_segments; ++segment) {
         uint64_t segment_size = std::min(kMaxBufferSize, buffer_size - offset);
         bind_group_entries.push_back({nullptr, entry_index++, buffer, offset, segment_size, nullptr, nullptr});
         offset += segment_size;
-        ++buffer_idx;
       }
     } else {
-      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, buffer_size, nullptr, nullptr});
-      ++buffer_idx;
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, std::min(kMaxBufferSize, buffer_size), nullptr, nullptr});
     }
   }
 
