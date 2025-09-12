@@ -150,7 +150,8 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
       fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
       expert_weight_bits_ == 4 ? 2 : 1,
-      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU));
+      activation_type_ == ort_fastertransformer::ActivationType::SwiGLU,
+      0));  // CUDA doesn't support block-wise quantization yet
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
