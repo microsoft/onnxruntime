@@ -10,6 +10,16 @@
 namespace onnxruntime {
 
 template <typename T>
+inline T negative_infinity() {
+  return -std::numeric_limits<T>::infinity();
+}
+
+template <>
+inline MLFloat16 negative_infinity() {
+  return MLFloat16(-std::numeric_limits<float>::infinity());
+}
+
+template <typename T>
 class AttentionBase : public OpKernel {
  public:
   AttentionBase(const OpKernelInfo& info) : OpKernel(info) {}
