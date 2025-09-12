@@ -170,18 +170,18 @@ class TestONNXModel(unittest.TestCase):
 
 
 class TestReplaceGemmWithMatmul(unittest.TestCase):
-    def test_replace_gemm_with_matmul_transB_initializer_metadata_updated(self):
+    def test_replace_gemm_with_matmul_trans_b_initializer_metadata_updated(self):
         # Build minimal Gemm with transB=1 and B as initializer with value_info
-        A = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
-        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
+        a = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
+        y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
         weight = numpy_helper.from_array(
             np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32), name="B"
         )
         # ValueInfo for B with original dims [2, 3]
-        B_vi = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
+        b_vi = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
         gemm = helper.make_node("Gemm", ["A", "B"], ["Y"], transB=1, alpha=1.0, beta=1.0, name="Gemm0")
-        graph = helper.make_graph([gemm], "g", [A], [Y], initializer=[weight])
-        graph.value_info.extend([B_vi])
+        graph = helper.make_graph([gemm], "g", [a], [y], initializer=[weight])
+        graph.value_info.extend([b_vi])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
         onnx_model = ONNXModel(model)
@@ -202,13 +202,13 @@ class TestReplaceGemmWithMatmul(unittest.TestCase):
         # Shape inference should succeed without mismatch
         onnx.shape_inference.infer_shapes(onnx_model.model)
 
-    def test_replace_gemm_with_matmul_transB_dynamic_B_inserts_transpose(self):
+    def test_replace_gemm_with_matmul_transb_dynamic_b_inserts_transpose(self):
         # B is a graph input (not initializer) so a Transpose should be inserted
-        A = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
-        B = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
-        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
+        a = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
+        b = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
+        y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
         gemm = helper.make_node("Gemm", ["A", "B"], ["Y"], transB=1, alpha=1.0, beta=1.0, name="Gemm0")
-        graph = helper.make_graph([gemm], "g", [A, B], [Y], initializer=[])
+        graph = helper.make_graph([gemm], "g", [a, b], [y], initializer=[])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
         onnx_model = ONNXModel(model)
