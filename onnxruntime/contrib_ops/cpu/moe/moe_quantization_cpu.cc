@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
-
 #include "core/framework/allocator.h"
 #include "core/framework/float16.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/activation/activations.h"
@@ -49,6 +49,35 @@ inline int64_t GetDequantBlockSize(int64_t features, int64_t total_work) {
   const int64_t work_based_size = std::max(int64_t{16}, total_work / std::max(int64_t{1}, int64_t{4}));
   return std::min(target_block_size, work_based_size);
 }
+
+bool CanUseMlasQ4Dequant(int64_t num_bits, int64_t block_size) {
+  if (num_bits != 4) {
+    return false;
+  }
+
+  return true;
+}
+
+bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
+                      int64_t rows, int64_t cols, MLAS_BLK_QUANT_TYPE& out_qtype) {
+  if (expert_weight_bits != 4) {
+    return false;
+  }
+
+  if (block_size == 64) {
+    out_qtype = BlkQ4Sym64;
+  } else if (block_size == 128) {
+    out_qtype = BlkQ4Sym128;
+  } else if (block_size == 0) {
+    out_qtype = BlkQ4Sym;
+  } else {
+    return false;
+  }
+
+  size_t expected_size = MlasQ4GemmPackBSize(out_qtype, static_cast<size_t>(cols), static_cast<size_t>(rows));
+  return expected_size > 0;
+}
+
 }  // namespace
 
 namespace onnxruntime {
@@ -61,9 +90,148 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              int64_t num_bits,
                              int64_t rows,
                              int64_t cols,
-                             float* dequantized_data) {
+                             float* dequantized_data,
+                             MLAS_THREADPOOL* thread_pool);
+
+template <typename TScale>
+Status ConvertToMlasQ4Format(const uint8_t* quantized_data,
+                             const TScale* scales,
+                             int64_t block_size,
+                             int64_t num_bits,
+                             int64_t rows,
+                             int64_t cols,
+                             MLAS_BLK_QUANT_TYPE qtype,
+                             AllocatorPtr allocator,
+                             IAllocatorUniquePtr<uint8_t>& mlas_packed_buffer) {
+  if (num_bits != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only 4-bit quantization supported for MLAS Q4 format conversion");
+  }
+
+  auto temp_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(rows * cols));
+  float* temp_float = temp_float_buffer.get();
+
+  DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, temp_float, nullptr);
+
+  size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(cols), static_cast<size_t>(rows));
+  if (packed_size == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLAS Q4 packing not supported for this configuration");
+  }
+
+  mlas_packed_buffer = IAllocator::MakeUniquePtr<uint8_t>(allocator, packed_size);
+  MlasQ4GemmPackB(qtype, mlas_packed_buffer.get(), temp_float, static_cast<size_t>(cols), static_cast<size_t>(rows), static_cast<size_t>(cols));
+
+  return Status::OK();
+}
+
+Status DirectQ4Gemm(const float* A,
+                    const uint8_t* mlas_packed_B,
+                    const float* bias,
+                    float* C,
+                    int64_t M,
+                    int64_t N,
+                    int64_t K,
+                    MLAS_BLK_QUANT_TYPE qtype,
+                    MLAS_THREADPOOL* thread_pool) {
+  MLAS_Q4_GEMM_DATA_PARAMS params;
+  params.A = A;
+  params.lda = static_cast<size_t>(K);
+  params.B = mlas_packed_B;
+  params.Bias = bias;
+  params.C = C;
+  params.ldc = static_cast<size_t>(N);
+  params.OutputProcessor = nullptr;
+
+  MlasQ4GemmBatch(qtype, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &params, thread_pool);
+  return Status::OK();
+}
+
+template <typename TScale>
+void DequantizeBlockWithMlas(const uint8_t* quantized_data,
+                             const TScale* scales,
+                             int64_t block_size,
+                             int64_t num_bits,
+                             int64_t rows,
+                             int64_t cols,
+                             float* dequantized_data,
+                             MLAS_THREADPOOL* thread_pool) {
   const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
   const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+
+  if (CanUseMlasQ4Dequant(num_bits, block_size)) {
+    const int64_t packed_cols = (cols + 1) / 2;
+
+    if (block_size == 0) {
+      for (int64_t r = 0; r < rows; ++r) {
+        const uint8_t* row_data = quantized_data + r * packed_cols;
+        float* row_output = dequantized_data + r * cols;
+        const float scale = static_cast<float>(scales[r]);
+
+        int64_t c = 0;
+        for (; c + 8 <= cols; c += 8) {
+          const uint8_t packed_val0 = row_data[(c + 0) / 2];
+          const uint8_t packed_val1 = row_data[(c + 2) / 2];
+          const uint8_t packed_val2 = row_data[(c + 4) / 2];
+          const uint8_t packed_val3 = row_data[(c + 6) / 2];
+
+          row_output[c + 0] = scale * (static_cast<float>(packed_val0 & 0x0F) - zero_point);
+          row_output[c + 1] = scale * (static_cast<float>(packed_val0 >> 4) - zero_point);
+          row_output[c + 2] = scale * (static_cast<float>(packed_val1 & 0x0F) - zero_point);
+          row_output[c + 3] = scale * (static_cast<float>(packed_val1 >> 4) - zero_point);
+          row_output[c + 4] = scale * (static_cast<float>(packed_val2 & 0x0F) - zero_point);
+          row_output[c + 5] = scale * (static_cast<float>(packed_val2 >> 4) - zero_point);
+          row_output[c + 6] = scale * (static_cast<float>(packed_val3 & 0x0F) - zero_point);
+          row_output[c + 7] = scale * (static_cast<float>(packed_val3 >> 4) - zero_point);
+        }
+
+        for (; c < cols; c += 2) {
+          const uint8_t packed_val = row_data[c / 2];
+          const uint8_t val0 = packed_val & 0x0F;
+          const uint8_t val1 = packed_val >> 4;
+
+          row_output[c] = scale * (static_cast<float>(val0) - zero_point);
+          if (c + 1 < cols) {
+            row_output[c + 1] = scale * (static_cast<float>(val1) - zero_point);
+          }
+        }
+      }
+      return;
+    } else {
+      for (int64_t r = 0; r < rows; ++r) {
+        const uint8_t* row_data = quantized_data + r * packed_cols;
+        float* row_output = dequantized_data + r * cols;
+
+        for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
+          const int64_t block_end = std::min(block_start + block_size, cols);
+          const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
+          const int64_t scale_idx = r * blocks_per_row + block_idx;
+          const float scale = static_cast<float>(scales[scale_idx]);
+
+          int64_t c = block_start;
+          for (; c + 4 <= block_end; c += 4) {
+            const uint8_t packed_val0 = row_data[(c + 0) / 2];
+            const uint8_t packed_val1 = row_data[(c + 2) / 2];
+
+            row_output[c + 0] = scale * (static_cast<float>(packed_val0 & 0x0F) - zero_point);
+            row_output[c + 1] = scale * (static_cast<float>(packed_val0 >> 4) - zero_point);
+            row_output[c + 2] = scale * (static_cast<float>(packed_val1 & 0x0F) - zero_point);
+            row_output[c + 3] = scale * (static_cast<float>(packed_val1 >> 4) - zero_point);
+          }
+
+          for (; c < block_end; c += 2) {
+            const uint8_t packed_val = row_data[c / 2];
+            const uint8_t val0 = packed_val & 0x0F;
+            const uint8_t val1 = packed_val >> 4;
+
+            row_output[c] = scale * (static_cast<float>(val0) - zero_point);
+            if (c + 1 < block_end) {
+              row_output[c + 1] = scale * (static_cast<float>(val1) - zero_point);
+            }
+          }
+        }
+      }
+      return;
+    }
+  }
 
   if (num_bits == 8 && block_size == 0) {
     for (int64_t r = 0; r < rows; ++r) {
@@ -167,8 +335,9 @@ void DequantizeBlock(const uint8_t* quantized_data,
                      int64_t num_bits,
                      int64_t rows,
                      int64_t cols,
-                     float* dequantized_data) {
-  DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, dequantized_data);
+                     float* dequantized_data,
+                     MLAS_THREADPOOL* thread_pool = nullptr) {
+  DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, dequantized_data, thread_pool);
 }
 
 template <typename T>
@@ -490,6 +659,63 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const int64_t dequant_block_size = GetDequantBlockSize(fc1_out_features, num_expert_tokens);
       const int64_t num_dequant_blocks = (fc1_out_features + dequant_block_size - 1) / dequant_block_size;
 
+      const size_t m = static_cast<size_t>(num_expert_tokens);
+      const size_t n = static_cast<size_t>(fc1_out_features);
+      const size_t k = static_cast<size_t>(hidden_size);
+
+      MLAS_BLK_QUANT_TYPE q_type;
+      bool use_direct_q4_gemm = CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
+                                                 fc1_out_features, hidden_size, q_type);
+      bool fc1_used_direct_q4 = false;
+      bool fc1_bias_handled_by_q4_gemm = false;
+
+      if (use_direct_q4_gemm) {
+        IAllocatorUniquePtr<uint8_t> mlas_packed_fc1;
+        Status convert_status = ConvertToMlasQ4Format(
+            fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
+            fc1_scales_ptr,
+            is_fc1_block_wise ? block_size_ : 0,
+            expert_weight_bits_,
+            fc1_out_features,
+            hidden_size,
+            q_type,
+            allocator,
+            mlas_packed_fc1);
+
+        if (convert_status.IsOK()) {
+          float* fc1_bias_float = nullptr;
+          IAllocatorUniquePtr<float> fc1_bias_buffer;
+
+          if (has_fc1_bias) {
+            const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
+            fc1_bias_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(fc1_out_features));
+            fc1_bias_float = fc1_bias_buffer.get();
+
+            if constexpr (std::is_same_v<T, MLFloat16>) {
+              MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), fc1_bias_float, static_cast<size_t>(fc1_out_features));
+            } else {
+              for (int64_t i = 0; i < fc1_out_features; ++i) {
+                fc1_bias_float[i] = static_cast<float>(B1_bias[i]);
+              }
+            }
+          }
+
+          Status gemm_status = DirectQ4Gemm(A1, mlas_packed_fc1.get(), fc1_bias_float, C1,
+                                            num_expert_tokens, fc1_out_features, hidden_size, q_type, tp);
+
+          if (gemm_status.IsOK()) {
+            fc1_used_direct_q4 = true;
+#ifdef ONNXRUNTIME_ENABLE_VERBOSE_LOGGING
+            LOGS_DEFAULT(VERBOSE) << "QMoE: Using direct MLAS Q4 GEMM for FC1 expert " << expert_idx
+                                  << " (M=" << num_expert_tokens << ", N=" << fc1_out_features << ", K=" << hidden_size << ")";
+#endif
+            goto fc1_gemm_done;
+          }
+        }
+        // If direct Q4 GEMM failed, fall back to traditional approach
+      }
+
+      // Traditional approach: dequantize + regular GEMM
       if (num_dequant_blocks > 1 && fc1_out_features >= 32) {
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * dequant_block_size;
@@ -498,18 +724,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           DequantizeBlock(fc1_weights_data + offset,
                           fc1_scales_ptr + (is_fc1_block_wise ? start_row * fc1_scales_dims[2] : start_row),
                           is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size);
+                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, tp);
         });
       } else {
         DequantizeBlock(fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
                         fc1_scales_ptr,
                         is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
-                        fc1_out_features, hidden_size, B1_dequant);
+                        fc1_out_features, hidden_size, B1_dequant, tp);
       }
-
-      const size_t m = static_cast<size_t>(num_expert_tokens);
-      const size_t n = static_cast<size_t>(fc1_out_features);
-      const size_t k = static_cast<size_t>(hidden_size);
 
       MlasGemm(CblasNoTrans, CblasTrans,
                m, n, k,
@@ -518,7 +740,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                0.0f, C1, n,
                tp);
 
-      if (has_fc1_bias) {
+      fc1_bias_handled_by_q4_gemm = fc1_used_direct_q4 && has_fc1_bias;
+      if (has_fc1_bias && !fc1_bias_handled_by_q4_gemm) {
         const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
         if constexpr (std::is_same_v<T, MLFloat16>) {
           MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), thread_bias1_buffer, static_cast<size_t>(fc1_out_features));
@@ -554,6 +777,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           }
         }
       }
+
+    fc1_gemm_done:
 
       const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
       if (num_expert_tokens >= activation_threshold && tp != nullptr) {
@@ -598,6 +823,63 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const int64_t fc2_dequant_block_size = GetDequantBlockSize(hidden_size, num_expert_tokens);
       const int64_t num_fc2_dequant_blocks = (hidden_size + fc2_dequant_block_size - 1) / fc2_dequant_block_size;
 
+      const size_t m2 = static_cast<size_t>(num_expert_tokens);
+      const size_t n2 = static_cast<size_t>(hidden_size);
+      const size_t k2 = static_cast<size_t>(inter_size);
+
+      MLAS_BLK_QUANT_TYPE q_type2;
+      bool use_direct_q4_gemm_fc2 = CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
+                                                     hidden_size, inter_size, q_type2);
+      bool fc2_used_direct_q4 = false;
+
+      if (use_direct_q4_gemm_fc2) {
+        IAllocatorUniquePtr<uint8_t> mlas_packed_fc2;
+        Status convert_status = ConvertToMlasQ4Format(
+            fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
+            fc2_scales_ptr,
+            is_fc2_block_wise ? block_size_ : 0,
+            expert_weight_bits_,
+            hidden_size,
+            inter_size,
+            q_type2,
+            allocator,
+            mlas_packed_fc2);
+
+        if (convert_status.IsOK()) {
+          float* fc2_bias_float = nullptr;
+          IAllocatorUniquePtr<float> fc2_bias_buffer;
+
+          if (has_fc2_bias) {
+            const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
+            fc2_bias_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(hidden_size));
+            fc2_bias_float = fc2_bias_buffer.get();
+
+            if constexpr (std::is_same_v<T, MLFloat16>) {
+              MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), fc2_bias_float, static_cast<size_t>(hidden_size));
+            } else {
+              for (int64_t i = 0; i < hidden_size; ++i) {
+                fc2_bias_float[i] = static_cast<float>(B2_bias[i]);
+              }
+            }
+          }
+
+          Status gemm_status = DirectQ4Gemm(A2, mlas_packed_fc2.get(), fc2_bias_float, C2,
+                                            num_expert_tokens, hidden_size, inter_size, q_type2, tp);
+
+          if (gemm_status.IsOK()) {
+            fc2_used_direct_q4 = true;
+#ifdef ONNXRUNTIME_ENABLE_VERBOSE_LOGGING
+            LOGS_DEFAULT(VERBOSE) << "QMoE: Using direct MLAS Q4 GEMM for FC2 expert " << expert_idx
+                                  << " (M=" << num_expert_tokens << ", N=" << hidden_size << ", K=" << inter_size << ")";
+#endif
+            goto fc2_gemm_done;
+          }
+        }
+
+        // If direct Q4 GEMM failed, fall back to traditional approach
+      }
+
+      // Traditional approach: dequantize + regular GEMM
       if (num_fc2_dequant_blocks > 1 && hidden_size >= 32) {
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * fc2_dequant_block_size;
@@ -606,18 +888,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           DequantizeBlock(fc2_weights_data + offset,
                           fc2_scales_ptr + (is_fc2_block_wise ? start_row * fc2_scales_dims[2] : start_row),
                           is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size);
+                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size, tp);
         });
       } else {
         DequantizeBlock(fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
                         fc2_scales_ptr,
                         is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
-                        hidden_size, inter_size, B2_dequant);
+                        hidden_size, inter_size, B2_dequant, tp);
       }
-
-      const size_t m2 = static_cast<size_t>(num_expert_tokens);
-      const size_t n2 = static_cast<size_t>(hidden_size);
-      const size_t k2 = static_cast<size_t>(inter_size);
 
       MlasGemm(CblasNoTrans, CblasTrans,
                m2, n2, k2,
@@ -626,7 +904,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                0.0f, C2, n2,
                tp);
 
-      if (has_fc2_bias) {
+    fc2_gemm_done:
+
+      bool fc2_bias_handled_by_q4_gemm = fc2_used_direct_q4 && has_fc2_bias;
+      if (has_fc2_bias && !fc2_bias_handled_by_q4_gemm) {
         const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
         if constexpr (std::is_same_v<T, MLFloat16>) {
           MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), thread_bias2_buffer, static_cast<size_t>(hidden_size));
@@ -661,7 +942,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + buffer_offset;
         const float* src = C2 + i * hidden_size;
 
-        if (has_fc2_bias) {
+        if (has_fc2_bias && !fc2_bias_handled_by_q4_gemm) {
           const int64_t unroll_factor = GetUnrollFactor(hidden_size);
           int64_t j = 0;
           for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
