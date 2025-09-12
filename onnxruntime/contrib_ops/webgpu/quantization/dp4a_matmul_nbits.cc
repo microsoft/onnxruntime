@@ -19,7 +19,7 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
 Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
-  shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseGetByMultipleBuffer);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
@@ -30,14 +30,15 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
-                             WGSL_TEMPLATE_PARAMETER(output_type_i32, true));
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
+                             WGSL_TEMPLATE_VARIABLE(b, b));
 }
 
 // scale_A components = 1, b components = 4, output components = 1
 Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
-  shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseGetByMultipleBuffer);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
@@ -55,7 +56,8 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_));
+                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_),
+                             WGSL_TEMPLATE_VARIABLE(b, b));
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,

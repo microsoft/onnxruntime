@@ -132,7 +132,7 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t config_index, bool has_zero_points) {
+Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& b, uint32_t nbits, int32_t config_index, bool has_zero_points) {
   auto& config = intel_supported_subgroup_matrix_configs[config_index];
   shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))] << ";\n"
                                     << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<3>(config))] << ";\n"
@@ -150,7 +150,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
   var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
   )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
   if (nbits == 4) {
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART1(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -163,7 +163,9 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
-            let b_value = get_input_b_from_offset(b_idx);
+            let b_value = )ADDNL_FN_PART1"
+                                      << b.GetByOffset("b_idx") << ';';
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART2(
             let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
             let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
             let tile_b_base = row * tile_k + col;
@@ -176,10 +178,10 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             tile_B[tile_b_base + 6] = b_value_lower[3];
             tile_B[tile_b_base + 7] = b_value_upper[3];
         }
-    )ADDNL_FN";
+    )ADDNL_FN_PART2";
   } else {
     ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART1(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -192,20 +194,23 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale   = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
-            let b_value = get_input_b_from_offset(b_idx);
-            let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
-            let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(zero)) * scale;
-            let tile_b_base = row * tile_k + col;
-            tile_B[tile_b_base]     = b_value0[0];
-            tile_B[tile_b_base + 1] = b_value0[1];
-            tile_B[tile_b_base + 2] = b_value0[2];
-            tile_B[tile_b_base + 3] = b_value0[3];
-            tile_B[tile_b_base + 4] = b_value1[0];
-            tile_B[tile_b_base + 5] = b_value1[1];
-            tile_B[tile_b_base + 6] = b_value1[2];
-            tile_B[tile_b_base + 7] = b_value1[3];
-        }
-    )ADDNL_FN";
+            let b_value = )ADDNL_FN_PART1"
+                                      << b.GetByOffset("b_idx") << ';';
+
+    shader.AdditionalImplementation() <<
+        R"ADDNL_FN_PART2(let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
+    let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(zero)) * scale;
+    let tile_b_base = row * tile_k + col;
+    tile_B[tile_b_base] = b_value0[0];
+    tile_B[tile_b_base + 1] = b_value0[1];
+    tile_B[tile_b_base + 2] = b_value0[2];
+    tile_B[tile_b_base + 3] = b_value0[3];
+    tile_B[tile_b_base + 4] = b_value1[0];
+    tile_B[tile_b_base + 5] = b_value1[1];
+    tile_B[tile_b_base + 6] = b_value1[2];
+    tile_B[tile_b_base + 7] = b_value1[3];
+  }
+    )ADDNL_FN_PART2";
   }
 
   shader.MainFunctionBody() << R"MAIN_FN(
@@ -266,7 +271,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
   return Status::OK();
 }
 
-Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_zero_points) {
+Status GenerateShaderCodeOnApple(ShaderHelper& shader, const ShaderVariableHelper& b, uint32_t nbits, bool has_zero_points) {
   // tile/subtile sizes and work distribution are inspired from metal shaders in llama.cpp (kernel_mul_mm)
   // https://github.com/ggml-org/llama.cpp/blob/d04e7163c85a847bc61d58c22f2c503596db7aa8/ggml/src/ggml-metal/ggml-metal.metal#L6066
   shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -298,7 +303,7 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
     )ADDNL_FN"
                                     << GenerateZeroPointReadingCode(nbits, has_zero_points, "compute_precision");
   if (nbits == 4) {
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART1(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -313,24 +318,25 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             for (var step:u32 = 0; step < 2; step++)
             {
-                var b_value = get_input_b_from_offset(b_idx+step);
-                var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
-                var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
-                let tile_b_base = row * tile_k + col + step * 8;
-                tile_B[tile_b_base]     = b_value_lower[0];
-                tile_B[tile_b_base + 1] = b_value_upper[0];
-                tile_B[tile_b_base + 2] = b_value_lower[1];
-                tile_B[tile_b_base + 3] = b_value_upper[1];
-                tile_B[tile_b_base + 4] = b_value_lower[2];
-                tile_B[tile_b_base + 5] = b_value_upper[2];
-                tile_B[tile_b_base + 6] = b_value_lower[3];
-                tile_B[tile_b_base + 7] = b_value_upper[3];
-            }
-        }
-    )ADDNL_FN";
+                var b_value = )ADDNL_FN_PART1"
+                                      << b.GetByOffset("b_idx+step") << ';';
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART2(var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
+    var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
+    let tile_b_base = row * tile_k + col + step * 8;
+    tile_B[tile_b_base] = b_value_lower[0];
+    tile_B[tile_b_base + 1] = b_value_upper[0];
+    tile_B[tile_b_base + 2] = b_value_lower[1];
+    tile_B[tile_b_base + 3] = b_value_upper[1];
+    tile_B[tile_b_base + 4] = b_value_lower[2];
+    tile_B[tile_b_base + 5] = b_value_upper[2];
+    tile_B[tile_b_base + 6] = b_value_lower[3];
+    tile_B[tile_b_base + 7] = b_value_upper[3];
+  }
+}
+    )ADDNL_FN_PART2";
   } else {
     ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART1(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -345,21 +351,24 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             for (var step:u32 = 0; step < 2; step++)
             {
-                var b_value = get_input_b_from_offset(b_idx+step);
-                var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
-                var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
-                let tile_b_base = row * tile_k + col + step * 8;
-                tile_B[tile_b_base]     = b_value0[0];
-                tile_B[tile_b_base + 1] = b_value0[1];
-                tile_B[tile_b_base + 2] = b_value0[2];
-                tile_B[tile_b_base + 3] = b_value0[3];
-                tile_B[tile_b_base + 4] = b_value1[0];
-                tile_B[tile_b_base + 5] = b_value1[1];
-                tile_B[tile_b_base + 6] = b_value1[2];
-                tile_B[tile_b_base + 7] = b_value1[3];
-            }
-        }
-    )ADDNL_FN";
+                var b_value = )ADDNL_FN_PART1"
+                                      << b.GetByOffset("b_idx+step") << ';';
+
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART2(
+    var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
+    var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
+    let tile_b_base = row * tile_k + col + step * 8;
+    tile_B[tile_b_base]     = b_value0[0];
+    tile_B[tile_b_base + 1] = b_value0[1];
+    tile_B[tile_b_base + 2] = b_value0[2];
+    tile_B[tile_b_base + 3] = b_value0[3];
+    tile_B[tile_b_base + 4] = b_value1[0];
+    tile_B[tile_b_base + 5] = b_value1[1];
+    tile_B[tile_b_base + 6] = b_value1[2];
+    tile_B[tile_b_base + 7] = b_value1[3];
+  }
+}
+    )ADDNL_FN_PART2";
   }
   shader.AdditionalImplementation() << R"ADDNL_FN(
         fn storeOutput(offset:u32, row: u32, col:u32, src_slot:u32, row_limit:i32) {
@@ -464,7 +473,7 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
 
 Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseGetByMultipleBuffer);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
@@ -472,9 +481,9 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   if (!vendor_.compare("apple")) {
-    return GenerateShaderCodeOnApple(shader, nbits_, has_zero_points_);
+    return GenerateShaderCodeOnApple(shader, b, nbits_, has_zero_points_);
   } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, nbits_, config_index_, has_zero_points_);
+    return GenerateShaderCodeOnIntel(shader, b, nbits_, config_index_, has_zero_points_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");

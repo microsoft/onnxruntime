@@ -128,25 +128,17 @@ class ComputeContext {
 
     const uint64_t maxStorageBufferBindingSize = limits.maxStorageBufferBindingSize;
 
-    for (const auto& input : program.Inputs()) {
+    for (int i = 0; i < program.Inputs().size(); ++i) {
+      const auto& input = program.Inputs()[i];
+      uint32_t segments = 1;
       if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
         // Calculate number of segments needed
-        uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
-
-        // Add multiple segmented inputs to new_inputs
-        for (uint32_t i = 0; i < segments; ++i) {
-          new_inputs.emplace_back(input);
-        }
-      } else {
-        new_inputs.emplace_back(input);
+        segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+        if (segments == 0) segments = 1;
       }
+      program.setSegmentsForInput(i, segments);
     }
 
-    // Clear existing inputs and add new segmented inputs
-    program.ClearInputs();
-    for (auto&& new_input : new_inputs) {
-      program.AddInput(std::move(new_input));
-    }
     return webgpu_context_.Run(*this, program);
   }
 
