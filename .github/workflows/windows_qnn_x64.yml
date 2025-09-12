@@ -27,7 +27,7 @@ jobs:
     env:
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-      OnnxRuntimeBuildDirectory: D:\a\_temp\build
+      OnnxRuntimeBuildDirectory: ${{ runner.temp }}\build
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
       BuildConfig: 'RelWithDebInfo'
