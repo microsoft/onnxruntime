@@ -69,7 +69,7 @@ jobs:
         shell: cmd
         working-directory: ${{ runner.temp }}\build\RelWithDebInfo
         run: |
-          .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ github.workspace }}\cmake\external\onnx\onnx\backend\test\data\node
+          .\RelWithDebInfo\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ github.workspace }}\cmake\external\onnx\onnx\backend\test\data\node
 
       - name: Run float32 model tests
         shell: cmd
