@@ -565,7 +565,7 @@ Return Value:
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelNeon;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelNeon;
-    this->NchwcBlockSize = 16;
+    this->NchwcBlockSize = MLAS_NEON_NCHWC_BLOCK_SIZE;
 
     //
     // Check if the processor supports ASIMD dot product instructions.

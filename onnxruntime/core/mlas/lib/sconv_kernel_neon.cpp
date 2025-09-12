@@ -17,9 +17,7 @@ Abstract:
 #include "mlasi.h"
 #include "sconv.h"
 
-#if defined(MLAS_TARGET_ARM64)
-
-constexpr size_t BlockSize = MLAS_NEON_BLOCK_SIZE;
+constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
 
 // Common implementation for NCHW and NCHWC convolution kernels
 template <bool IsNchwcFormat>
@@ -520,5 +518,3 @@ void
         }
     }
 }
-
-#endif  // __aarch64__ || _M_ARM64

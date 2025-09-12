@@ -1410,6 +1410,7 @@ struct MLAS_PLATFORM {
     int32_t MaximumThreadCount;
 #elif defined(MLAS_TARGET_ARM64)
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
+    static constexpr size_t MLAS_NEON_NCHWC_BLOCK_SIZE = 16;
 #else
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif

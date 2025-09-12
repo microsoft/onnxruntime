@@ -15,13 +15,6 @@ Abstract:
 
 --*/
 
-/*
-    The MLAS_NEON_BLOCK_SIZE has to be the equal to the NchwcBlockSize in platform.cpp.
-    Refer to the discussion in https://github.com/microsoft/onnxruntime/pull/25580.
-*/
-
-constexpr size_t MLAS_NEON_BLOCK_SIZE = 16;
-
 //
 // Define the convolution kernel flags.
 //

@@ -15,11 +15,8 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "sconv.h"
 
-#if defined(MLAS_TARGET_ARM64)
-
-constexpr size_t BlockSize = MLAS_NEON_BLOCK_SIZE;
+constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
 
 void
     MLASCALL
@@ -290,5 +287,3 @@ void
         false  // ExcludePad = false
     );
 }
-
-#endif  // __aarch64__ || _M_ARM64
