@@ -1229,8 +1229,8 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
-  # enable dynamic plugin EP infrastructure
-  target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
+  # enable dynamic plugin EP usage
+  target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
   # TODO fix shorten-64-to-32 warnings
   # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'

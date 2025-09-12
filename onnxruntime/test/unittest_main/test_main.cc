@@ -29,13 +29,13 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
-#define TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP
-#endif  // !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP)
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+#define TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+#endif  // !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
-#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
-#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
 std::unique_ptr<Ort::Env> ort_env;
 
@@ -44,11 +44,11 @@ namespace env_var_names {
 // Set ORT log level to the specified numeric log level.
 constexpr const char* kLogLevel = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
 
-#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 // Specify dynamic plugin EP configuration JSON.
 // Refer to `onnxruntime::test::dynamic_plugin_ep_infra::ParseInitializationConfig()` for more information.
 constexpr const char* kDynamicPluginEpConfigJson = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON";
-#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 }  // namespace env_var_names
 
 // ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
@@ -73,8 +73,7 @@ extern "C" void ortenv_setup() {
 
     ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
 
-#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
-
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
     {
       namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
       if (auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
@@ -87,8 +86,7 @@ extern "C" void ortenv_setup() {
         ORT_THROW_IF_ERROR(dynamic_plugin_ep_infra::Initialize(*ort_env, config));
       }
     }
-
-#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -99,12 +97,12 @@ extern "C" void ortenv_setup() {
 }
 
 extern "C" void ortenv_teardown() {
-#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
   {
     namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
     dynamic_plugin_ep_infra::Shutdown();
   }
-#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP)
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
   ort_env.reset();
 }
