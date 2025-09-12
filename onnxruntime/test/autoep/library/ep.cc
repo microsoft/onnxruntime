@@ -233,7 +233,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
     for (const auto& node : nodes) {
       auto op_type = node.GetOperatorType();
 
-      if (op_type != "Mul") {
+      if (op_type == "Mul") {
         // Check that Mul has inputs/output of type float
         std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
         std::vector<Ort::ConstValueInfo> outputs = node.GetOutputs();

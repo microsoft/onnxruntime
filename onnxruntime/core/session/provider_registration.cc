@@ -17,6 +17,12 @@
 #include "core/session/ort_apis.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/environment.h"
+#include "core/session/ort_env.h"
+#include "core/session/utils.h"
+#endif
+
 #ifdef _WIN32
 #include <winmeta.h>
 #include "core/platform/tracing.h"
@@ -73,6 +79,58 @@ OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider
 
   return nullptr;
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+/// <summary>
+/// Tries to append a plugin EP with the given name to the session options. If the plugin EP was registered with
+/// ORT, creates an EP factory with all OrtEpDevice instances that the factory supports.
+/// </summary>
+/// <param name="options">The OrtSessionOptions instance.</param>
+/// <param name="ep_name">The name of the EP to find among registered plugin EPs.</param>
+/// <param name="ep_option_keys">User-specified EP option keys.</param>
+/// <param name="ep_option_vals">User-specified EP option values.</param>
+/// <param name="added_ep">Output parameter set to true if this function successfully appended a plugin EP
+/// factory to the session options.</param>
+/// <returns>A status indicating success or an error.</returns>
+onnxruntime::Status TryAppendPluginEp(OrtSessionOptions* options,
+                                      const char* ep_name,
+                                      gsl::span<const char* const> ep_option_keys,
+                                      gsl::span<const char* const> ep_option_vals,
+                                      /*out*/ bool& added_ep) {
+  added_ep = false;
+
+  if (OrtEnv::UniquePtr ort_env = OrtEnv::GetInstanceIfExists(); ort_env.get() != nullptr) {
+    const onnxruntime::Environment& env = ort_env->GetEnvironment();
+    const auto& all_ep_devices = env.GetOrtEpDevices();
+
+    // Find all OrtEpDevices with the target EP name.
+    std::vector<const OrtEpDevice*> ep_devices;
+    for (const OrtEpDevice* ep_device : all_ep_devices) {
+      if (ep_device->ep_name == ep_name) {
+        ep_devices.push_back(ep_device);
+      }
+    }
+
+    if (!ep_devices.empty()) {
+      // Add factory for EP that supports the selected EP devices.
+      std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
+
+      ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(
+          env,
+          options->value,
+          ep_devices,
+          ep_option_keys,
+          ep_option_vals,
+          /*output*/ provider_factory));
+      options->provider_factories.push_back(std::move(provider_factory));
+      added_ep = true;
+    }
+  }
+
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 }  // namespace
 /**
  * Implementation of OrtApis functions for provider registration.
@@ -147,7 +205,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   }
 #endif
 
-  auto create_not_supported_status = [&provider_name]() {
+  bool provider_is_not_supported = false;
+  auto create_not_supported_status = [&provider_name, &provider_is_not_supported]() {
+    provider_is_not_supported = true;
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
@@ -185,6 +245,20 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                         });
 
   if (ep_to_append_iter == supported_eps.end()) {
+#if !defined(ORT_MINIMAL_BUILD)
+    // Unknown EP name: try to append a plugin EP from a library registered with the environment.
+    bool added_plugin_ep = false;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(TryAppendPluginEp(
+        options, provider_name,
+        gsl::span<const char* const>(provider_options_keys, num_keys),
+        gsl::span<const char* const>(provider_options_values, num_keys),
+        /*out*/ added_plugin_ep));
+
+    if (added_plugin_ep) {
+      return nullptr;
+    }
+#endif
+
     return create_unknown_provider_status(supported_eps);
   }
 
@@ -326,6 +400,22 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       ORT_UNUSED_PARAMETER(options);
       ORT_UNUSED_PARAMETER(create_failed_to_load_provider_status);
       status = create_unknown_provider_status(supported_eps);
+  }
+
+  if (provider_is_not_supported) {
+    // Provider is not supported in this build of ORT. Check if it was instead registered in a plugin EP library.
+#if !defined(ORT_MINIMAL_BUILD)
+    bool added_plugin_ep = false;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(TryAppendPluginEp(
+        options, provider_name,
+        gsl::span<const char* const>(provider_options_keys, num_keys),
+        gsl::span<const char* const>(provider_options_values, num_keys),
+        /*out*/ added_plugin_ep));
+
+    if (added_plugin_ep) {
+      return nullptr;
+    }
+#endif
   }
 
   return status;
