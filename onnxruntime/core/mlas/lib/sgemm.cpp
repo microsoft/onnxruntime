@@ -14,8 +14,13 @@ Abstract:
     operation (SGEMM).
 
 --*/
+#ifdef USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
 
 #include "mlasi.h"
+
+const bool HasCPUSVE = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve();
 
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
@@ -24,7 +29,7 @@ Abstract:
 // rows, and AVX512F processes a maximum of 12 rows.
 //
 
-#define MLAS_SGEMM_TRANSA_ROWS              12
+#define MLAS_SGEMM_TRANSA_ROWS 12
 
 //
 // Define the parameters to execute segments of a SGEMM operation on worker
@@ -38,7 +43,7 @@ MlasSgemmMultiplyBeta(
     size_t CountN,
     size_t ldc,
     float beta
-    )
+)
 /*++
 
 Routine Description:
@@ -67,7 +72,6 @@ Return Value:
     MLAS_FLOAT32X4 BetaBroadcast = MlasBroadcastFloat32x4(beta);
 
     while (CountM-- > 0) {
-
         float* c = C;
         size_t n = CountN;
 
@@ -98,7 +102,7 @@ MlasSgemmTransposeA(
     size_t lda,
     size_t CountY,
     size_t CountX
-    )
+)
 /*++
 
 Routine Description:
@@ -132,13 +136,11 @@ Return Value:
     //
 
     while (CountX >= 4) {
-
         float* d = D;
         const float* a = A;
         size_t y = CountY;
 
         do {
-
             float t0 = a[0];
             float t1 = a[lda];
             float t2 = a[lda * 2];
@@ -166,13 +168,11 @@ Return Value:
     //
 
     if (CountX >= 2) {
-
         float* d = D;
         const float* a = A;
         size_t y = CountY;
 
         do {
-
             float t0 = a[0];
             float t1 = a[lda];
 
@@ -191,13 +191,11 @@ Return Value:
     }
 
     if (CountX >= 1) {
-
         float* d = D;
         const float* a = A;
         size_t y = CountY;
 
         do {
-
             d[0] = a[0];
 
             d += ldd;
@@ -217,7 +215,7 @@ MlasSgemmCopyPackB(
     size_t ldb,
     size_t CountX,
     size_t CountY
-    )
+)
 /*++
 
 Routine Description:
@@ -251,17 +249,40 @@ Return Value:
     // Copy data from matrix B into the destination buffer 16 columns at a
     // time.
     //
+#if defined(USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+    if (HasCPUSVE) {
+        while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
+            const float* b = B;
+            size_t y = CountY;
+            do {
+                SVE_LOAD_STORE(D, b);
+                D += MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+                b += ldb;
+                y--;
+            } while (y > 0);
+            B += MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+            CountX -= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+        }
+    } else {
+        while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
+            const float* b = B;
+            size_t y = CountY;
+            do {
+                vst4q_f32(D, vld4q_f32(b));
+                D += MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+                b += ldb;
+                y--;
+            } while (y > 0);
 
-    while (CountX >= 16) {
-
+            B += MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+            CountX -= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+        }
+    }
+#else
+    while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
         const float* b = B;
         size_t y = CountY;
-
         do {
-
-#if defined(MLAS_NEON_INTRINSICS)
-            vst4q_f32(D, vld4q_f32(b));
-#else
             MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
             MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[4]);
             MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&b[8]);
@@ -271,41 +292,40 @@ Return Value:
             MlasStoreAlignedFloat32x4(&D[4], t1);
             MlasStoreAlignedFloat32x4(&D[8], t2);
             MlasStoreAlignedFloat32x4(&D[12], t3);
-#endif
 
-            D += 16;
+            D += MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
             b += ldb;
             y--;
 
         } while (y > 0);
 
-        B += 16;
-        CountX -= 16;
+        B += MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+        CountX -= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
     }
-
+#endif
     //
     // Special case the handling of the remaining columns less than 16 elements
     // wide.
     //
 
     if (CountX > 0) {
-
-        MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
-
-#if defined(MLAS_NEON_INTRINSICS)
-        float32x4x4_t ZeroFloat32x4x4 = { ZeroFloat32x4, ZeroFloat32x4, ZeroFloat32x4, ZeroFloat32x4 };
-#endif
-
         size_t y = CountY;
 
         do {
-
             float* d = D;
             const float* b = B;
+#if defined(USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+            if (HasCPUSVE)
+                SVE_ZERO_INITIALIZE(d);
 
-#if defined(MLAS_NEON_INTRINSICS)
-            vst4q_f32(d, ZeroFloat32x4x4);
+            else {
+                MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
+                float32x4x4_t ZeroFloat32x4x4 = {ZeroFloat32x4, ZeroFloat32x4, ZeroFloat32x4, ZeroFloat32x4};
+                vst4q_f32(d, ZeroFloat32x4x4);
+            }
+
 #else
+            MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 4, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 8, ZeroFloat32x4);
@@ -313,7 +333,6 @@ Return Value:
 #endif
 
             if ((CountX & 8) != 0) {
-
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(b);
                 MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(b + 4);
 
@@ -325,7 +344,6 @@ Return Value:
             }
 
             if ((CountX & 4) != 0) {
-
                 MlasStoreAlignedFloat32x4(d, MlasLoadFloat32x4(b));
 
                 d += 4;
@@ -333,7 +351,6 @@ Return Value:
             }
 
             if ((CountX & 2) != 0) {
-
                 float t0 = b[0];
                 float t1 = b[1];
 
@@ -356,14 +373,13 @@ Return Value:
     }
 }
 
-template<unsigned N>
-inline
-void
+template <unsigned N>
+inline void
 MlasSgemmTransposePackBNx4(
     float* D,
     const float* B,
     size_t ldb
-    )
+)
 /*++
 
 Routine Description:
@@ -389,7 +405,6 @@ Return Value:
 --*/
 {
     for (unsigned n = 0; n < N / 4; n++) {
-
         MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&B[ldb * 0]);
         MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&B[ldb * 1]);
         MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&B[ldb * 2]);
@@ -432,7 +447,7 @@ MlasSgemmTransposePackB(
     size_t ldb,
     size_t CountY,
     size_t CountX
-    )
+)
 /*++
 
 Routine Description:
@@ -468,7 +483,6 @@ Return Value:
     //
 
     while (CountY >= 16) {
-
         const float* b = B;
         size_t x = CountX;
 
@@ -478,7 +492,6 @@ Return Value:
             GetMlasPlatform().TransposePackB16x4Routine;
 
         while (x >= 4) {
-
             SgemmTransposePackB16x4Routine(&D[0], &b[0], ldb);
 
             D += 16 * 4;
@@ -486,21 +499,20 @@ Return Value:
             x -= 4;
         }
 
-#else
+#elif defined(USE_SVE)
+        if (HasCPUSVE)
+            SVE_TRANSPOSE(D, b, ldb, x);
+        else {
+            while (x >= 4) {
+                MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
 
-        while (x >= 4) {
-
-            MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
-
-            D += 16 * 4;
-            b += 4;
-            x -= 4;
+                D += 16 * 4;
+                b += 4;
+                x -= 4;
+            }
         }
-
 #endif
-
         while (x > 0) {
-
             float t0 = b[0];
             float t1 = b[ldb];
             float t2 = b[ldb * 2];
@@ -549,7 +561,6 @@ Return Value:
     //
 
     if (CountY > 0) {
-
         MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
 
         size_t x = CountX;
@@ -559,19 +570,19 @@ Return Value:
         //
 
         while (x >= 4) {
-
             float* d = D;
             const float* b = B;
 
             if ((CountY & 8) != 0) {
-
-                MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
+                if (HasCPUSVE)
+                    MlasSveTransposePackBNx4<8>(&d[0], &b[0], ldb);
+                else
+                    MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
 
                 d += 8;
                 b += ldb * 8;
 
             } else {
-
                 MlasStoreAlignedFloat32x4(&d[8], ZeroFloat32x4);
                 MlasStoreAlignedFloat32x4(&d[12], ZeroFloat32x4);
                 MlasStoreAlignedFloat32x4(&d[24], ZeroFloat32x4);
@@ -583,14 +594,15 @@ Return Value:
             }
 
             if ((CountY & 4) != 0) {
-
-                MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
+                if (HasCPUSVE)
+                    MlasSveTransposePackBNx4<4>(&d[0], &b[0], ldb);
+                else
+                    MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
 
                 d += 4;
                 b += ldb * 4;
 
             } else {
-
                 MlasStoreAlignedFloat32x4(&d[4], ZeroFloat32x4);
                 MlasStoreAlignedFloat32x4(&d[20], ZeroFloat32x4);
                 MlasStoreAlignedFloat32x4(&d[36], ZeroFloat32x4);
@@ -603,7 +615,6 @@ Return Value:
             MlasStoreAlignedFloat32x4(&d[48], ZeroFloat32x4);
 
             if ((CountY & 2) != 0) {
-
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
                 MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
 
@@ -630,14 +641,17 @@ Return Value:
             }
 
             if ((CountY & 1) != 0) {
+#if defined(USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+                if (HasCPUSVE)
+                    SCATTER_STORE(&d[0], &b[0]);
+                else {
+                    MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
 
-#if defined(MLAS_NEON_INTRINSICS)
-                MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
-
-                MlasStoreLaneFloat32x4<0>(&d[0], t0);
-                MlasStoreLaneFloat32x4<1>(&d[16], t0);
-                MlasStoreLaneFloat32x4<2>(&d[32], t0);
-                MlasStoreLaneFloat32x4<3>(&d[48], t0);
+                    MlasStoreLaneFloat32x4<0>(&d[0], t0);
+                    MlasStoreLaneFloat32x4<1>(&d[16], t0);
+                    MlasStoreLaneFloat32x4<2>(&d[32], t0);
+                    MlasStoreLaneFloat32x4<3>(&d[48], t0);
+                }
 #else
                 d[0] = b[0];
                 d[16] = b[1];
@@ -656,12 +670,10 @@ Return Value:
         //
 
         while (x > 0) {
-
             float* d = D;
             const float* b = B;
 
             if ((CountY & 8) != 0) {
-
                 float t0 = b[0];
                 float t1 = b[ldb];
                 float t2 = b[ldb * 2];
@@ -684,13 +696,11 @@ Return Value:
                 b += ldb * 8;
 
             } else {
-
                 MlasStoreAlignedFloat32x4(&d[8], ZeroFloat32x4);
                 MlasStoreAlignedFloat32x4(&d[12], ZeroFloat32x4);
             }
 
             if ((CountY & 4) != 0) {
-
                 float t0 = b[0];
                 float t1 = b[ldb];
                 float t2 = b[ldb * 2];
@@ -705,14 +715,12 @@ Return Value:
                 b += ldb * 4;
 
             } else {
-
                 MlasStoreAlignedFloat32x4(&d[4], ZeroFloat32x4);
             }
 
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
 
             if ((CountY & 2) != 0) {
-
                 float t0 = b[0];
                 float t1 = b[ldb];
 
@@ -734,7 +742,7 @@ Return Value:
     }
 }
 
-#else //defined(MLAS_TARGET_WASM_SCALAR)
+#else  // defined(MLAS_TARGET_WASM_SCALAR)
 
 void
 MlasSgemmCopyPackB(
@@ -743,7 +751,7 @@ MlasSgemmCopyPackB(
     size_t ldb,
     size_t CountX,
     size_t CountY
-    )
+)
 /*++
 
 Routine Description:
@@ -779,12 +787,10 @@ Return Value:
     //
 
     while (CountX >= 4) {
-
         const float* b = B;
         size_t y = CountY;
 
         do {
-
             std::copy_n(b, 4, D);
 
             D += 4;
@@ -803,18 +809,15 @@ Return Value:
     //
 
     if (CountX > 0) {
-
         size_t y = CountY;
 
         do {
-
             std::fill_n(D, 4, 0.0f);
 
             float* d = D;
             const float* b = B;
 
             if ((CountX & 2) != 0) {
-
                 float t0 = b[0];
                 float t1 = b[1];
 
@@ -844,7 +847,7 @@ MlasSgemmTransposePackB(
     size_t ldb,
     size_t CountY,
     size_t CountX
-    )
+)
 /*++
 
 Routine Description:
@@ -874,8 +877,7 @@ Return Value:
 
 --*/
 {
-    auto TransposePackByVector = [&](float *D, const float* B) {
-
+    auto TransposePackByVector = [&](float* D, const float* B) {
         float b0 = B[0];
         float b1 = B[1];
         float b2 = B[2];
@@ -893,12 +895,10 @@ Return Value:
     //
 
     while (CountY >= 4) {
-
         const float* b = B;
         size_t x = CountX;
 
         while (x >= 4) {
-
             TransposePackByVector(&D[0], &b[ldb * 0]);
             TransposePackByVector(&D[1], &b[ldb * 1]);
             TransposePackByVector(&D[2], &b[ldb * 2]);
@@ -910,7 +910,6 @@ Return Value:
         }
 
         while (x > 0) {
-
             float t0 = b[0];
             float t1 = b[ldb];
             float t2 = b[ldb * 2];
@@ -935,7 +934,6 @@ Return Value:
     //
 
     if (CountY > 0) {
-
         size_t x = CountX;
 
         //
@@ -943,14 +941,12 @@ Return Value:
         //
 
         while (x >= 4) {
-
             std::fill_n(D, 16, 0.0f);
 
             float* d = D;
             const float* b = B;
 
             if ((CountY & 2) != 0) {
-
                 TransposePackByVector(&d[0], &b[ldb * 0]);
                 TransposePackByVector(&d[1], &b[ldb * 1]);
 
@@ -972,14 +968,12 @@ Return Value:
         //
 
         while (x > 0) {
-
             std::fill_n(D, 4, 0.0f);
 
             float* d = D;
             const float* b = B;
 
             if ((CountY & 2) != 0) {
-
                 float t0 = b[0];
                 float t1 = b[ldb];
 
@@ -1016,7 +1010,7 @@ MlasSgemmKernelLoop(
     size_t ldc,
     float alpha,
     bool ZeroMode
-    )
+)
 /*++
 
 Routine Description:
@@ -1058,16 +1052,22 @@ Return Value:
 --*/
 {
     while (CountM > 0) {
-
         size_t RowsHandled;
 
 #if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {
-            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            if (HasCPUSVE)
+                RowsHandled = MlasSgemmKernelZero_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            else
+                RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+
         } else {
-            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            if (HasCPUSVE)
+                RowsHandled = MlasSgemmKernelAdd_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            else
+                RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
         }
 #endif
 
@@ -1094,7 +1094,7 @@ MlasSgemmOperation(
     float beta,
     float* C,
     size_t ldc
-    )
+)
 /*++
 
 Routine Description:
@@ -1157,7 +1157,6 @@ Return Value:
     //
 
     if (M == 1 && TransA == CblasNoTrans && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
-
 #if !defined(FORCE_GENERIC_ALGORITHMS)
 #if defined(MLAS_TARGET_AMD64)
 
@@ -1182,8 +1181,7 @@ Return Value:
         }
 
 #endif
-#endif // !defined(FORCE_GENERIC_ALGORITHMS)
-
+#endif  // !defined(FORCE_GENERIC_ALGORITHMS)
     }
 
     //
@@ -1194,7 +1192,6 @@ Return Value:
     //
 
     if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
-
 #if defined(MLAS_TARGET_AMD64) && !defined(FORCE_GENERIC_ALGORITHMS)
 
         MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
@@ -1211,7 +1208,6 @@ Return Value:
         }
 
 #endif
-
     }
 
     //
@@ -1226,14 +1222,12 @@ Return Value:
     size_t StrideK = MLAS_SGEMM_STRIDEK;
 
     if (N >= K) {
-
         while (StrideK / 2 >= K) {
             StrideN *= 2;
             StrideK /= 2;
         }
 
     } else if (TransA == CblasNoTrans) {
-
         while (StrideN > 16 && StrideN / 2 >= N) {
             StrideK *= 2;
             StrideN /= 2;
@@ -1247,7 +1241,6 @@ Return Value:
     size_t CountN;
 
     for (size_t n = 0; n < N; n += CountN) {
-
         CountN = std::min(N - n, StrideN);
 
         //
@@ -1266,7 +1259,6 @@ Return Value:
         bool ZeroMode = (beta == 0.0f);
 
         for (size_t k = 0; k < K; k += CountK) {
-
             CountK = std::min(K - k, StrideK);
 
             //
@@ -1286,16 +1278,13 @@ Return Value:
             float* c = C + n;
 
             if (TransA == CblasNoTrans) {
-
                 MlasSgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
 
             } else {
-
                 const float* a = A + k * lda;
                 size_t RowsRemaining = M;
 
                 while (RowsRemaining > 0) {
-
                     //
                     // Transpose elements from matrix A into a local buffer.
                     //
@@ -1335,7 +1324,7 @@ MlasSgemmPackedOperation(
     float beta,
     float* C,
     size_t ldc
-    )
+)
 /*++
 
 Routine Description:
@@ -1389,7 +1378,6 @@ Return Value:
     size_t CountN;
 
     for (size_t n = 0; n < RangeCountN; n += CountN) {
-
         const size_t SliceStartN = RangeStartN + n;
 
         CountN = std::min(RangeCountN - n, size_t(MLAS_SGEMM_PACKED_STRIDEN));
@@ -1410,7 +1398,6 @@ Return Value:
         bool ZeroMode = (beta == 0.0f);
 
         for (size_t k = 0; k < K; k += CountK) {
-
             CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
 
             //
@@ -1421,16 +1408,13 @@ Return Value:
             float* c = C + n;
 
             if (TransA == CblasNoTrans) {
-
                 MlasSgemmKernelLoop(A + k, pb, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
 
             } else {
-
                 const float* a = A + k * lda;
                 size_t RowsRemaining = M;
 
                 while (RowsRemaining > 0) {
-
                     //
                     // Transpose elements from matrix A into a local buffer.
                     //
@@ -1467,7 +1451,7 @@ MlasSgemmThreaded(
 
     const MLAS_SGEMM_DATA_PARAMS* DataParams,
     ptrdiff_t ThreadId
-    )
+)
 /*++
 
 Routine Description:
@@ -1497,7 +1481,6 @@ Return Value:
 
 --*/
 {
-
     const ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
     const ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
 
@@ -1518,10 +1501,9 @@ Return Value:
     size_t RangeCountN;
 
     const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
-        MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+                            MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
 
-    MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &RangeStartN,
-        &RangeCountN);
+    MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &RangeStartN, &RangeCountN);
 
     RangeStartN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
     RangeCountN *= MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
@@ -1539,19 +1521,14 @@ Return Value:
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
     if (DataParams->BIsPacked) {
-
-        MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN,
-            K, DataParams->alpha, A, lda, DataParams->B,
-            BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, DataParams->beta, C, ldc);
+        MlasSgemmPackedOperation(TransA, RangeCountM, RangeStartN, RangeCountN, K, DataParams->alpha, A, lda, DataParams->B, BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, DataParams->beta, C, ldc);
 
     } else {
-
         const size_t ldb = DataParams->ldb;
 
         const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
 
-        MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
-            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
+        MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K, DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
     }
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1560,23 +1537,23 @@ Return Value:
 #pragma warning(disable : 26451)
 #endif
 void
-MLASCALL
-MlasGemmBatch(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS* Data,
-    size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
+    MLASCALL
+    MlasGemmBatch(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        const MLAS_SGEMM_DATA_PARAMS* Data,
+        size_t BatchSize,
+        MLAS_THREADPOOL* ThreadPool
     )
 {
     // Override
-    if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+    if (GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)) {
         return;
     }
     //
@@ -1605,9 +1582,8 @@ MlasGemmBatch(
     ptrdiff_t ThreadCountN;
 
     if (N > M) {
-
         const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
-            MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
+                                MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
 
         if (size_t(ThreadsPerGemm) > BlockedN) {
             ThreadsPerGemm = ptrdiff_t(BlockedN);
@@ -1617,7 +1593,6 @@ MlasGemmBatch(
         ThreadCountN = ThreadsPerGemm;
 
     } else {
-
         if (size_t(ThreadsPerGemm) > M) {
             ThreadsPerGemm = ptrdiff_t(M);
         }
@@ -1626,14 +1601,10 @@ MlasGemmBatch(
         ThreadCountN = 1;
     }
 
-    MlasTrySimpleParallel(ThreadPool,
-        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize),
-        [=](ptrdiff_t tid)
-    {
+    MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), [=](ptrdiff_t tid) {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
         ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
-        MlasSgemmThreaded(ThreadCountM, ThreadCountN,
-            TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
+        MlasSgemmThreaded(ThreadCountM, ThreadCountN, TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
     });
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1641,12 +1612,12 @@ MlasGemmBatch(
 #endif
 
 size_t
-MLASCALL
-MlasGemmPackBSize(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t N,
-    size_t K
+    MLASCALL
+    MlasGemmPackBSize(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t N,
+        size_t K
     )
 /*++
 
@@ -1666,25 +1637,24 @@ Return Value:
 
 --*/
 {
-    //
-    // Compute the number of bytes required to hold the packed buffer.
-    //
-    // KleidiAI or other override
-    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+//
+// Compute the number of bytes required to hold the packed buffer.
+//
+// KleidiAI or other override
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
-        //TODO pass status by reference to indicate success/fail
+        // TODO pass status by reference to indicate success/fail
         bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
-        if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
+        if (bytes_required != 0) {  // If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
         }
     }
-    #endif
+#endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
-
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1692,21 +1662,21 @@ Return Value:
     const size_t BytesRequired = AlignedN * K * sizeof(float);
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
-        ~(BufferAlignment - 1);
+                                        ~(BufferAlignment - 1);
 
     return AlignedBytesRequired;
 }
 
 void
-MLASCALL
-MlasGemmPackB(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t N,
-    size_t K,
-    const float* B,
-    size_t ldb,
-    void* PackedB
+    MLASCALL
+    MlasGemmPackB(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t N,
+        size_t K,
+        const float* B,
+        size_t ldb,
+        void* PackedB
     )
 /*++
 
@@ -1738,15 +1708,14 @@ Return Value:
 --*/
 {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
-        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
-         return;
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
+        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)) {
+        return;
     }
 #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
-
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1758,7 +1727,6 @@ Return Value:
     size_t CountK;
 
     for (size_t k = 0; k < K; k += CountK) {
-
         CountK = std::min(K - k, size_t(MLAS_SGEMM_PACKED_STRIDEK));
 
         if (TransB == CblasNoTrans) {
