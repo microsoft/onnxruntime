@@ -18,7 +18,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_utils.h"
-#include "test/util/include/test_environment.h"
+#include "test/util/include/test/test_environment.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/session/training_session.h"

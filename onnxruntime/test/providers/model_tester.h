@@ -9,7 +9,7 @@
 
 #include "test/providers/base_tester.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/test_environment.h"
+#include "test/util/include/test/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
