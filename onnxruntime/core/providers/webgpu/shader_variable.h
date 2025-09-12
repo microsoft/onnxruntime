@@ -69,6 +69,7 @@ struct ShaderUsage {
     UseSetByIndices = 512,                // use implementation of fn set_{name}_by_indices
     UseGet = 1024,                        // use implementation of fn get_{name}
     UseGetByIndices = 2048,               // use implementation of fn get_{name}_by_indices
+    UseGetByMultipleBuffer = 4096,        // use implementation of fn get_{name}_from_offset
     UseUniform = 32768,                   // use uniform for shape and stride
   } usage;
 
@@ -172,6 +173,8 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   // \param value: the value ({varname}_value_t) to set.
   inline std::string SetByIndices(std::string_view indices_var, std::string_view value) const;
 
+  inline void SetSegments(int segments, uint64_t maxStorageBufferBindingSize);
+
   // create a WGSL statement for setting data at the given offset.
   // \param offset: a WGSL expression (u32) representing the offset.
   // \param value: the value ({varname}_value_t) to set.
@@ -202,6 +205,9 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   std::string_view StorageType() const;
   std::string_view ValueType() const;
   std::string_view ElementType() const;
+
+  int segments_ = 1;
+  uint64_t max_storage_buffer_binding_size_ = 0;
 
   friend class ShaderHelper;
 };
@@ -327,6 +333,12 @@ inline std::string ShaderVariableHelper::SetByIndices(std::string_view indices_v
     usage_ |= ShaderUsage::UseSetByIndices | ShaderUsage::UseIndicesToOffset;
     return MakeStringWithClassicLocale("set_", name_, "_by_indices(", indices_var, ", ", value, ");");
   }
+}
+inline void ShaderVariableHelper::SetSegments(int segments, uint64_t maxStorageBufferBindingSize) {
+  ORT_ENFORCE(segments > 0, "segments should be positive");
+  usage_ |= ShaderUsage::UseGetByMultipleBuffer;
+  segments_ = segments;
+  max_storage_buffer_binding_size_ = maxStorageBufferBindingSize;
 }
 
 template <typename TOffset>

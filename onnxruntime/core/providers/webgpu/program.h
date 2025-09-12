@@ -226,6 +226,7 @@ struct ProgramInput {
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   const Tensor* tensor;
+  uint32_t segments;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool use_override_shape;
@@ -287,6 +288,8 @@ class ProgramBase {
   ProgramBase& AddInput(ProgramInput&& input);
   // add multiple program inputs
   ProgramBase& AddInputs(std::initializer_list<ProgramInput> inputs);
+  // clear all program inputs
+  ProgramBase& ClearInputs();
   // add a program output
   ProgramBase& AddOutput(ProgramOutput&& output);
   // add multiple program outputs
@@ -343,6 +346,12 @@ class ProgramBase {
   inline const ProgramMetadata& Metadata() const { return metadata_; }
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
+  inline void setSegmentsForInput(size_t index, uint32_t segments) {
+    if (index >= inputs_.size()) {
+      throw std::out_of_range("input index out of range");
+    }
+    inputs_[index].segments = segments;
+  }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
   inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
@@ -401,18 +410,18 @@ class ProgramWrapper : public ProgramBase {
 #define ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK(identifier, element_type)                                                   \
  private:                                                                                                                                \
   template <typename U>                                                                                                                  \
-  static auto test_has_##identifier(int) -> decltype(U::identifier, std::true_type{}); /* checks if member exists */                     \
+  static auto test_has_##identifier(int)->decltype(U::identifier, std::true_type{}); /* checks if member exists */                       \
   template <typename...>                                                                                                                 \
-  static auto test_has_##identifier(...) -> std::false_type;                                                                             \
+  static auto test_has_##identifier(...)->std::false_type;                                                                               \
                                                                                                                                          \
   template <typename U,                                                                       /* The following type check uses SFINAE */ \
             typename = std::enable_if_t<                                                      /* to ensure the specific member:       */ \
                                         is_const_std_array<decltype(U::identifier)>::value && /*  - is a const std::array             */ \
                                         std::is_const_v<decltype(U::identifier)> &&           /*  - has "const" modifier              */ \
                                         !std::is_member_pointer_v<decltype(&U::identifier)>>> /*  - is static                         */ \
-  static auto test_has_##identifier##_with_correct_type(int) -> std::true_type;                                                          \
+  static auto test_has_##identifier##_with_correct_type(int)->std::true_type;                                                            \
   template <typename...>                                                                                                                 \
-  static auto test_has_##identifier##_with_correct_type(...) -> std::false_type;                                                         \
+  static auto test_has_##identifier##_with_correct_type(...)->std::false_type;                                                           \
                                                                                                                                          \
  public:                                                                                                                                 \
   static constexpr bool has_##identifier = decltype(test_has_##identifier<T>(0))::value;                                                 \

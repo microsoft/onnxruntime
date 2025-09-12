@@ -181,6 +181,7 @@ class WebGpuContext final {
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,
+                             const std::vector<int>& bind_buffers_segments,
                              const ProgramArtifact& program_artifact,
                              uint32_t x, uint32_t y, uint32_t z);
 
