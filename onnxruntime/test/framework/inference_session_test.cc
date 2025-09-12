@@ -671,17 +671,26 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
   bool has_kernel_info = false;
+  bool has_kernel_str = false;
+  bool has_stream_str = false;
+  bool has_block_x_str = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != std::string::npos);
-      has_kernel_info = has_kernel_info || lines[i].find("Kernel") != std::string::npos &&
-                                               lines[i].find("stream") != std::string::npos &&
-                                               lines[i].find("block_x") != std::string::npos;
+      if (has_kernel_info) {
+        continue;
+      }
+      has_kernel_str = lines[i].find("Kernel") != std::string::npos;
+      has_stream_str = lines[i].find("stream") != std::string::npos;
+      has_block_x_str = lines[i].find("block_x") != std::string::npos;
+      has_kernel_info = has_kernel_str && has_stream_str && has_block_x_str;
     }
   }
 
 #if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
-  ASSERT_TRUE(has_kernel_info);
+  ASSERT_TRUE(has_kernel_info) << "has \"Kernel\": " << has_kernel_str
+                               << " has \"stream\": " << has_stream_str
+                               << " has \"block_x\": " << has_block_x_str;
 #endif
 }
 
