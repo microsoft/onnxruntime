@@ -825,13 +825,17 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
   }
 
   // convert kOnnxDomainAlias to kOnnxDomain if needed and remove the alias entry
-  auto onnx_alias_iter = domain_to_version.find(kOnnxDomainAlias);
-  if (onnx_alias_iter != domain_to_version.end()) {
+  if (auto onnx_alias_iter = domain_to_version.find(kOnnxDomainAlias); onnx_alias_iter != domain_to_version.end()) {
     if (domain_to_version.find(kOnnxDomain) == domain_to_version.end()) {
       domain_to_version[kOnnxDomain] = onnx_alias_iter->second;
     }
 
     domain_to_version.erase(onnx_alias_iter);
+  }
+
+  if (auto onnx_iter = domain_to_version.find(kOnnxDomain); onnx_iter == domain_to_version.end()) {
+    // ONNX domain must be explicitly specified as we can't simply default to the latest opset ORT knows about.
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "The opset for the ONNX domain must be explicitly specified.");
   }
 
   // special-case the internal NHWC domain as it must match the ONNX opset if not explicitly imported

@@ -317,15 +317,10 @@ TEST(ModelEditorAPITest, Basic_CApi) {
 
     std::ifstream file(saved_model_path, std::ios::binary);
     ASSERT_TRUE(file.read(buffer.data(), buffer.size()));
-    auto end_data = buffer.data() + buffer.size();
-    ASSERT_NE(std::search(buffer.data(), end_data,
-                          onnxruntime::kMSInternalNHWCDomain,
-                          onnxruntime::kMSInternalNHWCDomain + strlen(onnxruntime::kMSInternalNHWCDomain)),
-              end_data);
-    ASSERT_NE(std::search(buffer.data(), end_data,
-                          onnxruntime::kMSNchwcDomain,
-                          onnxruntime::kMSNchwcDomain + strlen(onnxruntime::kMSNchwcDomain)),
-              end_data);
+
+    std::string_view buffer_view(buffer.data(), buffer.size());
+    ASSERT_NE(buffer_view.find(onnxruntime::kMSInternalNHWCDomain), std::string_view::npos);
+    ASSERT_NE(buffer_view.find(onnxruntime::kMSNchwcDomain), std::string_view::npos);
   };
 
   run_test(false);
@@ -548,7 +543,7 @@ TEST(ModelEditorAPITest, CreateInvalidModel_NoOpsets) {
     auto session = CreateSession(*ort_env, model);
     FAIL();
   } catch (const Ort::Exception& e) {
-    ASSERT_THAT(e.what(), ::testing::HasSubstr("Error No opset import for domain"));
+    ASSERT_THAT(e.what(), ::testing::HasSubstr("The opset for the ONNX domain must be explicitly specified"));
   }
 }
 
