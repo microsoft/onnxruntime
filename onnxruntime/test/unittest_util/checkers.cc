@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/providers/checkers.h"
+#include "test/unittest_util/checkers.h"
 
 #include "gtest/gtest.h"
 
+#include "core/common/narrow.h"
 #include "core/graph/constants.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/int4.h"
 #include "core/framework/float4.h"
-
-#include "test/framework/test_utils.h"
-#include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/unittest_util/conversion.h"
 
 namespace onnxruntime {
 namespace test {
@@ -192,7 +192,7 @@ struct TensorCheck<Float4E2M1x2> {
       ORT_THROW("Shape mismatch");
     }
 
-    const auto size = actual.Shape().Size();
+    const auto size = narrow<size_t>(actual.Shape().Size());
 
     const Float4E2M1x2* expected_data = expected.Data<Float4E2M1x2>();
     const Float4E2M1x2* actual_data = actual.Data<Float4E2M1x2>();
@@ -201,7 +201,7 @@ struct TensorCheck<Float4E2M1x2> {
     // For now, using float tolerance is fine
     auto tolerance_params = get_tolerance_params<float>(params, provider_type);
 
-    for (int64_t i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       size_t r = i >> 1;
       size_t c = i & 0x1;
 
@@ -228,11 +228,11 @@ struct TensorCheck<Int4x2> {
     ORT_UNUSED_PARAMETER(params);
     const Int4x2* cur_expected;
     const Int4x2* cur_actual;
-    const auto size = actual.Shape().Size();
+    const auto size = narrow<size_t>(actual.Shape().Size());
     cur_expected = expected.Data<Int4x2>();
     cur_actual = actual.Data<Int4x2>();
 
-    for (size_t i = 0; i < static_cast<size_t>(size); ++i) {
+    for (size_t i = 0; i < size; ++i) {
       size_t r = i >> 1;
       size_t c = i & 0x1;
       EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
@@ -247,11 +247,11 @@ struct TensorCheck<UInt4x2> {
     ORT_UNUSED_PARAMETER(params);
     const UInt4x2* cur_expected;
     const UInt4x2* cur_actual;
-    const auto size = actual.Shape().Size();
+    const auto size = narrow<size_t>(actual.Shape().Size());
     cur_expected = expected.Data<UInt4x2>();
     cur_actual = actual.Data<UInt4x2>();
 
-    for (size_t i = 0; i < static_cast<size_t>(size); ++i) {
+    for (size_t i = 0; i < size; ++i) {
       size_t r = i >> 1;
       size_t c = i & 0x1;
       EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
@@ -452,12 +452,12 @@ struct TensorCheck<MLFloat16> {
                   const std::string& provider_type) const {
     auto* cur_expected = expected.Data<MLFloat16>();
     auto* cur_actual = actual.Data<MLFloat16>();
-    auto size = actual.Shape().Size();
+    auto size = narrow<size_t>(actual.Shape().Size());
 
     std::vector<float> f_expected(size);
     std::vector<float> f_actual(size);
-    ConvertMLFloat16ToFloat(cur_expected, f_expected.data(), static_cast<int>(size));
-    ConvertMLFloat16ToFloat(cur_actual, f_actual.data(), static_cast<int>(size));
+    ConvertMLFloat16ToFloat(cur_expected, f_expected.data(), size);
+    ConvertMLFloat16ToFloat(cur_actual, f_actual.data(), size);
 
     // deal with rare cases in which order of output data from a kernel MAY be
     // undefined
@@ -467,7 +467,7 @@ struct TensorCheck<MLFloat16> {
 
     auto tolerance_params = get_tolerance_params<MLFloat16>(params, provider_type);
 
-    for (int64_t i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_actual[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
@@ -488,12 +488,12 @@ struct TensorCheck<BFloat16> {
                   const std::string& provider_type) const {
     auto* cur_expected = expected.Data<BFloat16>();
     auto* cur_actual = actual.Data<BFloat16>();
-    auto size = actual.Shape().Size();
+    auto size = narrow<size_t>(actual.Shape().Size());
 
     std::vector<float> f_expected(size);
     std::vector<float> f_actual(size);
-    BFloat16ToFloat(cur_expected, f_expected.data(), static_cast<size_t>(size));
-    BFloat16ToFloat(cur_actual, f_actual.data(), static_cast<size_t>(size));
+    BFloat16ToFloat(cur_expected, f_expected.data(), size);
+    BFloat16ToFloat(cur_actual, f_actual.data(), size);
 
     // deal with rare cases in which order of output data from a kernel MAY be
     // undefined
@@ -503,7 +503,7 @@ struct TensorCheck<BFloat16> {
 
     auto tolerance_params = get_tolerance_params<BFloat16>(params, provider_type);
 
-    for (int64_t i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality

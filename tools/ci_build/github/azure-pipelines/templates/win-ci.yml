@@ -89,7 +89,7 @@ stages:
     ${{ else }}:
       buildJavaParameter: ''
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-      timeoutParameter: '--test_all_timeout 72000'
+      timeoutParameter: '--ctest_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
   jobs:

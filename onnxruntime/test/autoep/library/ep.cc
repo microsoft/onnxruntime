@@ -233,7 +233,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
     for (const auto& node : nodes) {
       auto op_type = node.GetOperatorType();
 
-      if (op_type != "Mul") {
+      if (op_type == "Mul") {
         // Check that Mul has inputs/output of type float
         std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
         std::vector<Ort::ConstValueInfo> outputs = node.GetOutputs();
@@ -251,6 +251,10 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
         supported_nodes.push_back(node);  // Only support a single Mul for now.
         break;
       }
+    }
+
+    if (supported_nodes.empty()) {
+      return nullptr;
     }
 
     // Create (optional) fusion options for the supported nodes to fuse.
@@ -317,7 +321,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
     Ort::ConstNode fused_node{fused_nodes[0]};
     auto ep_name = fused_node.GetEpName();
-    if (ep_name != "example_ep") {
+    if (ep_name != ep->name_) {
       Ort::Status status("The fused node is expected to assigned to this EP to run on", ORT_EP_FAIL);
       return status.release();
     }

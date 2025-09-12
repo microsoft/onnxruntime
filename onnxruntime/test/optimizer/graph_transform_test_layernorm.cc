@@ -20,10 +20,10 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 
 #include "test/capturing_sink.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

@@ -13,7 +13,7 @@
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
 #include "core/graph/function_impl.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))

@@ -4,7 +4,7 @@
 #include <random>
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 #include "gtest/gtest.h"

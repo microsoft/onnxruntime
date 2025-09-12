@@ -9,7 +9,7 @@
 #include "core/framework/float16.h"
 
 #include "test/util/include/test/test_environment.h"
-#include "test/optimizer/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"

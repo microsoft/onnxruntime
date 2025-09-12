@@ -3,7 +3,7 @@
 
 #include "core/framework/tensor.h"
 #include "core/framework/allocator_utils.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

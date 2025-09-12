@@ -13,7 +13,7 @@
 
 #include "core/framework/float4.h"
 #include "test/test_environment.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 
 using namespace ONNX_NAMESPACE;

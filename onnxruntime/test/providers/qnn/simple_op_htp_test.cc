@@ -10,8 +10,8 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 

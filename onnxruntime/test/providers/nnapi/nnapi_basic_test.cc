@@ -12,7 +12,7 @@
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/current_test_name.h"
 #include "test/util/include/default_providers.h"
@@ -24,7 +24,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
 #include "test/providers/provider_test_utils.h"
-#include "test/optimizer/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 #endif
 
 #include "gtest/gtest.h"

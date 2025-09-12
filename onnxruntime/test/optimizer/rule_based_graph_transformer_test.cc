@@ -11,7 +11,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "dummy_graph_transformer.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 
 using namespace std;

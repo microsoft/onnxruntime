@@ -3,7 +3,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"

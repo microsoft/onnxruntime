@@ -4,7 +4,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/graph_transformer_mgr.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 

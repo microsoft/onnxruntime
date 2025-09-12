@@ -7,7 +7,6 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
-#include "test/providers/run_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {

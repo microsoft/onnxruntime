@@ -22,7 +22,7 @@
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
 #endif
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/test_environment.h"
 #include "orttraining/test/session/training_session_test_utils.h"

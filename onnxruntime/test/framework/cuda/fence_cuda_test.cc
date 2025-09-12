@@ -22,7 +22,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "test/providers/provider_test_utils.h"

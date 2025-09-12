@@ -23,7 +23,7 @@
 #include "core/common/status.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "core/graph/schema_registry.h"
 #include "core/framework/customregistry.h"

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "../framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/execution_providers.h"

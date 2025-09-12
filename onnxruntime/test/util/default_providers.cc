@@ -2,18 +2,20 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include "test/util/include/default_providers.h"
+
 #include <memory>
-#include "default_providers.h"
-#include "providers.h"
+
+#include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_CUDA
-#include <core/providers/cuda/cuda_provider_options.h>
+#include "core/providers/cuda/cuda_provider_options.h"
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/session_options.h"
+#include "test/util/include/providers.h"
 
 namespace onnxruntime {
 
@@ -330,5 +332,6 @@ std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool) {
   return nullptr;
 }
+
 }  // namespace test
 }  // namespace onnxruntime

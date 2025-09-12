@@ -10,6 +10,7 @@
 
 #include <gsl/gsl>
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/common/optional.h"
 #include "core/common/type_utils.h"
 #include "core/framework/float16.h"
@@ -20,7 +21,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace detail {
-inline int64_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64_t> strides = {}) {
+inline size_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64_t> strides = {}) {
   int64_t size = 1;
   if (strides.empty()) {
     size = std::accumulate(dims.begin(), dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
@@ -35,8 +36,7 @@ inline int64_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64
     }
   }
 
-  ORT_ENFORCE(size >= 0);
-  return size;
+  return narrow<size_t>(size);
 }
 }  // namespace detail
 
