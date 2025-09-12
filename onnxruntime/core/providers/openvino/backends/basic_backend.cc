@@ -242,13 +242,13 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching() {
+void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    OVCore::Get()->SetCache(session_context_.cache_dir.string());
+    device_config.emplace(ov::cache_dir(session_context_.cache_dir.string()));
   }
 }
 
@@ -262,7 +262,7 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableStreams() {
+void BasicBackend::EnableStreams(ov::AnyMap& device_config) {
   // Return silently for NPU as it's currently treated as a read-only flag by the NPU plugin
   // and throws an exception for the same
   if (session_context_.device_type.find("NPU") != std::string::npos)
@@ -279,7 +279,7 @@ void BasicBackend::EnableStreams() {
     }
     // Do nothing
   } else {
-    OVCore::Get()->SetStreams(session_context_.device_type, session_context_.num_streams);
+    device_config.emplace(ov::num_streams(session_context_.num_streams));
   }
 }
 
@@ -293,13 +293,13 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching();
+  EnableCaching(device_config);
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
   // Enable streams; default=1 unless overridden by user configuration
-  EnableStreams();
+  EnableStreams(device_config);
 
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);

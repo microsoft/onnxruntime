@@ -95,8 +95,6 @@ struct OVCore : WeakSingleton<OVCore> {
 
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
-  void SetCache(const std::string& cache_dir_path);
-  void SetStreams(const std::string& device_type, int num_streams);
 };
 
 class OVExeNetwork {

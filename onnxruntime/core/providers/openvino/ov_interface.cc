@@ -270,10 +270,6 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
                              "Exception while Loading Network from OVIR model file: {}", model_file_path.string());
 }
 
-void OVCore::SetCache(const std::string& cache_dir_path) {
-  core.set_property(ov::cache_dir(cache_dir_path));
-}
-
 std::vector<std::string> OVCore::GetAvailableDevices() const {
   std::vector<std::string> available_devices = core.get_available_devices();
   return available_devices;
@@ -310,10 +306,6 @@ std::vector<std::string> OVCore::GetAvailableDevices(const std::string& device_t
   }
 
   return available_devices;
-}
-
-void OVCore::SetStreams(const std::string& device_type, int num_streams) {
-  core.set_property(device_type, {ov::num_streams(num_streams)});
 }
 
 std::shared_ptr<OVInferRequest> OVExeNetwork::CreateInferRequest() {
