@@ -617,16 +617,12 @@ else()
 
   if(onnxruntime_USE_SVE)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-      execute_process(
-          COMMAND lscpu
-          OUTPUT_VARIABLE LSCPU_OUTPUT
-          OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
-      if(LSCPU_OUTPUT MATCHES "sve")
-          message(STATUS "Host CPU supports SVE!")
-          set(HAS_ARM64_SVE "ON")
+      include(CheckCXXCompilerFlag)
+      check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
+      if(HAS_ARM64_SVE)
+        message(STATUS "Compiler supports SVE!")
       else()
-          message(STATUS "Host CPU does NOT support SVE!")
+        message(STATUS "Compiler does not support SVE!")
       endif()
     endif()
   endif()

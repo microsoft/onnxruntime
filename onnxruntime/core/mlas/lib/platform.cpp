@@ -595,12 +595,22 @@ Return Value:
 #endif
 
 #if defined(USE_SVE)
-    this->ErfKernelRoutine = MlasSveErfKernel;
-    this->LogisticKernelRoutine = MlasSveLogisticKernel;
-    this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
-    this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
-    this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
-    this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        this->ErfKernelRoutine = MlasSveErfKernel;
+        this->LogisticKernelRoutine = MlasSveLogisticKernel;
+        this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
+        this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+    }
+    else{
+        this->ErfKernelRoutine = MlasErfKernel;
+        this->LogisticKernelRoutine = MlasLogisticKernel;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    }
 #endif
 
     //
