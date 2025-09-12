@@ -50,6 +50,7 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
     {"DynamicQuantizeLinear",
      {"Cast", "Clip", "Div", "Max", "Min", "QuantizeLinear", "ReduceMax", "ReduceMin", "Reshape", "Round", "Sub"}},
     {"Einsum", {"MatMul", "Mul", "ReduceSum", "Reshape", "Transpose", "Trilu"}},
+    {"GatherBlockQuantized", {"DequantizeLinear", "Gather"}},
     {"GroupQueryAttention",
      {"Add", "Cast", "Concat", "CumSum", "Div", "Expand", "Less", "MatMul", "Reshape", "ScatterND",
       "Softmax", "Transpose", "Where"}},
