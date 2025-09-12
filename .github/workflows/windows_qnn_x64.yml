@@ -1,4 +1,3 @@
----
 name: Windows QNN CI Pipeline
 # Re-triggering the workflow to get fresh logs.
 
@@ -83,9 +82,9 @@ jobs:
         shell: cmd
         working-directory: ${{ env.OnnxRuntimeBuildDirectory }}\${{ env.BuildConfig }}
         run: |
-          rem This step assumes the model data exists at C:\data\float32_models on the runner
-          if exist C:\data\float32_models (
-            .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
+          rem This step assumes the model data exists at C:\\data\\float32_models on the runner
+          if exist C:\\data\\float32_models (
+            .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" C:\\data\\float32_models
           ) else (
-            echo "Skipping float32 model tests: C:\data\float32_models not found."
+            echo "Skipping float32 model tests: C:\\data\\float32_models not found."
           )
