@@ -13,9 +13,11 @@ on:
       - rel-*
   workflow_dispatch:
 
-# concurrency:
-#   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-#   cancel-in-progress: true
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+# Re-triggering the workflow again.
 
 jobs:
   build_test_qnn_ep:
