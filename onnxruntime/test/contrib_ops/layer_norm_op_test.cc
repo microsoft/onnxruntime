@@ -428,19 +428,37 @@ TEST(LayerNormTest, LayerNorm17_double) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
 }
 
-// Test normalize size shall be larger than 1.
-TEST(LayerNormTest, LayerNorm_InvalidNormSize) {
+// When normalized size is 1, LayerNormalization should succeed and output equals bias (or zeros if no bias).
+TEST(LayerNormTest, LayerNorm_NormSizeEqualsOne_Succeeds) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
+  // X shape (B=1, S=3, N=1), axis=2 => norm_size == 1
   std::vector<int64_t> dims{1, 3, 1};
   test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f});
   test.AddInput<float>("gamma", {1}, {-0.6953f});
   test.AddInput<float>("bias", {1}, {0.6435f});
   test.AddAttribute<int64_t>("axis", 2);
-  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f});
 
-  RunTestOnCpuAndCuda(test, kLayerNormInvalidSize);
+  // For norm_size==1, normalized values are 0; output equals bias.
+  test.AddOutput<float>("output", dims, {0.6435f, 0.6435f, 0.6435f});
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_NormSizeEqualsOne_NoBias) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 3, 1};
+  test.AddInput<float>("x", dims, {0.5f, -1.0f, 3.14f});
+  test.AddInput<float>("gamma", {1}, {2.0f});
+  test.AddAttribute<int64_t>("axis", 2);
+
+  // No bias: normalized values are 0 when norm_size==1
+  test.AddOutput<float>("output", dims, {0.0f, 0.0f, 0.0f});
+
+  RunTestOnCpuAndCuda(test);
 }
 
 TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
