@@ -52,10 +52,7 @@ stages:
     steps:
     - template: set-version-number-variables-step.yml
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
+    - template: setup-build-tools.yml
 
     - template: jobs/download_win_qnn_sdk.yml
       parameters:

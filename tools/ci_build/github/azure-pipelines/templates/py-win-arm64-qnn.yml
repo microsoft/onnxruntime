@@ -57,18 +57,7 @@ jobs:
     clean: true
     submodules: none
 
-  - template: telemetry-steps.yml
-
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: ${{ parameters.PYTHON_VERSION }}
-      addToPath: true
-      architecture: 'arm64'
-
-  - task: PipAuthenticate@1
-    displayName: 'Pip Authenticate'
-    inputs:
-      artifactFeeds: 'Lotus'
+  - template: setup-build-tools.yml
 
   - task: PythonScript@0
     inputs:
