@@ -1,4 +1,5 @@
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250724.1
+ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20250724.1
+FROM $BASEIMAGE
 ARG ROCM_VERSION=6.2.3
 
 #Add our own dependencies

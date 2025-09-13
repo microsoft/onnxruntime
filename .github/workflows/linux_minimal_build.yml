@@ -131,7 +131,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-    
+
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
         with:
           vcpkg-version: '2025.06.13'

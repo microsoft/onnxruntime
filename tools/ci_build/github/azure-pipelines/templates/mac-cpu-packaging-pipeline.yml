@@ -1,3 +1,5 @@
+# This stage fetch built macOS binaries from other stages, sign the binaries, then repack them
+
 parameters:
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
@@ -13,30 +15,10 @@ parameters:
   - 1
   - 0
 
-- name: BuildForAllArchs
-  displayName: Build for all CPU ARCHs
-  type: boolean
-
-- name: WithCache
-  displayName: Build with Cache
-  type: boolean
-  default: false
-
 - name: DoESRP
   displayName: Do ESRP
   type: boolean
   default: false
-
-# these 2 parameters are used for debugging.
-- name: SpecificArtifact
-  displayName: Use Specific Artifact (Debugging only)
-  type: boolean
-  default: false
-
-- name: BuildId
-  displayName: Pipeline BuildId, you could find it in the URL
-  type: string
-  default: '0'
 
 stages:
 - stage: MacOS_C_API_Packaging_CPU
@@ -47,21 +29,12 @@ stages:
       MacosArch: 'x86_64'
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-      WithCache: ${{ parameters.WithCache }}
 
-  - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-    - template: mac-cpu-packing-jobs.yml
-      parameters:
-        MacosArch: 'arm64'
-        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-        WithCache: ${{ parameters.WithCache }}
-    - template: mac-cpu-packing-jobs.yml
-      parameters:
-        MacosArch: 'universal2'
-        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-        WithCache: ${{ parameters.WithCache }}
+  - template: mac-cpu-packing-jobs.yml
+    parameters:
+      MacosArch: 'arm64'
+      AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
 - stage: MacOS_C_API_Package_Publish
   dependsOn: MacOS_C_API_Packaging_CPU
@@ -71,68 +44,56 @@ stages:
       name: 'Azure Pipelines'
       image: 'macOS-14'
       os: 'macOS'
-    steps:
-    - checkout: none
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline onnxruntime-osx-x86_64'
-        ArtifactName: 'onnxruntime-osx-x86_64'
-        TargetPath: '$(Build.ArtifactStagingDirectory)'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-      - template: flex-downloadPipelineArtifact.yml
-        parameters:
-          StepName: 'Download Pipeline onnxruntime-osx-arm64'
-          ArtifactName: 'onnxruntime-osx-arm64'
-          TargetPath: '$(Build.ArtifactStagingDirectory)'
-          SpecificArtifact: ${{ parameters.SpecificArtifact }}
-          BuildId: ${{ parameters.BuildId }}
-      - template: flex-downloadPipelineArtifact.yml
-        parameters:
-          StepName: 'Download Pipeline onnxruntime-osx-universal2'
-          ArtifactName: 'onnxruntime-osx-universal2'
-          TargetPath: '$(Build.ArtifactStagingDirectory)'
-          SpecificArtifact: ${{ parameters.SpecificArtifact }}
-          BuildId: ${{ parameters.BuildId }}
-
-    - ${{ if eq(parameters.DoESRP, true)}}:
-      - script: |
-          pushd '$(Build.ArtifactStagingDirectory)'
-          find . '*.tgz' -exec tar -zxvf {} \;
-          rm -f *.tgz;
-          find . -type d -name 'onnxruntime-osx-*' -exec zip -FSr --symlinks {}.zip {} \;
-          find . -type d -name 'onnxruntime-osx-*' -exec rm -rf {} \;
-          ls -l
-          popd
-        displayName: tgz to zip
-
-      - template: mac-esrp-dylib.yml
-        parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)'
-          Pattern: '*.zip'
-
-      - script: |
-          pushd '$(Build.ArtifactStagingDirectory)'
-          find . '*.zip' -exec unzip {} \;
-          rm -f *.zip;
-          find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;
-          find . -type d -name 'onnxruntime-osx-*' -exec rm -rf {} \;
-          ls -l
-          popd
-        displayName: zip to tgz
-      - bash: |
-          set -ex
-          mkdir -p $(Agent.TempDirectory)/macpackage
-          find $(Build.ArtifactStagingDirectory) -name "*.tgz" -exec tar -zxvf {} -C $(Agent.TempDirectory)/macpackage \;
-          find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec codesign -dvvv {} \;
-          find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec ls -l {} \;
-          rm -rf $(Agent.TempDirectory)/macpackage
-        displayName: 'Verify code signing'
-
-    - task: 1ES.PublishPipelineArtifact@1
+    templateContext:
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'onnxruntime-osx'
-        condition: 'succeededOrFailed()'
+      - input: pipelineArtifact
+        artifactName: onnxruntime-osx-x86_64 # The files in this artifact are not signed
+        targetPath: $(Build.ArtifactStagingDirectory)
+      - input: pipelineArtifact
+        artifactName: onnxruntime-osx-arm64 # The files in this artifact are not signed
+        targetPath: $(Build.ArtifactStagingDirectory)
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'onnxruntime-osx' # The files in this artifact are signed
+    steps:
+    - checkout: self
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.13'
+        addToPath: true
+
+    - task: PythonScript@0
+      displayName: 'Prepare, Create Universal Binary, and Zip with Python'
+      inputs:
+        scriptSource: 'filePath'
+        scriptPath: 'tools/ci_build/prepare_macos_package.py'
+        arguments: '--staging_dir $(Build.ArtifactStagingDirectory)'
+
+    - template: mac-esrp-dylib.yml
+      parameters:
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        Pattern: '*.zip'
+
+    - script: |
+        set -ex
+        mkdir temp
+        cd temp
+        find $(Build.ArtifactStagingDirectory) -name '*.zip' -exec unzip {} \;
+        rm -rf $(Build.ArtifactStagingDirectory)/*;
+        find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;        
+        ls -l
+        mv *.tgz $(Build.ArtifactStagingDirectory)
+      displayName: 'Unzip Signed Files and Repackage to TGZ'
+      workingDirectory: $(Agent.TempDirectory)
+
+    - bash: |
+        set -ex
+        mkdir -p macpackage
+        find $(Build.ArtifactStagingDirectory) -name "*.tgz" -exec tar -zxvf {} -C macpackage \;
+        find macpackage -name "*.dylib" -exec codesign -dvvv {} \;
+        find macpackage -name "*.dylib" -exec ls -l {} \;
+        rm -rf macpackage
+      displayName: 'Verify Code Signing'
+      workingDirectory: $(Agent.TempDirectory)

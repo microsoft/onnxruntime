@@ -28,6 +28,10 @@ stages:
       value: ${{ parameters.CudaVersion }}
     steps:
     - template: ../templates/set-version-number-variables-step.yml
+    - task: UsePythonVersion@0
+      displayName: Use Python 3.12
+      inputs:
+        versionSpec: 3.12
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
@@ -45,10 +49,8 @@ stages:
           arch: 'linux-x64'
           buildConfig: 'Release'
           artifactName: 'onnxruntime-java-linux-x64-cuda'
-          version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -85,6 +87,10 @@ stages:
     - checkout: self
       clean: true
       submodules: recursive
+    - task: UsePythonVersion@0
+      displayName: Use Python 3.12
+      inputs:
+        versionSpec: 3.12
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
@@ -106,10 +112,8 @@ stages:
           arch: 'linux-x64'
           buildConfig: 'Release'
           artifactName: 'onnxruntime-java-linux-x64-tensorrt'
-          version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
