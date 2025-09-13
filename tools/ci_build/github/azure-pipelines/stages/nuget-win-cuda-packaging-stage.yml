@@ -34,10 +34,25 @@ parameters:
 - name: buildJava
   type: boolean
 
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
 stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CUDA
@@ -52,9 +67,12 @@ stages:
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: TensorRT

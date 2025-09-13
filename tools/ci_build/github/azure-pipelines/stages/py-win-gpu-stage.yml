@@ -92,18 +92,7 @@ stages:
         clean: true
         submodules: none
 
-      - template: ../templates/telemetry-steps.yml
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: ${{ parameters.PYTHON_VERSION }}
-          addToPath: true
-          architecture: 'x64'
-
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
+      - template: ../templates/setup-build-tools.yml
 
       - template: ../templates/jobs/download_win_gpu_library.yml
         parameters:
