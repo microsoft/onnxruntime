@@ -265,7 +265,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="keys">Native keys instance</param>
         /// <param name="values">Native values instance</param>
         /// <param name="numEntries">Native numEntries instance</param>
-        public void AppendExecutionProvider_VitisAI(Dictionary<string, string> config)
+        public void AppendExecutionProvider_VitisAI(Dictionary<string, string> providerOptions)
         {
 #if __MOBILE__
             throw new NotSupportedException("The VitisAI Execution Provider is not supported in this build");
