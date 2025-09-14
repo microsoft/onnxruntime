@@ -299,8 +299,7 @@ namespace Microsoft.ML.OnnxRuntime
                     Handle,
                     keyPtrs,
                     valuePtrs,
-                    (UIntPtr)count));
-                
+                    (UIntPtr)count));                
             }
             finally
             {
