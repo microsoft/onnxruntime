@@ -265,50 +265,53 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="keys">Native keys instance</param>
         /// <param name="values">Native values instance</param>
         /// <param name="numEntries">Native numEntries instance</param>
-        public void AppendExecutionProvider_VitisAI(Dictionary<string, string> config)
+        public void AppendExecutionProvider_VitisAI(Dictionary<string, string> providerOptions)
         {
 #if __MOBILE__
             throw new NotSupportedException("The VitisAI Execution Provider is not supported in this build");
 #else
-            int count = config.Count;
-            IntPtr[] keyPtrs = new IntPtr[count];
-            IntPtr[] valuePtrs = new IntPtr[count];
+            int count = providerOptions.Count;
+            var keyPtrs = new IntPtr[count];
+            var valuePtrs = new IntPtr[count];
 
-            GCHandle[] pinnedKeyHandles = new GCHandle[count];
-            GCHandle[] pinnedValueHandles = new GCHandle[count];
-
-            string[] keys = config.Keys.ToArray();
-            string[] values = config.Values.ToArray();
+            var handles = new List<GCHandle>(count * 2);
 
             try
             {
-                for (int i = 0; i < count; i++)
+                int i = 0;
+                foreach (var kvp in providerOptions)
                 {
-                    byte[] keyBytes = System.Text.Encoding.UTF8.GetBytes(keys[i] + "\0");
-                    byte[] valueBytes = System.Text.Encoding.UTF8.GetBytes(values[i] + "\0");
+                    string keyWithNull = kvp.Key + "\0";
+                    string valueWithNull = kvp.Value + "\0";
 
-                    pinnedKeyHandles[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
-                    pinnedValueHandles[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+                    var keyHandle = GCHandle.Alloc(keyWithNull, GCHandleType.Pinned);
+                    var valHandle = GCHandle.Alloc(valueWithNull, GCHandleType.Pinned);
 
-                    keyPtrs[i] = pinnedKeyHandles[i].AddrOfPinnedObject();
-                    valuePtrs[i] = pinnedValueHandles[i].AddrOfPinnedObject();
+                    handles.Add(keyHandle);
+                    handles.Add(valHandle);
+
+                    keyPtrs[i] = keyHandle.AddrOfPinnedObject();
+                    valuePtrs[i] = valHandle.AddrOfPinnedObject();
+                    i++;
                 }
 
-                GCHandle pinnedKeyArray = GCHandle.Alloc(keyPtrs, GCHandleType.Pinned);
-                GCHandle pinnedValueArray = GCHandle.Alloc(valuePtrs, GCHandleType.Pinned);
-                UIntPtr numKeys = new UIntPtr((uint)count);
-                NativeApiStatus.VerifySuccess(
-                    NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
-                        handle, pinnedKeyArray.AddrOfPinnedObject(), pinnedValueArray.AddrOfPinnedObject(), numKeys));
+                IntPtr status = NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
+                    Handle,
+                    keyPtrs,
+                    valuePtrs,
+                    (UIntPtr)count);
+
+                if (status != IntPtr.Zero)
+                {
+                    NativeApiStatus.VerifySuccess(status);
+                }
             }
             finally
             {
-                for (int i = 0; i < count; i++)
+                foreach (var h in handles)
                 {
-                    if (pinnedKeyHandles[i].IsAllocated)
-                        pinnedKeyHandles[i].Free();
-                    if (pinnedValueHandles[i].IsAllocated)
-                        pinnedValueHandles[i].Free();
+                    if (h.IsAllocated) 
+                        h.Free();
                 }
             }
 #endif

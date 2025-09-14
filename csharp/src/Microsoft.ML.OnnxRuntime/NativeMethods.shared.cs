@@ -1324,7 +1324,7 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DSessionOptionsAppendExecutionProvider_VitisAI(
             IntPtr /*(OrtSessionOptions*)*/ options,
-            IntPtr keys, IntPtr values, UIntPtr numEntries);
+            IntPtr[] keys, IntPtr[] values, UIntPtr numEntries);
 
         public static DSessionOptionsAppendExecutionProvider_VitisAI SessionOptionsAppendExecutionProvider_VitisAI;
 
