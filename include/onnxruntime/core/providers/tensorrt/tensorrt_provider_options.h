@@ -52,6 +52,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_cuda_graph_enable{0};                          // Enable CUDA graph in ORT TRT
   const char* trt_preview_features{nullptr};             // Specify the preview features to be enabled, features should be separated by comma
                                                          // available keys: "ALIASED_PLUGIN_IO_10_03"
+  int trt_use_tf32{1};                                   // Enable TF32 in TensorRT builder for FP32 compute. Default 1 = true
 
   /*
    * Please note that there are rules for using following context model related provider options:

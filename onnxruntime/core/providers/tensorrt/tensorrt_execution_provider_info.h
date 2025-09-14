@@ -23,6 +23,8 @@ struct TensorrtExecutionProviderInfo {
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
   size_t max_workspace_size{0};
+  // By default, enable TF32 for FP32 compute when available
+  bool use_tf32{true};
   bool fp16_enable{false};
   bool bf16_enable{false};
   bool int8_enable{false};
