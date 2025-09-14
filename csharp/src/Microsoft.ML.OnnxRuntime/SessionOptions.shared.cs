@@ -295,16 +295,12 @@ namespace Microsoft.ML.OnnxRuntime
                     i++;
                 }
 
-                IntPtr status = NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
+                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
                     Handle,
                     keyPtrs,
                     valuePtrs,
-                    (UIntPtr)count);
-
-                if (status != IntPtr.Zero)
-                {
-                    NativeApiStatus.VerifySuccess(status);
-                }
+                    (UIntPtr)count));
+                
             }
             finally
             {
