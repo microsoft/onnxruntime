@@ -21,7 +21,7 @@ namespace contrib {
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                  \
                                     .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())                  \
                                     .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),                 \
-                                LayerNorm<true>);
+                                LayerNorm<true>);                                                           \
   ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalization, kMSDomain, 1, T, kCpuExecutionProvider,       \
                                 KernelDefBuilder()                                                          \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                  \
