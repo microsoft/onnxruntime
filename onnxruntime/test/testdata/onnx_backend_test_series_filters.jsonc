@@ -335,8 +335,7 @@
         "^test_quantizelinear_int4",
         "^test_quantizelinear_uint4",
         // topk uint64 is not implemented in ORT yet.
-        "^test_top_k_uint64",
-        "^test_clip_min_greater_than_max_cpu"
+        "^test_top_k_uint64"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -776,7 +775,8 @@
         //TODO: Resolve as a graph implementation that returns a constant inf tensor with appropriate strides
         "^test_reduce_max_empty_set_cpu",   // DNNL result in "(shapes (2, 1, 4), (1, 0, 1) mismatch)". this is the same for test_reduce_min_empty_set which is already in the list
         "^test_reduce_min_empty_set_cpu",
-        "^test_resize_upsample_sizes_nearest_not_smaller_cpu"
+        "^test_resize_upsample_sizes_nearest_not_smaller_cpu",
+        "^test_clip_min_greater_than_max_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
