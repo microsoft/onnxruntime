@@ -188,7 +188,7 @@ def main():
                 "--warning-mode",
                 "all",
                 *gradle_args,
-            ]
+            ],
             working_dir=java_working_dir,
         )
     else:
