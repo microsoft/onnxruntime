@@ -98,6 +98,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
 
     // Create model compilation options from the session options.
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags::OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(output_model_file);
 
@@ -107,6 +108,45 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
 }
+
+// Tests compiling a model using a plugin EP. Notably, this test uses the
+// "SessionOptionsAppendExecutionProvider" API function that accepts the EP name as an argument (not OrtEpDevices).
+TEST(OrtEpLibrary, PluginEp_OldAppendEpApi_GenEpContextModel) {
+  const OrtApi& c_api = Ort::GetApi();
+  ASSERT_ORTSTATUS_OK(c_api.RegisterExecutionProviderLibrary(*ort_env,
+                                                             Utils::example_ep_info.registration_name.c_str(),
+                                                             Utils::example_ep_info.library_path.c_str()));
+  const std::string& plugin_ep_name = Utils::example_ep_info.registration_name;
+
+  {
+    const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+    const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_mul_1_ctx.onnx");
+    std::filesystem::remove(output_model_file);
+
+    // Create session options with example plugin EP.
+    // NOTE: Using the old "SessionOptionsAppendExecutionProvider" API function.
+    // It will use a registered plugin EP library if there is no built-in EP with the given name.
+    // The plugin EP library must support at least one OrtHardwareDevice to be chosen.
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider(plugin_ep_name, ep_options);
+
+    // Create model compilation options from the session options.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags::OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    // Compile the model.
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    // Make sure the compiled model was generated.
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  ASSERT_ORTSTATUS_OK(c_api.UnregisterExecutionProviderLibrary(*ort_env,
+                                                               Utils::example_ep_info.registration_name.c_str()));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
