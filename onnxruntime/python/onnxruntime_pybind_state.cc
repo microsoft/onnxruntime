@@ -2298,7 +2298,10 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         ORT_THROW("External initializers are not supported in this build.");
 #endif
       })
-      .def("add_external_initializers_from_files_in_memory", [](PySessionOptions* options, py::list& names, py::list& buffers, py::list& lengths) -> void {
+      .def("add_external_initializers_from_files_in_memory", [](PySessionOptions* options,
+                                                                std::vector<std::string> names,
+                                                                std::vector<py::buffer> buffers,
+                                                                std::vector<size_t> lengths) -> void {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
         const auto num = names.size();
         ORT_ENFORCE(num == buffers.size() && num == lengths.size(),
@@ -2310,25 +2313,14 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         files_buffers.reserve(num);
 
         for (size_t i = 0; i < num; ++i) {
-          // names[i] must be str
-          ORT_ENFORCE(py::isinstance<py::str>(names[i]),
-                      "add_external_initializers_from_files_in_memory: each entry in 'names' must be a str");
-          file_names.emplace_back(ToPathString(py::str(names[i])));
+          // Convert name and buffer using pybind-provided conversions
+          file_names.emplace_back(ToPathString(names[i]));
 
-          // buffers[i] must support the buffer protocol (bytes, bytearray, memoryview, numpy array, etc.)
-          py::handle buf_obj = buffers[i];
-          ORT_ENFORCE(PyObject_CheckBuffer(buf_obj.ptr()) != 0,
-                      "add_external_initializers_from_files_in_memory: each entry in 'buffers' must be bytes-like (supports the buffer protocol)");
-          py::buffer buf = py::reinterpret_borrow<py::buffer>(buf_obj);
-          py::buffer_info info = buf.request();
-          char* data_ptr = reinterpret_cast<char*>(info.ptr);
+          // buffers[i] is a py::buffer; request() retrieves pointer without copying
+          py::buffer_info info = buffers[i].request();
+          char* data_ptr = static_cast<char*>(info.ptr);
 
-          // lengths[i] must be int
-          ORT_ENFORCE(py::isinstance<py::int_>(lengths[i]),
-                      "add_external_initializers_from_files_in_memory: each entry in 'lengths' must be an int");
-          size_t len = py::cast<size_t>(lengths[i]);
-
-          files_buffers.emplace_back(std::make_pair(data_ptr, len));
+          files_buffers.emplace_back(std::make_pair(data_ptr, lengths[i]));
         }
 
         ORT_THROW_IF_ERROR(options->value.AddExternalInitializersFromFilesInMemory(file_names, files_buffers));
@@ -2344,9 +2336,9 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 Provide external initializer file contents from memory.
 
 Args:
-  names: list[str] of external file names (as referenced by the model's external_data locations).
-  buffers: list[bytes-like] objects exposing the buffer protocol (e.g., bytes, bytearray, memoryview, numpy uint8 array) containing the corresponding file contents.
-  lengths: list[int] sizes in bytes for each buffer.
+  names: sequence[str] of external file names (as referenced by the model's external_data locations).
+  buffers: sequence[bytes-like] objects exposing the buffer protocol (e.g., bytes, bytearray, memoryview, numpy uint8 array) containing the corresponding file contents.
+  lengths: sequence[int] sizes in bytes for each buffer.
 
 Notes:
   - Keep the provided buffers alive until after session creation completes. ONNX Runtime copies needed data during session creation.
