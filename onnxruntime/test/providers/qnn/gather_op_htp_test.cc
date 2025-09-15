@@ -221,6 +221,16 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
                             ExpectedEPNodeAssignment::All);
 }
 
+// Test that int64 Gather runs on HTP backend.
+TEST_F(QnnHTPBackendTests, GatherOp_InputIndicesInt64) {
+  RunOpTest<int64_t, int64_t>("Gather",
+                              TestInputDef<int64_t>({3, 2}, false, {1, 2, 3, 4, 5, 6}),
+                              TestInputDef<int64_t>({2, 2}, true, {0, 1, 1, 2}),
+                              {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                              13,
+                              ExpectedEPNodeAssignment::All);
+}
+
 // Test the accuracy of a QDQ GatherND model on QNN EP. Checks if the QDQ model on QNN EP is as accurate as the QDQ model on CPU EP.
 template <typename QuantType, typename IndicesType>
 static void RunQDQGatherNDOpTest(const TestInputDef<float>& input_def,
