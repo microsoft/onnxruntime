@@ -76,7 +76,7 @@ extends:
           justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
       tsa:
         enabled: true
-        configFile: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+        configPath: '.config/tsaoptions.json'
       codeSignValidation:
         enabled: true
         break: true
