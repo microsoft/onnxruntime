@@ -204,6 +204,14 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
           const int64_t block_end = std::min(block_start + block_size, cols);
           const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
           const int64_t scale_idx = r * blocks_per_row + block_idx;
+
+          // Validate scale index bounds
+          const int64_t max_scale_idx = rows * blocks_per_row;
+          if (scale_idx < 0 || scale_idx >= max_scale_idx) {
+            // Skip this block if scale index is invalid
+            continue;
+          }
+
           const float scale = static_cast<float>(scales[scale_idx]);
 
           int64_t c = block_start;
@@ -257,6 +265,14 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
             const int64_t block_end = std::min(block_start + block_size, cols);
             const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
             const int64_t scale_idx = r * blocks_per_row + block_idx;
+
+            // Validate scale index bounds for 8-bit case
+            const int64_t max_scale_idx = rows * blocks_per_row;
+            if (scale_idx < 0 || scale_idx >= max_scale_idx) {
+              // Skip this block if scale index is invalid
+              continue;
+            }
+
             const float scale = static_cast<float>(scales[scale_idx]);
 
             for (c = block_start; c + 4 <= block_end; c += 4) {
@@ -297,6 +313,14 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
             const int64_t block_end = std::min(block_start + block_size, cols);
             const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
             const int64_t scale_idx = r * blocks_per_row + block_idx;
+
+            // Validate scale index bounds for 4-bit case
+            const int64_t max_scale_idx = rows * blocks_per_row;
+            if (scale_idx < 0 || scale_idx >= max_scale_idx) {
+              // Skip this block if scale index is invalid
+              continue;
+            }
+
             const float scale = static_cast<float>(scales[scale_idx]);
 
             for (int64_t c = block_start; c < block_end; c += 2) {
@@ -516,16 +540,13 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     max_tokens_per_expert = std::max(max_tokens_per_expert, tokens.size());
   }
 
-  const auto align_size = [](size_t size) -> size_t {
-    return (size + 63) & ~63;
-  };
-
-  const size_t A1_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(hidden_size));
-  const size_t C1_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(fc1_out_features));
-  const size_t A2_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(inter_size));
-  const size_t C2_size = align_size(static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(hidden_size));
-  const size_t B1_dequant_size = align_size(static_cast<size_t>(fc1_out_features) * static_cast<size_t>(hidden_size));
-  const size_t B2_dequant_size = align_size(static_cast<size_t>(hidden_size) * static_cast<size_t>(inter_size));
+  // Use consistent buffer sizes - no alignment needed for float arrays
+  const size_t A1_size = static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(hidden_size);
+  const size_t C1_size = static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(fc1_out_features);
+  const size_t A2_size = static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(inter_size);
+  const size_t C2_size = static_cast<size_t>(max_tokens_per_expert) * static_cast<size_t>(hidden_size);
+  const size_t B1_dequant_size = static_cast<size_t>(fc1_out_features) * static_cast<size_t>(hidden_size);
+  const size_t B2_dequant_size = static_cast<size_t>(hidden_size) * static_cast<size_t>(inter_size);
 
   const size_t workspace_elements_per_thread = A1_size + C1_size + A2_size + C2_size +
                                                B1_dequant_size + B2_dequant_size;
@@ -601,6 +622,13 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       const int64_t num_expert_tokens = static_cast<int64_t>(routes.size());
 
+      // Validate that the number of tokens doesn't exceed our allocation
+      if (static_cast<size_t>(num_expert_tokens) > max_tokens_per_expert) {
+        LOGS_DEFAULT(ERROR) << "Expert " << expert_idx << " has " << num_expert_tokens
+                            << " tokens but workspace allocated for max " << max_tokens_per_expert;
+        continue;
+      }
+
       float* A1 = thread_workspace;
       float* C1 = A1 + A1_size;
       float* A2 = C1 + C1_size;
@@ -617,7 +645,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           const int64_t end_idx = std::min(start_idx + dynamic_block_size, num_expert_tokens);
 
           for (int64_t i = start_idx; i < end_idx; ++i) {
-            const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
+            const int64_t route_idx = routes[static_cast<size_t>(i)];
+            // Validate route index to prevent division by zero or invalid token indices
+            if (route_idx < 0 || k_ <= 0) {
+              continue;  // Skip invalid routes
+            }
+            const int64_t token_idx = route_idx / k_;
+            if (token_idx < 0 || token_idx >= num_tokens) {
+              continue;  // Skip out-of-bounds token indices
+            }
             const float* src = input_float + token_idx * hidden_size;
             float* dst = A1 + i * hidden_size;
 
@@ -626,7 +662,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         });
       } else {
         for (int64_t i = 0; i < num_expert_tokens; ++i) {
-          const int64_t token_idx = routes[static_cast<size_t>(i)] / k_;
+          const int64_t route_idx = routes[static_cast<size_t>(i)];
+          // Validate route index to prevent division by zero or invalid token indices
+          if (route_idx < 0 || k_ <= 0) {
+            continue;  // Skip invalid routes
+          }
+          const int64_t token_idx = route_idx / k_;
+          if (token_idx < 0 || token_idx >= num_tokens) {
+            continue;  // Skip out-of-bounds token indices
+          }
           const float* src = input_float + token_idx * hidden_size;
           float* dst = A1 + i * hidden_size;
 
@@ -931,13 +975,30 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
         const int64_t route_idx = routes[static_cast<size_t>(i)];
+        // Validate route index to prevent division by zero or invalid token indices
+        if (route_idx < 0 || k_ <= 0) {
+          continue;  // Skip invalid routes
+        }
         const int64_t token_idx = route_idx / k_;
+        if (token_idx < 0 || token_idx >= num_tokens) {
+          continue;  // Skip out-of-bounds token indices
+        }
+        // Validate route_scale array bounds
+        if (route_idx < 0 || route_idx >= num_tokens * k_) {
+          continue;  // Skip if route_idx would be out of bounds for route_scale array
+        }
         const float weight = route_scale[route_idx];
 
         if (token_idx < 0 || token_idx >= num_tokens) continue;
 
         const size_t buffer_offset = static_cast<size_t>(token_idx) * static_cast<size_t>(hidden_size);
         if (buffer_offset + static_cast<size_t>(hidden_size) > output_buffer_size) continue;
+
+        // Simplified thread buffer validation
+        if (thread_id < 0 || thread_id >= num_expert_threads) continue;
+
+        // Validate source buffer bounds
+        if (i < 0 || i >= num_expert_tokens) continue;
 
         float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + buffer_offset;
         const float* src = C2 + i * hidden_size;
