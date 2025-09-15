@@ -3459,15 +3459,19 @@ common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpD
   for (const auto* def : def_list) {
     InlinedVector<SessionState::NodeInfo> node_info_vec;
     ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
-
-    // if we have a lot of inputs or there are a lot of execution providers it may be worth creating a map
-    // instead of doing a linear search each time.
-    const auto& ep_name = node_info_vec.front().p_node->GetExecutionProviderType();
-    auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
-      return entry->ep_name == ep_name;
-    });
-
-    ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    assert(!node_info_vec.empty());
+    // If we have an input that is not consumed by any node,
+    // including nodes in subgraphs, then we return nullptr.
+    const auto* p_node = node_info_vec.front().p_node;
+    if (p_node != nullptr) {
+      const auto ep_name = p_node->GetExecutionProviderType();
+      auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
+        return entry->ep_name == ep_name;
+      });
+      ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    } else {
+      ep_devices.push_back(nullptr);
+    }
   }
 
   return Status::OK();
