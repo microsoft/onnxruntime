@@ -300,16 +300,10 @@ void LaunchBatchTopKKernel(const T* topk_scores,
                                                               num_beams,    \
                                                               k);
 
-  if (k <= 4) {
-    BatchTopKKernelLauncher(4);
-  } else if (k <= 8) {
-    BatchTopKKernelLauncher(8);
-  } else if (k <= 16) {
-    BatchTopKKernelLauncher(16);
-  } else if (k <= 32) {
-    BatchTopKKernelLauncher(32);
+  if (k <= 8) {
+    BatchTopKKernelLauncher(8)
   } else {
-    BatchTopKKernelLauncher(64);
+    ORT_THROW("K>8 is not supported for beam search");
   }
 }
 
@@ -351,16 +345,10 @@ void BeamSearchTopK(
                          tmp_indices_1st_stage,   \
                          stream);
 
-  if (k <= 4) {
-    TopKLauncher(4)
-  } else if (k <= 8) {
+  if (k <= 8) {
     TopKLauncher(8)
-  } else if (k <= 16) {
-    TopKLauncher(16)
-  } else if (k <= 32) {
-    TopKLauncher(32)
   } else {
-    TopKLauncher(64)
+    ORT_THROW("K>8 is not supported for beam search");
   }
 
   LaunchBatchTopKKernel(tmp_values_2nd_stage,
