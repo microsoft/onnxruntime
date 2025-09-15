@@ -61,11 +61,25 @@ MlasSgemmKernelZero_sve(
     float alpha
 );
 
-MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-MLASCALL
-void
+void MLAS_SVE_TARGET
+    MLAS_FORCEINLINE MLASCALL
+    SVE_ZERO_INITIALIZE(float* d);
+
+void MLAS_SVE_TARGET
+    MLAS_FORCEINLINE MLASCALL
+    SVE_LOAD_STORE(float* D, const float* b);
+
+void MLAS_SVE_TARGET MLASCALL
 SCATTER_STORE(float* d, const float* b);
+
+void MLAS_SVE_TARGET
+    MLASCALL
+    SVE_TRANSPOSE(
+        float*& D,
+        const float*& b,
+        size_t ldb,
+        size_t& x
+    );
 
 MLAS_SVE_TARGET
 inline int
@@ -287,10 +301,10 @@ MlasSveLoadFloat32(MLAS_SVBOOL Pred, const float* Buffer)
     return svld1_f32(Pred, Buffer);
 }
 
-__attribute__((target("arch=armv8.2-a+sve")))  // MLAS_SVE_TARGET
+MLAS_SVE_TARGET
 MLAS_SVBOOL
-    MLAS_FORCEINLINE
-    MlasSveptrue(void)
+MLAS_FORCEINLINE
+MlasSveptrue(void)
 {
     return svptrue_b32();
 }
@@ -587,10 +601,7 @@ MlasSvedupFloat32(float Vector)
     return svdup_f32(Vector);
 }
 
-MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
-Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
+void inline Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
 {
     const static int VL = svcntw();
     MLAS_SVBOOL p = svwhilelt_b32(0, VL / 4);
@@ -615,9 +626,7 @@ Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
     MlasSveStoreFloat32(p4, &D[36], t0123);
 }
 
-MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
+void inline MLASCALL
 Transpose_SVE256_4x4(float* D, const float* B, size_t ldb)
 {
     const static int VL = svcntw();
@@ -640,9 +649,8 @@ Transpose_SVE256_4x4(float* D, const float* B, size_t ldb)
     MlasSveStoreFloat32(p1, &D[44], second_t0123);
 }
 
-MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
+MLASCALL
+inline void
 Transpose_SVE128_4x4(float* D, const float* B, size_t ldb)
 {
     const static int VL = svcntw();
@@ -671,7 +679,7 @@ Transpose_SVE128_4x4(float* D, const float* B, size_t ldb)
     MlasSveStoreFloat32(p, &D[48], v1);
 }
 
-MLAS_SVE_TARGET
+MLASCALL
 MLAS_FORCEINLINE
 void
 Transpose_SVE256_8x8(float* D, const float* B, size_t ldb)
@@ -743,9 +751,8 @@ Transpose_SVE256_8x8(float* D, const float* B, size_t ldb)
     MlasSveStoreFloat32(p, &D[112], v1);
 }
 
-MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
+MLASCALL
+inline void
 Transpose_SVE512_16x16(float* D, const float* B, size_t ldb)
 {
     const static int VL = svcntw();
@@ -902,7 +909,7 @@ Transpose_SVE512_16x16(float* D, const float* B, size_t ldb)
 }
 
 template <unsigned N>
-MLAS_FORCEINLINE void
+inline void
 TransposePackBNx8(
     float* D,
     const float* B,
@@ -939,87 +946,8 @@ MlasSveTransposePackBNx4(
     }
 }
 
-MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
-SVE_TRANSPOSE(
-    float*& D,
-    const float*& b,
-    size_t ldb,
-    size_t& x
-)
-{
-    const static int VL = svcntw();
-    if (VL == 16) {
-        while (x >= 16) {
-            Transpose_SVE512_16x16(&D[0], &b[0], ldb);
-            D += 256;
-            b += 16;
-            x = x - 16;
-        }
-    } else if (VL == 8) {
-        while (x >= 8) {
-            TransposePackBNx8<16>(&D[0], &b[0], ldb);
-            D += 128;
-            b += 8;
-            x = x - 8;
-        }
-    }
-
-    while (x >= 4) {
-        MlasSveTransposePackBNx4<16>(&D[0], &b[0], ldb);
-
-        D += 16 * 4;
-        b += 4;
-        x = x - 4;
-    }
-}
-
-MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
-SCATTER_STORE(float* d, const float* b)
-{
-    MLAS_SVBOOL pb = svwhilelt_b32((int)0, 4);        // MSB 4 bits
-    MLAS_SVFLOAT32 vec0 = MlasSveLoadFloat32(pb, b);  // Load a set of 4 elements
-
-    svuint32_t idx = svindex_u32(0, 1);
-    MLAS_SVBOOL pb_first_half = svcmpeq_u32(pb, idx, svdup_n_u32(0));
-    MLAS_SVBOOL pb_second_half = svcmpeq_u32(pb, idx, svdup_n_u32(1));
-    MLAS_SVBOOL pb_third_half = svcmpeq_u32(pb, idx, svdup_n_u32(2));
-    MLAS_SVBOOL pb_fourth_half = svcmpeq_u32(pb, idx, svdup_n_u32(3));
-
-    MlasSveStoreFloat32(pb_first_half, &d[0], vec0);
-    MlasSveStoreFloat32(pb_second_half, &d[15], vec0);
-    MlasSveStoreFloat32(pb_third_half, &d[30], vec0);
-    MlasSveStoreFloat32(pb_fourth_half, &d[45], vec0);
-}
-
-void MLAS_SVE_TARGET
-    MLAS_FORCEINLINE MLASCALL
-    SVE_LOAD_STORE(float* D, const float* b)
-{
-    for (int i = 0; i < MLAS_SGEMM_STRIDEN_THREAD_ALIGN; i += VL()) {
-        svfloat32_t vec0 = MlasSveLoadFloat32(svptrue_b32(), b + i);
-        MlasSveStoreFloat32(svptrue_b32(), D + i, vec0);
-    }
-}
-
-void MLAS_SVE_TARGET
-    MLAS_FORCEINLINE MLASCALL
-    SVE_ZERO_INITIALIZE(float* d)
-{
-    if (VL() == PACKED_B_BLOCK_WIDTH) {
-        MlasSveStoreFloat32(svptrue_b32(), d, svdup_f32(0));
-    } else {
-        MlasSveStoreFloat32(svptrue_b32(), d, svdup_f32(0));
-        MlasSveStoreFloat32(svptrue_b32(), d + VL(), svdup_f32(0));
-    }
-}
-
 // GCC: Pop options after SVE-specific functions
 #ifndef __clang__
 #pragma GCC pop_options
 #endif
-
 #endif

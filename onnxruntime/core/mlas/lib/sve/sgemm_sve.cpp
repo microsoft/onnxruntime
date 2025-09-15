@@ -519,4 +519,78 @@ MlasSgemmKernelAdd_sve(
     }
 }
 
+void MLAS_SVE_TARGET
+    MLASCALL
+    SVE_TRANSPOSE(
+        float*& D,
+        const float*& b,
+        size_t ldb,
+        size_t& x
+    )
+{
+    const static int VL = svcntw();
+    if (VL == 16) {
+        while (x >= 16) {
+            Transpose_SVE512_16x16(&D[0], &b[0], ldb);
+            D += 256;
+            b += 16;
+            x = x - 16;
+        }
+    } else if (VL == 8) {
+        while (x >= 8) {
+            TransposePackBNx8<16>(&D[0], &b[0], ldb);
+            D += 128;
+            b += 8;
+            x = x - 8;
+        }
+    }
+
+    while (x >= 4) {
+        MlasSveTransposePackBNx4<16>(&D[0], &b[0], ldb);
+
+        D += 16 * 4;
+        b += 4;
+        x = x - 4;
+    }
+}
+
+void MLAS_SVE_TARGET MLASCALL
+SCATTER_STORE(float* d, const float* b)
+{
+    MLAS_SVBOOL pb = svwhilelt_b32((int)0, 4);        // MSB 4 bits
+    MLAS_SVFLOAT32 vec0 = MlasSveLoadFloat32(pb, b);  // Load a set of 4 elements
+
+    svuint32_t idx = svindex_u32(0, 1);
+    MLAS_SVBOOL pb_first_half = svcmpeq_u32(pb, idx, svdup_n_u32(0));
+    MLAS_SVBOOL pb_second_half = svcmpeq_u32(pb, idx, svdup_n_u32(1));
+    MLAS_SVBOOL pb_third_half = svcmpeq_u32(pb, idx, svdup_n_u32(2));
+    MLAS_SVBOOL pb_fourth_half = svcmpeq_u32(pb, idx, svdup_n_u32(3));
+
+    MlasSveStoreFloat32(pb_first_half, &d[0], vec0);
+    MlasSveStoreFloat32(pb_second_half, &d[15], vec0);
+    MlasSveStoreFloat32(pb_third_half, &d[30], vec0);
+    MlasSveStoreFloat32(pb_fourth_half, &d[45], vec0);
+}
+
+void MLAS_SVE_TARGET
+    MLAS_FORCEINLINE MLASCALL
+    SVE_LOAD_STORE(float* D, const float* b)
+{
+    for (int i = 0; i < MLAS_SGEMM_STRIDEN_THREAD_ALIGN; i += VL()) {
+        svfloat32_t vec0 = MlasSveLoadFloat32(svptrue_b32(), b + i);
+        MlasSveStoreFloat32(svptrue_b32(), D + i, vec0);
+    }
+}
+
+void MLAS_SVE_TARGET
+    MLAS_FORCEINLINE MLASCALL
+    SVE_ZERO_INITIALIZE(float* d)
+{
+    if (VL() == PACKED_B_BLOCK_WIDTH) {
+        MlasSveStoreFloat32(svptrue_b32(), d, svdup_f32(0));
+    } else {
+        MlasSveStoreFloat32(svptrue_b32(), d, svdup_f32(0));
+        MlasSveStoreFloat32(svptrue_b32(), d + VL(), svdup_f32(0));
+    }
+}
 #endif
