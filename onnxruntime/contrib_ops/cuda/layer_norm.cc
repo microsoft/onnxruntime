@@ -23,8 +23,8 @@ namespace cuda {
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
                                     .TypeConstraint("U", DataTypeImpl::GetTensorType<U>())                           \
                                     .TypeConstraint("V", DataTypeImpl::GetTensorType<V>()),                          \
-                                onnxruntime::cuda::LayerNorm<T, U, V, true>);
-  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalization, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider,  \
+                                onnxruntime::cuda::LayerNorm<T, U, V, true>);                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalization, kMSDomain, 1, T##_##U##_##V, kCudaExecutionProvider,   \
                                 (*KernelDefBuilder::Create())                                                        \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
                                     .TypeConstraint("U", DataTypeImpl::GetTensorType<U>())                           \
