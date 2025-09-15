@@ -1,4 +1,4 @@
-/*++
+/*++ 
 
 Copyright (c) Intel Corporation. All rights reserved.
 
@@ -14,6 +14,7 @@ Abstract:
 
 --*/
 #include "mlasi.h"
+#include "core/common/narrow.h"
 
 void
 MLASCALL
@@ -71,16 +72,16 @@ MlasConvertHalfToFloatBufferInParallel(
             ThreadPool, Count,
             // Tensor Op Cost
             {
-                gsl::narrow<double>(Count * sizeof(MLAS_FP16)),  // Size of no. of elements in bytes to be loaded
-                gsl::narrow<double>(Count * sizeof(float)),      // Size of no. of elements in bytes to be stored
-                gsl::narrow<double>(num_compute_cycles),         // No. of compute cycles required for the tensor op
+                onnxruntime::narrow<double>(Count * sizeof(MLAS_FP16)),  // Size of no. of elements in bytes to be loaded
+                onnxruntime::narrow<double>(Count * sizeof(float)),      // Size of no. of elements in bytes to be stored
+                onnxruntime::narrow<double>(num_compute_cycles),         // No. of compute cycles required for the tensor op
             },
             // Lambda function required by TryParallelFor method
             [Source, Destination](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
                 MlasConvertHalfToFloatBuffer(
                     Source + first_span,
                     Destination + first_span,
-                    gsl::narrow<std::ptrdiff_t>(last_span - first_span));
+                    onnxruntime::narrow<std::ptrdiff_t>(last_span - first_span));
             }
         );
     }
@@ -129,28 +130,27 @@ MlasConvertFloatToHalfBufferInParallel(
         // Estimate compute cycles (heuristics similar to Half Float path)
         size_t num_compute_cycles;
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasSSE3()) {
-            num_compute_cycles = gsl::narrow<std::ptrdiff_t>(Count >> 1);
+            num_compute_cycles = onnxruntime::narrow<std::ptrdiff_t>(Count >> 1);
         } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasAVX2()) {
-            num_compute_cycles = gsl::narrow<std::ptrdiff_t>(Count >> 2);
+            num_compute_cycles = onnxruntime::narrow<std::ptrdiff_t>(Count >> 2);
         } else {
-            num_compute_cycles = gsl::narrow<std::ptrdiff_t>(Count * 10);
+            num_compute_cycles = onnxruntime::narrow<std::ptrdiff_t>(Count * 10);
         }
 
         MLAS_THREADPOOL::TryParallelFor(
             ThreadPool, Count,
             {
-                gsl::narrow<double>(Count * sizeof(float)),       // bytes to load
-                gsl::narrow<double>(Count * sizeof(MLAS_FP16)),   // bytes to store
-                gsl::narrow<double>(num_compute_cycles),          // compute cost
+                onnxruntime::narrow<double>(Count * sizeof(float)),       // bytes to load
+                onnxruntime::narrow<double>(Count * sizeof(MLAS_FP16)),   // bytes to store
+                onnxruntime::narrow<double>(num_compute_cycles),          // compute cost
             },
             [Source, Destination](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
                 MlasConvertFloatToHalfBuffer(
                     Source + first_span,
                     Destination + first_span,
-                    gsl::narrow<double>(last_span - first_span));
+                    onnxruntime::narrow<size_t>(last_span - first_span));
             }
         );
     }
 #endif // BUILD_MLAS_NO_ONNXRUNTIME
 }
-
