@@ -123,7 +123,6 @@
 
 #include <functional>
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/endian.h"
 #include "onnx/onnx_pb.h"
 
 namespace OrtEpUtils {
@@ -185,6 +184,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::ModelProto& model_proto,
                             HandleInitializerDataFunc handle_initializer_data_func = nullptr);
+/// <summary>
+/// Convert the endianess of data based of tensor element type. Mainly used in BE systems.
+/// </summary>
+/// <param name="value_info">OrtValueInfo for the initializer. Can be used to query name, type, shape,
+///                           and consumer nodes.</param>
+/// <param name="data">Pointer to data buffer.</param>
+/// <param name="bytes">Length of data buffer.</param>
+/// <returns>An Ort::Status indicating success or an error.</returns>
+Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes);
+
 }  // namespace OrtEpUtils
 
 // End of header
@@ -230,7 +239,26 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
 
 static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info, onnx::ValueInfoProto& value_info_proto);
 static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
-static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes);
+static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element_type, size_t& element_size);
+static void SwapByteOrderInplace(void* data, const size_t& data_len, const size_t& element_size);
+static constexpr bool isBigEndian();
+
+static constexpr bool isBigEndian() {
+#if defined(_WIN32)
+  const int little = 0;
+  const int big = 1;
+  const int native = little;
+#elif defined(__GNUC__) || defined(__clang__)
+  const int little = __ORDER_LITTLE_ENDIAN__;
+  const int big = __ORDER_BIG_ENDIAN__;
+  const int native = __BYTE_ORDER__;
+#endif
+  if constexpr (native == big) {
+    return true;
+  } else {
+    return false;
+  }
+}
 
 Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::GraphProto& graph_proto,
@@ -438,7 +466,12 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       } else {
         // User wants to store data inline the TensorProto's raw_data
         tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
-        onnxruntime::utils::SetRawDataInTensorProto(*tensor_proto, data, data_bytes);
+        if constexpr (isBigEndian()) {
+          size_t element_size = 0;
+          GetTensorElementSize(initializer_elem_type, element_size);
+          SwapByteOrderInplace(const_cast<void*>(data), data_bytes, element_size);
+        }
+        tensor_proto->set_raw_data(data, data_bytes);
       }
     }
   } catch (const Ort::Exception& ex) {
@@ -698,7 +731,12 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
         const size_t data_bytes = tensor.GetTensorSizeInBytes();
 
         // Copy the Ortvalue to TensorProto as raw data
-        onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, data, data_bytes);
+        if constexpr (isBigEndian()) {
+          size_t element_size = 0;
+          GetTensorElementSize(element_type, element_size);
+          SwapByteOrderInplace(const_cast<void*>(data), data_bytes, element_size);
+        }
+        tensor_proto.set_raw_data(data, data_bytes);
 
         *(attr_proto.mutable_t()) = std::move(tensor_proto);
         break;
@@ -717,10 +755,26 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
   return Ort::Status{nullptr};
 }
 
-static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes) {
-  if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
+Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes) {
+  if constexpr (!isBigEndian()) {
     return Ort::Status{nullptr};
   }
+  std::vector<int64_t> initializer_dims;
+  std::vector<std::string> initializer_sym_dims;
+  ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  size_t element_size = 0;
+  Ort::ConstValueInfo ort_value_info{value_info};
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, false,
+                                                                  initializer_elem_type, initializer_dims,
+                                                                  initializer_sym_dims));
+  GetTensorElementSize(initializer_elem_type, element_size);
+  if (element_size != 1) {
+    SwapByteOrderInplace(data, bytes, element_size);
+  }
+  return Ort::Status{nullptr};
+}
+
+static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element_type, size_t& element_size) {
   using TensorElemDataMap = std::unordered_map<ONNXTensorElementDataType, size_t>;
   static TensorElemDataMap tensor_elem_data_size{
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
@@ -743,25 +797,25 @@ static Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* dat
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, sizeof(uint8_t)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(uint8_t)},
   };
-  std::vector<int64_t> initializer_dims;
-  std::vector<std::string> initializer_sym_dims;
-  ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  size_t element_size = 0;
-  Ort::ConstValueInfo ort_value_info{value_info};
-  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, false,
-                                                                  initializer_elem_type, initializer_dims,
-                                                                  initializer_sym_dims));
-  auto pos = tensor_elem_data_size.find(initializer_elem_type);
+  auto pos = tensor_elem_data_size.find(element_type);
   if (pos == tensor_elem_data_size.end()) {
-    std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(initializer_elem_type));
+    std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(element_type));
     return Ort::Status(err_msg.c_str(), ORT_FAIL);
   }
   element_size = pos->second;
-  if (element_size != 1) {
-    gsl::span<std::byte> span = gsl::make_span(reinterpret_cast<std::byte*>(data), bytes);
-    onnxruntime::utils::SwapByteOrderInplace(element_size, span);
-  }
   return Ort::Status{nullptr};
+}
+
+static void SwapByteOrderInplace(void* data, const size_t& data_len, const size_t& element_size) {
+  char* bytes = reinterpret_cast<char*>(data);
+  size_t num_elements = data_len / element_size;
+  for (size_t i = 0; i < num_elements; ++i) {
+    char* start_byte = bytes + i * element_size;
+    char* end_byte = start_byte + element_size - 1;
+    for (size_t count = 0; count < element_size / 2; ++count) {
+      std::swap(*start_byte++, *end_byte--);
+    }
+  }
 }
 
 }  // namespace OrtEpUtils
