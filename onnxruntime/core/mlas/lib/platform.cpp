@@ -591,6 +591,7 @@ Return Value:
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
     }
 #endif
+
     //
     // Check if the processor supports ASIMD I8MM instructions.
     //
