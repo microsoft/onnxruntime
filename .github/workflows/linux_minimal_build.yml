@@ -12,8 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
-    || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -33,7 +32,7 @@ jobs:
         with:
           submodules: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
 
@@ -69,7 +68,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
 
@@ -87,8 +86,7 @@ jobs:
       - name: Run Build 2 (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
           mode: 'update' # CMake configure step
           extra_build_flags: >-
@@ -102,8 +100,7 @@ jobs:
       - name: Run Build 2 (Build)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug # From original --config Debug
           mode: 'build' # Actual build step
           extra_build_flags: >-
@@ -128,10 +125,10 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
-    
+
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
         with:
           vcpkg-version: '2025.06.13'
@@ -162,7 +159,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
 
@@ -194,7 +191,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
 
@@ -228,7 +225,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
 
@@ -247,8 +244,7 @@ jobs:
       - name: Run Build 5 (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'update'
           extra_build_flags: >-
@@ -260,8 +256,7 @@ jobs:
       - name: Run Build 5 (Build)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'build'
           extra_build_flags: >-
@@ -272,8 +267,7 @@ jobs:
       - name: Run Build 5 (Test)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Debug
           mode: 'test'
           extra_build_flags: >-
@@ -316,8 +310,7 @@ jobs:
       - name: Run Build 6a (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'update'
           extra_build_flags: >-
@@ -332,8 +325,7 @@ jobs:
       - name: Run Build 6a (Build)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'build'
           extra_build_flags: >-
@@ -349,8 +341,7 @@ jobs:
       - name: Run Build 6a (Test)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel
           mode: 'test'
           extra_build_flags: >-
@@ -396,8 +387,7 @@ jobs:
       - name: Run Build 6b (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
           mode: 'update'
           extra_build_flags: >-
@@ -415,8 +405,7 @@ jobs:
       - name: Run Build 6b (Build)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
           mode: 'build'
           extra_build_flags: >-
@@ -471,8 +460,7 @@ jobs:
       - name: Run Build 6c (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
           mode: 'update'
           extra_build_flags: >-
@@ -490,8 +478,7 @@ jobs:
       - name: Run Build 6c (Build)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.8
         with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
-            }}
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: MinSizeRel # From original --config MinSizeRel
           mode: 'build'
           extra_build_flags: >-
@@ -521,7 +508,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
       - name: Download Test Data Artifact
