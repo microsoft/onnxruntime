@@ -1,6 +1,6 @@
 {
   "notificationAliases": ["ort-engsys@microsoft.com"],
-  "areaPath": "ONNX Runtime\\Engineering Systems",
+  "areaPath": "ONNX Runtime/Engineering Systems",
   "codebaseName": "onnxruntime",
   "instanceUrl": "https://aiinfra.visualstudio.com/",
   "projectName": "ONNX Runtime",
