@@ -505,6 +505,24 @@ TEST(CApiTest, TestInputPassThroughToOutput) {
   ASSERT_EQ(7U, outputs_meminfos.size());
 }
 
+TEST(CApiTest, TestDanglingInput) {
+  // Here we test an issue with segments_ids that is an input not consumed by anything
+  // This kind of model is unlikely to be used in practice but we want to make sure it works
+  const ORTCHAR_T* model_uri = TSTR("test_embed_layer_norm_unit_test_batch1_empty_segment.onnx");
+  Ort::Session session(*ort_env, model_uri, Ort::SessionOptions{});
+  auto inputs_meminfos = session.GetMemoryInfoForInputs();
+  ASSERT_EQ(2U, inputs_meminfos.size());
+  auto outputs_meminfos = session.GetMemoryInfoForOutputs();
+  ASSERT_EQ(2U, outputs_meminfos.size());
+  auto inputs_epdevices = session.GetEpDeviceForInputs();
+  ASSERT_EQ(2U, inputs_epdevices.size());
+  // One of the devices returning is null since the input is not consumed
+  // there is not a device for it.
+  const bool null_present = std::any_of(inputs_epdevices.begin(), inputs_epdevices.end(),
+                                        [](const auto& device) { return device == nullptr; });
+  ASSERT_TRUE(null_present);
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(CApiTest, SparseOutputModel) {
   std::vector<int64_t> dense_shape{3, 3};
