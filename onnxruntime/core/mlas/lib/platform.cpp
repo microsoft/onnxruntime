@@ -17,10 +17,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef USE_SVE
-#include "sve/mlasi_sve.h"
-#endif
-
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
@@ -595,11 +591,6 @@ Return Value:
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
     }
 #endif
-
-#if defined(USE_SVE)
-    //this->GemmFloatKernel = MlasSgemmKernel_sve;
-#endif
-
     //
     // Check if the processor supports ASIMD I8MM instructions.
     //
