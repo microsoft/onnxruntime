@@ -1613,7 +1613,7 @@ TEST(MathOpTest, Sum_6) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TRT10: Disabled due to segfault caused by older opset 6
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1640,7 +1640,7 @@ TEST(MathOpTest, Sum_6_double) {
 #if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TRT10: Disabled due to segfault caused by older opset 6
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TRT10: Disabled due to segfault caused by older opset 6
 #endif
 }
 
@@ -1666,7 +1666,7 @@ TEST(MathOpTest, Sum_8_Test1) {
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
 #endif
 }
 
@@ -1692,7 +1692,7 @@ TEST(MathOpTest, Sum_8_Test1_double) {
   // This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
 #endif
 }
 TEST(MathOpTest, Sum_8_Test2) {

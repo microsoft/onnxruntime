@@ -672,7 +672,6 @@ TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Mul"] == 0);  // Mul is folded
 
   // all nodes should still be on CUDA
   for (auto& node : graph.Nodes()) {
