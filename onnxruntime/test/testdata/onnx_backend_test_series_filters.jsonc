@@ -123,6 +123,10 @@
         "^test_if_opt",
         "^test_loop16_seq_none",
         "^test_identity_opt",
+        // rotary dim should be fixed in onnx==1.19.1
+        "^test_rotary_embedding_no_position_ids_rotary_dim",
+        "^test_rotary_embedding_with_interleaved_rotary_dim",
+        "^test_rotary_embedding_with_rotary_dim",
         "^test_rotary_embedding_expanded", //webgpu
         "^test_rotary_embedding_no_position_ids_expanded", //webgpu
         // Following tests are for opset 16 ops and are not yet implemented in ORT
