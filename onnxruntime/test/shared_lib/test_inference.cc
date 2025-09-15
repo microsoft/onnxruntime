@@ -508,7 +508,7 @@ TEST(CApiTest, TestInputPassThroughToOutput) {
 TEST(CApiTest, TestDanglingInput) {
   // Here we test an issue with segments_ids that is an input not consumed by anything
   // This kind of model is unlikely to be used in practice but we want to make sure it works
-  const ORTCHAR_T* model_uri = TSTR("test_embed_layer_norm_unit_test_batch1_empty_segment.onnx");
+  const ORTCHAR_T* model_uri = TSTR("testdata/test_dangling_input_segment_ids.onnx");
   Ort::Session session(*ort_env, model_uri, Ort::SessionOptions{});
   auto inputs_meminfos = session.GetMemoryInfoForInputs();
   ASSERT_EQ(2U, inputs_meminfos.size());
