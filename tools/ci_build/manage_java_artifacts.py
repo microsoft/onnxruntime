@@ -179,7 +179,7 @@ def main():
     if args.java_artifact_id == "onnxruntime_gpu":
         gradle_args.append("-DUSE_CUDA")
         gradle_args.append("-DUSE_TENSORRT")
-    run_command([str(gradle_executable_path), "cmakeBuild"] + gradle_args, working_dir=java_working_dir)
+    run_command([str(gradle_executable_path), "cmakeBuild", *gradle_args], working_dir=java_working_dir)
     if args.build_only:
         run_command(
             [
@@ -198,8 +198,8 @@ def main():
                 "cmakeCheck",
                 "--warning-mode",
                 "all",
-            ]
-            + gradle_args,
+                *gradle_args,
+            ],
             working_dir=java_working_dir,
         )
 
