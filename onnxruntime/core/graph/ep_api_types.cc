@@ -680,9 +680,11 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   }
 
   // Iterate through nodes again and update the map of NodeIndex to EpNode*
-  index_to_ep_node.Resize(min_node_index, max_node_index);
-  for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
-    index_to_ep_node.SetEpNode(ep_node->GetInternalNode().Index(), ep_node.get());
+  if (!ep_nodes.empty()) {
+    index_to_ep_node.Resize(min_node_index, max_node_index);
+    for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
+      index_to_ep_node.SetEpNode(ep_node->GetInternalNode().Index(), ep_node.get());
+    }
   }
 
   // If this is a subgraph, add the OrtValueInfo and OrtValue objects that come from the outer scope.

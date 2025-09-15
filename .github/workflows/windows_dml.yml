@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0 # Fetch all history for all tags and branches
           submodules: 'none'
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: x64
@@ -47,7 +47,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20.x'
 
@@ -67,7 +67,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
@@ -81,13 +81,6 @@ jobs:
       - name: NuGet restore
         run: nuget restore ${{ github.workspace }}\packages.config -ConfigFile ${{ github.workspace }}\NuGet.config -PackagesDirectory ${{ github.workspace }}\RelWithDebInfo
         shell: cmd
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh

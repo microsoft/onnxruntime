@@ -169,34 +169,48 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     int32_t x_type;
     ORT_RETURN_IF_NOT(GetType(*input_defs[0], x_type, logger), "Cannot get data type of input x");
 
+    // The WebNN dequantizeLinear op requires the scale and zero_point tensors to have the
+    // same rank as the input tensor. So we need to reshape the x_zero_point tensor
+    // to match the input rank.
     emscripten::val x_zero_point, w_zero_point;
-    std::vector<int64_t> x_zero_point_shape;
-    if (TensorExists(input_defs, 2)) {
+    const auto input_rank = input_shape.size();
+    std::vector<uint32_t> target_shape(input_rank, 1);
+    if (TensorExists(input_defs, 2)) {  // x_zero_point
       x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
-      ORT_RETURN_IF_NOT(GetShape(*input_defs[2], x_zero_point_shape, logger), "Cannot get shape of x_zero_point");
+      common_options.set("label", node.Name() + "_reshape_x_zero_point");
+      x_zero_point = model_builder.GetBuilder().call<emscripten::val>(
+          "reshape", x_zero_point, emscripten::val::array(target_shape), common_options);
     } else {
-      x_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0);
+      x_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0, target_shape);
     }
-    // Scale is not used by ConvInteger but required by DequantizeLinear. So set it to default value 1.0f.
-    // The x_zero_point must be a scalar and the scale input should have the same shape as the zero point input.
-    // So the x_scale must be a scalar too.
-    // ONNX allows 1D tensor of size 1 as scalar. So explicitly set the shape of x_scale to x_zero_point_shape.
+    // Scale is not used by ConvInteger but required by DequantizeLinear. So set it to default value 1.0f with
+    // the same shape as x_zero_point.
     emscripten::val x_scale = model_builder.CreateOrGetConstant<float>(
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, GetNarrowedIntFromInt64<uint32_t>(x_zero_point_shape));
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_shape);
+
     // Dequantize x to Float32
     common_options.set("label", node.Name() + "_dequantized_x");
     input = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", input, x_scale, x_zero_point,
                                                              common_options);
 
     std::vector<int64_t> w_zero_point_shape;
-    if (TensorExists(input_defs, 3)) {
+    if (TensorExists(input_defs, 3)) {  // w_zero_point
       w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
       ORT_RETURN_IF_NOT(GetShape(*input_defs[3], w_zero_point_shape, logger), "Cannot get shape of w_zero_point");
+      // Now target_shape is [1, 1, 1, 1].
+      // If w_zero_point is per-tensor quantization (a scalar), reshape it to target_shape.
+      // If w_zero_point is per-channel quantization (a 1-D tensor), reshape it to [1, C_out, 1, 1].
+      if (w_zero_point_shape.size() == 1) {
+        target_shape[1] = SafeInt<uint32_t>(w_zero_point_shape[0]);
+      }
+      common_options.set("label", node.Name() + "_reshape_w_zero_point");
+      w_zero_point = model_builder.GetBuilder().call<emscripten::val>(
+          "reshape", w_zero_point, emscripten::val::array(target_shape), common_options);
     } else {
-      w_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0);
+      w_zero_point = model_builder.CreateOrGetConstant<uint8_t>(x_type, 0, target_shape);
     }
     emscripten::val w_scale = model_builder.CreateOrGetConstant<float>(
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, GetNarrowedIntFromInt64<uint32_t>(w_zero_point_shape));
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 1.0f, target_shape);
     // Dequantize w to Float32
     common_options.set("label", node.Name() + "_dequantized_w");
     filter = model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", filter, w_scale, w_zero_point,
@@ -245,9 +259,9 @@ bool ConvOpBuilder::IsOpSupportedImpl(const GraphViewer&,
     return false;
   }
 
-  const auto input_size = input_shape.size();
-  if (input_size != 4 && input_size != 3) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "]'s input dimension: " << input_size
+  const auto input_rank = input_shape.size();
+  if (input_rank != 4 && input_rank != 3) {
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "]'s input dimension: " << input_rank
                           << ". Only conv 1d / 2d is supported.";
     return false;
   }
@@ -258,9 +272,9 @@ bool ConvOpBuilder::IsOpSupportedImpl(const GraphViewer&,
     return false;
   }
 
-  const auto weight_size = weight_shape.size();
-  if (weight_size != 4 && weight_size != 3) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "]'s weight dimension: " << weight_size
+  const auto weight_rank = weight_shape.size();
+  if (weight_rank != 4 && weight_rank != 3) {
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "]'s weight dimension: " << weight_rank
                           << ". Only conv 1d / 2d is supported.";
     return false;
   }
