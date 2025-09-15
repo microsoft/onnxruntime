@@ -1,5 +1,4 @@
----
-name: Windows QNN CI Pipeline
+name: Windows x64 QNN CI Pipeline
 
 on:
   push:
@@ -18,7 +17,7 @@ concurrency:
 
 jobs:
   build_test_qnn_ep:
-    name: Windows QNN CI Pipeline (${{ matrix.QnnLibKind }})
+    name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     timeout-minutes: 120
     strategy:
