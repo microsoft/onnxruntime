@@ -3399,6 +3399,9 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
       // propagates to output with the same name.
       status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
       if (status.IsOK()) {
+        // all entries are for the same OrtDevice so use the first one.
+        // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+        // from the session state and use its OrtMemoryInfo.
         auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
         memory_info.push_back(&allocator->Info());
       } else {
@@ -3422,7 +3425,8 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
                                  def->Name(), ".");
         }
         const auto& tensor = it->second.Get<Tensor>();
-        memory_info.push_back(&tensor.Location());
+        auto allocator = session_state_->GetAllocator(tensor.Location());
+        memory_info.push_back(&allocator->Info());
       }
     } else {
       // all entries are for the same OrtDevice so use the first one.
