@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <fstream>
+#include <filesystem>
 #include <gsl/gsl>
 
 #include "gtest/gtest.h"
@@ -255,7 +258,9 @@ TEST(ModelEditorAPITest, Basic_CApi) {
       node = nullptr;  // graph now owns node
     }
 
-    std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
+    // Normal usage would be to add kOnnxDomain. We use the alias to test the implementation converts to kOnnxDomain.
+    // std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
+    std::vector<const char*> domain_names = {onnxruntime::kOnnxDomainAlias};
     std::vector<int> opset_versions = {18};
     Ort::ThrowOnError(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(), domain_names.size(),
                                                    &model));
@@ -278,8 +283,13 @@ TEST(ModelEditorAPITest, Basic_CApi) {
                     9.0f, 3.0f, 5.0f, 7.0f};
 
     std::vector<int64_t> expected_dims = {3, 8};
+
+    Ort::SessionOptions session_options;
+    auto saved_model_path = ORT_TSTR("model_editor_test_output.onnx");
+    session_options.SetOptimizedModelFilePath(saved_model_path);
+
     Model cxx_model(model);
-    auto session = CreateSession(*ort_env, cxx_model);
+    auto session = CreateSession(*ort_env, cxx_model, &session_options);
 
     std::vector<float> expected_output;
     if (use_constant_node) {
@@ -298,6 +308,19 @@ TEST(ModelEditorAPITest, Basic_CApi) {
     api.ReleaseSession(session.release());
 
     ASSERT_EQ(deleter.weights.size(), size_t(0)) << "All weights should have been freed";
+
+    // make sure the saved model can be loaded
+    Ort::Session session2(*ort_env, saved_model_path, Ort::SessionOptions());
+
+    // make sure entries for the internal domains were added to the opset imports in the saved model
+    std::vector<char> buffer(std::filesystem::file_size(saved_model_path));
+
+    std::ifstream file(saved_model_path, std::ios::binary);
+    ASSERT_TRUE(file.read(buffer.data(), buffer.size()));
+
+    std::string_view buffer_view(buffer.data(), buffer.size());
+    ASSERT_NE(buffer_view.find(onnxruntime::kMSInternalNHWCDomain), std::string_view::npos);
+    ASSERT_NE(buffer_view.find(onnxruntime::kMSNchwcDomain), std::string_view::npos);
   };
 
   run_test(false);
@@ -520,7 +543,7 @@ TEST(ModelEditorAPITest, CreateInvalidModel_NoOpsets) {
     auto session = CreateSession(*ort_env, model);
     FAIL();
   } catch (const Ort::Exception& e) {
-    ASSERT_THAT(e.what(), ::testing::HasSubstr("Error No opset import for domain"));
+    ASSERT_THAT(e.what(), ::testing::HasSubstr("The opset for the ONNX domain must be explicitly specified"));
   }
 }
 
