@@ -98,6 +98,15 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
+#  Usually, SIMD instructions in kernel compile fine, and we detect at run-time if they are supported
+#   But on some platforms, even compiling these SIMD specific instructions could fail.
+#   So we provide options to disable compiling these SIMD instructions.
+option(onnxruntime_DISABLE_SSE4 "Disable compiling kernel with SSE4 instructions" OFF)
+option(onnxruntime_DISABLE_AVX "Disable compiling kernel with AVX instructions" OFF)
+option(onnxruntime_DISABLE_AVX2 "Disable compiling kernel with AVX2 instructions" OFF)
+option(onnxruntime_DISABLE_AVX512 "Disable compiling kernel with AVX512 instructions" OFF)
+option(onnxruntime_DISABLE_AMX "Disable compiling kernel with AMX instructions" OFF)
+
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
@@ -1005,6 +1014,26 @@ endif()
 
 if (onnxruntime_FORCE_GENERIC_ALGORITHMS)
     add_compile_definitions(FORCE_GENERIC_ALGORITHMS)
+endif()
+
+if (onnxruntime_DISABLE_SSE4)
+  add_compile_definitions(DISABLE_SSE4)
+endif()
+
+if (onnxruntime_DISABLE_AVX)
+  add_compile_definitions(DISABLE_AVX)
+endif()
+
+if (onnxruntime_DISABLE_AVX2)
+  add_compile_definitions(DISABLE_AVX2)
+endif()
+
+if (onnxruntime_DISABLE_AVX512)
+  add_compile_definitions(DISABLE_AVX512)
+endif()
+
+if (onnxruntime_DISABLE_AMX)
+  add_compile_definitions(DISABLE_AMX)
 endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)

@@ -328,7 +328,7 @@ Return Value:
         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
     }
 
-#endif
+#endif // defined(_MSC_VER) && !defined(ORT_DISABLE_SSE4)
 
     //
     // Check if the processor supports the AVX and OSXSAVE features.
@@ -515,7 +515,7 @@ Return Value:
                     this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
                 }
 
-#if !defined(__APPLE__) && !defined(ORT_DISABLE_AMX)
+#if !defined(__APPLE__)
 #if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
                 //
                 // Check if the processor supports AVX NE CONVERT.
@@ -526,6 +526,7 @@ Return Value:
 #endif  // (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
 
 
+#if !defined(ORT_DISABLE_AMX)
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -538,7 +539,8 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // !defined(__APPLE__) && !defined(ORT_DISABLE_AMX)
+#endif // !defined(ORT_DISABLE_AMX)
+#endif // !defined(__APPLE__)
 
 #endif // ORT_MINIMAL_BUILD
 

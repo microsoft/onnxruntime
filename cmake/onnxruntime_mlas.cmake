@@ -650,6 +650,11 @@ else()
         endif()
         set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
 
+        set(mlas_platform_srcs_sse41
+          ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+        )
+        set_source_files_properties(${mlas_platform_srcs_sse41} PROPERTIES COMPILE_FLAGS "-msse4.1")
+
         set(mlas_platform_srcs_avx
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx.S
@@ -727,36 +732,65 @@ endif()
         )
         set_source_files_properties(${mlas_platform_srcs_avx512vnni} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 
+        set(mlas_platform_srcs_amx
+          ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
+          ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+          ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
+        )
+        set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+        set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/activate_fp16.cpp
           ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
-          ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
           ${mlas_platform_srcs_sse2}
-          ${mlas_platform_srcs_avx}
-          ${mlas_platform_srcs_avx2}
-          ${mlas_platform_srcs_avx512f}
-          ${mlas_platform_srcs_avx512core}
-          ${mlas_platform_srcs_avx512vnni}
         )
 
-        if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+        if (NOT onnxruntime_DISABLE_SSE4)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_sse41}
+          )
+        endif()
+
+        if (NOT onnxruntime_DISABLE_AVX)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_avx}
+          )
+        endif()
+
+        if (NOT onnxruntime_DISABLE_AVX2)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_avx2}
+            ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
+          )
+        endif()
+
+        if (NOT onnxruntime_DISABLE_AVX512)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_avx512f}
+            ${mlas_platform_srcs_avx512core}
+            ${mlas_platform_srcs_avx512vnni}
+          )
+        endif()
+
+        if (NOT onnxruntime_ORT_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_AVX512)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/q4gemm_avx512.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
         endif()
-        if(NOT APPLE)
+        if(NOT APPLE AND NOT onnxruntime_DISABLE_AMX)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
-	        ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
-            ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
-            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
-            )
-          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+            ${mlas_platform_srcs_amx}
+          )
         endif()
 
         if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
