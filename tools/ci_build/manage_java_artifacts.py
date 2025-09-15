@@ -187,8 +187,8 @@ def main():
                 "testClasses",
                 "--warning-mode",
                 "all",
+                *gradle_args,
             ]
-            + gradle_args,
             working_dir=java_working_dir,
         )
     else:
