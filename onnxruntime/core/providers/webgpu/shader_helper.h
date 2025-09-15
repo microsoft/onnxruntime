@@ -172,8 +172,6 @@ class ShaderHelper final {
   OStringStream additional_implementation_ss_;
   std::string body_;
   OStringStream body_ss_;
-  // Count of logical inputs added so far (each may map to multiple segmented shader variables)
-  size_t logical_input_count_ = 0;
 };
 
 }  // namespace webgpu

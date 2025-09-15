@@ -38,6 +38,22 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
   return Status::OK();
 }
 
+Status ProgramManager::CalculateSegmentsForInputs(ProgramBase& program) {
+  const uint64_t maxStorageBufferBindingSize = limits_.maxStorageBufferBindingSize;
+
+  for (int i = 0; i < program.Inputs().size(); ++i) {
+    const auto& input = program.Inputs()[i];
+    uint32_t segments = 1;
+    if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
+      // Calculate number of segments needed
+      segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+      if (segments == 0) segments = 1;
+    }
+    program.setSegmentsForInput(i, segments);
+  }
+  return Status::OK();
+}
+
 Status ProgramManager::Build(const ProgramBase& program,
                              const ProgramMetadata& program_metadata,
 #ifndef NDEBUG  // if debug build

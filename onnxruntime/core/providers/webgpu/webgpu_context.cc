@@ -178,7 +178,7 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
+Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -256,6 +256,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   uint32_t y = program.DispatchGroupSizeY();
   uint32_t z = program.DispatchGroupSizeZ();
   ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+  ORT_RETURN_IF_ERROR(program_mgr_->CalculateSegmentsForInputs(program));
 
   bool is_1d_dispatch = (y == 1 && z == 1);
 
@@ -436,11 +437,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   bind_buffers_segments.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
   for (const auto& input : inputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
-    const uint64_t size_in_bytes = static_cast<uint64_t>(input.tensor->SizeInBytes());
-    const uint64_t max_binding_size = static_cast<uint64_t>(device_limits_.maxStorageBufferBindingSize);
-    uint64_t segments = (size_in_bytes + max_binding_size - 1) / max_binding_size;
-    if (segments == 0) segments = 1;
-    bind_buffers_segments.push_back(segments);
+    bind_buffers_segments.push_back(input.segments);
   }
   for (const auto& output : outputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
@@ -537,7 +534,7 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
-  required_limits.maxStorageBufferBindingSize = 536870912;  // adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
   required_limits.maxBufferSize = adapter_limits.maxBufferSize;
   required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
   required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
@@ -756,6 +753,9 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
       bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, std::min(kMaxBufferSize, buffer_size), nullptr, nullptr});
     }
   }
+
+  ORT_ENFORCE(entry_index < device_limits_.maxBindingsPerBindGroup, "Number of bind group entries (", entry_index,
+              ") exceeds device limit (", device_limits_.maxBindingsPerBindGroup, ").");
 
   WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
   WGPUBindGroupDescriptor bind_group_desc{};

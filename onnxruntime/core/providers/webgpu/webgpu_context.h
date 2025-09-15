@@ -165,7 +165,7 @@ class WebGpuContext final {
   //
   Status PopErrorScope();
 
-  Status Run(ComputeContext& context, const ProgramBase& program);
+  Status Run(ComputeContext& context, ProgramBase& program);
   void OnRunEnd();
 
  private:
