@@ -14,9 +14,9 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #define TEST_RETURN_IF(condition)                                               \

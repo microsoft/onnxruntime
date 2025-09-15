@@ -51,7 +51,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
