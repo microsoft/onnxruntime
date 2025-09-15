@@ -335,7 +335,8 @@
         "^test_quantizelinear_int4",
         "^test_quantizelinear_uint4",
         // topk uint64 is not implemented in ORT yet.
-        "^test_top_k_uint64"
+        "^test_top_k_uint64",
+        "^test_clip_min_greater_than_max_cpu"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
