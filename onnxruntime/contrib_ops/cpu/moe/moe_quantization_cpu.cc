@@ -444,7 +444,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int max_threads = tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1;
   const int64_t thread_divisor = std::max(1, max_threads * 4);
   const int64_t min_work_per_thread = std::max(int64_t{32}, static_cast<int64_t>(num_tokens / thread_divisor));
-  const int optimal_routing_threads = (tp == nullptr || num_tokens < min_work_per_thread) ? 1 : std::min(static_cast<int>(num_tokens / std::max(int64_t{1}, min_work_per_thread)), max_threads);
+  const int optimal_routing_threads = (tp == nullptr || num_tokens < min_work_per_thread) ? 1 : std::min(static_cast<int>(num_tokens / min_work_per_thread), max_threads);
   const int num_routing_threads = std::max(1, optimal_routing_threads);
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
@@ -587,6 +587,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     }
   }
 
+  // Adjust thread count based on total work to avoid thread overhead for small workloads
+  // These thresholds are based on empirical performance testing:
+  // - < 48 tokens: Single thread is most efficient due to low overhead
+  // - 48-191 tokens: Cap at 2 threads to balance parallelism vs overhead
+  // - 192-511 tokens: Cap at 4 threads for good CPU utilization
+  // - >= 512 tokens: Use full calculated thread count for maximum parallelism
   if (total_work < 48) {
     num_expert_threads = 1;
   } else if (total_work < 192) {
@@ -738,8 +744,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
             if constexpr (std::is_same_v<T, MLFloat16>) {
               MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), fc1_bias_float, static_cast<size_t>(fc1_out_features));
             } else {
-              for (int64_t i = 0; i < fc1_out_features; ++i) {
-                fc1_bias_float[i] = static_cast<float>(B1_bias[i]);
+              if (ShouldUseMemcpy(fc1_out_features)) {
+                std::memcpy(fc1_bias_float, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
+              } else {
+                for (int64_t i = 0; i < fc1_out_features; ++i) {
+                  fc1_bias_float[i] = static_cast<float>(B1_bias[i]);
+                }
               }
             }
           }
@@ -760,6 +770,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       // Traditional approach: dequantize + regular GEMM
+      // Use parallel dequantization when:
+      // 1. num_dequant_blocks > 1: Multiple blocks to parallelize across
+      // 2. fc1_out_features >= 32: Sufficient work per thread to justify overhead
+      //    (32 features * hidden_size elements = substantial work per block)
       if (num_dequant_blocks > 1 && fc1_out_features >= 32) {
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * dequant_block_size;
@@ -824,7 +838,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
     fc1_gemm_done:
 
-      const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
+      const int64_t activation_threshold = std::max(int64_t{4}, 256 / inter_size);
       if (num_expert_tokens >= activation_threshold && tp != nullptr) {
         const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
         const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
@@ -901,9 +915,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
             if constexpr (std::is_same_v<T, MLFloat16>) {
               MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), fc2_bias_float, static_cast<size_t>(hidden_size));
             } else {
-              for (int64_t i = 0; i < hidden_size; ++i) {
-                fc2_bias_float[i] = static_cast<float>(B2_bias[i]);
-              }
+              std::memcpy(fc2_bias_float, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
             }
           }
 
@@ -924,6 +936,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       // Traditional approach: dequantize + regular GEMM
+      // Use parallel dequantization when:
+      // 1. num_fc2_dequant_blocks > 1: Multiple blocks to parallelize across
+      // 2. hidden_size >= 32: Sufficient work per thread to justify overhead
+      //    (32 features * inter_size elements = substantial work per block)
       if (num_fc2_dequant_blocks > 1 && hidden_size >= 32) {
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * fc2_dequant_block_size;
