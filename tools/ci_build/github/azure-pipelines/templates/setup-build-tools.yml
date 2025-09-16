@@ -1,12 +1,15 @@
 # Setup python/nodejs/cmake/vcpkg tools. Also, setup telemetry header file if the current OS is Windows.
 
 parameters:
-- name: BuildArch
-  displayName: BuildArch
+- name: build_arch
   type: string
   default: 'x64'
+
+- name: python_version
+  type: string
+  default: '3.12'
   
-- name: actionVersion
+- name: action_version
   type: string
   default: 'v0.0.8'
 
@@ -16,8 +19,8 @@ steps:
 - task: UsePythonVersion@0
   displayName: Use Python 3.12
   inputs:
-    versionSpec: 3.12
-    ${{ if eq(parameters.BuildArch, 'x86') }}:
+    versionSpec: ${{ parameters.python_version }}
+    ${{ if eq(parameters.build_arch, 'x86') }}:
       architecture: 'x86'
 
 - task: PipAuthenticate@1
@@ -35,7 +38,7 @@ steps:
   displayName: 'Run GitHub Action via Python Wrapper'
   inputs:
     scriptPath: 'tools/ci_build/run_gh_action.py'
-    arguments: '${{ parameters.actionVersion }}'
+    arguments: '${{ parameters.action_version }}'
 
 - pwsh: |
     $ErrorActionPreference = 'Stop'

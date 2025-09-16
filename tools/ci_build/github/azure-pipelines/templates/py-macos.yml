@@ -41,20 +41,15 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
-
-  - task: UsePythonVersion@0
-    displayName: 'Use Python'
-    inputs:
-      versionSpec: ${{ parameters.python_version }}
-
-  - task: PipAuthenticate@1
-    displayName: 'Pip Authenticate'
-    inputs:
-      artifactFeeds: 'Lotus'
-      
+     
   - template: use-xcode-version.yml
     parameters:
       xcodeVersion: '16.4.0'
+
+  - template: setup-build-tools.yml
+    parameters:
+      build_arch: arm64
+      python_version: {{ parameters.python_version }}
 
   - script: |
       set -e -x

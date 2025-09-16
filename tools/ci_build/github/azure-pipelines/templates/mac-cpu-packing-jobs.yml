@@ -47,6 +47,8 @@ jobs:
       xcodeVersion: 16.4
 
   - template: setup-build-tools.yml
+    parameters:
+      build_arch: arm64
   - template: set-version-number-variables-step.yml
 
   - script: |
