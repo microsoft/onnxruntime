@@ -23,6 +23,7 @@ on:
       - '!BUILD.md'
       - '!js/web/**'
       - '!onnxruntime/core/providers/js/**'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
