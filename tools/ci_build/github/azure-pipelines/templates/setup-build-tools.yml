@@ -10,7 +10,7 @@ parameters:
   
 - name: action_version
   type: string
-  default: 'v0.0.8'
+  default: 'v0.0.9'
 
 steps:
 - template: telemetry-steps.yml
