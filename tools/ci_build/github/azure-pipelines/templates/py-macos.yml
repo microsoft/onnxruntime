@@ -46,10 +46,11 @@ jobs:
     parameters:
       xcodeVersion: '16.4.0'
 
+
   - template: setup-build-tools.yml
     parameters:
-      build_arch: {{ parameters.arch }}
-      python_version: {{ parameters.python_version }}
+      build_arch: ${{ parameters.arch }}
+      python_version: ${{ parameters.python_version }}
 
   - script: |
       set -e -x
