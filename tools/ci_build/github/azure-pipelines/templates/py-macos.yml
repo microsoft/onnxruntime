@@ -48,7 +48,7 @@ jobs:
 
   - template: setup-build-tools.yml
     parameters:
-      build_arch: arm64
+      build_arch: {{ parameters.arch }}
       python_version: {{ parameters.python_version }}
 
   - script: |
