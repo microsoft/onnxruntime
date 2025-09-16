@@ -48,7 +48,8 @@ jobs:
 
   - template: setup-build-tools.yml
     parameters:
-      build_arch: arm64
+      build_arch: ${{ parameters.MacosArch }}
+
   - template: set-version-number-variables-step.yml
 
   - script: |
