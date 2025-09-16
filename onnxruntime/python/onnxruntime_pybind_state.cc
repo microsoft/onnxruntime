@@ -2298,10 +2298,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         ORT_THROW("External initializers are not supported in this build.");
 #endif
       })
-      .def("add_external_initializers_from_files_in_memory", [](PySessionOptions* options,
-                                                                std::vector<std::string> names,
-                                                                std::vector<py::buffer> buffers,
-                                                                std::vector<size_t> lengths) -> void {
+      .def("add_external_initializers_from_files_in_memory", [](PySessionOptions* options, std::vector<std::string> names, std::vector<py::buffer> buffers, std::vector<size_t> lengths) -> void {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
         const auto num = names.size();
         ORT_ENFORCE(num == buffers.size() && num == lengths.size(),
