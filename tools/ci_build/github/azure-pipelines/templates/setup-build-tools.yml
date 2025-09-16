@@ -35,9 +35,9 @@ steps:
   inputs:
     artifactFeeds: 'Lotus'
 
-- task: NodeTool@0
+- task: UseNode@1
   inputs:
-    versionSpec: '22.x'
+    version: '22.x'
 
 - script: python3 -m pip install requests
 
