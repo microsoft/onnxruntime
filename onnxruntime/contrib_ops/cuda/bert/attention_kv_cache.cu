@@ -197,6 +197,59 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
   return CUDA_CALL(cudaGetLastError());
 }
 
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
+                                  const int all_sequence_length,
+                                  const int sequence_length,
+                                  const int batch_size,
+                                  const int head_size,
+                                  const int num_heads,
+                                  const int max_threads_per_block,
+                                  const int matrix_num,
+                                  const BFloat16* tensor_in,
+                                  const BFloat16* tensor_add,
+                                  BFloat16* tensor_out) {
+  assert(num_heads <= max_threads_per_block);
+  const dim3 grid(all_sequence_length, batch_size, matrix_num);
+  if (0 == (head_size & 1)) {
+    const int H = head_size / 2;
+    if (H * num_heads <= max_threads_per_block) {
+      const dim3 block(H, num_heads, 1);
+      ConcatTensorToTensor<__nv_bfloat162><<<grid, block, 0, stream>>>(
+          sequence_length,
+          reinterpret_cast<const __nv_bfloat162*>(tensor_in),
+          reinterpret_cast<const __nv_bfloat162*>(tensor_add),
+          reinterpret_cast<__nv_bfloat162*>(tensor_out));
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      ConcatTensorToTensorLarge<__nv_bfloat162><<<grid, block, 0, stream>>>(
+          sequence_length,
+          H,
+          reinterpret_cast<const __nv_bfloat162*>(tensor_in),
+          reinterpret_cast<const __nv_bfloat162*>(tensor_add),
+          reinterpret_cast<__nv_bfloat162*>(tensor_out));
+    }
+  } else {
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      ConcatTensorToTensor<__nv_bfloat16><<<grid, block, 0, stream>>>(
+          sequence_length,
+          reinterpret_cast<const __nv_bfloat16*>(tensor_in),
+          reinterpret_cast<const __nv_bfloat16*>(tensor_add),
+          reinterpret_cast<__nv_bfloat16*>(tensor_out));
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      ConcatTensorToTensorLarge<__nv_bfloat16><<<grid, block, 0, stream>>>(
+          sequence_length,
+          head_size,
+          reinterpret_cast<const __nv_bfloat16*>(tensor_in),
+          reinterpret_cast<const __nv_bfloat16*>(tensor_add),
+          reinterpret_cast<__nv_bfloat16*>(tensor_out));
+    }
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
 #ifndef USE_ROCM  // exclude the following from hipify since they are not used in ROCM EP
 
 // ----------------------------------------------------------------------------------
@@ -332,6 +385,18 @@ template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                                     const half* bias,
                                                     const half* qkv_buffer,
                                                     half* present);
+
+template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
+                                                    const int max_sequence_length,
+                                                    const int total_sequence_length,
+                                                    const int sequence_length,
+                                                    const int batch_size,
+                                                    const int head_size,
+                                                    const int num_heads,
+                                                    const int max_threads_per_block,
+                                                    const BFloat16* bias,
+                                                    const BFloat16* qkv_buffer,
+                                                    BFloat16* present);
 #endif
 
 // Kernel to append new and past kv in either BSNH or BNSH format
