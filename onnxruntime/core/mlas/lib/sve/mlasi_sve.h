@@ -19,12 +19,11 @@ Abstract:
 
 #ifndef __clang__
 #pragma GCC push_options
-#pragma GCC target("arch=armv8-a+sve")
+#pragma GCC target("arch=armv8.2-a+sve")
 
 // Use Clang-specific per-function attribute
 #ifdef __clang__
-#define MLAS_SVE_TARGET __attribute__((target("arch=armv8-a+sve")))
-// #pragma clang optimize on
+#define MLAS_SVE_TARGET __attribute__((target("arch=armv8.2-a+sve")))
 #else
 #define MLAS_SVE_TARGET
 #endif
@@ -400,7 +399,7 @@ MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2)
 {
-    return svadd_f32_m(Pred, Vector1, Vector2); //_m
+    return svadd_f32_m(Pred, Vector1, Vector2);
 }
 
 MLAS_SVE_TARGET
@@ -448,7 +447,6 @@ MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveMultiplyAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2, MLAS_SVFLOAT32 Vector3)
 {
-    // return svmla_f32_m(Pred, Vector1, Vector2, Vector3);
     return svmla_f32_m(Pred, Vector3, Vector1, Vector2);
 }
 

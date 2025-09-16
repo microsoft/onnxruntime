@@ -1062,8 +1062,10 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
-    if (HAS_ARM64_SVE)
-      target_compile_definitions(${target_name} PRIVATE USE_SVE)
+    if(HAS_ARM64_SVE)
+      if("${target_name}" STREQUAL "onnxruntime_mlas")
+        target_compile_definitions(${target_name} PRIVATE USE_SVE)
+      endif()
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
