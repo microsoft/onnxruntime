@@ -476,7 +476,6 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
   );
 }
 
-
 TEST(AttentionTest, Attention4DDefaultFloat16) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 3;           // Q.shape[1]
