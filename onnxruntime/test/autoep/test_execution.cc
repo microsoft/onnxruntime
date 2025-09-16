@@ -98,6 +98,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
 
     // Create model compilation options from the session options.
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(output_model_file);
 

@@ -53,7 +53,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.37.1.250807'
+  default: '2.38.0.250901'
 
 - name: is1ES
   displayName: Is 1ES pipeline
@@ -74,10 +74,11 @@ jobs:
     ${{ if contains(parameters.pool_name, 'mac')}}:
       os: macOS
 
-
-  variables:
-    artifacts_directory: $(Build.BinariesDirectory)/.artifacts
-
+  templateContext:        
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.BinariesDirectory)/.artifacts
+      artifactName: ${{parameters.artifactName}}
   steps:
   - checkout: self
     clean: true
@@ -88,7 +89,7 @@ jobs:
     inputs:
       script: |
         # Create a folder for artifacts
-        mkdir -p $(artifacts_directory)
+        mkdir -p $(Build.BinariesDirectory)/.artifacts
       workingDirectory: $(Build.BinariesDirectory)
 
   - template: get-docker-image-steps.yml
@@ -131,7 +132,7 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
           --volume $NDK_HOME:/ndk_home \
-          --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
+          --volume $(Build.BinariesDirectory)/.artifacts:/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
           $QNN_VOLUME \
           -e NIGHTLY_BUILD \
@@ -145,18 +146,6 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
 
-
-  - ${{ if eq(parameters['enable_code_sign'], 'true') }}:
-    - template: jar-maven-signing-linux.yml
-      parameters:
-        JarFileDirectory: '$(artifacts_directory)'
-  - ${{ if eq(parameters.is1ES, false) }}:
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(artifacts_directory)'
-        artifactName: '${{parameters.artifactName}}'
-  - ${{ if eq(parameters.is1ES, true) }}:
-    - task: 1ES.PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(artifacts_directory)'
-        artifactName: '${{parameters.artifactName}}'
+  - template: jar-maven-signing-linux.yml
+    parameters:
+      JarFileDirectory: $(Build.BinariesDirectory)/.artifacts

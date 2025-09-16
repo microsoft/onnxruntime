@@ -3,7 +3,7 @@
 
 'use strict';
 
-// This file is used to be injected into "onnxruntime_test_all" as specified by flag "--pre-js" by emcc.
+// This file is injected into unit test programs like "onnxruntime_test_all" as specified by flag "--pre-js" by emcc.
 // It dumps the test report file from emscripten's MEMFS to real file system
 
 // Module is predefined for scripts injected from "--pre-js"

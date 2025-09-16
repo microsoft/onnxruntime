@@ -108,6 +108,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGatherOpBuilder("Gather", op_registrations);
   }
 
+  {  // GatherBlockQuantized
+    CreateGatherBlockQuantizedOpBuilder("GatherBlockQuantized", op_registrations);
+  }
+
   {  // GatherElements
     CreateGatherElementsOpBuilder("GatherElements", op_registrations);
   }
