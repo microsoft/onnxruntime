@@ -256,6 +256,9 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::SyncStream_GetImpl,
     &OrtExecutionProviderApi::SyncStream_GetSyncId,
     &OrtExecutionProviderApi::GetSyncIdForLastWaitOnSyncStream,
+
+    &OrtExecutionProviderApi::CreateHardwareDevice,
+    &OrtExecutionProviderApi::ReleaseHardwareDevice,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
