@@ -1305,6 +1305,25 @@ class TestInferenceSession(unittest.TestCase):
             providers=["CPUExecutionProvider"],
         )
 
+    def test_session_options_add_external_initializers_from_files_in_memory(self):
+        # Provide external initializer file content directly from memory
+        # The model references an external file named "Pads_not_on_disk.bin" for the initializer
+        pads_bytes = np.array([0, 0, 1, 1], dtype=np.int64).tobytes()
+
+        so = onnxrt.SessionOptions()
+        so.add_external_initializers_from_files_in_memory(
+            ["Pads_not_on_disk.bin"],
+            [pads_bytes],
+            [len(pads_bytes)],
+        )
+
+        # This should not throw
+        onnxrt.InferenceSession(
+            get_name("model_with_external_initializer_come_from_user.onnx"),
+            sess_options=so,
+            providers=["CPUExecutionProvider"],
+        )
+
     def test_register_custom_ops_library(self):
         if sys.platform.startswith("win"):
             shared_library = os.path.abspath("custom_op_library.dll")
