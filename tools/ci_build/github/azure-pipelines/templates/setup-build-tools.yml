@@ -14,9 +14,18 @@ parameters:
 
 steps:
 - template: telemetry-steps.yml
-  
+
+# Currently all ADO macOS machines are x64 machines
 - task: UsePythonVersion@0
-  displayName: Use Python 3.12
+  displayName: Use Python (macOS)
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Darwin'))
+  inputs:
+    versionSpec: ${{ parameters.python_version }}    
+    architecture: 'x64'
+    
+- task: UsePythonVersion@0
+  displayName: Use Python (non-macOS)
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Darwin'))
   inputs:
     versionSpec: ${{ parameters.python_version }}    
     architecture: ${{ parameters.build_arch }}
