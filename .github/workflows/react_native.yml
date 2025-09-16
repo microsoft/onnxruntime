@@ -52,6 +52,7 @@ jobs:
           set -e -x
           NDK_HOME=$(realpath $ANDROID_NDK_HOME)
           mkdir -p ${{ runner.temp }}/.build_settings
+          mkdir -p ${{ runner.temp }}/.artifacts
           cp ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
 
           docker run --rm \
@@ -207,9 +208,17 @@ jobs:
       - name: Install Python requirements
         run: pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
 
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
       - name: Build iOS package and assemble pods
         run: |
-          set -e -x
           python ${{ github.workspace }}/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
             --build-dir "${{ runner.temp }}/ios_framework_full" \
             --staging-dir "${{ runner.temp }}/ios_pod" \
@@ -243,7 +252,16 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22.x'
-      
+          
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
       - name: Install dependencies and bootstrap
         run: |
           npm ci
@@ -251,24 +269,23 @@ jobs:
       - run: npm ci
         working-directory: ${{ github.workspace }}/js/common
       - run: |
+          set -e -x
           npm ci
           npm run bootstrap-no-pods
         working-directory: ${{ github.workspace }}/js/react_native
 
       - name: Pod install
         run: |
-          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c \
-          pod install
+          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install
         working-directory: ${{ github.workspace }}/js/react_native/ios
 
       - name: Run React Native iOS Instrumented Tests
         run: |
-          set -o pipefail && xcodebuild test \
+          xcodebuild test \
             -workspace OnnxruntimeModule.xcworkspace \
             -scheme OnnxruntimeModuleTest \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.4' \
-            | xcpretty --report junit --output build/reports/test-results.xml
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.4'
         working-directory: ${{ github.workspace }}/js/react_native/ios
 
   react_native_ci_ios_e2e_tests:
@@ -294,8 +311,18 @@ jobs:
         with:
           node-version: '22.x'
 
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
       - name: Install dependencies and bootstrap
         run: |
+          set -e -x
           npm install -g detox-cli
           brew tap wix/brew
           brew install applesimutils
@@ -304,14 +331,14 @@ jobs:
       - run: npm ci
         working-directory: ${{ github.workspace }}/js/common
       - run: |
+          set -e -x
           npm ci
           npm run bootstrap-no-pods
         working-directory: ${{ github.workspace }}/js/react_native
       
       - name: Pod install for e2e tests
         run: |
-          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c \
-          pod install
+          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
       - name: Build and Run Detox iOS e2e Tests
