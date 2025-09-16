@@ -281,8 +281,8 @@ namespace Microsoft.ML.OnnxRuntime
                 int i = 0;
                 foreach (var kvp in providerOptions)
                 {
-                    string keyWithNull = kvp.Key + "\0";
-                    string valueWithNull = kvp.Value + "\0";
+                    var keyWithNull = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(kvp.Key);
+                    var valueWithNull = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(kvp.Value);
 
                     var keyHandle = GCHandle.Alloc(keyWithNull, GCHandleType.Pinned);
                     var valHandle = GCHandle.Alloc(valueWithNull, GCHandleType.Pinned);
