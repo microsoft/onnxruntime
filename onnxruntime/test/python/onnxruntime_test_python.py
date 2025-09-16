@@ -695,22 +695,22 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(inputs[0].name, "X")
         self.assertEqual(inputs[0].shape, [3, 2])
 
-        inputs_meminfo = sess.get_inputs_memory_info()
-        self.assertEqual(len(inputs_meminfo), 1)
-        self.assertIsNotNone(inputs_meminfo[0])
+        input_meminfos = sess.get_input_memory_infos()
+        self.assertEqual(len(input_meminfos), 1)
+        self.assertIsNotNone(input_meminfos[0])
 
-        inputs_epdevices = sess.get_inputs_epdevices()
-        self.assertEqual(len(inputs_epdevices), 1)
-        self.assertIsNotNone(inputs_epdevices[0])
+        input_epdevices = sess.get_input_epdevices()
+        # The entry my be None (null) but it should be present
+        self.assertEqual(len(input_epdevices), 1)
 
         outputs = sess.get_outputs()
         self.assertEqual(len(outputs), 1)
         self.assertEqual(outputs[0].name, "Y")
         self.assertEqual(outputs[0].shape, [3, 2])
 
-        outputs_meminfo = sess.get_outputs_memory_info()
-        self.assertEqual(len(outputs_meminfo), 1)
-        self.assertIsNotNone(outputs_meminfo[0])
+        output_meminfos = sess.get_output_memory_infos()
+        self.assertEqual(len(output_meminfos), 1)
+        self.assertIsNotNone(output_meminfos[0])
 
         res = sess.run([outputs[0].name], {inputs[0].name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)

@@ -2702,34 +2702,33 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             auto res = sess->GetSessionHandle()->GetModelMetadata();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("inputs_meminfo", [](const PyInferenceSession* sess) -> std::vector<const OrtMemoryInfo*> { 
+      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list { 
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto inputs_mem_info = session.GetMemoryInfoForInputs();
-          std::vector<const OrtMemoryInfo*> result;
-          result.reserve(inputs_mem_info.size());
+          py::list result;
           for (const auto& info : inputs_mem_info) {
-            result.push_back(info);
+            const auto* p_info = static_cast<const OrtMemoryInfo*>(info);
+            result.append(py::cast(p_info, py::return_value_policy::reference));
           }
-          return result; }, py::return_value_policy::reference_internal)
-      .def_property_readonly("outputs_meminfo", [](const PyInferenceSession* sess) -> std::vector<const OrtMemoryInfo*> { 
+          return result; })
+      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list { 
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto outputs_mem_info = session.GetMemoryInfoForOutputs();
-          std::vector<const OrtMemoryInfo*> result;
-          result.reserve(outputs_mem_info.size());
+          py::list result;
           for (const auto& info : outputs_mem_info) {
-            result.push_back(info);
+            const auto* p_info = static_cast<const OrtMemoryInfo*>(info);
+            result.append(py::cast(p_info, py::return_value_policy::reference));
           }
-          return result; }, py::return_value_policy::reference_internal)
-      .def_property_readonly("inputs_epdevices", [](const PyInferenceSession* sess) -> std::vector<const OrtEpDevice*> {
+          return result; })
+      .def_property_readonly("input_epdevices", [](const PyInferenceSession* sess) -> py::list {
          Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
          auto ep_devices = session.GetEpDeviceForInputs();
-         std::vector<const OrtEpDevice*> result;
-         result.reserve(ep_devices.size());
+         py::list result;
          for (const auto& device : ep_devices) {
-           result.push_back(device);
+           const auto* p_device = static_cast<const OrtEpDevice*>(device);
+           result.append(py::cast(p_device, py::return_value_policy::reference));
          }
-         return result; }, py::return_value_policy::reference_internal)
-
+         return result; })
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
 
         Status status;

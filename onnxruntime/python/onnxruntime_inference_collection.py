@@ -199,17 +199,17 @@ class Session:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
 
-    def get_inputs_memory_info(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_input_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
         "Return the memory info for the inputs."
-        return self._inputs_meminfo
+        return self._input_meminfos
 
-    def get_outputs_memory_info(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_output_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
         "Return the memory info for the outputs."
-        return self._outputs_meminfo
+        return self._output_meminfos
 
-    def get_inputs_epdevices(self) -> Sequence[onnxruntime.OrtEpDevice]:
+    def get_input_epdevices(self) -> Sequence[onnxruntime.OrtEpDevice]:
         "Return the execution providers for the inputs."
-        return self._inputs_epdevices
+        return self._input_epdevices
 
     def get_providers(self) -> Sequence[str]:
         "Return list of registered execution providers."
@@ -588,9 +588,9 @@ class InferenceSession(Session):
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
         self._overridable_initializers = self._sess.overridable_initializers
-        self._inputs_meminfo = self._sess.inputs_meminfo
-        self._outputs_meminfo = self._sess.outputs_meminfo
-        self._inputs_epdevices = self._sess.inputs_epdevices
+        self._input_meminfos = self._sess.input_meminfos
+        self._output_meminfos = self._sess.output_meminfos
+        self._input_epdevices = self._sess.input_epdevices
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
@@ -604,9 +604,9 @@ class InferenceSession(Session):
         self._inputs_meta = None
         self._outputs_meta = None
         self._overridable_initializers = None
-        self._inputs_meminfo = None
-        self._outputs_meminfo = None
-        self._inputs_epdevices = None
+        self._input_meminfos = None
+        self._output_meminfos = None
+        self._input_epdevices = None
         self._model_meta = None
         self._providers = None
         self._provider_options = None
