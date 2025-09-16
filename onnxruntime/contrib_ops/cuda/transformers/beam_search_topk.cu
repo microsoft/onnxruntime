@@ -354,7 +354,7 @@ void BeamSearchTopK(
   if (k <= 4) {
     TopKLauncher(4)
   } else if (k <= 8) {
-    TopKLauncher(16)
+    TopKLauncher(8)
   } else if (k <= 16) {
     TopKLauncher(16)
   } else if (k <= 32) {
