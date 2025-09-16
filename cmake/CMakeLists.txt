@@ -1017,7 +1017,7 @@ if (onnxruntime_FORCE_GENERIC_ALGORITHMS)
 endif()
 
 if (onnxruntime_DISABLE_SSE4)
-  add_compile_definitions(DISABLE_SSE4)
+  add_compile_definitions(ORT_DISABLE_SSE4)
 endif()
 
 if (onnxruntime_DISABLE_AVX)
@@ -1025,15 +1025,15 @@ if (onnxruntime_DISABLE_AVX)
 endif()
 
 if (onnxruntime_DISABLE_AVX2)
-  add_compile_definitions(DISABLE_AVX2)
+  add_compile_definitions(ORT_DISABLE_AVX2)
 endif()
 
 if (onnxruntime_DISABLE_AVX512)
-  add_compile_definitions(DISABLE_AVX512)
+  add_compile_definitions(ORT_DISABLE_AVX512)
 endif()
 
 if (onnxruntime_DISABLE_AMX)
-  add_compile_definitions(DISABLE_AMX)
+  add_compile_definitions(ORT_DISABLE_AMX)
 endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
