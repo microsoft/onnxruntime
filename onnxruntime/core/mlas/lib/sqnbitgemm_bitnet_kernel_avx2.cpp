@@ -22,6 +22,21 @@ Abstract:
 // AVX2 intrinsics
 #include <immintrin.h>
 
+static inline float _mm256_addv_ps(const __m256 v) {
+    __m128 res = _mm256_extractf128_ps(v, 1);
+    res = _mm_add_ps(res, _mm256_castps256_ps128(v));
+    res = _mm_add_ps(res, _mm_movehl_ps(res, res));
+    res = _mm_add_ss(res, _mm_movehdup_ps(res));
+    return _mm_cvtss_f32(res);
+}
+
+// Conditional pragma unroll for compiler compatibility
+#if defined(__INTEL_COMPILER) || defined(__clang__)
+#define PRAGMA_UNROLL _Pragma("unroll")
+#else
+#define PRAGMA_UNROLL
+#endif
+
 size_t
 Q2BitGemmPackQuantBDataSize(
     size_t N,
@@ -338,144 +353,171 @@ SQ2BitGemmKernel_CompInt8_avx2(
     return rows_handled;
 }
 
-// TODO: do we need this..?
-void
-QuantizeARow_CompInt8(
-    size_t /*BlkLen*/,
-    const float* /*A*/,
-    size_t /*CountK*/,
-    std::byte* /*QuantA*/
-)
-{
-  // shall be similar to QuantizeARow_CompInt8_avx2 without blksum related code.
-  // we don't need this function -- remove from dispatch? 
+void partial_max_g4_int8_k8(float* lut_scales, float* b) {
+    const __m256i vec_bi = _mm256_set_epi32(112, 96, 80, 64, 48, 32, 16, 0);
+    __m256 vec_b0 = _mm256_i32gather_ps(b + 0, vec_bi, 1);
+    __m256 vec_b1 = _mm256_i32gather_ps(b + 1, vec_bi, 1);
+    __m256 vec_b2 = _mm256_i32gather_ps(b + 2, vec_bi, 1);
+    __m256 vec_b3 = _mm256_i32gather_ps(b + 3, vec_bi, 1);
+    const __m256 vec_sign = _mm256_set1_ps(-0.0f);
+    __m256 vec_babs0 = _mm256_andnot_ps(vec_sign, vec_b0);
+    __m256 vec_babs1 = _mm256_andnot_ps(vec_sign, vec_b1);
+    __m256 vec_babs2 = _mm256_andnot_ps(vec_sign, vec_b2);
+    __m256 vec_babs3 = _mm256_andnot_ps(vec_sign, vec_b3);
+    __m256 abssum = _mm256_add_ps(_mm256_add_ps(vec_babs0, vec_babs1), _mm256_add_ps(vec_babs2, vec_babs3));
+    __m128 max4 = _mm_max_ps(_mm256_extractf128_ps(abssum, 1), _mm256_castps256_ps128(abssum));
+    max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
+    max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
+    float scales = _mm_cvtss_f32(max4) / 127;
+    *lut_scales = std::max(*lut_scales, scales);
 }
+
+void lut_ctor_g4_int8_impl(
+    int32_t group_size,
+    int8_t* qlut,
+    float* b,
+    float* lut_scales,
+    float* lut_biases
+) {
+    const int act_k = group_size; // we assume K == group_size for now
+
+    __m256 vec_lut[16];
+    float biases = 0.0;
+    const __m256i vec_bi = _mm256_set_epi32(112, 96, 80, 64, 48, 32, 16, 0);
+    float scales = *lut_scales;
+    float t_scales = scales ? 1.0f / scales : 0.0f;
+
+    for (int k = 0; k < act_k / 32; ++k) {
+        __m256 vec_b0 = _mm256_i32gather_ps(b + k * 32 + 0, vec_bi, 1);
+        __m256 vec_b1 = _mm256_i32gather_ps(b + k * 32 + 1, vec_bi, 1);
+        __m256 vec_b2 = _mm256_i32gather_ps(b + k * 32 + 2, vec_bi, 1);
+        __m256 vec_b3 = _mm256_i32gather_ps(b + k * 32 + 3, vec_bi, 1);
+
+PRAGMA_UNROLL
+        for (int g = 1; g < 16; g += 2) {
+            vec_lut[g] = vec_b0;
+            if (g & 0b0010) {
+                vec_lut[g] = _mm256_add_ps(vec_lut[g], vec_b1);
+            } else {
+                vec_lut[g] = _mm256_sub_ps(vec_lut[g], vec_b1);
+            }
+            if (g & 0b0100) {
+                vec_lut[g] = _mm256_add_ps(vec_lut[g], vec_b2);
+            } else {
+                vec_lut[g] = _mm256_sub_ps(vec_lut[g], vec_b2);
+            }
+            if (g & 0b1000) {
+                vec_lut[g] = _mm256_add_ps(vec_lut[g], vec_b3);
+            } else {
+                vec_lut[g] = _mm256_sub_ps(vec_lut[g], vec_b3);
+            }
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 16; g += 2) {
+            vec_lut[g] = -vec_lut[15 - g];
+        }
+
+        biases += _mm256_addv_ps(vec_lut[0]);
+
+PRAGMA_UNROLL
+        for (int g = 0; g < 16; ++g) {
+            vec_lut[g] = _mm256_mul_ps(vec_lut[g], _mm256_set1_ps(t_scales));
+        }
+
+        __m256i vec_qlut[4];
+        const __m256i shuf = _mm256_setr_epi8(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15,
+                                              0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15);
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; g += 1) {
+            __m256i i0 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 0], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+            __m256i i1 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 1], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+            __m256i i2 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 2], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+            __m256i i3 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 3], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+
+            i0 = _mm256_packs_epi32(i0, i1);	         // 0, 1, 2, 3,  8, 9, 10, 11,  4, 5, 6, 7, 12, 13, 14, 15
+            i2 = _mm256_packs_epi32(i2, i3);	         // 16, 17, 18, 19,  24, 25, 26, 27,  20, 21, 22, 23, 28, 29, 30, 31
+                                                         // Convert int16 to int8
+            i0 = _mm256_packs_epi16(i0, i2);	         // 0, 1, 2, 3,  8, 9, 10, 11,  16, 17, 18, 19,  24, 25, 26, 27,  4, 5, 6, 7,  12, 13, 14, 15,  20, 21, 22, 23,  28, 29, 30, 31
+            vec_qlut[g] = _mm256_shuffle_epi8(i0, shuf);  // 0, 8, 16, 24,  1, 9, 17, 25,  2, 10, 18, 26,  3, 11, 19, 27,  4, 12, 20, 28,  5, 13, 21, 29,  6, 14, 22, 30,  7, 15, 23, 31
+        }
+
+        int32_t* qlut_i32 = reinterpret_cast<int32_t*>(qlut);
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 0 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 0);
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 1 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 1);
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 2 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 2);
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 3 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 3);
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 4 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 4);
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 5 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 5);
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 6 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 6);
+        }
+PRAGMA_UNROLL
+        for (int g = 0; g < 4; ++g) {
+            qlut_i32[k * 32 + 7 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 7);
+        }
+    }
+
+    *lut_scales = scales;
+    *lut_biases = biases;
+
+}
+
 
 // based on lut_ctor_g4_int8_impl
 void 
 GenerateLUT_avx2(
 	int32_t group_size,
 	int8_t* lut,
-	onnxruntime::MLFloat16* b,
-	onnxruntime::MLFloat16* scales,
-	onnxruntime::MLFloat16* biases
+	float* b,
+	float* scales,
+	float* biases,
+    int K
 ) {
-    // Helper to horizontally add all 8 lanes of a __m256
-    auto addv_ps = [](const __m256 v) -> float {
-        __m128 res = _mm256_extractf128_ps(v, 1);
-        res = _mm_add_ps(res, _mm256_castps256_ps128(v));
-        res = _mm_add_ps(res, _mm_movehl_ps(res, res));
-        res = _mm_add_ss(res, _mm_movehdup_ps(res));
-        return _mm_cvtss_f32(res);
-    };
+    const int kk_outer_max = K / group_size;
 
-    // Read scale (already computed elsewhere) and prepare its reciprocal.
-    const float scale_f = static_cast<float>(scales[0]);
-    const float t_scale = scale_f != 0.0f ? (1.0f / scale_f) : 0.0f;
-
-    // Accumulate bias across blocks of 32 (matches tmac layout: 4 interleaved streams of 8)
-    float bias_acc = 0.0f;
-
-    // Temporary buffers for converted floats
-    float tmp[32];
-    float b0[8], b1[8], b2[8], b3[8];
-
-    // We produce 16 vectors per 32-wide chunk, then pack to int8 and store
-    // Each block of 32 half values contributes 32 int8 entries per LUT row (16 entries x 2 halves) arranged like tmac
-    for (int kblk = 0; kblk < group_size / 32; ++kblk) {
-        // Convert 32 halfs to float
-        const onnxruntime::MLFloat16* base = b + kblk * 32;
-        for (int i = 0; i < 32; ++i) tmp[i] = static_cast<float>(base[i]);
-
-        // De-interleave to 4 streams of 8
-        for (int i = 0; i < 8; ++i) {
-            b0[i] = tmp[i * 4 + 0];
-            b1[i] = tmp[i * 4 + 1];
-            b2[i] = tmp[i * 4 + 2];
-            b3[i] = tmp[i * 4 + 3];
-        }
-
-        __m256 vec_b0 = _mm256_loadu_ps(b0);
-        __m256 vec_b1 = _mm256_loadu_ps(b1);
-        __m256 vec_b2 = _mm256_loadu_ps(b2);
-        __m256 vec_b3 = _mm256_loadu_ps(b3);
-
-        __m256 vec_lut[16];
-
-        // Build odd indices 1..15: b0 +/- b1 +/- b2 +/- b3 depending on bits of g
-        for (int g = 1; g < 16; g += 2) {
-            __m256 v = vec_b0;
-            v = (g & 0b0010) ? _mm256_add_ps(v, vec_b1) : _mm256_sub_ps(v, vec_b1);
-            v = (g & 0b0100) ? _mm256_add_ps(v, vec_b2) : _mm256_sub_ps(v, vec_b2);
-            v = (g & 0b1000) ? _mm256_add_ps(v, vec_b3) : _mm256_sub_ps(v, vec_b3);
-            vec_lut[g] = v;
-        }
-
-        // Even indices are negatives of mirrored odd indices
-        for (int g = 0; g < 16; g += 2) {
-            vec_lut[g] = _mm256_sub_ps(_mm256_setzero_ps(), vec_lut[15 - g]);
-        }
-
-        // Accumulate bias from entry 0 (before scaling)
-        bias_acc += addv_ps(vec_lut[0]);
-
-        // Apply inverse scale
-        const __m256 vs = _mm256_set1_ps(t_scale);
-        for (int g = 0; g < 16; ++g) {
-            vec_lut[g] = _mm256_mul_ps(vec_lut[g], vs);
-        }
-
-        // Round to nearest, pack to int8 with saturate, and shuffle into the final lane order
-        __m256i vec_qlut[4];
-        const __m256i shuf = _mm256_setr_epi8(
-            0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15,
-            0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15);
-
-        for (int g = 0; g < 4; ++g) {
-            __m256i i0 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 0], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-            __m256i i1 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 1], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-            __m256i i2 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 2], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-            __m256i i3 = _mm256_cvtps_epi32(_mm256_round_ps(vec_lut[g * 4 + 3], _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-
-            i0 = _mm256_packs_epi32(i0, i1);
-            i2 = _mm256_packs_epi32(i2, i3);
-            __m256i i8 = _mm256_packs_epi16(i0, i2);
-            vec_qlut[g] = _mm256_shuffle_epi8(i8, shuf);
-        }
-
-        // Store 8 lanes x 4 rows for this 32-wide block
-        int32_t* qlut_i32 = reinterpret_cast<int32_t*>(lut);
-
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 0 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 0);
-        }
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 1 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 1);
-        }
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 2 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 2);
-        }
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 3 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 3);
-        }
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 4 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 4);
-        }
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 5 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 5);
-        }
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 6 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 6);
-        }
-        for (int g = 0; g < 4; ++g) {
-            qlut_i32[kblk * 32 + 7 * 4 + g] = _mm256_extract_epi32(vec_qlut[g], 7);
+    for (int32_t kk_outer = 0; kk_outer < kk_outer_max; ++kk_outer) {
+        // compute partial max - directly reset scale to 0.0
+        scales[kk_outer] = 0.0f;
+        for (int32_t k_outer = 0; k_outer < group_size / 32; ++k_outer) {
+            partial_max_g4_int8_k8(&scales[kk_outer], &b[(kk_outer * group_size) + (k_outer * 32)]);
         }
     }
 
-    // Write back bias and leave scale as-is
-    biases[0] = onnxruntime::MLFloat16(bias_acc);
-    // scales[0] unchanged
-    return;
+    for (int32_t k_outer_1 = 0; k_outer_1 < kk_outer_max; ++k_outer_1) {
+        lut_ctor_g4_int8_impl(group_size, (&(lut[(k_outer_1 * group_size * 4)])), (&(b[(k_outer_1 * group_size)])), (&(scales[k_outer_1])), (&(biases[k_outer_1])));
+    }
+
+}
+
+// try adding this back in:
+
+void
+QuantizeARow_CompInt8(
+    size_t /*BlkLen*/,
+    const float* /*A*/,
+    size_t /*CountK*/,
+    std::byte* /*QuantA*/
+) {
+    // Not implemented yet.
 }
 
 // Kernel dispatch structure definition.

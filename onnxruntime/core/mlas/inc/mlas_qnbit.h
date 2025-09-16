@@ -243,7 +243,8 @@ MlasIsTMACAvailable(
  */
 bool MLASCALL
 MlasTmacInitializeTable(size_t BlkLen, 
-                        const void* QuantBData,     // B in MLFloat16 (per your layout)
-                        const float* QuantBScale,        // scale(s) in float
+                        void* QuantBData,     // B in MLFloat16 (per your layout)
+                        float* QuantBScale,        // scale(s) in float
+                        int K,                           // K dimension
                         void* qlut                       // destination LUT buffer (int8 data)
 );

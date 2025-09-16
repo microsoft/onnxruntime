@@ -10,9 +10,10 @@ typedef
 void(MLAS_QNBIT_GEMM_LUT_GEN)(
 	int32_t group_size,
 	int8_t* lut,
-	onnxruntime::MLFloat16* b,
-	onnxruntime::MLFloat16* scales,
-	onnxruntime::MLFloat16* biases
+	float* b,
+	float* scales,
+	float* biases,
+	int K
 );
 
 
