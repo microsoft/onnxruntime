@@ -41,7 +41,7 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
-     
+
   - template: use-xcode-version.yml
     parameters:
       xcodeVersion: '16.4.0'
