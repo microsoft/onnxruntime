@@ -99,6 +99,7 @@ echo "Calling $ROOT_DIR/build.sh to build WebAssembly..."
     --enable_wasm_threads \
     --use_webnn \
     --use_webgpu \
+    --enable_wasm_jspi \
     --build_dir "$BUILD_DIR"
 
 # The 'set -e' command at the beginning of the script ensures that the script will exit
@@ -108,10 +109,10 @@ echo "--- Copying build artifacts ---"
 # Ensure the dist directory exists before copying files
 mkdir -p "$ROOT_DIR/js/web/dist"
 
-echo "Copying ort-wasm-simd-threaded.asyncify.wasm to $ROOT_DIR/js/web/dist/"
-cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.asyncify.wasm" "$ROOT_DIR/js/web/dist/"
+echo "Copying ort-wasm-simd-threaded.jspi.wasm to $ROOT_DIR/js/web/dist/"
+cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.jspi.wasm" "$ROOT_DIR/js/web/dist/"
 
-echo "Copying ort-wasm-simd-threaded.asyncify.mjs to $ROOT_DIR/js/web/dist/"
-cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.asyncify.mjs" "$ROOT_DIR/js/web/dist/"
+echo "Copying ort-wasm-simd-threaded.jspi.mjs to $ROOT_DIR/js/web/dist/"
+cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.jspi.mjs" "$ROOT_DIR/js/web/dist/"
 
 echo "--- WebGPU build process completed successfully ---"

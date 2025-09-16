@@ -53,11 +53,17 @@
     # WebAssembly/JavaScript code for WebGPU support.
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
 
-    # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
-    target_link_options(onnxruntime_providers_webgpu PUBLIC
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-    )
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s JSPI=1"
+      )
+    else()
+      # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      )
+    endif()
   else()
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu dawn::dawncpp_headers dawn::dawn_headers)
 
