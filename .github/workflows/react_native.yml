@@ -96,9 +96,10 @@ jobs:
     needs: build_android_packages
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     timeout-minutes: 90
-    env:
-      ANDROID_AVD_HOME: ${{ runner.temp }}
     steps:
+      - name: Set ANDROID_AVD_HOME environment variable
+        run: echo "ANDROID_AVD_HOME=${{ runner.temp }}" >> $GITHUB_ENV
+
       - name: Checkout repository
         uses: actions/checkout@v5
 
