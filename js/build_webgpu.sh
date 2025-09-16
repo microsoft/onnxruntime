@@ -24,7 +24,8 @@ if [ "$1" = "d" ]; then
     CONFIG_EXTRA_FLAG="--enable_wasm_profiling --wasm_run_tests_in_browser --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL=1 --enable_wasm_debug_info"
 elif [ "$1" = "r" ]; then
     CONFIG="Release"
-    CONFIG_EXTRA_FLAG="--enable_wasm_api_exception_catching --disable_rtti"
+    # CONFIG_EXTRA_FLAG="--enable_wasm_api_exception_catching --disable_rtti"
+    CONFIG_EXTRA_FLAG="--disable_rtti"
 else
     echo "Error: Invalid configuration \"$1\"."
     echo "Configuration must be 'd' (Debug) or 'r' (Release)."

@@ -867,8 +867,11 @@ def generate_build_tree(
     # if args.use_jsep and args.use_webgpu:
     #     raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
 
-    if args.use_jsep and args.enable_wasm_jspi:
-        raise BuildError("JSEP (--use_jsep) and WASM JSPI (--enable_wasm_jspi) cannot be enabled at the same time.")
+    if args.enable_wasm_jspi:
+        if args.use_jsep:
+            raise BuildError("JSEP (--use_jsep) and WASM JSPI (--enable_wasm_jspi) cannot be enabled at the same time.")
+        if args.disable_wasm_exception_catching:
+            raise BuildError("Cannot set WebAssembly exception catching in JSPI build.")
 
     if not args.use_webgpu:
         if args.use_external_dawn:
