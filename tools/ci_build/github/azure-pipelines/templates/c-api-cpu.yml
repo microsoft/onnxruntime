@@ -126,6 +126,8 @@ stages:
         xcodeVersion: 16.4
 
     - template: setup-build-tools.yml
+      parameters:
+        build_arch: arm64
 
     - script: |
         set -e -x
