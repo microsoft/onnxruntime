@@ -681,7 +681,14 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   }
 
 #if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
-  ASSERT_TRUE(has_kernel_info);
+  if(!has_kernel_info) {
+    std::ostringstream message{};
+    message << "has_kernel_info is false but expected to be true. Profile file contents:\n";
+    for(const auto& line : lines) {
+      message << line << "\n";
+    }
+    FAIL() << message.str();
+  }
 #endif
 }
 
