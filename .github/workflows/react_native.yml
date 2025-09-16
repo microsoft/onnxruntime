@@ -50,23 +50,23 @@ jobs:
       - name: Build Android AAR Packages
         run: |
           set -e -x
-          NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+          ORT_VERSION=$(cat VERSION_NUMBER)
           mkdir -p ${{ runner.temp }}/.build_settings
-          mkdir -p ${{ runner.temp }}/.artifacts
+          mkdir -p ${{ runner.temp }}/artifacts
           cp ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
+          BUILD_SCRIPT="${{ github.workspace }}/tools/ci_build/github/android${{ runner.temp }}_aar_package.py"
+          BUILD_SETTINGS="${{ runner.temp }}/.build_settings/build_settings.json"
 
-          docker run --rm \
-            --volume ${{ github.workspace }}:/onnxruntime_src \
-            --volume $ANDROID_HOME:/android_home \
-            --volume $NDK_HOME:/ndk_home \
-            --volume ${{ runner.temp }}/.artifacts:/home/onnxruntimedev/.artifacts \
-            --volume ${{ runner.temp }}/.build_settings:/home/onnxruntimedev/.build_settings \
-            -e BUILD_CONFIG=Release \
-            -e ORT_VERSION=${{ env.OnnxRuntimeVersion }} \
-            -e PUBLISH_EXECUTABLES=0 \
-            -e PACKAGE_NAME=onnxruntime-android \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh 0
+
+          python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
+          
+          python3 $BUILD_SCRIPT --build_dir ${{ runner.temp }} --config $BUILD_CONFIG --android_sdk_path $ANDROID_SDK_HOME --android_ndk_path $ANDROID_NDK_HOME $BUILD_SETTINGS         
+
+          # Copy the built artifacts to give folder for publishing
+          BASE_PATH=${{ runner.temp }}/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}/${ORT_VERSION}
+          cp ${BASE_PATH}/*.jar  ${{ runner.temp }}/artifacts
+          cp ${BASE_PATH}/*.aar          ${{ runner.temp }}/artifacts
+          cp ${BASE_PATH}/*.pom          ${{ runner.temp }}/artifacts          
 
       - name: Upload Android AAR Artifact
         uses: actions/upload-artifact@v4
