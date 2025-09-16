@@ -30,7 +30,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]

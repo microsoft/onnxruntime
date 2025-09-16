@@ -87,13 +87,13 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
+    AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_android.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
+    AgentPool : 'onnxruntime-Win-CPU-VS2022-Latest'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_linux.yml
@@ -109,7 +109,7 @@ stages:
 
 - template: nodejs/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
+    AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
     StageSuffix: 'Win_CPU_x64'
 
 - template: nodejs/templates/test_linux.yml

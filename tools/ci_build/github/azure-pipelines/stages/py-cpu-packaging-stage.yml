@@ -68,7 +68,7 @@ stages:
     jobs:
     - job: Windows_py_Wheels
       pool:
-        name: 'onnxruntime-Win-CPU-2022'
+        name: 'onnxruntime-Win-CPU-VS2022-Latest'
         os: windows
       templateContext:
         sdl:
