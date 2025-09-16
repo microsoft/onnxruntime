@@ -57,7 +57,6 @@ jobs:
 
           docker run --rm \
             --volume ${{ github.workspace }}:/onnxruntime_src \
-            --volume ${{ runner.temp }}:/build \
             --volume $ANDROID_HOME:/android_home \
             --volume $NDK_HOME:/ndk_home \
             --volume ${{ runner.temp }}/.artifacts:/home/onnxruntimedev/.artifacts \
