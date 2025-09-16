@@ -1,0 +1,26 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+$MAIN {
+    if (global_idx >= uniforms.output_size) {
+        return;
+    }
+
+    let row = global_idx / uniforms.hidden_size;
+    let col = global_idx % uniforms.hidden_size;
+
+    var sum: output_element_t = output_element_t(0.0);
+
+    // Accumulate weighted expert outputs
+    for (var k: u32 = 0u; k < uniforms.k; k = k + 1u) {
+        let expert_output_idx = row * uniforms.k * uniforms.hidden_size + k * uniforms.hidden_size + col;
+        let router_value_idx = row * uniforms.k + k;
+
+        let expert_output = fc2_outputs[expert_output_idx];
+        let router_weight = router_values[router_value_idx];
+
+        sum = sum + expert_output * router_weight;
+    }
+
+    output[global_idx] = sum;
+}

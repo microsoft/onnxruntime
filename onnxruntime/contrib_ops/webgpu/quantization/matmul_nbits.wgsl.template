@@ -11,6 +11,7 @@
 #param tile_size_k_vec
 #param tile_size_k
 #param tile_size
+#param weight_index
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
@@ -18,20 +19,32 @@
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
 var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
 
-fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
+fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32, a_base_offset : u32)
 {
     let k_offset = kidx / component_a + col;
     if (batch < uniforms.batch_count && k_offset < uniforms.K_of_a) {
-        tile_A[col] = input_a[batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset];
+        tile_A[col] = input_a[batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset + a_base_offset];
     } else {
         tile_A[col] = input_a_value_t(0);
     }
 }
 
 $MAIN {
+#if weight_index != 0u
+  var weight_idx = uniforms.weight_idx - 1;
+  let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile) % weight_idx;
+  weight_idx = workgroup_idx / (uniforms.M * uniforms.num_N_tile) % weight_idx;
+  let a_base_offset = weight_offset[weight_idx].x * uniforms.M * uniforms.K * batch;
+  let b_base_offset = weight_offset[weight_idx].y * uniforms.N * uniforms.K / uniforms.block_size;
+  let output_base_offset = weight_offset[weight_idx].z * uniforms.M * uniforms.N * batch;
+#else
   let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
-  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
+  const a_base_offset = 0u;
+  const b_base_offset = 0u;
+  const output_base_offset = 0u;
+#endif
   let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
 
   let idx = local_idx % tile_size_k_vec;
   let idy = local_idx / tile_size_k_vec;
@@ -46,7 +59,7 @@ $MAIN {
   {
     for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
     {
-      loadSHMA(batch, a_global, kidx, id);
+      loadSHMA(batch, a_global, kidx, id, a_base_offset);
     }
     workgroupBarrier();
 
@@ -58,10 +71,10 @@ $MAIN {
       {
 #if !single_scale_weights
         let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
-        let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
+        let scale_b = output_element_t(scales_b[b_base_offset + b_global * uniforms.blocks_per_col + block_idx]);
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
-        var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
+        var b_value = input_b[b_base_offset + b_global * uniforms.K_of_b + k_offset];
 
 #if n_bits == 4
         var sum = output_element_t(0);
@@ -150,8 +163,11 @@ $MAIN {
       output_value += inter_results[local_idx][b];
     }
     let b_global =  b_global_base + local_idx;
-    let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
+    let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global + output_base_offset;
     if (b_global < uniforms.N) {
+#if has_bias
+      output_value += bias[b_global];
+#endif
       output[output_idx] = output_value;
     }
   }

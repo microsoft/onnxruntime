@@ -1,0 +1,84 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param is_fp16
+#param k
+
+const K: u32 = k;
+#if is_fp16
+const MAX_FLOAT: f16 = 65504.0;
+#else
+const MAX_FLOAT: f32 = 3.402823466e+38;
+#endif
+var<workgroup> shared_vals: array<input_element_t, workgroup_size_x>;
+var<workgroup> shared_idxs: array<u32, workgroup_size_x>;
+
+$MAIN {
+    let row = workgroup_id.x;
+    if (row >= uniforms.rows) { return; }
+    let tid = local_id.x;
+    let cols = uniforms.cols;
+    let base = row * cols;
+
+    var max_val: input_element_t = -MAX_FLOAT;
+    var max_idx: u32 = 0u;
+
+    if (tid < cols) {
+        max_val = input[base + tid];
+        max_idx = tid;
+    }
+    shared_vals[tid] = max_val;
+    shared_idxs[tid] = max_idx;
+    workgroupBarrier();
+
+    // Bitonic Top-K sorting algorithm
+    for (var size = 2u; size <= workgroup_size_x; size *= 2u) {
+        for (var stride = size / 2u; stride > 0u; stride /= 2u) {
+            let partner = tid ^ stride;
+            if (partner > tid && partner < workgroup_size_x && tid < cols && partner < cols) {
+                let ascending_block = ((tid & size) != 0u);
+                let should_swap = select(
+                    shared_vals[partner] > shared_vals[tid],
+                    shared_vals[partner] < shared_vals[tid],
+                    ascending_block
+                );
+                if (should_swap) {
+                    // Swap values and indices
+                    let temp_val = shared_vals[tid];
+                    let temp_idx = shared_idxs[tid];
+                    shared_vals[tid] = shared_vals[partner];
+                    shared_idxs[tid] = shared_idxs[partner];
+                    shared_vals[partner] = temp_val;
+                    shared_idxs[partner] = temp_idx;
+                }
+            }
+            workgroupBarrier();
+        }
+    }
+    if (tid < K) {
+        let output_base = row * K;
+        let src_idx = tid;
+        if (src_idx < cols) {
+            // setup for fc1 nbitmm, x=input offset, y=weight offset, z=output offset
+            topk_indices_fc1[output_base + tid].x = 0u;
+            topk_indices_fc1[output_base + tid].y = shared_idxs[src_idx];
+            topk_indices_fc1[output_base + tid].z = shared_idxs[src_idx];
+
+            // setup for fc2 nbitmm, x=input offset, y=weight offset, z=output offset
+            topk_indices_fc2[output_base + tid].x = shared_idxs[src_idx];
+            topk_indices_fc2[output_base + tid].y = shared_idxs[src_idx];
+            topk_indices_fc2[output_base + tid].z = shared_idxs[src_idx];
+        }
+    }
+    workgroupBarrier();
+    if (tid == 0u) {
+        let output_base = row * K;
+        var sum : f32 = 0.0;
+        for (var i = 0u; i < K; i++) {
+            sum += exp(f32(shared_vals[i]));
+        }
+        for (var i = 0u; i < K; i++) {
+            topk_values[output_base + i] = input_element_t(exp(f32(shared_vals[i])) / sum);
+        }
+    }
+} // MAIN

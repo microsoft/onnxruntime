@@ -482,7 +482,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
 }
 
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
-                                      const Tensor* zero_points,
+                                      const Tensor* zero_points, const Tensor* bias,
                                       uint32_t M,
                                       uint32_t N,
                                       uint32_t K,
@@ -490,7 +490,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       uint32_t zero_blocks_per_col,
                                       int32_t config_index,
                                       onnxruntime::webgpu::ComputeContext& context,
-                                      Tensor* y) {
+                                      Tensor* y,
+                                      const Tensor* offsets) {
   // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
   Tensor a_prepack;
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {

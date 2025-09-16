@@ -1,0 +1,19 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+$MAIN {
+  let total = uniforms.rows * uniforms.cols;
+  guardAgainstOutOfBoundsWorkgroupSizes(total);
+
+  let row = global_idx / uniforms.cols;
+  let col = global_idx % uniforms.cols;
+  let base = row * (2u * uniforms.cols);
+
+  let gate_val = min(f32(input[base + col]), uniforms.swiglu_limit);
+  let linear_val = clamp(f32(input[base + uniforms.cols + col]), -uniforms.swiglu_limit, uniforms.swiglu_limit);
+  let sigmoid_out = 1.0f / (1.0f + exp(-uniforms.alpha * gate_val));
+  let swish_out = gate_val * sigmoid_out;
+  output[global_idx] = output_element_t(swish_out * (linear_val + uniforms.beta));
+} // MAIN
