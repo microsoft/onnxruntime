@@ -5,6 +5,7 @@ import * as esbuild from 'esbuild';
 import minimist from 'minimist';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { inspect } from 'node:util';
 import { SourceMapConsumer, SourceMapGenerator } from 'source-map';
 
 console.time('BUILD');
@@ -14,6 +15,9 @@ console.time('BUILD');
  */
 
 const args = minimist(process.argv.slice(2));
+
+console.log(inspect(args));
+
 /**
  * --bundle-mode=prod (default)
  *   Build multiple ort-web bundles for production.
@@ -28,7 +32,7 @@ const args = minimist(process.argv.slice(2));
  *   Build a single ort-web bundle for nodejs.
  */
 const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
-  process.env.npm_config_bundle_mode || args['bundle-mode'] || 'prod';
+  args['bundle-mode'] || process.env.npm_config_bundle_mode || 'prod';
 
 /**
  * --debug
@@ -42,7 +46,7 @@ const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
  *  Enable debug mode. In this mode, esbuild metafile feature will be enabled. Full bundle analysis will be saved to a
  * file as JSON.
  */
-const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'save'
+const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'save'
 
 /**
  * --webgpu-ep
@@ -53,7 +57,19 @@ const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'
  *
  * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
  */
-const USE_WEBGPU_EP = process.env.npm_config_webgpu_ep ?? args['webgpu-ep'] ?? false;
+const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? false;
+
+/**
+ * --jspi
+ * --no-jspi (default)
+ *
+ * Enable or disable the use of JSPI. If enabled, JSPI will be used instead of ASYNCIFY.
+ *
+ * (temporary) This flag is used to test the JSPI integration. It will be removed in the future.
+ */
+const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
+
+console.log(`USE_WEBGPU_EP=${USE_WEBGPU_EP}, USE_JSPI=${USE_JSPI}`);
 
 /**
  * Root folder of the source code: `<ORT_ROOT>/js/`
@@ -68,6 +84,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_JSEP': JSON.stringify(!!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
+  'BUILD_DEFS.ENABLE_JSPI': JSON.stringify(!!USE_JSPI),
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
   'BUILD_DEFS.DISABLE_WEBGPU': JSON.stringify(!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WEBNN': 'false',
@@ -267,7 +284,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
  *
  * The distribution code is split into multiple files:
  *  - [output-name][.min].[m]js
- *  - ort-wasm-simd-threaded[.jsep|.asyncify].mjs
+ *  - ort-wasm-simd-threaded[.jsep|.asyncify|.jspi].mjs
  */
 async function buildOrt({
   isProduction = false,
@@ -639,6 +656,32 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
+      },
+    });
+
+    // ort.jspi[.min].[m]js
+    await addAllWebBuildTasks({
+      outputName: 'ort.jspi',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.ENABLE_JSPI': 'true',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
+    });
+    // ort.jspi.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.jspi.bundle',
+      format: 'esm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.ENABLE_JSPI': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
