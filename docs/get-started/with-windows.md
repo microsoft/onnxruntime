@@ -10,12 +10,17 @@ nav_order: 9
 # Get started with ONNX Runtime for Windows 
 {: .no_toc }
 
-The ONNX Runtime Nuget package provides the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
+**WinML is the recommended Windows development path for ONNX Runtime.** The ONNX Runtime NuGet package provides the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 This allows scenarios such as passing a [Windows.Media.VideoFrame](https://docs.microsoft.com/en-us/uwp/api/Windows.Media.VideoFrame) from your connected camera directly into the runtime for realtime inference.
+
+WinML offers several advantages for Windows developers:
+- **Same ONNX Runtime APIs**: WinML uses the same ONNX Runtime APIs you're already familiar with
+- **Dynamic execution provider selection**: WinML automatically selects the best execution provider (EP) based on your customer's hardware, with mechanisms that you can override for manual fine-grained control
+- **Simplified deployment**: Reduces complexity for Windows developers by deploying all needed dependencies for AI inference on the client
 
 The WinML API is a WinRT API that shipped inside the Windows OS starting with build 1809 (RS5) in the Windows.AI.MachineLearning namespace. It embedded a version of the ONNX Runtime.
 
-In addition to using the in-box version of WinML, WinML can also be installed as an application re-distributable package (see [Direct ML Windows](../execution-providers/DirectML-ExecutionProvider) for technical details).
+In addition to using the in-box version of WinML, WinML can also be installed as an application re-distributable package. For legacy scenarios or specific DirectML requirements, see the [DirectML Execution Provider](../execution-providers/DirectML-ExecutionProvider) documentation (note: DirectML is in sustained engineering).
 
 ## Contents
 {: .no_toc }
@@ -26,7 +31,13 @@ In addition to using the in-box version of WinML, WinML can also be installed as
 
 ## Windows OS integration
 
-ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support.
+ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Microsoft.Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support (note: DirectML is in sustained engineering - WinML is the preferred approach).
+
+**Version Support:**
+- **Windows 10 (1809+) & Windows 11 (before 24H2)**: ONNX Runtime works, but you need to manually select and manage models and execution providers yourself
+- **Windows 11 (24H2+)**: WinML provides additional automation to help with execution provider selection and hardware optimization across Windows' broad and open ecosystem
+
+For full support across all silicon vendors, WinML on Windows 11 24H2+ is recommended as it handles much of the complexity automatically.
 
 The high level design looks like this:
 
@@ -92,4 +103,9 @@ If the OS does not have the runtime you need you can switch to use the redist bi
 |ORT release 1.4| 3|
 
 See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributions.
+
+## Additional Resources
+
+For more information about Windows Machine Learning (WinML), see the [Windows ML Overview](https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/overview).
+
 <p><a href="#">Back to top</a></p>
