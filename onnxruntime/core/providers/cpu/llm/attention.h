@@ -16,12 +16,12 @@ namespace onnxruntime {
 // This change assumes that lowest() is sufficiently low enough to not impact the result.
 template <typename T>
 inline T negative_infinity() {
-  return -std::numeric_limits<T>::lowest();
+  return std::numeric_limits<T>::lowest();
 }
 
 template <>
 inline MLFloat16 negative_infinity() {
-  return MLFloat16(-std::numeric_limits<float>::lowest());
+  return MLFloat16(std::numeric_limits<float>::lowest());
 }
 
 template <typename T>
