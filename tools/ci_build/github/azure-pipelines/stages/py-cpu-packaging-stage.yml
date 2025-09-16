@@ -90,20 +90,12 @@ stages:
         matrix:
           Python310_x64:
             PythonVersion: '3.10'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python311_x64:
             PythonVersion: '3.11'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python312_x64:
             PythonVersion: '3.12'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python313_x64:
             PythonVersion: '3.13'
-            MsbuildPlatform: x64
-            buildArch: x64
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         ExtraParam: ${{ parameters.build_py_parameters }}
@@ -117,6 +109,8 @@ stages:
         submodules: recursive
 
       - template: ../templates/setup-build-tools.yml
+        parameters:
+          build_arch: 'x64'
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 

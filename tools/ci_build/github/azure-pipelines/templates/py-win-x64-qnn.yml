@@ -50,6 +50,8 @@ jobs:
         submodules: recursive
 
       - template: setup-build-tools.yml
+        parameters:
+          build_arch: 'x64'
 
       - task: UsePythonVersion@0
         inputs:

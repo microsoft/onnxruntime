@@ -58,6 +58,8 @@ jobs:
     submodules: none
 
   - template: setup-build-tools.yml
+    parameters:
+      build_arch: 'arm64'
 
   - task: PythonScript@0
     inputs:
