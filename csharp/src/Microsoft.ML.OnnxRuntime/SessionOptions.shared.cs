@@ -261,10 +261,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Append a VitisAI EP instance (configured based on given provider options) to the native OrtSessionOptions instance
         /// </summary>
-        /// <param name="options">Native OrtSessionOptions instance</param>
-        /// <param name="keys">Native keys instance</param>
-        /// <param name="values">Native values instance</param>
-        /// <param name="numEntries">Native numEntries instance</param>
+        /// <param name="providerOptions">Native OrtSessionOptions instance</param>
         public void AppendExecutionProvider_VitisAI(Dictionary<string, string> providerOptions)
         {
 #if __MOBILE__
