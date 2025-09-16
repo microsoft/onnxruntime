@@ -19,6 +19,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   GetVendorId = GetVendorIdImpl;
   GetVersion = GetVersionImpl;
 
+  GetAdditionalHardwareDevices = GetAdditionalHardwareDevicesImpl;
   GetSupportedDevices = GetSupportedDevicesImpl;
 
   CreateEp = CreateEpImpl;
@@ -95,6 +96,62 @@ uint32_t ORT_API_CALL ExampleEpFactory::GetVendorIdImpl(const OrtEpFactory* this
 const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
   return factory->ep_version_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEpFactory* this_ptr,
+                                                                           const OrtHardwareDevice* const* found_devices,
+                                                                           size_t num_found_devices,
+                                                                           OrtHardwareDevice** additional_devices,
+                                                                           size_t max_additional_devices,
+                                                                           size_t* num_additional_devices) noexcept {
+  // EP factory can provide ORT with additional hardware devices that ORT did not find, or more likely, that are not
+  // available on the target machine but could serve as compilation targets.
+
+  // As an example, this example EP factory will first look for a GPU device among the devices found by ORT. If there
+  // is no GPU available, then this EP will create a virtual GPU device that the application can use a compilation target.
+
+  auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+  bool found_gpu = false;
+
+  for (size_t i = 0; i < num_found_devices; ++i) {
+    const OrtHardwareDevice& device = *found_devices[i];
+
+    if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
+      found_gpu = true;
+      break;
+    }
+  }
+
+  *num_additional_devices = 0;
+
+  if (!found_gpu && max_additional_devices >= 1) {
+    // Add some hw metadata for this GPU
+    OrtKeyValuePairs* hw_metadata = nullptr;
+    factory->ort_api.CreateKeyValuePairs(&hw_metadata);
+    factory->ort_api.AddKeyValuePair(hw_metadata, "Discrete", "1");
+    factory->ort_api.AddKeyValuePair(hw_metadata, "CompileTargetOnly", "1");
+
+    // Create a new HW device. Must have the same vendor information as this factory. Otherwise, ORT will not use it.
+    OrtHardwareDevice* new_device = nullptr;
+    auto* status = factory->ort_api.GetEpApi()->CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
+                                                                     factory->vendor_id_,
+                                                                     /*device_id*/ 0,
+                                                                     factory->vendor_.c_str(),
+                                                                     hw_metadata,
+                                                                     &new_device);
+    factory->ort_api.ReleaseKeyValuePairs(hw_metadata);  // Release since ORT makes a copy.
+
+    if (status != nullptr) {
+      return status;
+    }
+
+    // ORT will take ownership of the new HW device.
+    additional_devices[0] = new_device;
+    *num_additional_devices = 1;
+  }
+
+  return nullptr;
 }
 
 /*static*/
