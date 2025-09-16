@@ -57,8 +57,7 @@ jobs:
           BUILD_SCRIPT="${{ github.workspace }}/tools/ci_build/github/android${{ runner.temp }}_aar_package.py"
           BUILD_SETTINGS="${{ runner.temp }}/.build_settings/build_settings.json"
 
-
-          python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
+          python3 -m pip install --user -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
           
           python3 $BUILD_SCRIPT --build_dir ${{ runner.temp }} --config $BUILD_CONFIG --android_sdk_path $ANDROID_SDK_HOME --android_ndk_path $ANDROID_NDK_HOME $BUILD_SETTINGS         
 
