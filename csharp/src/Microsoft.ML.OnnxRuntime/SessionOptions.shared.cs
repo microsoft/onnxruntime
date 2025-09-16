@@ -261,10 +261,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Append a VitisAI EP instance (configured based on given provider options) to the native OrtSessionOptions instance
         /// </summary>
-        /// <param name="options">Native OrtSessionOptions instance</param>
-        /// <param name="keys">Native keys instance</param>
-        /// <param name="values">Native values instance</param>
-        /// <param name="numEntries">Native numEntries instance</param>
+        /// <param name="providerOptions">Native OrtSessionOptions instance</param>
         public void AppendExecutionProvider_VitisAI(Dictionary<string, string> providerOptions)
         {
 #if __MOBILE__
@@ -281,8 +278,8 @@ namespace Microsoft.ML.OnnxRuntime
                 int i = 0;
                 foreach (var kvp in providerOptions)
                 {
-                    string keyWithNull = kvp.Key + "\0";
-                    string valueWithNull = kvp.Value + "\0";
+                    var keyWithNull = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(kvp.Key);
+                    var valueWithNull = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(kvp.Value);
 
                     var keyHandle = GCHandle.Alloc(keyWithNull, GCHandleType.Pinned);
                     var valHandle = GCHandle.Alloc(valueWithNull, GCHandleType.Pinned);
@@ -299,7 +296,7 @@ namespace Microsoft.ML.OnnxRuntime
                     Handle,
                     keyPtrs,
                     valuePtrs,
-                    (UIntPtr)count));                
+                    (UIntPtr)count));
             }
             finally
             {
