@@ -220,6 +220,7 @@ class Environment {
     ~EpInfo();
 
     std::unique_ptr<EpLibrary> library;
+    std::vector<std::unique_ptr<OrtHardwareDevice>> additional_hw_devices;
     std::vector<std::unique_ptr<OrtEpDevice>> execution_devices;
     std::vector<OrtEpFactory*> factories;
     std::vector<EpFactoryInternal*> internal_factories;    // factories that can create IExecutionProvider instances

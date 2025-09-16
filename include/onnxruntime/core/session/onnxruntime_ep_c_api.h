@@ -465,6 +465,15 @@ struct OrtEpApi {
    */
   ORT_API_T(uint64_t, GetSyncIdForLastWaitOnSyncStream,
             _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
+
+  ORT_API2_STATUS(CreateHardwareDevice, _In_ OrtHardwareDeviceType type,
+                  _In_ uint32_t vendor_id,
+                  _In_ uint32_t device_id,
+                  _In_ const char* vendor_name,
+                  _In_opt_ const OrtKeyValuePairs* metadata,
+                  _Out_ OrtHardwareDevice** hardware_device);
+
+  ORT_CLASS_RELEASE(HardwareDevice);
 };
 
 /**
@@ -981,6 +990,13 @@ struct OrtEpFactory {
                   _In_ const OrtMemoryDevice* memory_device,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
+
+  ORT_API2_STATUS(GetAdditionalHardwareDevices, _In_ OrtEpFactory* this_ptr,
+                  _In_reads_(num_devices) const OrtHardwareDevice* const* found_devices,
+                  _In_ size_t num_found_devices,
+                  _Inout_ OrtHardwareDevice** additional_devices,
+                  _In_ size_t max_additional_devices,
+                  _Out_ size_t* num_additional_devices);
 };
 
 #ifdef __cplusplus
