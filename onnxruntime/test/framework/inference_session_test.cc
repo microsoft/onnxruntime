@@ -630,8 +630,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 }
 
 // WebAssembly will emit profiling data into console
-// TODO(hasesh): Investigate why this test fails on Windows CUDA builds
-#if (!defined(__wasm__) && !defined(_WIN32))
+#if !defined(__wasm__)
 TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   SessionOptions so;
 
