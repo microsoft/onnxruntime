@@ -1,0 +1,8 @@
+onnxruntime_test_python.py
+onnxruntime_test_python_autoep.py
+onnxruntime_test_python_backend.py
+onnxruntime_test_python_backend_mlops.py
+onnxruntime_test_python_compile_api.py
+onnxruntime_test_python_global_threadpool.py
+onnxruntime_test_python_mlops.py
+onnxruntime_test_python_sparse_matmul.py

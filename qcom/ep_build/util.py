@@ -215,6 +215,5 @@ MSFT_CI_REQUIREMENTS_RELPATH = (
 
 REPO_ROOT = Path(run_and_get_output(["git", "rev-parse", "--show-toplevel"], quiet=True))
 
-
 VENV_ACTIVATE_RELPATH = "Scripts/activate" if is_host_windows() else "bin/activate"
 """Where to find the bash script to source to activate a virtual environment."""

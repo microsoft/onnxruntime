@@ -64,6 +64,53 @@ if (-not $?) {
     $Failed = $true
 }
 
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    Write-Host "--=-=-=- Running Python tests -=--=-=-"
+    $PythonTestFilesPath = (Join-Path $RootDir "python_test_files.txt")
+
+    if (Test-Path $PythonTestFilesPath) {
+        $PythonTestFiles = Get-Content $PythonTestFilesPath
+
+        foreach ($PythonFile in $PythonTestFiles) {
+            $PythonFile = $PythonFile.Trim()
+            if ($PythonFile -and (Test-Path $PythonFile)) {
+
+                # TODO - AISW-139802 - Tests in the following files hang on Windows - skip them for now
+                if ($PythonFile -like "*onnxruntime_test_python_backend.py" -or
+                        $PythonFile -like "*onnxruntime_test_python_global_threadpool.py") {
+                    Write-Host "Skipping $PythonFile - contains a test that hangs on Windows"
+                    continue
+                }
+
+                Write-Host "Running $PythonFile..."
+                & python $PythonFile
+                if (-not $?) {
+                    Write-Error "Python test $PythonFile failed."
+                    $Failed = $true
+                }
+            } else {
+                Write-Warning "Failed to find $PythonFile - may be OK on platforms which do not support Python."
+            }
+        }
+    } else {
+        Write-Error "Python test files list not found at $PythonTestFilesPath"
+        $Failed = $true
+    }
+
+    if (Test-Path "quantization" -PathType Container) {
+        Write-Host "Running quantization tests..."
+        & python -m unittest discover -s quantization
+    } else {
+        Write-Warning "Failed to find directory 'quantization' - may be OK on platforms which do not support Python."
+    }
+    if (-not $?) {
+        Write-Error "Quantization tests failed."
+        $Failed = $true
+    }
+} else {
+    Write-Warning "python.exe not found - skipping Python testing."
+}
+
 Write-Host "--=-=-=- Running ONNX model tests -=--=-=-"
 & $OnnxTestRunnerExe `
     -j 1 `

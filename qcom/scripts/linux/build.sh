@@ -194,6 +194,7 @@ else
   if [ -n "${test_runner}" ]; then
     cp "${test_runner}" "${build_dir}/${config}/"
     cp "${cmake_bindir}/ctest" "${build_dir}/${config}/"
+    cp "${REPO_ROOT}/qcom/scripts/all/python_test_files.txt" "${build_dir}/${config}/"
   fi
 
   if [ "${#action_args[@]}" -gt 0 ]; then

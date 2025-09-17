@@ -19,7 +19,7 @@ _ALWAYS_REJECT_RE = re.compile("|".join(_ALWAYS_REJECT_PATTERNS))
 
 _ORT_REJECT_PATTERNS = [
     *_ALWAYS_REJECT_PATTERNS,
-    r".*\.(a|cc?|h|lib|py)$",
+    r".*\.(a|cc?|h|lib)$",
     r".*/\.ninja_deps$",
     r".*/\.ninja_log$",
     r".*/CMakeCache.txt$",
