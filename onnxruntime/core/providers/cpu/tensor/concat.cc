@@ -109,6 +109,38 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                                                                             ? reference_rank
                                                                                             : reference_rank + 1)));
 
+  // Validate tensors that appear before the reference tensor
+  // These were skipped in the original loop that starts from reference_tensor_index + 1
+  for (int index = 0; index < reference_tensor_index; index++) {
+    const auto* input = input_tensors[index];
+    ORT_ENFORCE(input != nullptr, "input count mismatch");
+    const auto& input_shape = input->Shape();
+    const auto input_dims = input_shape.GetDims();
+
+    // For non-empty tensors, validate rank compatibility with reference tensor
+    if (input_shape.Size() > 0) {
+      const size_t input_rank = input_dims.size();
+      ORT_ENFORCE(input_rank == reference_rank,
+                  "Ranks of input data are different, cannot concatenate them. expected rank: ",
+                  reference_rank, " got: ", input_rank);
+
+      // Ensure all the other (non-concat) axes match the reference tensor
+      for (size_t axis_index = 0; axis_index < reference_rank; ++axis_index) {
+        auto dim_value = input_dims[axis_index];
+
+        // In 'concat' mode, the axis to be concatenated may be different
+        // But in 'stack' mode, all input shapes must be the same and must be validated
+        if (!is_stack_ && axis_index == p.axis)
+          continue;
+
+        ORT_RETURN_IF_NOT(dim_value == reference_dims[axis_index],
+                          "Non concat axis dimensions must match: Axis ",
+                          axis_index, " has mismatched dimensions of ", dim_value,
+                          " and ", reference_dims[axis_index]);
+      }
+    }
+  }
+
   // Ensure all of the non concatenated axes match each other
   for (size_t index = static_cast<size_t>(reference_tensor_index) + 1; index < input_count; index++) {
     const auto* input = input_tensors[index];
