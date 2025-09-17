@@ -75,7 +75,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Set ANDROID_AVD_HOME environment variable
-        run: echo "ANDROID_AVD_HOME=${{ runner.temp }}" >> $GITHUB_ENV
+        run: echo "ANDROID_AVD_HOME=${{ runner.temp }}/android-avd" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v5
