@@ -1,0 +1,6 @@
+numpy
+torch --index-url https://download.pytorch.org/whl/cu129
+optimum[onnxruntime]
+onnxruntime-gpu
+diffusers
+sentencepiece 
