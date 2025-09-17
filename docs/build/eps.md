@@ -243,7 +243,7 @@ See more information on the NV TensorRT RTX Execution Provider [here](../executi
 {: .no_toc }
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and setup environment variables.
- * Intall TensorRT for RTX from nvidia.com (TODO: add link when available)
+ * Download TensorRT for RTX from [nvidia.com](https://developer.nvidia.com/tensorrt-rtx)
 
 ### Build Instructions
 {: .no_toc }

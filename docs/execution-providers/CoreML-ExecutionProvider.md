@@ -2,7 +2,7 @@
 title: Apple - CoreML
 description: Instructions to execute ONNX Runtime with CoreML
 parent: Execution Providers
-nav_order: 8
+nav_order: 9
 redirect_from: /docs/reference/execution-providers/CoreML-ExecutionProvider
 ---
 {::options toc_levels="2" /}
