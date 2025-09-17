@@ -40,6 +40,7 @@ static bool IsWindowInput(const NodeUnitIODef& input) {
 Status STFTOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger) const {
+  ORT_UNUSED_PARAMETER(logger);
   // TODO: STFT seg faults on QNN CPU
   bool is_cpu_backend = IsCpuBackend(qnn_model_wrapper.GetQnnBackendType());
   ORT_RETURN_IF(is_cpu_backend, "QNN EP: STFT Op disabled in CPU backend.");
@@ -194,6 +195,7 @@ Status STFTOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool do_op_validation) const {
+  ORT_UNUSED_PARAMETER(logger);
   NodeAttrHelper node_helper(node_unit);
   const auto& inputs = node_unit.Inputs();
   bool onesided = node_helper.Get("onesided", static_cast<bool>(1));
