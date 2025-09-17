@@ -64,10 +64,12 @@ bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
     return false;
   }
 
+  // Disable direct MLAS Q4 GEMM for block-wise quantization to avoid double conversion errors
+  // Use traditional dequantization path which has been fixed for correct scale indexing
   if (block_size == 64) {
-    out_qtype = BlkQ4Sym64;
+    return false;  // Force traditional path
   } else if (block_size == 128) {
-    out_qtype = BlkQ4Sym128;
+    return false;  // Force traditional path
   } else if (block_size == 0) {
     out_qtype = BlkQ4Sym;
   } else {
@@ -202,7 +204,7 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
 
         for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
           const int64_t block_end = std::min(block_start + block_size, cols);
-          const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
+          const int64_t block_idx = block_start / block_size;
           const int64_t scale_idx = r * blocks_per_row + block_idx;
 
           // Validate scale index bounds
@@ -263,7 +265,7 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
         if (block_size > 0) {
           for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
             const int64_t block_end = std::min(block_start + block_size, cols);
-            const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
+            const int64_t block_idx = block_start / block_size;
             const int64_t scale_idx = r * blocks_per_row + block_idx;
 
             // Validate scale index bounds for 8-bit case
@@ -311,7 +313,7 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
         if (block_size > 0) {
           for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
             const int64_t block_end = std::min(block_start + block_size, cols);
-            const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
+            const int64_t block_idx = block_start / block_size;
             const int64_t scale_idx = r * blocks_per_row + block_idx;
 
             // Validate scale index bounds for 4-bit case
@@ -443,8 +445,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   const int max_threads = tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1;
   const int64_t thread_divisor = std::max(1, max_threads * 4);
-  const int64_t min_work_per_thread = std::max(int64_t{32}, static_cast<int64_t>(num_tokens / thread_divisor));
-  const int optimal_routing_threads = (tp == nullptr || num_tokens < min_work_per_thread) ? 1 : std::min(static_cast<int>(num_tokens / min_work_per_thread), max_threads);
+
+  // For decoding (small num_tokens), use more aggressive parallelization
+  // For prefill (large num_tokens), ensure sufficient work per thread
+  int optimal_routing_threads;
+  if (num_tokens <= 4) {
+    // Small token counts (decoding): use up to 4 threads for better latency
+    optimal_routing_threads = (tp == nullptr) ? 1 : std::min(4, max_threads);
+  } else {
+    // Larger token counts: ensure minimum work per thread to avoid overhead
+    const int64_t min_work_per_thread = std::max(int64_t{8}, static_cast<int64_t>(num_tokens / thread_divisor));
+    optimal_routing_threads = (tp == nullptr || num_tokens < min_work_per_thread) ? 1 : std::min(static_cast<int>(num_tokens / min_work_per_thread), max_threads);
+  }
   const int num_routing_threads = std::max(1, optimal_routing_threads);
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
@@ -554,6 +566,32 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   auto workspace_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * workspace_elements_per_thread);
   float* workspace = workspace_ptr.get();
 
+  // Only zero-initialize the dequantization buffers that need it, not the entire workspace
+  // A1, C1, A2, C2 don't need initialization since they're always fully overwritten
+  const size_t dequant_buffers_size = B1_dequant_size + B2_dequant_size;
+  const size_t workspace_data_size = A1_size + C1_size + A2_size + C2_size;
+
+  // Zero only the dequantization buffers for each thread
+  // Use parallel initialization for large buffers to improve performance
+  if (dequant_buffers_size > 0) {
+    const size_t total_dequant_size = static_cast<size_t>(num_expert_threads) * dequant_buffers_size;
+    const size_t parallel_threshold = 64 * 1024;  // 64KB threshold
+
+    if (total_dequant_size > parallel_threshold && tp != nullptr && num_expert_threads > 1) {
+      // Parallel initialization for large buffers
+      concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t t) {
+        float* thread_dequant_start = workspace + static_cast<size_t>(t) * workspace_elements_per_thread + workspace_data_size;
+        std::memset(thread_dequant_start, 0, dequant_buffers_size * sizeof(float));
+      });
+    } else {
+      // Sequential initialization for smaller buffers
+      for (int t = 0; t < num_expert_threads; ++t) {
+        float* thread_dequant_start = workspace + static_cast<size_t>(t) * workspace_elements_per_thread + workspace_data_size;
+        std::memset(thread_dequant_start, 0, dequant_buffers_size * sizeof(float));
+      }
+    }
+  }
+
   auto bias_conversion_buffers_ptr = IAllocator::MakeUniquePtr<float>(allocator,
                                                                       static_cast<size_t>(num_expert_threads) * (static_cast<size_t>(fc1_out_features) + static_cast<size_t>(hidden_size)));
   float* bias_conversion_buffers = bias_conversion_buffers_ptr.get();
@@ -652,14 +690,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           for (int64_t i = start_idx; i < end_idx; ++i) {
             const int64_t route_idx = routes[static_cast<size_t>(i)];
-            // Validate route index to prevent division by zero or invalid token indices
-            if (route_idx < 0 || k_ <= 0) {
-              continue;  // Skip invalid routes
-            }
             const int64_t token_idx = route_idx / k_;
-            if (token_idx < 0 || token_idx >= num_tokens) {
-              continue;  // Skip out-of-bounds token indices
-            }
             const float* src = input_float + token_idx * hidden_size;
             float* dst = A1 + i * hidden_size;
 
@@ -669,12 +700,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       } else {
         for (int64_t i = 0; i < num_expert_tokens; ++i) {
           const int64_t route_idx = routes[static_cast<size_t>(i)];
-          // Validate route index to prevent division by zero or invalid token indices
-          if (route_idx < 0 || k_ <= 0) {
-            continue;  // Skip invalid routes
-          }
           const int64_t token_idx = route_idx / k_;
-          if (token_idx < 0 || token_idx >= num_tokens) {
+          if (token_idx >= num_tokens) {
             continue;  // Skip out-of-bounds token indices
           }
           const float* src = input_float + token_idx * hidden_size;
@@ -991,30 +1018,17 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       for (int64_t i = 0; i < num_expert_tokens; ++i) {
         const int64_t route_idx = routes[static_cast<size_t>(i)];
-        // Validate route index to prevent division by zero or invalid token indices
-        if (route_idx < 0 || k_ <= 0) {
-          continue;  // Skip invalid routes
-        }
         const int64_t token_idx = route_idx / k_;
-        if (token_idx < 0 || token_idx >= num_tokens) {
-          continue;  // Skip out-of-bounds token indices
-        }
-        // Validate route_scale array bounds
-        if (route_idx < 0 || route_idx >= num_tokens * k_) {
-          continue;  // Skip if route_idx would be out of bounds for route_scale array
+        if (token_idx >= num_tokens || route_idx >= num_tokens * k_) {
+          continue;  // Skip out-of-bounds indices
         }
         const float weight = route_scale[route_idx];
-
-        if (token_idx < 0 || token_idx >= num_tokens) continue;
 
         const size_t buffer_offset = static_cast<size_t>(token_idx) * static_cast<size_t>(hidden_size);
         if (buffer_offset + static_cast<size_t>(hidden_size) > output_buffer_size) continue;
 
         // Simplified thread buffer validation
         if (thread_id < 0 || thread_id >= num_expert_threads) continue;
-
-        // Validate source buffer bounds
-        if (i < 0 || i >= num_expert_tokens) continue;
 
         float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + buffer_offset;
         const float* src = C2 + i * hidden_size;

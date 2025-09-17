@@ -24,6 +24,7 @@ class MoEBaseCPU {
  protected:
   MoEBaseCPU(const OpKernelInfo& op_kernel_info) {
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
+    ORT_ENFORCE(k_ > 0, "k must be positive, got: ", k_);
 
     std::string activation_type_str;
     ORT_ENFORCE(op_kernel_info.GetAttr<std::string>("activation_type", &activation_type_str).IsOK());
