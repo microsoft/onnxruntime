@@ -3,9 +3,6 @@
 
 #pragma once
 
-// Needed for CUDA_VERSION
-#include <cuda.h>
-
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #if defined(ENABLE_FP8) && !defined(DISABLE_FLOAT8_TYPES)
@@ -96,13 +93,9 @@ struct OrtToCudaType<Float8E5M2FNUZ> {
 #endif
 
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
-// ENABLE_FP4 is only set if CUDA SDK version is >= 12.8
-// Just in case - statically assert the same
-static_assert(CUDA_VERSION >= 12080,
-              "CUDA_VERSION should be >= 12.8 if ENABLE_FP4 is set");
 template <>
 struct OrtToCudaType<Float4E2M1x2> {
-  using type = Float4E2M1x2::PackedCudaType;
+  using type = __nv_fp4x2_e2m1;
 };
 #endif
 
