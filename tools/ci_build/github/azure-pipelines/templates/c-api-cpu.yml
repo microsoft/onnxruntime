@@ -108,7 +108,7 @@ stages:
       clean: all
     pool:
       name: 'Azure Pipelines'
-      image: 'macOS-15'
+      image: 'macOS-14'
       os: 'macOS'
 
     timeoutInMinutes: 300
@@ -122,8 +122,6 @@ stages:
         jdkSourceOption: 'PreInstalled'
 
     - template: use-xcode-version.yml
-      parameters:
-        xcodeVersion: 16.4
 
     - template: setup-build-tools.yml
       parameters:
