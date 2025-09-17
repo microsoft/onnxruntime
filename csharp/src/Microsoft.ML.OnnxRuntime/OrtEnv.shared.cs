@@ -329,14 +329,72 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Create and register an allocator to the OrtEnv instance
-        /// so as to enable sharing across all sessions using the OrtEnv instance
+        /// Create and register an allocator to the OrtEnv instance.
+        ///  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
+        ///  Enables sharing the allocator between multiple sessions that use the same env instance.
+        /// Lifetime of the created allocator will be valid for the duration of the environment.
+        /// so as to enable sharing across all sessions using the OrtEnv instance.
         /// <param name="memInfo">OrtMemoryInfo instance to be used for allocator creation</param>
         /// <param name="arenaCfg">OrtArenaCfg instance that will be used to define the behavior of the arena based allocator</param>
         /// </summary>
         public void CreateAndRegisterAllocator(OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAndRegisterAllocator(Handle, memInfo.Pointer, arenaCfg.Pointer));
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtCreateAndRegisterAllocator(Handle, memInfo.Pointer, arenaCfg.Pointer));
+        }
+
+        /// <summary>
+        /// Create and register an allocator to the OrtEnv instance.
+        /// Use UnregisterAllocator to unregister it.
+        /// </summary>
+        /// <param name="providerType"></param>
+        /// <param name="memInfo"></param>
+        /// <param name="arenaCfg"></param>
+        /// <param name="provider_options"></param>
+        public void CreateAndRegisterAllocator(string providerType, OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg,
+            IReadOnlyDictionary<string, string> provider_options)
+        {
+            MarshaledString marshalledProviderType = default;
+
+            IntPtr[] keysPtrs = new IntPtr[provider_options.Count];
+            IntPtr[] valuesPtrs = new IntPtr[provider_options.Count];
+
+            MarshaledStringArray marshalledKeys = default;
+            MarshaledStringArray marshalledValues = default;
+
+            try
+            {
+                marshalledKeys = new MarshaledStringArray(provider_options.Keys);
+                marshalledValues = new MarshaledStringArray(provider_options.Values);
+                marshalledKeys.Fill(keysPtrs);
+                marshalledValues.Fill(valuesPtrs);
+                marshalledProviderType = new MarshaledString(providerType);
+
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtCreateAndRegisterAllocatorV2(Handle, marshalledProviderType.Value,
+                                                                  memInfo.Pointer, arenaCfg.Pointer,
+                                                                  keysPtrs, valuesPtrs,
+                                                                  (UIntPtr)provider_options.Count));
+            }
+            finally
+            {
+                marshalledProviderType.Dispose();
+                marshalledValues.Dispose();
+                marshalledKeys.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Unregister a custom allocator previously registered with the OrtEnv instance
+        /// using CreateAndRegisterAllocator
+        /// The memory info instance should correspond the one that is used for registration
+        /// </summary>
+        /// <param name="memInfo">The memory info instance should correspond the one that is used for registration</param>
+        public void UnregisterAllocator(OrtMemoryInfo memInfo)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtUnregisterAllocator(Handle, memInfo.Pointer));
         }
 
         /// <summary>
@@ -477,7 +535,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             return epDevices.AsReadOnly();
-        }        
+        }
 
         #endregion
 

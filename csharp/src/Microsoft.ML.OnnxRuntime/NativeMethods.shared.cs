@@ -610,6 +610,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtTensorAt = (DOrtTensorAt)Marshal.GetDelegateForFunctionPointer(api_.TensorAt, typeof(DOrtTensorAt));
             OrtCreateAndRegisterAllocator = (DOrtCreateAndRegisterAllocator)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocator, typeof(DOrtCreateAndRegisterAllocator));
+            OrtUnregisterAllocator = (DOrtUnregisterAllocator)Marshal.GetDelegateForFunctionPointer(api_.UnregisterAllocator, typeof(DOrtUnregisterAllocator));
             OrtSetLanguageProjection = (DOrtSetLanguageProjection)Marshal.GetDelegateForFunctionPointer(api_.SetLanguageProjection, typeof(DOrtSetLanguageProjection));
 
             OrtHasValue = (DOrtHasValue)Marshal.GetDelegateForFunctionPointer(api_.HasValue, typeof(DOrtHasValue));
@@ -1237,8 +1238,8 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /*(char*)*/ provider_type,
             IntPtr /*(OrtMemoryInfo*)*/ mem_info,
             IntPtr /*(OrtArenaCfg*)*/ arena_cfg,
-            IntPtr /*(char**)*/ provider_options_keys,
-            IntPtr /*(char**)*/ provider_options_values,
+            IntPtr[] /*(char**)*/ provider_options_keys,
+            IntPtr[] /*(char**)*/ provider_options_values,
             UIntPtr /*(size_t)*/ num_keys);
         public static DCreateAndRegisterAllocatorV2 OrtCreateAndRegisterAllocatorV2;
 
@@ -1985,7 +1986,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Creates an allocator instance and registers it with the env to enable
         /// sharing between multiple sessions that use the same env instance.
-        /// Lifetime of the created allocator will be valid for the duration of the environment.
+        /// Lifetime of the created allocator will be valid for the duration of the environment
+        /// or until it is explicitly unregistered by UnregisterAllocator.
         /// Returns an error if an allocator with the same OrtMemoryInfo is already registered.
         /// </summary>
         /// <param name="env">Native OrtEnv instance</param>
@@ -1998,6 +2000,20 @@ namespace Microsoft.ML.OnnxRuntime
                                                                                IntPtr /*(const OrtArenaCfg*)*/ arenaCfg);
 
         public static DOrtCreateAndRegisterAllocator OrtCreateAndRegisterAllocator;
+
+
+        /// <summary>
+        /// Unregisters an allocator that was previously registered with the env using
+        /// <see cref="OrtCreateAndRegisterAllocator"/> or <see cref="OrtCreateAndRegisterAllocatorV2"/>.
+        /// </summary>
+        /// <param name="env">valid env</param>
+        /// <param name="memInfo">meminfo used for registering the allocator</param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtUnregisterAllocator(IntPtr /*(OrtEnv*)*/ env,
+                                                                        IntPtr /*(const OrtMemoryInfo*)*/ memInfo);
+
+        public static DOrtUnregisterAllocator OrtUnregisterAllocator;
 
         /// <summary>
         /// Set the language projection for collecting telemetry data when Env is created
