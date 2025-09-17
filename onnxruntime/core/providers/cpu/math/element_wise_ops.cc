@@ -597,7 +597,6 @@ Status Add<T>::Compute(OpKernelContext* context) const {
 
 template <>
 Status Add<MLFloat16>::Compute(OpKernelContext* context) const {
-  // BroadcastHelper received as argument may differ from 'helper' when parallelizing within a span
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() + per_iter_bh.EigenInput1<Eigen::half>().array();
