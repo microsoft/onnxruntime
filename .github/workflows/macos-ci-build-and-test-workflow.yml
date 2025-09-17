@@ -48,9 +48,9 @@ jobs:
         #
         include: ${{ fromJSON(inputs.matrix_include) }}
 
-    # "macos-13" is a x86_64 image, and "macos-15" is an arm64 image.
+    # macos-15 supports both x86_64 and arm64
     # see also: https://github.com/actions/runner-images/blob/main/README.md
-    runs-on: ${{ matrix.machine == 'x86_64' && 'macos-13' || 'macos-15' }}
+    runs-on: macos-15
     env:
       build_flags: >
         --build_dir ./build
