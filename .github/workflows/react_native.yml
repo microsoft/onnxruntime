@@ -53,9 +53,9 @@ jobs:
           ORT_VERSION=$(cat VERSION_NUMBER)
           mkdir -p ${{ runner.temp }}/.build_settings
           mkdir -p ${{ runner.temp }}/artifacts
-          cp ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
-          BUILD_SCRIPT="${{ github.workspace }}/tools/ci_build/github/android${{ runner.temp }}_aar_package.py"
-          BUILD_SETTINGS="${{ runner.temp }}/.build_settings/build_settings.json"
+          cp tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
+          export BUILD_SCRIPT="${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py"
+          export BUILD_SETTINGS="${{ runner.temp }}/.build_settings/build_settings.json"
 
           python3 -m pip install --user -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
           
