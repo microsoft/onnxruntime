@@ -29,6 +29,15 @@ TEST(UnsqueezeOpTest, Unsqueeze_1_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(UnsqueezeOpTest, Unsqueeze_1_bool) {
+  OpTester test("Unsqueeze");
+
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddInput<bool>("input", {2, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
+  test.AddOutput<bool>("output", {2, 1, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(UnsqueezeOpTest, Unsqueeze_2) {
   OpTester test("Unsqueeze");
 
@@ -178,6 +187,20 @@ TEST(UnsqueezeOpTest, Unsqueeze_1_int32_axes_input) {
     test.AddInput<int32_t>("input", {2, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
     test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, axes_is_initializer);
     test.AddOutput<int32_t>("output", {2, 1, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
+    // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  };
+  run_test(false);
+  run_test(true);
+}
+
+TEST(UnsqueezeOpTest, Unsqueeze_1_bool_axes_input) {
+  auto run_test = [](bool axes_is_initializer) {
+    OpTester test("Unsqueeze", 13);
+
+    test.AddInput<int32_t>("input", {2, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
+    test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{1}, axes_is_initializer);
+    test.AddOutput<int32_t>("output", {2, 1, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
     // TODO: TensorRT and OpenVINO dont support "axes" input in opset 13, re-enable after
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   };
