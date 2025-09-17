@@ -24,17 +24,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Get Docker Image
-        id: build_docker_image_step
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.8
-        with:
-          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcentos8x64_packaging
-          push: true
-          azure-container-registry-name: onnxruntimebuildcache
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set version number variables
         id: set_versions
         run: |
@@ -47,10 +36,18 @@ jobs:
         with:
           ndk-version: 28.0.13004108
 
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
       - name: Build Android AAR Packages
         run: |
           set -e -x
-          ORT_VERSION=$(cat VERSION_NUMBER)
           mkdir -p ${{ runner.temp }}/.build_settings
           mkdir -p ${{ runner.temp }}/artifacts
           cp tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
@@ -60,7 +57,7 @@ jobs:
           python3 ${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_ROOT --android_ndk_path $ANDROID_NDK_ROOT ${{ runner.temp }}/.build_settings/build_settings.json      
 
           # Copy the built artifacts to give folder for publishing
-          BASE_PATH=${{ runner.temp }}/aar_out/Release/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}
+          BASE_PATH=${{ runner.temp }}/aar_out/Release/com/microsoft/onnxruntime/onnxruntime-android/${OnnxRuntimeVersion}
           cp ${BASE_PATH}/*.jar  ${{ runner.temp }}/artifacts
           cp ${BASE_PATH}/*.aar          ${{ runner.temp }}/artifacts
           cp ${BASE_PATH}/*.pom          ${{ runner.temp }}/artifacts          
