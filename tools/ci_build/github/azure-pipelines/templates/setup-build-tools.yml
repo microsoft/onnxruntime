@@ -62,15 +62,3 @@ steps:
   inputs:
     scriptPath: 'tools/ci_build/run_gh_action.py'
     arguments: '${{ parameters.action_version }}'
-
-- pwsh: |
-    $ErrorActionPreference = 'Stop'
-
-    Write-Host "Verifying CMake installation..."
-    cmake --version
-
-    Write-Host "Verifying vcpkg installation..."
-    & "$env:VCPKG_INSTALLATION_ROOT/vcpkg" version
-    
-    Write-Host "Tool verification successful."
-  displayName: 'Verify Tools'
