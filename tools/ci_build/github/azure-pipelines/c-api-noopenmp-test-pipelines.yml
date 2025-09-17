@@ -176,6 +176,8 @@ stages:
           displayName: 'Download Windows GPU Packages Build'
 
         - template: templates/setup-build-tools.yml
+          parameters:
+            host_cpu_arch: 'x64'
 
         - task: CmdLine@2
           inputs:
@@ -229,6 +231,8 @@ stages:
           displayName: 'Download Windows GPU Packages Build'
 
         - template: templates/setup-build-tools.yml
+          parameters:
+            host_cpu_arch: 'x64'
 
         - task: CmdLine@2
           inputs:

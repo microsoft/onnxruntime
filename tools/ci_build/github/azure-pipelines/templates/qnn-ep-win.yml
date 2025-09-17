@@ -53,6 +53,8 @@ stages:
     - template: set-version-number-variables-step.yml
 
     - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'x64'
 
     - template: jobs/download_win_qnn_sdk.yml
       parameters:

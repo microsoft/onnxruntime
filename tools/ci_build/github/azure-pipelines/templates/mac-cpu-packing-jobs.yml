@@ -45,6 +45,9 @@ jobs:
   - template: use-xcode-version.yml
 
   - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: ${{ parameters.MacosArch }}
+
   - template: set-version-number-variables-step.yml
 
   - script: |
