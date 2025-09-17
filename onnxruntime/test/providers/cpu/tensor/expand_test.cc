@@ -181,6 +181,62 @@ TEST(ExpandOpTest, Expand_3x1x8_float) {
   test.Run();
 }
 
+TEST(ExpandOpTest, Expand_3x3_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {1}, {true});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<bool>("result", {3, 3},
+                       {true, true, true,
+                        true, true, true,
+                        true, true, true});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_3x1_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {3}, {false, true, false});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<bool>("result", {3, 3},
+                       {false, true, false,
+                        false, true, false,
+                        false, true, false});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x3_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {3, 1}, {false, true, false});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<bool>("result", {3, 3},
+                       {false, false, false,
+                        true, true, true,
+                        false, false, false});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_1x4_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {3, 1}, {false, true, false});
+  test.AddInput<int64_t>("data_1", {2}, {1, 4});
+  test.AddOutput<bool>("result", {3, 4},
+                       {false, false, false, false,
+                        true, true, true, true,
+                        false, false, false, false});
+  test.Run();
+}
+
+TEST(ExpandOpTest, Expand_4x1_bool) {
+  OpTester test("Expand", 8);
+  test.AddInput<bool>("data_0", {1, 4}, {false, true, false, false});
+  test.AddInput<int64_t>("data_1", {2}, {4, 1});
+  test.AddOutput<bool>("result", {4, 4},
+                       {false, true, false, false,
+                        false, true, false, false,
+                        false, true, false, false,
+                        false, true, false, false});
+  test.Run();
+}
+
 #ifndef USE_TENSORRT
 TEST(ExpandOpTest, Expand_scalar_float) {
   OpTester test("Expand", 8);
