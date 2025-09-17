@@ -21,7 +21,6 @@ Abstract:
 
 #include "mlasi.h"
 #include "softmax.h"
-#include <cmath>
 
 //
 // Bundles the constants for use by kernels written in assembly.

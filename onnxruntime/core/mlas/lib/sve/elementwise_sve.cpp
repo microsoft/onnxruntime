@@ -11,7 +11,6 @@ Abstract:
     This module contains the implementation of SVE-based elementwise operations
 --*/
 
-#ifdef __ARM_FEATURE_SVE
 #include "mlasi_sve.h"
 #include <limits>
 
@@ -682,4 +681,3 @@ MlasSveComputeLogSoftmaxOutputF32Kernel(
     }
     
 }
-#endif
