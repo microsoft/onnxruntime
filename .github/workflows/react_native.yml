@@ -54,12 +54,10 @@ jobs:
           mkdir -p ${{ runner.temp }}/.build_settings
           mkdir -p ${{ runner.temp }}/artifacts
           cp tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
-          BUILD_SCRIPT="${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py"
-          BUILD_SETTINGS="${{ runner.temp }}/.build_settings/build_settings.json"
 
           python3 -m pip install --user -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
           
-          python3 $BUILD_SCRIPT --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_HOME --android_ndk_path $ANDROID_NDK_HOME $BUILD_SETTINGS         
+          python3 ${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_ROOT --android_ndk_path $ANDROID_NDK_ROOT ${{ runner.temp }}/.build_settings/build_settings.json      
 
           # Copy the built artifacts to give folder for publishing
           BASE_PATH=${{ runner.temp }}/aar_out/Release/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}
@@ -71,7 +69,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: onnxruntime-android-full-aar
-          path: ${{ runner.temp }}/.artifacts
+          path: ${{ runner.temp }}/artifacts
 
   react_native_ci_android:
     name: React Native CI Android
