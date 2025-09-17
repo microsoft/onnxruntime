@@ -3,6 +3,9 @@
 
 #pragma once
 
+// Needed for CUDA_VERSION
+#include <cuda.h>
+
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #if defined(ENABLE_FP8) && !defined(DISABLE_FLOAT8_TYPES)

@@ -9,6 +9,9 @@
 #include <ciso646>
 #endif
 
+// Needed for CUDA_VERSION
+#include <cuda.h>
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
 #include "core/framework/float8.h"
