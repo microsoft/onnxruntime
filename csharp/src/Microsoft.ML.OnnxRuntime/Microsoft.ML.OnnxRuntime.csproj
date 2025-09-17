@@ -190,7 +190,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">
-	<PackageReference Include="System.Numerics.Tensors" Version="10.0.0-preview.7.25380.108" />
+	<PackageReference Include="System.Numerics.Tensors" Version="10.0.0-rc.1.25451.107" />
   </ItemGroup>
 
   <!-- debug output - makes finding/fixing any issues with the the conditions easy.  -->
