@@ -15,7 +15,7 @@
 #include "gtest/gtest.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

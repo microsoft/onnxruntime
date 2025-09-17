@@ -13,9 +13,9 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_env.h"
 
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
-#include "test/providers/internal_testing/internal_testing_execution_provider.h"
+#include "test/internal_testing_ep/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
