@@ -56,7 +56,7 @@ class TestQuantIssues(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             preprocessed_path = os.path.join(temp, "preprocessed.onnx")
             quantized_path = os.path.join(temp, "quantized.onnx")
-            oq.quant_pre_process(onnx_path, preprocessed_path, skip_symbolic_shape=True)
+            oq.quant_pre_process(onnx_path, preprocessed_path, enable_symbolic_shape=False)
             oq.quantize_static(
                 preprocessed_path,
                 quantized_path,
