@@ -42,7 +42,7 @@ Status InverseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     Qnn_DataType_t target_tensor_type = input_info.qnn_data_type;
 
     if (QNN_DATATYPE_FLOAT_32 != target_tensor_type) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Inverser Op support only float input tensor.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Inverse Op support only float input tensor.");
     }
 
     std::vector<uint32_t> input_shape;
@@ -242,7 +242,7 @@ Status InverseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                   QnnQuantParamsWrapper(),
                                   std::vector<uint32_t>(reshaped_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(adj_cat_output)),
-                    "Failed to add Inverse - Adj - cat(d, b, a, c) output tensor.");
+                    "Failed to add Inverse - Adj - cat(d, b, c, a) output tensor.");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(adj_cat_name,
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
