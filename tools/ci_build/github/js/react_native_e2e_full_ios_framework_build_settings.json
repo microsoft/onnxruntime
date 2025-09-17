@@ -1,7 +1,7 @@
 {
     "build_osx_archs": {
         "iphonesimulator": [
-            "x86_64"
+            "arm64"
         ]
     },
     "build_params": {

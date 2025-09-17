@@ -203,7 +203,7 @@ jobs:
           python ${{ github.workspace }}/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
             --build-dir "${{ runner.temp }}/ios_framework_full" \
             --staging-dir "${{ runner.temp }}/ios_pod" \
-            --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+            --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
 
       - name: Upload iOS Pod Artifact
         uses: actions/upload-artifact@v4
