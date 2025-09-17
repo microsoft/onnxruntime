@@ -49,12 +49,10 @@ stages:
         clean: true
         submodules: none
 
+      
       - template: ../../templates/setup-build-tools.yml      
         parameters:
-          ${{ if eq(parameters.sln_platform, 'Win32') }}:
-            build_arch: 'x86'
-          ${{ else }}:
-            build_arch: ${{ parameters.sln_platform }}
+          host_cpu_arch: 'x64'
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2

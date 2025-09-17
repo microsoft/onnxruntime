@@ -48,7 +48,7 @@ jobs:
 
   - template: setup-build-tools.yml
     parameters:
-      build_arch: ${{ parameters.MacosArch }}
+      host_cpu_arch: ${{ parameters.MacosArch }}
 
   - template: set-version-number-variables-step.yml
 

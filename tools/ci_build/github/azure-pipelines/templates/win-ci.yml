@@ -154,7 +154,7 @@ stages:
 
       - template: setup-build-tools.yml
         parameters:
-          build_arch: 'x64'
+          host_cpu_arch: 'x64'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0

@@ -127,7 +127,7 @@ stages:
 
     - template: setup-build-tools.yml
       parameters:
-        build_arch: arm64
+        host_cpu_arch: arm64
 
     - script: |
         set -e -x

@@ -49,7 +49,7 @@ jobs:
 
   - template: setup-build-tools.yml
     parameters:
-      build_arch: ${{ parameters.arch }}
+      host_cpu_arch: ${{ parameters.arch }}
       python_version: ${{ parameters.python_version }}
 
   - script: |

@@ -1,7 +1,8 @@
 # Setup python/nodejs/cmake/vcpkg tools. Also, setup telemetry header file if the current OS is Windows.
 
 parameters:
-- name: build_arch
+# for selecting python binary
+- name: host_cpu_arch
   type: string
 
 - name: python_version
@@ -17,18 +18,18 @@ steps:
 
 # Currently all ADO macOS machines are x64 machines
 - task: UsePythonVersion@0
-  displayName: 'Use Python ${{ parameters.build_arch }} (macOS)'
+  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (macOS)'
   condition: and(succeeded(), eq(variables['Agent.OS'], 'Darwin'))
   inputs:
     versionSpec: ${{ parameters.python_version }}    
     architecture: 'x64'
     
 - task: UsePythonVersion@0
-  displayName: 'Use Python ${{ parameters.build_arch }} (non-macOS)'
+  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (non-macOS)'
   condition: and(succeeded(), ne(variables['Agent.OS'], 'Darwin'))
   inputs:
     versionSpec: ${{ parameters.python_version }}    
-    architecture: ${{ parameters.build_arch }}
+    architecture: ${{ parameters.host_cpu_arch }}
 
 - task: PipAuthenticate@1
   displayName: 'Pip Authenticate'
