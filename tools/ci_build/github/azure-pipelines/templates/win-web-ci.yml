@@ -78,6 +78,8 @@ jobs:
     displayName: 'Testing: force EOL to lf on windows for /js/**'
   
   - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: 'x64'
 
   - task: DownloadPipelineArtifact@2
     inputs:

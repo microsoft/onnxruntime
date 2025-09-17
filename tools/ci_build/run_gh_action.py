@@ -78,11 +78,9 @@ def main() -> None:
         print(f"::error::Unsupported platform or missing hash for OS='{os_key}' and Arch='{arch_key}'.")
         sys.exit(1)
 
-    # Conditionally set the 'DISABLE_TERRAPIN' value
+    # --- Conditionally set Terrapin and define action inputs ---
     disable_terrapin_value = "true"
-    if os_key == "windows" and arch_key == "x64":
-        disable_terrapin_value = "false"
-        print("Setting INPUT_DISABLE-TERRAPIN to 'false' for Windows x64.")
+    terrapin_tool_path_str = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
 
     action_inputs = {
         "INPUT_CMAKE-VERSION": "3.31.8",
@@ -90,8 +88,14 @@ def main() -> None:
         "INPUT_VCPKG-VERSION": "2025.06.13",
         "INPUT_VCPKG-HASH": "735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc",
         "INPUT_ADD-CMAKE-TO-PATH": "true",
-        "INPUT_DISABLE-TERRAPIN": disable_terrapin_value,
     }
+
+    if os_key == "windows" and Path(terrapin_tool_path_str).exists():
+        disable_terrapin_value = "false"
+        action_inputs["INPUT_TERRAPIN-TOOL-PATH"] = terrapin_tool_path_str
+        print("Terrapin tool found. Setting INPUT_DISABLE-TERRAPIN to 'false' and providing tool path.")
+
+    action_inputs["INPUT_DISABLE-TERRAPIN"] = disable_terrapin_value
 
     # --- Download and Extract the Action to a Temporary Directory ---
     zip_url = f"https://github.com/microsoft/onnxruntime-github-actions/archive/refs/tags/{action_version}.zip"

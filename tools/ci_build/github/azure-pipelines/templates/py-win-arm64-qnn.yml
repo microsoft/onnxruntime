@@ -58,6 +58,9 @@ jobs:
     submodules: none
 
   - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: 'arm64'
+      python_version: ${{ parameters.PYTHON_VERSION }}
 
   - task: PythonScript@0
     inputs:
