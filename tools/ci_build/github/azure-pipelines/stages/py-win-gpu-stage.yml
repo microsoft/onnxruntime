@@ -96,6 +96,7 @@ stages:
       - template: ../templates/setup-build-tools.yml
         parameters:
           build_arch: 'x64'
+          python_version: ${{ parameters.PYTHON_VERSION }}
 
       - template: ../templates/jobs/download_win_gpu_library.yml
         parameters:
@@ -215,7 +216,7 @@ stages:
             $ErrorActionPreference = "Stop"            
             python -m pip uninstall -y onnxruntime onnxruntime-${{ parameters.EP_NAME }} -qq
             dir $(Build.ArtifactStagingDirectory)
-            python -m pip --disable-pip-version-check install --no-index --find-links $(Build.ArtifactStagingDirectory)\win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }} onnxruntime-${{ parameters.EP_NAME }}
+            python -m pip --disable-pip-version-check install --no-index --find-links $(Build.ArtifactStagingDirectory) onnxruntime-${{ parameters.EP_NAME }}
             mkdir -p $(Agent.TempDirectory)\ort_test_data
             Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
             Copy-Item -Recurse -Path $(Build.sourcesDirectory)/onnxruntime/test/testdata -Destination $(Agent.TempDirectory)\ort_test_data

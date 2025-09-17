@@ -111,6 +111,7 @@ stages:
       - template: ../templates/setup-build-tools.yml
         parameters:
           build_arch: 'x64'
+          python_version: $(PythonVersion)
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 

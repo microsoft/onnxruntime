@@ -48,6 +48,7 @@ jobs:
   - template: setup-build-tools.yml
     parameters:
       build_arch: 'x64'
+      python_version: $(PythonVersion)
 
   - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 

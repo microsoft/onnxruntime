@@ -60,6 +60,7 @@ jobs:
   - template: setup-build-tools.yml
     parameters:
       build_arch: 'arm64'
+      python_version: ${{ parameters.PYTHON_VERSION }}
 
   - task: PythonScript@0
     inputs:
