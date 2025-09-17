@@ -93,7 +93,7 @@ def main() -> None:
     if os_key == "windows" and Path(terrapin_tool_path_str).exists():
         disable_terrapin_value = "false"
         action_inputs["INPUT_TERRAPIN-TOOL-PATH"] = terrapin_tool_path_str
-        print(f"Terrapin tool found. Setting INPUT_DISABLE-TERRAPIN to 'false' and providing tool path.")
+        print("Terrapin tool found. Setting INPUT_DISABLE-TERRAPIN to 'false' and providing tool path.")
 
     action_inputs["INPUT_DISABLE-TERRAPIN"] = disable_terrapin_value
 
