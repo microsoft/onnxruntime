@@ -28,8 +28,8 @@ class GateProgram final : public Program<GateProgram> {
     shader.AddOutput("topk_indices_fc2");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/qmoe_gate.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(k, k_),
-                             WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_));
+                             WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
+                             WGSL_TEMPLATE_PARAMETER(k, k_));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
