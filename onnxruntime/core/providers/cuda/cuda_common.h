@@ -106,7 +106,7 @@ class ToCudaType<Float8E5M2FNUZ> {
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
 // ENABLE_FP4 is only set if CUDA SDK version is >= 12.8
 // Just in case - statically assert the same
-static_assert(CUDA_VERSION >= 12080, 
+static_assert(CUDA_VERSION >= 12080,
               "CUDA_VERSION should be >= 12.8 if ENABLE_FP4 is set");
 template <>
 class ToCudaType<Float4E2M1x2> {
