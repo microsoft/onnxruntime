@@ -141,18 +141,6 @@ jobs:
         with:
           ndk-version: 28.0.13004108
 
-      - name: Start Android Emulator
-        run: |
-          if test -f ./emulator.pid; then
-            echo "Emulator PID file was not expected to exist but does and has pid: $(cat ./emulator.pid)"
-            exit 1
-          fi
-          python3 tools/python/run_android_emulator.py \
-            --android-sdk-root "${ANDROID_SDK_ROOT}" \
-            --start --emulator-extra-args="-partition-size 2047" \
-            --emulator-pid-file ./emulator.pid
-          echo "Emulator PID: $(cat ./emulator.pid)"
-
       - name: Run React Native Android Instrumented Tests
         run: ./gradlew connectedDebugAndroidTest --stacktrace
         working-directory: ${{ github.workspace }}/js/react_native/android
