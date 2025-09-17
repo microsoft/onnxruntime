@@ -25,7 +25,7 @@ jobs:
 
     - template: setup-build-tools.yml
       parameters:
-        BuildArch: ${{ parameters.BuildArch }}
+        host_cpu_arch: ${{ parameters.BuildArch }}
 
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
