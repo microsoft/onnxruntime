@@ -31,7 +31,7 @@ extends:
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
 
     pool:
-      name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'  # Name of your hosted pool
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
 
     stages:
