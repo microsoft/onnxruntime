@@ -49,7 +49,7 @@ jobs:
         clean: true
         submodules: recursive
 
-      - template: telemetry-steps.yml
+      - template: setup-build-tools.yml
 
       - task: UsePythonVersion@0
         inputs:

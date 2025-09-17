@@ -1380,11 +1380,14 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
 
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
   ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env,
-                                                                  py_sess_options.value,
                                                                   ep_devices,
-                                                                  ep_option_keys,
-                                                                  ep_option_vals,
                                                                   /*output*/ provider_factory));
+
+  ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices,
+                                                   ep_option_keys,
+                                                   ep_option_vals,
+                                                   py_sess_options.value));
+
   py_sess_options.provider_factories.push_back(std::move(provider_factory));
   return Status::OK();
 }
@@ -2297,7 +2300,50 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         ORT_UNUSED_PARAMETER(ort_values);
         ORT_THROW("External initializers are not supported in this build.");
 #endif
-      });
+      })
+      .def("add_external_initializers_from_files_in_memory", [](PySessionOptions* options, std::vector<std::string> names, std::vector<py::buffer> buffers, std::vector<size_t> lengths) -> void {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+        const auto num = names.size();
+        ORT_ENFORCE(num == buffers.size() && num == lengths.size(),
+                    "add_external_initializers_from_files_in_memory: expecting 'names', 'buffers' and 'lengths' to have equal length");
+
+        InlinedVector<PathString> file_names;
+        InlinedVector<std::pair<char*, const size_t>> files_buffers;
+        file_names.reserve(num);
+        files_buffers.reserve(num);
+
+        for (size_t i = 0; i < num; ++i) {
+          // Convert name and buffer using pybind-provided conversions
+          file_names.emplace_back(ToPathString(names[i]));
+
+          // buffers[i] is a py::buffer; request() retrieves pointer without copying
+          py::buffer_info info = buffers[i].request();
+          char* data_ptr = static_cast<char*>(info.ptr);
+
+          files_buffers.emplace_back(std::make_pair(data_ptr, lengths[i]));
+        }
+
+        ORT_THROW_IF_ERROR(options->value.AddExternalInitializersFromFilesInMemory(file_names, files_buffers));
+#else
+        ORT_UNUSED_PARAMETER(options);
+        ORT_UNUSED_PARAMETER(names);
+        ORT_UNUSED_PARAMETER(buffers);
+        ORT_UNUSED_PARAMETER(lengths);
+        ORT_THROW("External initializers are not supported in this build.");
+#endif
+      },
+           R"pbdoc(
+Provide external initializer file contents from memory.
+
+Args:
+  names: sequence[str] of external file names (as referenced by the model's external_data locations).
+  buffers: sequence[bytes-like] objects exposing the buffer protocol (e.g., bytes, bytearray, memoryview, numpy uint8 array) containing the corresponding file contents.
+  lengths: sequence[int] sizes in bytes for each buffer.
+
+Notes:
+  - Keep the provided buffers alive until after session creation completes. ONNX Runtime copies needed data during session creation.
+  - The bytestream must match the external file layout expected by the model (raw tensor bytes at the specified offsets).
+)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
