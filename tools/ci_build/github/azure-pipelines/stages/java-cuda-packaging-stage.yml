@@ -1,80 +1,31 @@
-parameters:
-- name: CudaVersion
-  type: string
-- name: SpecificArtifact
-  type: string
-- name: BuildId
-  type: string
-
 stages:
 - stage: Jar_Packaging_GPU
   dependsOn:
   - Linux_C_API_Packaging_GPU
   - Windows_Packaging_CUDA
   - Windows_Packaging_TensorRT
-  - Download_Java_Tools
   jobs:
   - job: Jar_Packaging_GPU
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-win-x64-tensorrt
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-linux-x64-tensorrt
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+        
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
+        artifactName: onnxruntime-java-gpu
+    pool: 'onnxruntime-Win-CPU-VS2022-Latest'
     dependsOn: []
     condition: succeeded()
     steps:
-    - checkout: self
-      submodules: false
-    - template: ../templates/set-version-number-variables-step.yml
-
-    - template: ../templates/flex-downloadPipelineArtifact.yml
+    - template: ../templates/jar-packaging.yml
       parameters:
-        StepName: 'Download Pipeline Artifact - Win x64'
-        ArtifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: ../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        stepName: 'Download Pipeline Artifact - Linux x64'
-        artifactName: 'drop-onnxruntime-java-linux-x64-cuda'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: ../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Linux x64'
-        ArtifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - task: PowerShell@2
-      displayName: 'PowerShell Script'
-      inputs:
-        targetType: filePath
-        filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_gpu_packaging.ps1
-        failOnStderr: true
-        showWarnings: true
-        workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
-
-    - template: ../templates/jar-esrp-dll.yml
-      parameters:
-        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        JarFileName: 'onnxruntime_gpu-$(OnnxRuntimeVersion).jar'
-
-    - template: ../templates/jar-maven-signing-win.yml
-      parameters:
-        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-
-    - task: CopyFiles@2
-      displayName: 'Copy Java Files to Artifact Staging Directory'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        path: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'onnxruntime-java-gpu'
+        package_type: gpu

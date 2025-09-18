@@ -119,14 +119,6 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant, quant_axis));
 
     if (is_per_axis_quant) {
-      int32_t elem_data_type = 0;
-      ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(input_1.node_arg, elem_data_type));
-
-      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
-                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
-                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
-      ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
-
       if (conv_type == OnnxConvType::kConvTranspose) {
         ORT_RETURN_IF_NOT(quant_axis == 1,
                           "ConvTranspose's input[1] must be use axis == 1 for per-channel quantization");

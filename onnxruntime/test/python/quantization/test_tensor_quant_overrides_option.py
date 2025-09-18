@@ -50,8 +50,8 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             "INP": (0, np.float32(0.0235294122248888)),
             "SIG_OUT": (0, np.float32(0.003911871928721666)),
             # per-channel weights are always symmetric (ie. zp = (qmin + qmax) / 2)
-            "WGT": ([127, 127], [np.float32(0.015748031437397003), np.float32(0.011811023578047752)]),
-            "BIAS": ([0, 0], [np.float32(0.00006160428165458143), np.float32(0.00004620321124093607)]),
+            "WGT": ([128, 128], [np.float32(0.01568627543747425), np.float32(0.0117647061124444)]),
+            "BIAS": ([0, 0], [np.float32(0.0000613626980339177), np.float32(0.000046022025344427675)]),
             "OUT": (0, np.float32(0.005075461231172085)),
         }
 

@@ -498,7 +498,13 @@ else()
 endif()
 
 if(Patch_FOUND)
-  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND
+      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch &&
+      # Patch changes from https://github.com/onnx/onnx/pull/7253 to avoid unnecessary rebuilding.
+      # This change should be included in ONNX 1.19.1.
+      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/onnx/avoid_regenerating_proto_files.patch
+      )
 else()
   set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
 endif()
@@ -589,10 +595,6 @@ if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
     target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
   endif()
-endif()
-
-if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
 if(onnxruntime_ENABLE_DLPACK)

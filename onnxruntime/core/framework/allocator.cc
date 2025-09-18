@@ -6,6 +6,7 @@
 #include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
+#include "core/framework/error_code_helper.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"
@@ -185,22 +186,32 @@ std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return 
 #endif
 ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1,
                     enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out) {
+  API_IMPL_BEGIN
+
+  if (name1 == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "MemoryInfo name cannot be null.");
+  }
+
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output memory info cannot be null.");
+  }
+
   auto device_id = static_cast<OrtDevice::DeviceId>(id1);
   if (strcmp(name1, onnxruntime::CPU) == 0) {
     *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::CUDA, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::OpenVINO_GPU) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::OpenVINO_GPU, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::INTEL, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::HIP) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::HIP, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0 ||
@@ -212,38 +223,39 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
 
   } else if (strcmp(name1, onnxruntime::DML) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::DML, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::OpenVINO_RT_NPU) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::OpenVINO_RT_NPU, type,
         OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::INTEL, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::CUDA_PINNED, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::HIP_PINNED) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::HIP_PINNED, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::QNN_HTP_SHARED) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::QNN_HTP_SHARED, type,
         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::CPU_ALIGNED_4K) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type,
+        onnxruntime::CPU_ALIGNED_4K, type,
         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, device_id,
                   onnxruntime::kAlloc4KAlignment),
         mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported. Try CreateMemoryInfo_V2.");
   }
+  API_IMPL_END
   return nullptr;
 }
 
@@ -251,6 +263,16 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ en
                     _In_ uint32_t vendor_id, _In_ int32_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
                     _In_ size_t alignment, enum OrtAllocatorType type,
                     _Outptr_ OrtMemoryInfo** out) {
+  API_IMPL_BEGIN
+
+  if (name == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "MemoryInfo name cannot be null.");
+  }
+
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output memory info cannot be null.");
+  }
+
   // map the public enum values to internal OrtDevice values
   OrtDevice::MemoryType mt = mem_type == OrtDeviceMemoryType_DEFAULT ? OrtDevice::MemType::DEFAULT
                                                                      : OrtDevice::MemType::HOST_ACCESSIBLE;
@@ -275,6 +297,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ en
 
   *out = new OrtMemoryInfo(name, type, OrtDevice{dt, mt, vendor_id, narrow<int16_t>(device_id), alignment},
                            mem_type == OrtDeviceMemoryType_DEFAULT ? OrtMemTypeDefault : OrtMemTypeCPU);
+  API_IMPL_END
   return nullptr;
 }
 
@@ -283,7 +306,7 @@ ORT_API(void, OrtApis::ReleaseMemoryInfo, _Frees_ptr_opt_ OrtMemoryInfo* p) { de
 #pragma warning(pop)
 #endif
 ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetName, _In_ const OrtMemoryInfo* ptr, _Out_ const char** out) {
-  *out = ptr->name;
+  *out = ptr->name.c_str();
   return nullptr;
 }
 

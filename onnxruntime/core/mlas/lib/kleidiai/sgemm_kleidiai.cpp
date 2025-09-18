@@ -8,6 +8,7 @@
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p8x1biasf32_6x8x4_neon_mla.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.h"
@@ -107,7 +108,8 @@ Arguments:
 
 Return Value:
 
-    None.
+    Returns true if the packing operation was handled by KleidiAI.
+    Returns false if the configuration requires a fallback to the default MLAS implementation.
 
 --*/
 {
@@ -116,9 +118,12 @@ Return Value:
     }
 
     if (TransA == CblasNoTrans) {
-        const size_t nr = kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
-        const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
-        const size_t sr = kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+        const size_t nr = UseSME2 ? kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                                  : kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+        const size_t kr = UseSME2 ? kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                                  : kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+        const size_t sr = UseSME2 ? kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                                  : kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
 
         // pass zeroed bias values
         const std::vector<float> bias(N);
@@ -152,6 +157,42 @@ ArmKleidiAI::MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
 )
+/*++
+
+Routine Description:
+
+    This routine performs a batched matrix multiplication (GEMM) operation using KleidiAI kernels.
+    It handles both packed and unpacked inputs and manages tiling and kernel selection depending on
+    SME2 availability. If packing is needed, it prepares the required buffers and invokes the
+    appropriate left-hand side (LHS) and right-hand side (RHS) pack functions.
+
+    The function also applies alpha and beta scaling to the result, supports efficient memcpy
+    paths where possible, and dispatches tile-level GEMM work using multithreading.
+
+Arguments:
+
+    TransA - Supplies the transpose operation for matrix A.
+
+    TransB - Supplies the transpose operation for matrix B.
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and rows of matrix B.
+
+    Data - Supplies a pointer to the MLAS_SGEMM_DATA_PARAMS array containing per-batch input/output pointers and parameters.
+
+    BatchSize - Supplies the number of independent GEMM computations to perform in the batch.
+
+    ThreadPool - Supplies the thread pool to parallelize computation across batches and tiles.
+
+Return Value:
+
+    Returns true if the GEMM operation was handled by KleidiAI.
+    Returns false if the configuration requires a fallback to the default MLAS implementation.
+
+--*/
 {
     if (M == 0 || N == 0) {
         return true;
@@ -172,130 +213,134 @@ ArmKleidiAI::MlasGemmBatch(
         return true;
     }
 
-    if (TransA == CblasNoTrans) {
-        const size_t mr = kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
-        const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
-        const size_t sr = kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+    const size_t mr = UseSME2 ? kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                              : kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+    const size_t kr = UseSME2 ? kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                              : kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+    const size_t sr = UseSME2 ? kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                              : kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
 
-        auto m_step = kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
-        auto n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+    size_t m_step = UseSME2 ? kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                            : kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+    size_t n_step = UseSME2 ? kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
+                            : kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
 
-        if (M < m_step && N < n_step && !Data->BIsPacked) {
-            // Fallback to MLAS
-            return false;
-        }
+    if (M < m_step && N < n_step && !Data->BIsPacked) {
+        // Fallback to MLAS
+        return false;
+    }
 
-        std::vector<MLAS_SGEMM_DATA_PARAMS> KaiPackedData;
-        KaiPackedData.resize(BatchSize);
+    std::vector<MLAS_SGEMM_DATA_PARAMS> KaiPackedData;
+    KaiPackedData.resize(BatchSize);
 
-        size_t LhsPackedStride = 0;
-        std::byte* LhsPackedData = nullptr;
+    size_t LhsPackedStride = 0;
+    std::byte* LhsPackedData = nullptr;
 
-        LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr);
-        auto LhsPacked = std::make_unique<std::byte[]>(LhsPackedStride * BatchSize);
-        LhsPackedData = LhsPacked.get();
+    LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr);
+    auto LhsPacked = std::make_unique<std::byte[]>(LhsPackedStride * BatchSize);
+    LhsPackedData = LhsPacked.get();
 
-        std::unique_ptr<std::byte[]> RhsPacked{nullptr};
+    std::unique_ptr<std::byte[]> RhsPacked{nullptr};
 
-        // It is assumed all B batches require packing or not
-        if (Data[0].BIsPacked) {
-            // We have already decided the matmul variant we are using, before having values for M,N,K
-            MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
+    // It is assumed all B batches require packing or not
+    if (Data[0].BIsPacked) {
+        // We have already decided the matmul variant we are using, before having values for M,N,K
+        MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
+            std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
+            kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
+            KaiPackedData[batch_idx].A = reinterpret_cast<const float*>(LhsPackedPtr);
+            KaiPackedData[batch_idx].B = Data[batch_idx].B;
+        });
+    } else {
+        // Multithread pack lhs and rhs
+        size_t RhsPackedStride = 0;
+        std::byte* RhsPackedData = nullptr;
+
+        RhsPackedStride = ArmKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
+        RhsPacked = std::make_unique<std::byte[]>(RhsPackedStride * BatchSize);
+        RhsPackedData = RhsPacked.get();
+
+        MlasTrySimpleParallel(ThreadPool, BatchSize * 2, [&](ptrdiff_t batch_idx) {
+            // lhs odd, rhs even
+            if (batch_idx & 0x1) {
+                batch_idx >>= 1;
+
                 std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
 
                 kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
 
                 KaiPackedData[batch_idx].A = reinterpret_cast<const float*>(LhsPackedPtr);
-                KaiPackedData[batch_idx].B = Data[batch_idx].B;
-            });
-        } else {
-            // Multithread pack lhs and rhs
-            size_t RhsPackedStride = 0;
-            std::byte* RhsPackedData = nullptr;
+            } else {
+                batch_idx >>= 1;
 
-            RhsPackedStride = ArmKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
-            RhsPacked = std::make_unique<std::byte[]>(RhsPackedStride * BatchSize);
-            RhsPackedData = RhsPacked.get();
+                std::byte* RhsPackedPtr = &(RhsPackedData[RhsPackedStride * batch_idx]);
 
-            MlasTrySimpleParallel(ThreadPool, BatchSize * 2, [&](ptrdiff_t batch_idx) {
-                // lhs odd, rhs even
-                if (batch_idx & 0x1) {
-                    batch_idx >>= 1;
+                ArmKleidiAI::MlasGemmPackB(TransA, TransB, N, K, reinterpret_cast<const float*>(Data[batch_idx].B), Data[batch_idx].ldb, RhsPackedPtr);
 
-                    std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
+                KaiPackedData[batch_idx].B = reinterpret_cast<const float*>(RhsPackedPtr);
+            }
+        });
+    }
 
-                    kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
+    // tile iteration dimensions
+    std::array<size_t, 3> dim;
+    dim[0] = BatchSize;                  // B
+    dim[1] = MlasDivRoundup(M, m_step);  // M
+    dim[2] = MlasDivRoundup(N, n_step);  // N
 
-                    KaiPackedData[batch_idx].A = reinterpret_cast<const float*>(LhsPackedPtr);
-                } else {
-                    batch_idx >>= 1;
+    // Minimize the kernel call count for the number of available threads
+    auto RequiredTiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0] * dim[1] * dim[2]);
 
-                    std::byte* RhsPackedPtr = &(RhsPackedData[RhsPackedStride * batch_idx]);
+    // scale required tiles over available tile processors
+    dim[1] = MlasDivRoundup(RequiredTiles * dim[1], dim[1] * dim[2]);
+    dim[2] = MlasDivRoundup(RequiredTiles * dim[2], dim[1] * dim[2]);
 
-                    ArmKleidiAI::MlasGemmPackB(TransA, TransB, N, K, reinterpret_cast<const float*>(Data[batch_idx].B), Data[batch_idx].ldb, RhsPackedPtr);
+    // compute new step sizes
+    m_step *= MlasDivRoundup(MlasDivRoundup(M, dim[1]), m_step);
+    n_step *= MlasDivRoundup(MlasDivRoundup(N, dim[2]), n_step);
 
-                    KaiPackedData[batch_idx].B = reinterpret_cast<const float*>(RhsPackedPtr);
-                }
-            });
-        }
+    // update tile iterations
+    dim[1] = MlasDivRoundup(M, m_step);
+    dim[2] = MlasDivRoundup(N, n_step);
 
-        // tile iteration dimensions
-        std::array<size_t, 3> dim;
-        dim[0] = BatchSize;                  // B
-        dim[1] = MlasDivRoundup(M, m_step);  // M
-        dim[2] = MlasDivRoundup(N, n_step);  // N
+    MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [=](ptrdiff_t tid) {
+        // compute B,M,N index from iteration index
+        ptrdiff_t BIdx = tid / (dim[1] * dim[2]);
+        ptrdiff_t MIdx = (tid % (dim[1] * dim[2])) / dim[2];
+        ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
 
-        // Minimize the kernel call count for the number of available threads
-        auto RequiredTiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0] * dim[1] * dim[2]);
+        // Get rhs tile, B
+        const size_t rhs_packed_offset =
+            UseSME2 ? kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(NIdx * n_step, K)
+                    : kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(NIdx * n_step, K);
 
-        // scale required tiles over available tile processors
-        dim[1] = MlasDivRoundup(RequiredTiles * dim[1], dim[1] * dim[2]);
-        dim[2] = MlasDivRoundup(RequiredTiles * dim[2], dim[1] * dim[2]);
+        auto BTile = reinterpret_cast<const void*>(
+            reinterpret_cast<const std::byte*>(KaiPackedData[BIdx].B) + rhs_packed_offset
+        );
 
-        // compute new step sizes
-        m_step *= MlasDivRoundup(MlasDivRoundup(M, dim[1]), m_step);
-        n_step *= MlasDivRoundup(MlasDivRoundup(N, dim[2]), n_step);
+        // Get lhs tile, A
+        const size_t lhs_packed_offset =
+            UseSME2 ? kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(MIdx * m_step, K)
+                    : kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(MIdx * m_step, K);
 
-        // update tile iterations
-        dim[1] = MlasDivRoundup(M, m_step);
-        dim[2] = MlasDivRoundup(N, n_step);
+        auto ATile = reinterpret_cast<const float*>(
+            reinterpret_cast<const std::byte*>(KaiPackedData[BIdx].A) + lhs_packed_offset
+        );
 
-        MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [=](ptrdiff_t tid) {
-            // compute B,M,N index from iteration index
-            ptrdiff_t BIdx = tid / (dim[1] * dim[2]);
-            ptrdiff_t MIdx = (tid % (dim[1] * dim[2])) / dim[2];
-            ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
+        auto TileSizeM = (MIdx + 1) * m_step > M ? (M - MIdx * m_step) : m_step;
+        auto TileSizeN = (NIdx + 1) * n_step > N ? (N - NIdx * n_step) : n_step;
 
-            // Get rhs tile, B
-            const size_t rhs_packed_offset =
-                kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(NIdx * n_step, K);
+        // Get result tile, C
+        auto CTile = reinterpret_cast<void*>(
+            reinterpret_cast<std::byte*>(Data[BIdx].C) +
+            MIdx * m_step * Data[BIdx].ldc * sizeof(float) +
+            NIdx * n_step * sizeof(float)
+        );
+        // Allocate temporary buffer for raw A*B result
+        std::vector<float> OutputTile(TileSizeM * TileSizeN, 0.0f);
+        float* temp_tile = OutputTile.data();
 
-            auto BTile = reinterpret_cast<const void*>(
-                reinterpret_cast<const std::byte*>(KaiPackedData[BIdx].B) + rhs_packed_offset
-            );
-
-            // Get lhs tile, A
-            const size_t lhs_packed_offset =
-                kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(MIdx * m_step, K);
-
-            auto ATile = reinterpret_cast<const float*>(
-                reinterpret_cast<const std::byte*>(KaiPackedData[BIdx].A) + lhs_packed_offset
-            );
-
-            auto TileSizeM = (MIdx + 1) * m_step > M ? (M - MIdx * m_step) : m_step;
-            auto TileSizeN = (NIdx + 1) * n_step > N ? (N - NIdx * n_step) : n_step;
-
-            // Get result tile, C
-            auto CTile = reinterpret_cast<void*>(
-                reinterpret_cast<std::byte*>(Data[BIdx].C) +
-                MIdx * m_step * Data[BIdx].ldc * sizeof(float) +
-                NIdx * n_step * sizeof(float)
-            );
-            // Allocate temporary buffer for raw A*B result
-            std::vector<float> OutputTile(TileSizeM * TileSizeN, 0.0f);
-            float* temp_tile = OutputTile.data();
-
-
+        if (UseSME2) {
             kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(
                 TileSizeM,
                 TileSizeN,
@@ -304,9 +349,19 @@ ArmKleidiAI::MlasGemmBatch(
                 TileSizeN * sizeof(float), sizeof(float),
                 -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
             );
+        } else {
+            kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(
+                TileSizeM,
+                TileSizeN,
+                K,
+                ATile, BTile, temp_tile,
+                TileSizeN * sizeof(float), sizeof(float),
+                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+            );
+        }
 
-            // Final output tile pointer
-            float* dst_tile = reinterpret_cast<float*>(CTile);
+        // Final output tile pointer
+        float* dst_tile = reinterpret_cast<float*>(CTile);
 
             // quick copy of data in cases where we are not scaling or accumulating anything
             // with bounds checking on tile sizing to ensure the data fits in the memory block
@@ -350,8 +405,4 @@ ArmKleidiAI::MlasGemmBatch(
             return;
         });
         return true;
-    }
-    else {
-        return false;
-    }
 }
