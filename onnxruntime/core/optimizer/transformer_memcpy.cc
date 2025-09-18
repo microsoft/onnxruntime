@@ -78,7 +78,7 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
 Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                            const logging::Logger& logger) const {
+                                    const logging::Logger& logger) const {
   for (const auto provider : providers_) {
     const auto& provider_type = provider->Type();
     if (!utils::ProviderIsCpuBased(*provider)) {

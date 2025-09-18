@@ -20,7 +20,7 @@ graph_proto = helper.make_graph(
             inputs=["mul_output", "A"],
             outputs=["C"],
             name="add_1",
-        )
+        ),
     ],
     name="Main_graph",
     inputs=[
