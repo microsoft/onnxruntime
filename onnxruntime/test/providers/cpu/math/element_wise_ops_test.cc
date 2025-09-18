@@ -6,7 +6,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/current_test_name.h"
 #include "test/util/include/test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/trt_op_test_utils.h"

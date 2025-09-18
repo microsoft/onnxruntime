@@ -1408,6 +1408,9 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
     broken_tests->insert({"rotary_embedding_no_position_ids_expanded", "unknown version"});
     broken_tests->insert({"rotary_embedding_no_position_ids_interleaved_expanded", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids_rotary_dim", "unknown version"});
+    broken_tests->insert({"rotary_embedding_with_interleaved_rotary_dim", "unknown version"});
+    broken_tests->insert({"rotary_embedding_with_rotary_dim", "unknown version"});
     // Fails since QNN SDK 2.17.0:
     // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
     broken_tests->insert({"facedetection_op8_qdq", "result differs"});
