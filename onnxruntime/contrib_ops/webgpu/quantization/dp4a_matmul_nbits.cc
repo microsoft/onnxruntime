@@ -35,10 +35,10 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
                              WGSL_TEMPLATE_VARIABLE(a, a),
-                             WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 // scale_A components = 1, b components = 4, output components = 1
@@ -65,10 +65,10 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_),
                              WGSL_TEMPLATE_VARIABLE(a, a),
-                             WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,

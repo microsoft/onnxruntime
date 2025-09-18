@@ -62,8 +62,8 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(scales, scales),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
@@ -99,8 +99,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
