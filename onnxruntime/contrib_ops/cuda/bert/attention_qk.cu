@@ -39,7 +39,6 @@ __global__ void ConvertAndCopyQK(const int count, const float* input, nv_bfloat1
   }
 }
 
-// bfloat16 -> float
 __global__ void ConvertAndCopyQK(const int count, const nv_bfloat16* input, float* output) {
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < count) {
@@ -55,30 +54,24 @@ Status CopyQK(cudaStream_t stream, int qk_size, const T* input, QK* output) {
         cudaMemcpyDeviceToDevice, stream));
     return Status::OK();
   } else {
-    constexpr bool h2f = std::is_same_v<T, half>  && std::is_same_v<QK, float>;
+    constexpr bool h2f = std::is_same_v<T, half> && std::is_same_v<QK, float>;
     constexpr bool f2h = std::is_same_v<T, float> && std::is_same_v<QK, half>;
     constexpr bool b2f = std::is_same_v<T, BFloat16> && std::is_same_v<QK, float>;
     constexpr bool f2b = std::is_same_v<T, float> && std::is_same_v<QK, BFloat16>;
 
-    static_assert(h2f || f2h || b2f || f2b,
-                  "CopyQK supports (float<->half) and (float<->bfloat16).");
+    static_assert(h2f || f2h || b2f || f2b, "CopyQK supports only (float<->half) and (float<->bfloat16).");
 
     constexpr int block = 256;
     const int grid = (qk_size + block - 1) / block;
 
     if constexpr (h2f || f2h) {
-      // half <-> float paths use the direct overloads
       ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, input, output);
       return CUDA_CALL(cudaGetLastError());
     } else if constexpr (b2f) {
-      // ORT BFloat16* -> device bf16*
-      auto in_bf = reinterpret_cast<const __nv_bfloat16*>(input);
-      ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, in_bf, output);
+      ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, reinterpret_cast<const __nv_bfloat16*>(input), output);
       return CUDA_CALL(cudaGetLastError());
     } else if constexpr (f2b) {
-      // device bf16* <- ORT BFloat16*
-      auto out_bf = reinterpret_cast<__nv_bfloat16*>(output);
-      ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, input, out_bf);
+      ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, input, reinterpret_cast<__nv_bfloat16*>(output));
       return CUDA_CALL(cudaGetLastError());
     }
   }
