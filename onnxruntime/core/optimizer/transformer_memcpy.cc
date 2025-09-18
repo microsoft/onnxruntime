@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "transformer_memcpy.h"
+#include "core/optimizer/transformer_memcpy.h"
+
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
@@ -16,7 +17,7 @@ namespace onnxruntime {
 // note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTransformer
 class TransformerMemcpyImpl {
  public:
-  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider)
+  TransformerMemcpyImpl(onnxruntime::Graph& graph, const IExecutionProvider& provider)
       : graph_(graph), provider_(provider) {}
 
   bool ModifyGraph(const KernelRegistryManager& schema_registries,
@@ -31,7 +32,10 @@ class TransformerMemcpyImpl {
   void BuildDefsMapping(const onnxruntime::NodeArg* arg,
                         const KernelRegistryManager& kernel_registries,
                         const logging::Logger& logger);
-  void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input, const logging::Logger& logger);
+  void AddCopyNode(onnxruntime::NodeArg* arg,
+                   bool is_input,
+                   const KernelRegistryManager& kernel_registries,
+                   const logging::Logger& logger);
   bool ProcessInitializers(const KernelRegistryManager& kernel_registries,
                            const InitializedTensorSet& initializers_consumed,
                            const logging::Logger& logger);
@@ -55,7 +59,7 @@ class TransformerMemcpyImpl {
   std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_output_nodes_;
 
   onnxruntime::Graph& graph_;
-  std::string provider_;
+  const IExecutionProvider& provider_;
 };
 
 /** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer.
@@ -71,19 +75,25 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
   return initializer;
 }
 
+// return true if the execution provider is CPU based (meaning no copies to device are required)
+static bool ProviderIsCpuBased(const IExecutionProvider& provider) {
+  return provider.GetDevice().Type() == OrtDevice::CPU;
+}
+
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
-common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
-  for (auto& provider : provider_types_) {
-    if (!utils::ProviderIsCpuBased(provider)) {
-      TransformerMemcpyImpl copy_impl(graph, provider);
+  for (const auto provider : providers_) {
+    const auto& provider_type = provider->Type();
+    if (!ProviderIsCpuBased(*provider)) {
+      TransformerMemcpyImpl copy_impl(graph, *provider);
 
       int copy_node_counter = 0;
       auto current_modified = copy_impl.ModifyGraph(registry_manager_, logger, copy_node_counter);
-      if (copy_node_counter > 0 && provider == kCudaExecutionProvider) {
+      if (copy_node_counter > 0 && provider_type == kCudaExecutionProvider) {
         LOGS(logger, WARNING) << copy_node_counter << " Memcpy nodes are added to the graph " << graph.Name()
-                              << " for " << provider
+                              << " for " << provider_type
                               << ". It might have negative impact on performance (including unable to run CUDA graph). "
                               << "Set session_options.log_severity_level=1 to see the detail logs before this message.";
       }
@@ -161,21 +171,21 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
     // For inputs we need to create a copy node only when the input is connected to both provider
     // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
     if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
-      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true, logger);
+      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true, kernel_registries, logger);
       copy_node_counter++;
       modified = true;
     }
 
   for (auto arg : non_provider_output_defs_)
     if (provider_input_defs_.count(arg)) {
-      AddCopyNode(arg, true, logger);
+      AddCopyNode(arg, true, kernel_registries, logger);
       copy_node_counter++;
       modified = true;
     }
 
   for (auto arg : provider_output_defs_)
     if (non_provider_input_defs_.count(arg)) {
-      AddCopyNode(arg, false, logger);
+      AddCopyNode(arg, false, kernel_registries, logger);
       copy_node_counter++;
       modified = true;
     }
@@ -203,7 +213,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
         // (the name will be the same as the parent node's implicit input)
         const auto* node_arg_in_current_graph_level = *provider_input_defs_.find(arg);
 
-        AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true, logger);
+        AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true, kernel_registries, logger);
         copy_node_counter++;
         modified = true;
       }
@@ -218,10 +228,10 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node,
                                         InitializedTensorSet& initializers_consumed,
                                         const logging::Logger& logger) {
   auto node_provider_type = node.GetExecutionProviderType();
-  if ((node_provider_type == provider_) ||
-      (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
-      (node_provider_type == kCudaExecutionProvider && kNvTensorRTRTXExecutionProvider == provider_) ||
-      (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_)) {
+  if ((node_provider_type == provider_.Type()) ||
+      (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_.Type()) ||
+      (node_provider_type == kCudaExecutionProvider && kNvTensorRTRTXExecutionProvider == provider_.Type()) ||
+      (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_.Type())) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
@@ -309,10 +319,10 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg,
     if (arg_input_index == -1 && arg_output_index == -1)
       continue;
     auto node_provider_type = it.GetExecutionProviderType();
-    if ((node_provider_type == provider_) ||
-        (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
-        (node_provider_type == kCudaExecutionProvider && kNvTensorRTRTXExecutionProvider == provider_) ||
-        (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_)) {
+    if ((node_provider_type == provider_.Type()) ||
+        (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_.Type()) ||
+        (node_provider_type == kCudaExecutionProvider && kNvTensorRTRTXExecutionProvider == provider_.Type()) ||
+        (node_provider_type == kRocmExecutionProvider && kMIGraphXExecutionProvider == provider_.Type())) {
       const KernelCreateInfo* kci = nullptr;
       ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(it, logger, &kci));
       if (arg_input_index != -1) {
@@ -325,9 +335,12 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg,
   }
 }
 
-void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input, const logging::Logger& logger) {
+void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg,
+                                        bool is_input,
+                                        const KernelRegistryManager& kernel_registries,
+                                        const logging::Logger& logger) {
   // create unique name for new def
-  std::string new_def_name = graph_.GenerateNodeArgName(arg->Name() + "_" + provider_);
+  std::string new_def_name = graph_.GenerateNodeArgName(arg->Name() + "_" + provider_.Type());
 
   auto* new_arg = &graph_.GetOrCreateNodeArg(new_def_name, arg->TypeAsProto());
   auto* src_arg = is_input ? arg : new_arg;
@@ -338,12 +351,24 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
 
   const auto op_name = is_input ? "MemcpyFromHost" : "MemcpyToHost";
   LOGS(logger, INFO) << "Add " << op_name << (is_input ? " after " : " before ") << arg->Name()
-                     << " for " << provider_;
+                     << " for " << provider_.Type();
 
   auto& new_node = graph_.AddNode(new_node_name, op_name, "Copy from/to host memory",
                                   std::vector<onnxruntime::NodeArg*>{src_arg},
                                   std::vector<onnxruntime::NodeArg*>{dst_arg});
-  new_node.SetExecutionProviderType(provider_);
+
+  // Try to use memcpy kernel from `provider_`. If unavailable, fall back to generic memcpy kernel from CPU EP.
+  new_node.SetExecutionProviderType(provider_.Type());
+  {
+    const KernelCreateInfo* kci = nullptr;
+    ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(new_node, logger, &kci));
+    if (kci == nullptr) {
+      LOGS(logger, VERBOSE) << op_name << " kernel from provider " << provider_.Type()
+                            << " was not found. Falling back to generic kernel from CPU EP.";
+      new_node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  }
+
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
   auto it = provider_input_nodes_.find(arg);
   if (it != provider_input_nodes_.end()) {

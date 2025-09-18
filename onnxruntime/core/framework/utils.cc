@@ -46,24 +46,6 @@ void DestroyStrings(void* p_data, int64_t elements) {
     ptr[i].~string();
 }
 
-bool ProviderIsCpuBased(const std::string& provider_type) {
-  return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kDnnlExecutionProvider ||
-         provider_type == onnxruntime::kVitisAIExecutionProvider ||
-         provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-         provider_type == onnxruntime::kNnapiExecutionProvider ||
-         provider_type == onnxruntime::kVSINPUExecutionProvider ||
-         provider_type == onnxruntime::kAclExecutionProvider ||
-         provider_type == onnxruntime::kArmNNExecutionProvider ||
-         provider_type == onnxruntime::kRknpuExecutionProvider ||
-         provider_type == onnxruntime::kCoreMLExecutionProvider ||
-         provider_type == onnxruntime::kSnpeExecutionProvider ||
-         provider_type == onnxruntime::kQnnExecutionProvider ||
-         provider_type == onnxruntime::kXnnpackExecutionProvider ||
-         provider_type == onnxruntime::kAzureExecutionProvider ||
-         provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
-}
-
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
                                      Stream* target_stream,
                                      const OrtValue& source_mlvalue,
