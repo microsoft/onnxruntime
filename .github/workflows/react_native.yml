@@ -257,7 +257,9 @@ jobs:
 
       - name: Pod install
         run: |
-          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install
+          set -e -x
+          ls ${{ runner.temp }}/ios_pod/onnxruntime-c
+          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
         working-directory: ${{ github.workspace }}/js/react_native/ios
 
       - name: Run React Native iOS Instrumented Tests
@@ -319,7 +321,9 @@ jobs:
       
       - name: Pod install for e2e tests
         run: |
-          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install
+          set -e -x
+          ls ${{ runner.temp }}/ios_pod/onnxruntime-c
+          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
       - name: Build and Run Detox iOS e2e Tests
