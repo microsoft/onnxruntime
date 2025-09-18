@@ -132,9 +132,9 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
+Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
-                                 const ShaderVariableHelper& output, uint32_t nbits, int32_t config_index, bool has_zero_points) {
+                                 uint32_t nbits, int32_t config_index, bool has_zero_points) {
   auto& config = intel_supported_subgroup_matrix_configs[config_index];
   shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))] << ";\n"
                                     << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<3>(config))] << ";\n"
@@ -507,7 +507,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   if (!vendor_.compare("apple")) {
     return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_);
   } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, a, b, scales_b, output, nbits_, config_index_, has_zero_points_);
+    return GenerateShaderCodeOnIntel(shader, b, scales_b, nbits_, config_index_, has_zero_points_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
