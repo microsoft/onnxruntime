@@ -75,18 +75,13 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
   return initializer;
 }
 
-// return true if the execution provider is CPU based (meaning no copies to device are required)
-static bool ProviderIsCpuBased(const IExecutionProvider& provider) {
-  return provider.GetDevice().Type() == OrtDevice::CPU;
-}
-
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
 Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
   for (const auto provider : providers_) {
     const auto& provider_type = provider->Type();
-    if (!ProviderIsCpuBased(*provider)) {
+    if (!utils::ProviderIsCpuBased(*provider)) {
       TransformerMemcpyImpl copy_impl(graph, *provider);
 
       int copy_node_counter = 0;

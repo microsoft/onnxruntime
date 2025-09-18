@@ -46,6 +46,10 @@ void DestroyStrings(void* p_data, int64_t elements) {
     ptr[i].~string();
 }
 
+bool ProviderIsCpuBased(const IExecutionProvider& provider) {
+  return provider.GetDevice().Type() == OrtDevice::CPU;
+}
+
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
                                      Stream* target_stream,
                                      const OrtValue& source_mlvalue,
@@ -192,7 +196,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
 
 static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_providers) {
   for (const auto& execution_provider : execution_providers) {
-    if (!ProviderIsCpuBased(execution_provider->Type())) {
+    if (!ProviderIsCpuBased(*execution_provider)) {
       return false;
     }
   }

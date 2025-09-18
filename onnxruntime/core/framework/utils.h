@@ -52,9 +52,13 @@ void DestroyStrings(void* p_data, int64_t elements);
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
+// TODO try moving this - it's no longer used by ProviderIsCpuBased()
 // EP used for internal testing. We define it here as it's used in ProviderIsCpuBased, but we don't want
 // it to be in the public header include/onnxruntime/core/graph/constants.h as it's purely internal.
 constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecutionProvider";
+
+// return true if the execution provider is CPU based (meaning no copies to device are required)
+bool ProviderIsCpuBased(const IExecutionProvider& provider);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
