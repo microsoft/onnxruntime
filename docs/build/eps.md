@@ -161,6 +161,65 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 
 ---
 
+## NVIDIA TensorRT RTX
+
+See more information on the TensorRT RTX Execution Provider [here](../execution-providers/TensorRTRTX-ExecutionProvider.md).
+
+### Minimum requirements
+
+| ONNX Runtime | TensorRT-RTX | CUDA Toolkit   |
+| :----------- | :----------- | :------------- |
+| main branch  | 1.1          | 12.9           |
+| 1.23         | 1.1          | 12.9           |
+| 1.22         | 1.0          | 12.8           |
+
+TensorRT RTX EP supports RTX GPUs based on Ampere (GeForce RTX 30xx) and later architectures with minimum recommended NVIDIA driver version 555.85.
+
+### Pre-requisites
+* Install git, cmake, Python 3.12
+* Install latest [NVIDIA driver](https://www.nvidia.com/en-us/drivers/)
+* Install [CUDA toolkit 12.9](https://developer.nvidia.com/cuda-12-9-1-download-archive)
+* Install [TensorRT RTX](https://docs.nvidia.com/deeplearning/tensorrt-rtx/latest/installing-tensorrt-rtx/installing.html)
+* For Windows only, install [Visual Studio](https://visualstudio.microsoft.com/downloads/)
+* Set TensorRT-RTX dlls in `PATH` or put it in same folder as application exe
+
+
+```sh
+git clone https://github.com/microsoft/onnxruntime.git
+cd onnxruntime
+```
+
+### Windows
+
+```powershell
+.\build.bat --config Release --build_dir build --parallel --use_nv_tensorrt_rtx --tensorrt_rtx_home "path\to\tensorrt-rtx" --cuda_home "path\to\cuda\home" --cmake_generator "Visual Studio 17 2022" --build_shared_lib --skip_tests --build --update --use_vcpkg        
+```
+
+### Linux
+
+```sh
+./build.sh --config Release --build_dir build --parallel --use_nv_tensorrt_rtx --tensorrt_rtx_home "path/to/tensorrt-rtx" --cuda_home "path/to/cuda/home" --build_shared_lib --skip_tests --build --update          
+```
+
+### Run unit test
+```powershell
+.\build\Release\Release\onnxruntime_test_all.exe --gtest_filter=*NvExecutionProviderTest.*
+```
+
+### Python wheel
+
+```powershell
+# build the python wheel
+.\build.bat --config Release --build_dir build --parallel --use_nv_tensorrt_rtx --tensorrt_rtx_home "path\to\tensorrt-rtx" --cuda_home "path\to\cuda\home" --cmake_generator "Visual Studio 17 2022" --build_shared_lib --skip_tests --build_wheel
+
+# install
+pip install "build\Release\Release\dist\onnxruntime-1.23.0-cp312-cp312-win_amd64.whl"
+```
+
+> NOTE: TensorRT-RTX .dll or .so are in `PATH` or in the same folder as the application
+
+---
+
 ## NVIDIA Jetson TX1/TX2/Nano/Xavier/Orin
 
 ### Build Instructions
@@ -235,20 +294,7 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 
 * For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 1` in the build command if OOM happens and system is hanging.
 
-## TensorRT-RTX
-
-See more information on the NV TensorRT RTX Execution Provider [here](../execution-providers/TensorRTRTX-ExecutionProvider.md).
-
-### Prerequisites
-{: .no_toc }
-
- * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and setup environment variables.
- * Intall TensorRT for RTX from nvidia.com (TODO: add link when available)
-
-### Build Instructions
-{: .no_toc }
-`build.bat --config Release --parallel 32 --build_dir _build --build_shared_lib --use_nv_tensorrt_rtx --tensorrt_home "C:\dev\TensorRT-RTX-1.1.0.3" --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9" --cmake_generator "Visual Studio 17 2022" --use_vcpkg`
-Replace the --tensorrt_home and --cuda_home with correct paths to CUDA and TensorRT-RTX installations.
+---
 
 ## oneDNN
 
