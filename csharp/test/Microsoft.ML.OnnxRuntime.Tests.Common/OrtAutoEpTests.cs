@@ -60,6 +60,8 @@ public class OrtAutoEpTests
             Assert.NotNull(metadata);
             var options = ep_device.EpOptions;
             Assert.NotNull(options);
+            var memInfo = ep_device.GetMemoryInfo(OrtDeviceMemoryType.DEFAULT);
+            Assert.NotNull(memInfo);
             ReadHardwareDeviceValues(ep_device.HardwareDevice);
         }
     }
