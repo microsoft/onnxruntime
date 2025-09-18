@@ -33,8 +33,6 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
   strategy:
     matrix:
-      Python310_x64:
-        PythonVersion: '3.10'
       Python311_x64:
         PythonVersion: '3.11'
       Python312_x64:

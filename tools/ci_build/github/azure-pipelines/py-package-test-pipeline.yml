@@ -25,6 +25,36 @@ stages:
 - stage: Packages_Somking_Test
   dependsOn: []
   jobs:
+    - job: test_ubuntu24_x64
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Ubuntu2404-AMD-CPU     
+      steps:
+      - checkout: none
+
+      - download: build   # pipeline resource identifier.
+        artifact: 'onnxruntime-x86_64-cpu'
+
+      - task: Bash@3
+        inputs:
+          targetType: 'inline'
+          script: |
+            set -ex
+            files=(*.whl)
+            FILE_NAME="${files[0]}"
+            FILE_NAME=$(basename $FILE_NAME)
+            PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
+            python3 -m venv myenv
+            source  myenv/bin/activate
+            python3 -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
+            python3 -m pip install --no-index --find-links "$(Pipeline.Workspace)/build" $PYTHON_PACKAGE_NAME
+            python3 -m pip show $PYTHON_PACKAGE_NAME
+            python3 -c "import onnxruntime as ort; print(ort.__version__)"
+          workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-x86_64-cpu
+        displayName: Test Package Installation
+    
     - template: templates/py-package-smoking-test.yml
       parameters:
         job_name: Test_MAC_Wheels
