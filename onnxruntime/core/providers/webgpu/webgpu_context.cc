@@ -256,7 +256,7 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
   uint32_t y = program.DispatchGroupSizeY();
   uint32_t z = program.DispatchGroupSizeZ();
   ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
-  ORT_RETURN_IF_ERROR(program_mgr_->CalculateSegmentsForInputs(program));
+  ORT_RETURN_IF_ERROR(program_mgr_->CalculateSegmentsForInputsAndOutputs(program));
 
   bool is_1d_dispatch = (y == 1 && z == 1);
 
@@ -432,7 +432,7 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
   WriteTimestamp(num_pending_dispatches_ * 2);
 
   std::vector<WGPUBuffer> bind_buffers;
-  std::vector<int> bind_buffers_segments;
+  std::vector<uint32_t> bind_buffers_segments;
   bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
   bind_buffers_segments.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
   for (const auto& input : inputs) {
@@ -441,7 +441,8 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
   }
   for (const auto& output : outputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
-    bind_buffers_segments.push_back(1);  // outputs currently don't have segments, so default to 1
+    // outputs may be segmented; segments were calculated in ProgramManager
+    bind_buffers_segments.push_back(output.segments);
   }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
@@ -534,7 +535,15 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
-  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
+
+  if (small_storage_buffer_binding_size_for_testing_) {
+    // No matter how small it is set, the minimum storage buffer binding size in WebGPU is 128 MB.
+    required_limits.maxStorageBufferBindingSize = 134217728;
+  } else {
+    required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  }
+
   required_limits.maxBufferSize = adapter_limits.maxBufferSize;
   required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
   required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
@@ -727,7 +736,7 @@ void WebGpuContext::OnRunEnd() {
 
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                                           const std::vector<WGPUBuffer>& bind_buffers,
-                                          const std::vector<int>& bind_buffers_segments,
+                                          const std::vector<uint32_t>& bind_buffers_segments,
                                           const ProgramArtifact& program_artifact,
                                           uint32_t x, uint32_t y, uint32_t z) {
   uint32_t entry_index = 0;
@@ -737,14 +746,14 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
     WGPUBuffer buffer = bind_buffers[buffer_idx];
     uint64_t buffer_size = wgpuBufferGetSize(buffer);
     const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
-    const int total_segments = bind_buffers_segments[buffer_idx];
+    const uint32_t total_segments = bind_buffers_segments[buffer_idx];
     // `total_segments` we used is calculated by tensor size, not actual buffer size. Because for bucketed buffer,
     // the actual buffer size may be larger than the tensor size, an extreme case is that tensor size = 127MB, buffer size = 256MB,
     // maxStorageBufferBindingSize = 128MB, in this case we only need to bind 1 segment instead of 2 segments because
     // there is no data for the second segment.
     if (total_segments > 1) {
       uint64_t offset = 0;
-      for (int segment = 0; segment < total_segments; ++segment) {
+      for (uint32_t segment = 0; segment < total_segments; ++segment) {
         uint64_t segment_size = std::min(kMaxBufferSize, buffer_size - offset);
         bind_group_entries.push_back({nullptr, entry_index++, buffer, offset, segment_size, nullptr, nullptr});
         offset += segment_size;
@@ -911,7 +920,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device, config.small_storage_buffer_binding_size_for_testing));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

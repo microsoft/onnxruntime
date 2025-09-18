@@ -131,7 +131,8 @@ class ShaderHelper final {
   ShaderVariableHelper& AddVariableImpl(bool is_input,
                                         const std::string& name,
                                         ShaderUsage usage,
-                                        const TensorShape& dims);
+                                        const TensorShape& dims,
+                                        uint32_t segments);
 
 #ifndef NDEBUG  // if debug build
   Status ValidateVariable(const ProgramInput& input, const ShaderVariableHelper& var) const;
@@ -162,8 +163,10 @@ class ShaderHelper final {
   uint32_t dispatch_group_size_y_;
   uint32_t dispatch_group_size_z_;
 
-  ProgramBase& program_;
+  const ProgramBase& program_;
   const ProgramMetadata& program_metadata_;
+
+  uint32_t numbers_storage_buffers_ = 0;
 
   std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
   std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;

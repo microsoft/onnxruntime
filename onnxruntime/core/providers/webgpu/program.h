@@ -246,6 +246,7 @@ struct ProgramOutput {
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
+  uint32_t segments = 1;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool is_atomic;
@@ -349,6 +350,12 @@ class ProgramBase {
       throw std::out_of_range("input index out of range");
     }
     inputs_[index].segments = segments;
+  }
+  inline void setSegmentsForOutput(size_t index, uint32_t segments) {
+    if (index >= outputs_.size()) {
+      throw std::out_of_range("output index out of range");
+    }
+    outputs_[index].segments = segments;
   }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
   inline const std::vector<TensorShape>& Indices() const { return indices_; }

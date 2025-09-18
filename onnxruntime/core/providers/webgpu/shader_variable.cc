@@ -142,8 +142,10 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
       element_type_alias_{name_ + "_element_t"},
       indices_type_alias_{name_ + "_indices_t"} {}
 
-ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims)
-    : ShaderIndicesHelper{name, type, usage, dims} {
+ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims, uint32_t segments, uint64_t maxStorageBufferBindingSize)
+    : ShaderIndicesHelper{name, type, usage, dims},
+      segments_{segments},
+      max_storage_buffer_binding_size_{maxStorageBufferBindingSize} {
   ORT_ENFORCE(type_ != ProgramVariableDataType::InvalidType, "Invalid type for variable ", name_);
   ORT_ENFORCE(num_components_ > 0, "Invalid number of components for variable ", name_);
 }
@@ -301,22 +303,36 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
       SS_APPEND(ss, "}\n");
     }
   }
-  // Implementation of "fn get_{name}_from_offset" for multi-buffer segmented inputs
-  if (usage_ & ShaderUsage::UseGetByMultipleBuffer) {
+  // Implementation of "fn get_{name}_by_offset" for multi-buffer segmented inputs
+  if (usage_ & ShaderUsage::UseGetByOffsetSegments) {
     // Multi-buffer segmented input accessor.
     // Compute which physical storage buffer chunk the global linear element offset belongs to.
-    // We assume each element occupies 16 bytes (128 bits) currently; TODO: derive from actual element/value type size instead of fixed 128.
-    SS_APPEND(ss, "fn get_", name_, "_from_offset(global_offset: u32) -> ", ValueType(), " {\n");
+    SS_APPEND(ss, "fn get_", name_, "_by_offset(global_offset: u32) -> ", ValueType(), " {\n");
     SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
     SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
     SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
     SS_APPEND(ss, "  switch(buffer_index) {\n");
     // case 0 (base buffer name_)
     SS_APPEND(ss, "    case 0u: { return ", name_, "[local_offset]; }\n");
-    for (int i = 1; i < segments_; ++i) {
+    for (uint32_t i = 1; i < segments_; ++i) {
       SS_APPEND(ss, "    case ", i, "u: { return ", name_, i, "[local_offset]; }\n");
     }
     SS_APPEND(ss, "    default: { return ", name_, "[local_offset]; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
+  // Implementation of "fn set_{name}_by_offset" for multi-buffer segmented variables
+  if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
+    SS_APPEND(ss, "fn set_", name_, "_by_offset(global_offset: u32, value: ", ValueType(), ") {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    SS_APPEND(ss, "    case 0u: { ", name_, "[local_offset] = value; return; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { ", name_, i, "[local_offset] = value; return; }\n");
+    }
+    SS_APPEND(ss, "    default: { ", name_, "[local_offset] = value; return; }\n");
     SS_APPEND(ss, "  }\n");
     SS_APPEND(ss, "}\n");
   }
@@ -325,8 +341,8 @@ void ShaderVariableHelper::Impl(std::ostream& ss) const {
 std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const {
   SS(ss, kStringInitialSizeGetByOffsetImpl);
 
-  if (usage_ & ShaderUsage::UseGetByMultipleBuffer) {
-    return MakeStringWithClassicLocale("get_", name_, "_from_offset(", offset, ")");
+  if (usage_ & ShaderUsage::UseGetByOffsetSegments) {
+    return MakeStringWithClassicLocale("get_", name_, "_by_offset(", offset, ")");
   }
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
@@ -352,6 +368,10 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
 
 std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
   SS(ss, kStringInitialSizeSetByOffsetImpl);
+
+  if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
+    return MakeStringWithClassicLocale("set_", name_, "_by_offset(", offset, ",", value, ");");
+  }
 
   switch (type_) {
     case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:

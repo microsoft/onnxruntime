@@ -38,18 +38,26 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
   return Status::OK();
 }
 
-Status ProgramManager::CalculateSegmentsForInputs(ProgramBase& program) {
+Status ProgramManager::CalculateSegmentsForInputsAndOutputs(ProgramBase& program) {
   const uint64_t maxStorageBufferBindingSize = limits_.maxStorageBufferBindingSize;
 
-  for (int i = 0; i < program.Inputs().size(); ++i) {
+  // Inputs
+  for (size_t i = 0; i < program.Inputs().size(); ++i) {
     const auto& input = program.Inputs()[i];
     uint32_t segments = 1;
     if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
-      // Calculate number of segments needed
       segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
-      if (segments == 0) segments = 1;
+      program.setSegmentsForInput(i, segments);
     }
-    program.setSegmentsForInput(i, segments);
+  }
+  // Outputs
+  for (size_t i = 0; i < program.Outputs().size(); ++i) {
+    const auto& output = program.Outputs()[i];
+    uint32_t segments = 1;
+    if (output.tensor && output.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
+      segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+      program.setSegmentsForOutput(i, segments);
+    }
   }
   return Status::OK();
 }

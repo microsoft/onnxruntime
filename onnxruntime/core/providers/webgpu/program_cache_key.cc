@@ -18,7 +18,7 @@ namespace webgpu {
 namespace {
 // append the info of an input or output to the cachekey
 void AppendTensorInfo(std::ostream& ss, const TensorShape& tensor_shape, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
-                      bool& first, int segments = 1) {
+                      bool& first, uint32_t segments = 1) {
   if (first) {
     first = false;
   } else {
@@ -105,7 +105,12 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
   ss << ":" D("Outputs=");
   first = true;
   for (const auto& output : program.Outputs()) {
-    AppendTensorInfo(ss, output.use_override_shape ? output.override_shape : output.tensor->Shape(), output.var_type, output.dependency, first);
+    AppendTensorInfo(ss,
+                     output.use_override_shape ? output.override_shape : output.tensor->Shape(),
+                     output.var_type,
+                     output.dependency,
+                     first,
+                     output.segments);
   }
 
   if (!program.Indices().empty()) {
