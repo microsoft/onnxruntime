@@ -261,7 +261,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
   } else {
     ORT_ENFORCE(x == 0 && y == 0 && z == 0,
-        "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
+                "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
   }
 
   bool is_1d_dispatch = (y == 1 && z == 1);
