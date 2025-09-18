@@ -49,6 +49,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val scale = model_builder.GetOperand(input_defs[1]->Name());
   emscripten::val zero_point = emscripten::val::null();
+  emscripten::val common_options = emscripten::val::object();
 
   if (TensorExists(input_defs, 2)) {
     zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
@@ -67,6 +68,23 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     axis = SafeInt<int32_t>(HandleNegativeAxis(axis, input_rank));
   }
 
+  // For per-tensor quantization/dequantization, the scale and zero_point tensors are scalars.
+  // WebNN requires the scale and zero_point tensors to have the same rank as the input tensor.
+  // We need to reshape them to match the input rank.
+  if (scale_shape.size() == 0 && input_rank > 0) {
+    std::vector<uint32_t> target_shape(input_rank, 1);
+    common_options.set("label", node.Name() + "_reshape_scale");
+    scale = model_builder.GetBuilder().call<emscripten::val>(
+        "reshape", scale, emscripten::val::array(target_shape), common_options);
+
+    if (has_zero_point) {
+      // Reshape the zero_point tensor too.
+      common_options.set("label", node.Name() + "_reshape_zero_point");
+      zero_point = model_builder.GetBuilder().call<emscripten::val>(
+          "reshape", zero_point, emscripten::val::array(target_shape), common_options);
+    }
+  }
+
   // For per-axis quantization/dequantization and axis is not equal to input_rank - 1,
   // we need to reshape the scale and zero_point tensors to make them broadcastable with the input tensor.
   if (scale_shape.size() == 1 && input_rank > 1 &&
@@ -77,21 +95,19 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     target_shape.insert(target_shape.end(), input_rank - axis - 1, 1);
     // zero_point has the same shape as the scale tensor.
     zero_point_shape = target_shape;
-    emscripten::val reshape_scale_options = emscripten::val::object();
-    reshape_scale_options.set("label", node.Name() + "_reshape_scale");
+    common_options.set("label", node.Name() + "_reshape_scale");
     scale = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                              scale,
                                                              emscripten::val::array(target_shape),
-                                                             reshape_scale_options);
+                                                             common_options);
 
     if (has_zero_point) {
       // Reshape the zero_point tensor too.
-      emscripten::val reshape_zero_point_options = emscripten::val::object();
-      reshape_zero_point_options.set("label", node.Name() + "_reshape_zero_point");
+      common_options.set("label", node.Name() + "_reshape_zero_point");
       zero_point = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                     zero_point,
                                                                     emscripten::val::array(target_shape),
-                                                                    reshape_zero_point_options);
+                                                                    common_options);
     }
   }
 
@@ -107,13 +123,12 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     zero_point = model_builder.CreateOrGetConstant<uint8_t>(zero_point_type, 0, zero_point_shape);
   }
 
-  emscripten::val options = emscripten::val::object();
-  options.set("label", node.Name());
+  common_options.set("label", node.Name());
   const std::string_view webnn_op_type = GetWebNNOpType(op_type);
   ORT_RETURN_IF(webnn_op_type.empty(), "Cannot get WebNN op type");
 
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
-      std::string(webnn_op_type).c_str(), input, scale, zero_point, options);
+      std::string(webnn_op_type).c_str(), input, scale, zero_point, common_options);
 
   model_builder.AddOperand(output_defs[0]->Name(), std::move(output));
 
@@ -134,19 +149,9 @@ bool QDQOpBuilder::IsOpSupportedImpl(const GraphViewer&,
     return false;
   }
 
-  // WebNN requires the scale_shape to be a subsample of the input_shape.
   if (scale_shape.size() > input_shape.size()) {
     LOGS(logger, VERBOSE) << "The rank of scale is larger than the rank of input";
     return false;
-  }
-
-  for (size_t i = 0; i < scale_shape.size(); ++i) {
-    auto scale_dim = scale_shape[scale_shape.size() - i - 1];
-    auto input_dim = input_shape[input_shape.size() - i - 1];
-    if (input_dim % scale_dim != 0) {
-      LOGS(logger, VERBOSE) << "The shape of scale is not a subsample of the shape of input";
-      return false;
-    }
   }
 
   return true;

@@ -776,6 +776,8 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv4() { return g_host->DataTypeImpl__AllTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv9() { return g_host->DataTypeImpl__AllTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllTensorTypesIRv10() { return g_host->DataTypeImpl__AllTensorTypesIRv10(); }
+  static const std::vector<MLDataType>& AllTensorTypesIRv11() { return g_host->DataTypeImpl__AllTensorTypesIRv11(); }
 
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
 
@@ -1513,6 +1515,11 @@ template <>
 inline bool Tensor::IsDataType<Float8E5M2FNUZ>() const { return g_host->Tensor__IsDataType_Float8E5M2FNUZ(this); }
 #endif
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+inline bool Tensor::IsDataType<Float4E2M1x2>() const { return g_host->Tensor__IsDataType_Float4E2M1x2(this); }
+#endif
+
 template <>
 inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }
 template <>
@@ -1555,6 +1562,11 @@ template <>
 inline Float8E5M2FNUZ* Tensor::MutableData<Float8E5M2FNUZ>() { return g_host->Tensor__MutableData_Float8E5M2FNUZ(this); }
 #endif
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+inline Float4E2M1x2* Tensor::MutableData<Float4E2M1x2>() { return g_host->Tensor__MutableData_Float4E2M1x2(this); }
+#endif
+
 template <>
 inline const bool* Tensor::Data<bool>() const { return g_host->Tensor__Data_bool(this); }
 template <>
@@ -1595,6 +1607,11 @@ template <>
 inline const Float8E5M2* Tensor::Data<Float8E5M2>() const { return g_host->Tensor__Data_Float8E5M2(this); }
 template <>
 inline const Float8E5M2FNUZ* Tensor::Data<Float8E5M2FNUZ>() const { return g_host->Tensor__Data_Float8E5M2FNUZ(this); }
+#endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+inline const Float4E2M1x2* Tensor::Data<Float4E2M1x2>() const { return g_host->Tensor__Data_Float4E2M1x2(this); }
 #endif
 
 // SparseTensor

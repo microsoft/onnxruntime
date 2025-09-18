@@ -10,10 +10,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/providers/checkers.h"
 #include "test/test_environment.h"
+#include "test/unittest_util/checkers.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 

@@ -56,6 +56,12 @@ static const char* DlError() {
 #endif
 }
 
+// Workaround for a missing comma in QNN_IR_GRAPH_CUSTOM_CONFIG_INIT.
+static QnnIrGraph_CustomConfig_t EmptyIrGraphConfig() {
+  return {
+      QNN_IR_GRAPH_CONFIG_OPTION_SERIALIZATION, {QNN_IR_GRAPH_SERIALIZATION_TYPE_FLAT_BUFFER, ""}};
+}
+
 class QnnIrConfig : public QnnSerializerConfig {
  public:
   QnnIrConfig(std::string backend_path, std::string dlc_dir)
@@ -91,7 +97,7 @@ class QnnIrConfig : public QnnSerializerConfig {
 
  private:
   static QnnConfigsBuilder<QnnGraph_Config_t, QnnIrGraph_CustomConfig_t> MakeConfigsBuilder() {
-    return QnnConfigsBuilder<QnnGraph_Config_t, QnnIrGraph_CustomConfig_t>(QNN_GRAPH_CONFIG_INIT, QNN_IR_GRAPH_CUSTOM_CONFIG_INIT);
+    return QnnConfigsBuilder<QnnGraph_Config_t, QnnIrGraph_CustomConfig_t>(QNN_GRAPH_CONFIG_INIT, EmptyIrGraphConfig());
   }
 
   std::filesystem::path dlc_dir_;

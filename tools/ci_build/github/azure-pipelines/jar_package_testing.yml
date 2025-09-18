@@ -11,7 +11,7 @@ variables:
 stages:
 - template: templates/final-jar-testing-win.yml
   parameters:
-    PoolName: 'onnxruntime-Win-CPU-2022'
+    PoolName: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/final-jar-testing-linux.yml
   parameters:
@@ -44,7 +44,18 @@ stages:
         DownloadCUDA: true
         DownloadTRT: true
 
-    - template: templates/download_maven_for_tests.yml
+    - template: templates/setup-maven.yml
+    
+    - task: Maven@4
+      displayName: 'Download Java Dependencies'
+      inputs:
+        mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
+        goals: 'dependency:copy-dependencies'
+        options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
+        publishJUnitTestResults: false
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.17'
+        mavenVersionOption: 'Default'
     - download: build
       artifact: 'onnxruntime-java-gpu'
       displayName: 'Download Final Jar'
@@ -63,6 +74,8 @@ stages:
           del *.asc
           del *.sha256
           del *.sha512
+          del *.pom
+          del *.sha1
           del *.pom
           cd ..
           mkdir tests
