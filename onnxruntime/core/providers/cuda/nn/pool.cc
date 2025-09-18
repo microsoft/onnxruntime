@@ -50,6 +50,10 @@ POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 10, 10, kOnnxDomai
 POOLING_KERNEL(AveragePool, float, AveragePool, 11, kOnnxDomain, false)
 POOLING_KERNEL(AveragePool, double, AveragePool, 11, kOnnxDomain, false)
 POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 11, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, float, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, double, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, BFloat16, AveragePool, 22, kOnnxDomain, false)
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kOnnxDomain, false)
 POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 1, kOnnxDomain, false)
 POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kOnnxDomain, false)
@@ -100,6 +104,9 @@ POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 10, 10, kMSInterna
 // AveragePool and MaxPool op set 11 only update spec document on default value for dilations
 POOLING_KERNEL(AveragePool, float, AveragePool, 11, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 11, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(AveragePool, float, AveragePool, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(AveragePool, BFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kMSInternalNHWCDomain, true)
 #endif
