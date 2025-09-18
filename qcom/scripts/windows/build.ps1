@@ -92,8 +92,7 @@ $CommonArgs = `
     "--build_shared_lib", `
     "--cmake_generator", $CmakeGenerator, `
     "--config", $Config, `
-    "--parallel", `
-    "--compile_no_warning_as_error"
+    "--parallel"
 
 $QnnArgs = "--use_qnn", "--qnn_home", "$QairtSdkRoot"
 $GenerateBuild = $false

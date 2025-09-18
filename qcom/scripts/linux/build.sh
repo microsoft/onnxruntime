@@ -83,8 +83,7 @@ common_args=(--cmake_generator "${cmake_generator}" \
              --config "${config}" \
              --use_cache --parallel \
              --build_dir "${build_dir}" \
-             --wheel_name_suffix qcom-internal \
-             --compile_no_warning_as_error)
+             --wheel_name_suffix qcom-internal)
 
 action_args=()
 make_test_archive=
@@ -153,7 +152,8 @@ case "${target_platform}" in
                    --android_sdk_path "${android_sdk_path}" \
                    --android_ndk_path "${android_ndk_path}" \
                    --android_abi "arm64-v8a" \
-                   --android_api "27")
+                   --android_api "27" \
+                   --compile_no_warning_as_error)
     case "${mode}" in
       build)
         action_args+=("--android")
