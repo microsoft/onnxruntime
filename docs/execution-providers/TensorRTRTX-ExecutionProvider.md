@@ -135,18 +135,25 @@ For a practical example of usage for EP context, please refer to:
 * EP context samples  
 * EP context [unit tests](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/providers/nv_tensorrt_rtx/nv_ep_context_test.cc)
 
-There are two other ways to quick generate an EP context model:
 
-**ONNXRuntime Perf Test**
+ONNXRuntime Perf Test can also be used to quick generate an EP context model:
 
 ```sh
 onnxruntime_perf_test.exe -e nvtensorrtrtx -I -r 1 --compile_ep_context --compile_model_path "/path/to/model_ctx.onnx" "/path/to/model.onnx"
 ```
 
-**Python Script**
+**Python**
 
-```sh
-python tools/python/compile_ep_context_model.py -i "path/to/model.onnx" -o "/path/to/model_ctx.onnx"
+```py
+import onnxruntime as ort
+
+input_path = "/path/to/model.onnx"
+output_path = "/path/to/model_ctx.onnx"
+
+session_options = ort.SessionOptions()
+session_options.add_provider("NvTensorRTRTXExecutionProvider", {})
+model_compiler = ort.ModelCompiler(session_options, input_path)
+model_compiler.compile_to_file(output_path)
 ```
 
 **NVIDIA recommended settings**
