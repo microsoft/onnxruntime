@@ -35,7 +35,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
     Unsqueeze);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -45,7 +46,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .Alias(0, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
     Unsqueeze);
 
 ONNX_OPERATOR_KERNEL_EX(
