@@ -47,6 +47,24 @@ TEST(UnsqueezeOpTest, Unsqueeze_3) {
   test.Run();
 }
 
+TEST(UnsqueezeOpTest, Unsqueeze_21) {
+  OpTester test("Unsqueeze", 21);
+
+  test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0});
+  test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.Run();
+}
+
+TEST(UnsqueezeOpTest, Unsqueeze_23) {
+  OpTester test("Unsqueeze", 23);
+
+  test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0});
+  test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.Run();
+}
+
 TEST(UnsqueezeOpTest, Unsqueeze_scalar) {
   {
     OpTester test("Unsqueeze");
