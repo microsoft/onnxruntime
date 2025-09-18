@@ -211,7 +211,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateThresholdedReluOpBuilder("ThresholdedRelu", *this);
   }
-  
+
   {
     CreateSTFTOpBuilder("STFT", *this);
   }
