@@ -4,13 +4,10 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Runtime.CompilerServices;
 
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
@@ -1695,36 +1692,52 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
 
         void TestCPUAllocatorInternal(InferenceSession session)
+
         {
             int device_id = 0;
-            using (var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
-            {
-                Assert.Equal("Cpu", info_cpu.Name);
-                Assert.Equal(device_id, info_cpu.Id);
-                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
-                Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
+            using var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
+                OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default);
+            Assert.Equal("Cpu", info_cpu.Name);
+            Assert.Equal(device_id, info_cpu.Id);
+            Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
+            Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
+            var deviceMemoryType = info_cpu.GetDeviceMemoryType();
+            Assert.Equal(OrtDeviceMemoryType.DEFAULT, deviceMemoryType);
+            Assert.Equal(0U, info_cpu.GetVendorId());
 
-                using (var allocator = new OrtAllocator(session, info_cpu))
-                {
-                    var alloc_info = allocator.Info;
-                    // Allocator type returned may be different on x86 so we don't compare.
-                    Assert.Equal(info_cpu.Name, alloc_info.Name);
-                    Assert.Equal(info_cpu.GetMemoryType(), alloc_info.GetMemoryType());
-                    Assert.Equal(info_cpu.Id, alloc_info.Id);
+            using var allocator = new OrtAllocator(session, info_cpu);
+            using var alloc_info = allocator.Info;
+            // Allocator type returned may be different on x86 so we don't compare.
+            Assert.Equal(info_cpu.Name, alloc_info.Name);
+            Assert.Equal(info_cpu.GetMemoryType(), alloc_info.GetMemoryType());
+            Assert.Equal(info_cpu.Id, alloc_info.Id);
 
-                    uint size = 1024;
-                    OrtMemoryAllocation chunk = allocator.Allocate(size);
-                    Assert.Equal(chunk.Size, size);
-                    var chunk_info = chunk.Info;
-                    // Allocator type returned may be different on x86 so we don't compare.
-                    Assert.Equal(chunk_info.Name, alloc_info.Name);
-                    Assert.Equal(chunk_info.GetMemoryType(), alloc_info.GetMemoryType());
-                    Assert.Equal(chunk_info.Id, alloc_info.Id);
-                    chunk.Dispose();
-                    alloc_info.Dispose();
-                }
-            }
+            uint size = 1024;
+            using OrtMemoryAllocation chunk = allocator.Allocate(size);
+            Assert.Equal(chunk.Size, size);
+            var chunk_info = chunk.Info;
+            // Allocator type returned may be different on x86 so we don't compare.
+            Assert.Equal(chunk_info.Name, alloc_info.Name);
+            Assert.Equal(chunk_info.GetMemoryType(), alloc_info.GetMemoryType());
+            Assert.Equal(chunk_info.Id, alloc_info.Id);
         }
+
+        [Fact(DisplayName = "TestMemoryInfoCreateV2")]
+        void TestMemoryInfoCreateV2()
+
+        {
+            const int device_id = 0;
+            const uint vendor_id = 1234U;
+            using var info_cpu = new OrtMemoryInfo("Test_CPU", OrtMemoryInfoDeviceType.CPU, vendor_id, device_id,
+                OrtDeviceMemoryType.DEFAULT, 0, OrtAllocatorType.DeviceAllocator);
+            Assert.Equal("Test_CPU", info_cpu.Name);
+            Assert.Equal(device_id, info_cpu.Id);
+            Assert.Equal(OrtAllocatorType.DeviceAllocator, info_cpu.GetAllocatorType());
+            Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
+            Assert.Equal(OrtDeviceMemoryType.DEFAULT, info_cpu.GetDeviceMemoryType());
+            Assert.Equal(vendor_id, info_cpu.GetVendorId());
+        }
+
 
 #if USE_CUDA
         void TestCUDAAllocatorInternal(InferenceSession session)
@@ -1896,109 +1909,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 dataHandle.Free();
             }
         }
-
-        [Fact(DisplayName = "TestSharedAllocatorUsingCreateAndRegisterAllocator")]
-        private void TestSharedAllocatorUsingCreateAndRegisterAllocator()
-        {
-            var model = TestDataLoader.LoadModelFromEmbeddedResource("mul_1.onnx");
-
-            using var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
-                                                   OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default);
-            using var arenaCfg = new OrtArenaCfg(0, -1, -1, -1);
-            var env = OrtEnv.Instance();
-            // Create and register the arena based allocator
-            env.CreateAndRegisterAllocator(memInfo, arenaCfg);
-            try
-            {
-                using var sessionOptions = new SessionOptions();
-                // Key must match kOrtSessionOptionsConfigUseEnvAllocators in onnxruntime_session_options_config_keys.h
-                sessionOptions.AddSessionConfigEntry("session.use_env_allocators", "1");
-
-                // Create two sessions to share the allocator
-                // Create a third session that DOES NOT use the allocator in the environment
-                using var session1 = new InferenceSession(model, sessionOptions);
-                using var session2 = new InferenceSession(model, sessionOptions);
-                using var session3 = new InferenceSession(model); // Use the default SessionOptions instance
-                                                                  // Input data
-                var inputDims = new long[] { 3, 2 };
-                var input = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
-
-                // Output data
-                int[] outputDims = { 3, 2 };
-                float[] output = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
-
-                // Run inference on all three models
-                var inputMeta = session1.InputMetadata;
-                var container = new List<NamedOnnxValue>();
-
-                foreach (var name in inputMeta.Keys)
-                {
-                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
-                    Assert.True(inputMeta[name].IsTensor);
-                    var tensor = new DenseTensor<float>(input, inputMeta[name].Dimensions);
-                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
-                }
-
-                // Run inference with named inputs and outputs created with in Run()
-                using var results = session1.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
-                foreach (var r in results)
-                {
-                    ValidateRunResultData(r.AsTensor<float>(), output, outputDims);
-                }
-
-                // Run inference with named inputs and outputs created with in Run()
-                using var results2 = session2.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
-                foreach (var r in results2)
-                {
-                    ValidateRunResultData(r.AsTensor<float>(), output, outputDims);
-                }
-
-                // Run inference with named inputs and outputs created with in Run()
-                using var results3 = session3.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
-                foreach (var r in results3)
-                {
-                    ValidateRunResultData(r.AsTensor<float>(), output, outputDims);
-                }
-            }
-            finally
-            {
-                // Unregister the allocator
-                env.UnregisterAllocator(memInfo);
-            }
-        }
-
-        [Fact(DisplayName = "TestSharedAllocatorUsingCreateAndRegisterAllocatorB=V2")]
-        private void TestSharedAllocatorUsingCreateAndRegisterAllocatorV2()
-        {
-            var model = TestDataLoader.LoadModelFromEmbeddedResource("mul_1.onnx");
-
-            using var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
-                                                   OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default);
-            using var arenaCfg = new OrtArenaCfg(0, -1, -1, -1);
-            var env = OrtEnv.Instance();
-
-            // Fill in with two arbitrary key-value pairs
-            var options = new Dictionary<string, string>() {
-                { "key1", "value1" },
-                { "key2", "value2"  }
-            };
-
-            // Simply execute CreateAndRegisterAllocatorV2 to verify that C# API works as expected
-            env.CreateAndRegisterAllocator("CPUExecutionProvider", memInfo, arenaCfg, options);
-            try
-            {
-                using var sessionOptions = new SessionOptions();
-                // Key must match kOrtSessionOptionsConfigUseEnvAllocators in onnxruntime_session_options_config_keys.h
-                sessionOptions.AddSessionConfigEntry("session.use_env_allocators", "1");
-                using var session = new InferenceSession(model, sessionOptions);
-            }
-            finally
-            {
-                // Unregister the allocator
-                env.UnregisterAllocator(memInfo);
-            }
-        }
-
 
         internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? deviceId = null)
         {

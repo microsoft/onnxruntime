@@ -77,14 +77,17 @@ public class OrtAutoEpTests
 
             // register. shouldn't throw
             ortEnvInstance.RegisterExecutionProviderLibrary(epName, libFullPath);
-
-            // check OrtEpDevice was found
-            var epDevices = ortEnvInstance.GetEpDevices();
-            var found = epDevices.Any(d => string.Equals(epName, d.EpName, StringComparison.OrdinalIgnoreCase));
-            Assert.True(found);
-
-            // unregister
-            ortEnvInstance.UnregisterExecutionProviderLibrary(epName);
+            try
+            {
+                // check OrtEpDevice was found
+                var epDevices = ortEnvInstance.GetEpDevices();
+                var found = epDevices.Any(d => string.Equals(epName, d.EpName, StringComparison.OrdinalIgnoreCase));
+                Assert.True(found);
+            }
+            finally
+            {   // unregister
+                ortEnvInstance.UnregisterExecutionProviderLibrary(epName);
+            }
         }
     }
 

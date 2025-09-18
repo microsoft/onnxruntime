@@ -81,6 +81,17 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// The OrtMemoryInfo instance describing the memory characteristics of the device.
+        /// </summary>
+        /// <param name="deviceMemoryType">memory type requested</param>
+        /// <returns></returns>
+        public OrtMemoryInfo GetMemoryInfo(OrtDeviceMemoryType deviceMemoryType)
+        {
+            IntPtr memoryInfoPtr = NativeMethods.OrtEpDevice_MemoryInfo(_handle, deviceMemoryType);
+            return new OrtMemoryInfo(memoryInfoPtr, /* owned= */ false);
+        }
+
         private readonly IntPtr _handle;
     }
 }

@@ -354,13 +354,10 @@ namespace Microsoft.ML.OnnxRuntime
         public void CreateAndRegisterAllocator(string providerType, OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg,
             IReadOnlyDictionary<string, string> provider_options)
         {
-            MarshaledString marshalledProviderType = default;
-
-            IntPtr[] keysPtrs = new IntPtr[provider_options.Count];
-            IntPtr[] valuesPtrs = new IntPtr[provider_options.Count];
-
             MarshaledStringArray marshalledKeys = default;
             MarshaledStringArray marshalledValues = default;
+            var keysPtrs = new IntPtr[provider_options.Count];
+            var valuesPtrs = new IntPtr[provider_options.Count];
 
             try
             {
@@ -368,8 +365,7 @@ namespace Microsoft.ML.OnnxRuntime
                 marshalledValues = new MarshaledStringArray(provider_options.Values);
                 marshalledKeys.Fill(keysPtrs);
                 marshalledValues.Fill(valuesPtrs);
-                marshalledProviderType = new MarshaledString(providerType);
-
+                using var marshalledProviderType = new MarshaledString(providerType);
 
                 NativeApiStatus.VerifySuccess(
                     NativeMethods.OrtCreateAndRegisterAllocatorV2(Handle, marshalledProviderType.Value,
@@ -379,7 +375,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                marshalledProviderType.Dispose();
                 marshalledValues.Dispose();
                 marshalledKeys.Dispose();
             }
@@ -395,6 +390,54 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtUnregisterAllocator(Handle, memInfo.Pointer));
+        }
+
+        /// <summary>
+        /// Creates shared allocator owned by the OrtEnv instance.
+        /// </summary>
+        /// <param name="epDevice"></param>
+        /// <param name="deviceMemoryType"></param>
+        /// <param name="ortAllocatorType"></param>
+        /// <param name="allocatorOptions">allocator specific options</param>
+        /// <returns>OrtAllocator instance</returns>
+        public OrtAllocator CreateSharedAllocator(OrtEpDevice epDevice, OrtDeviceMemoryType deviceMemoryType,
+            OrtAllocatorType ortAllocatorType, IReadOnlyDictionary<string, string> allocatorOptions)
+        {
+            using var keyValueOptions = new OrtKeyValuePairs(allocatorOptions);
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtCreateSharedAllocator(Handle, epDevice.Handle, deviceMemoryType,
+                    ortAllocatorType, keyValueOptions.Handle, out IntPtr allocatorHandle));
+            return new OrtAllocator(allocatorHandle, /* owned= */ false);
+        }
+
+        /// <summary>
+        /// Returns a shared allocator owned by the OrtEnv instance if such exists
+        /// (was previously created). If no such allocator exists, the API returns null.
+        /// </summary>
+        /// <param name="memoryInfo"></param>
+        /// <returns>OrtAllocator instance or null if the requested allocator does not exist</returns>
+        public OrtAllocator GetSharedAllocator(OrtMemoryInfo memoryInfo)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetSharedAllocator(Handle, memoryInfo.Pointer, out IntPtr allocatorHandle));
+            if (allocatorHandle == IntPtr.Zero)
+            {
+                return null;
+            }
+            return new OrtAllocator(allocatorHandle, /* owned= */ false);
+        }
+
+        /// <summary>
+        /// Release a shared allocator from the OrtEnv for the OrtEpDevice and memory type.
+        /// This will release the shared allocator for the given OrtEpDevice and memory type.
+        /// If no shared allocator exists, this is a no-op.
+        /// </summary>
+        /// <param name="epDevice"></param>
+        /// <param name="deviceMemoryType"></param>
+        public void ReleaseSharedAllocator(OrtEpDevice epDevice, OrtDeviceMemoryType deviceMemoryType)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtReleaseSharedAllocator(Handle, epDevice.Handle, deviceMemoryType));
         }
 
         /// <summary>
