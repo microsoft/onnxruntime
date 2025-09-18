@@ -173,7 +173,7 @@ See more information on the TensorRT RTX Execution Provider [here](../execution-
 | 1.23         | 1.1          | 12.9           |
 | 1.22         | 1.0          | 12.8           |
 
-TensorRT RTX EP supports RTX GPUs based on Ampere and later architectures. 
+TensorRT RTX EP supports RTX GPUs based on Ampere (GeForce RTX 30xx) and later architectures with minimum recommended NVIDIA driver version 555.85.
 
 ### Pre-requisites
 * Install git, cmake, Python 3.12
