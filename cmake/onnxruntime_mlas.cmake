@@ -438,6 +438,7 @@ else()
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_SVE)
         endif()
 
         if (onnxruntime_USE_KLEIDIAI)

@@ -260,9 +260,9 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64) || defined(USE_SVE)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
-#else 
+#else
     MlasErfKernel(Input, Output, N);
 #endif
 }

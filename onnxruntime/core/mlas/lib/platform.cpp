@@ -16,7 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#ifdef USE_SVE
+#ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
@@ -594,7 +594,7 @@ Return Value:
     }
 #endif
 
-#if defined(USE_SVE)
+#if defined(MLAS_USE_SVE)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
         this->ErfKernelRoutine = MlasSveErfKernel;
         this->LogisticKernelRoutine = MlasSveLogisticKernel;

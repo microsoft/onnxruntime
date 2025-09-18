@@ -181,7 +181,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64) || defined(USE_SVE)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().LogisticKernelRoutine(Input, Output, N);
 #else
     MlasLogisticKernel(Input, Output, N);

@@ -1360,7 +1360,7 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
 #endif
 
-#if defined(USE_SVE) || defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;
