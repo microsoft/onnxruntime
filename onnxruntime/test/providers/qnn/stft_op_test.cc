@@ -71,7 +71,7 @@ static void RunStftOpTest(const TestInputDef<SignalType>& signal_def,
 
 TEST_F(QnnHTPBackendTests, StftOp_Float_WithWindowOnly) {
   std::vector<float> signal_data(128, 1.0f);  // Signal: shape [1, 128, 1]
-  std::vector<float> window_data(16, 1.0f);   // Window: shape [128]
+  std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
 
   RunStftOpTest<float, int32_t>(
       TestInputDef<float>({1, 128, 1}, false, signal_data),  // signal
