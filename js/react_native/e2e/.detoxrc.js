@@ -14,13 +14,13 @@ module.exports = {
       type: 'ios.app',
       binaryPath: 'ios/build/Build/Products/Debug-iphonesimulator/OnnxruntimeModuleExample.app',
       build:
-        'xcodebuild ONLY_ACTIVE_ARCH=YES -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build',
+        'xcodebuild ARCHS=arm64 ONLY_ACTIVE_ARCH=NO -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build',
     },
     'ios.release': {
       type: 'ios.app',
       binaryPath: 'ios/build/Build/Products/Release-iphonesimulator/OnnxruntimeModuleExample.app',
       build:
-        'xcodebuild ONLY_ACTIVE_ARCH=YES -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Release -sdk iphonesimulator -derivedDataPath ios/build',
+        'xcodebuild ARCHS=arm64 ONLY_ACTIVE_ARCH=NO -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Release -sdk iphonesimulator -derivedDataPath ios/build',
     },
     'android.debug': {
       type: 'android.apk',
@@ -39,7 +39,7 @@ module.exports = {
       type: 'ios.simulator',
       device: {
         type: 'iPhone 15',
-        os: 'iOS 17.5',
+        os: 'iOS 17.4',
       },
     },
     attached: {
