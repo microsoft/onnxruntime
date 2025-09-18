@@ -80,12 +80,9 @@ stages:
 
     steps:
     - template: use-xcode-version.yml
-    - task: UsePythonVersion@0
-      displayName: Use python 3.12
-      inputs:
-        versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: x64 # All ADO agents are currently x64
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
@@ -113,10 +110,7 @@ stages:
             CCACHE_DEPEND: 1
             CCACHE_SLOPPINESS: modules
             CCACHE_DIR: $(ORT_CACHE_DIR)
-    # Test the iOS package
-    - task: NodeTool@0
-      inputs:
-        versionSpec: '22.x'
+
     - script:
         brew install coreutils ninja npm
       displayName: Install coreutils, ninja, npm
