@@ -264,7 +264,7 @@ jobs:
 
       - name: Run React Native iOS Instrumented Tests
         run: |
-          xcodebuild test \
+          xcodebuild ARCHS=arm64 ONLY_ACTIVE_ARCH=NO test \
             -workspace OnnxruntimeModule.xcworkspace \
             -scheme OnnxruntimeModuleTest \
             -sdk iphonesimulator \
