@@ -978,6 +978,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtReleaseSharedAllocator OrtReleaseSharedAllocator;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtCopyTensors(
             IntPtr /* const OrtEnv* */ env,
             IntPtr[] /* const OrtValue* const* */ srcTensors,
