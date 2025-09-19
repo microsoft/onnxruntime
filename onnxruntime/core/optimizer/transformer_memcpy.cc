@@ -34,7 +34,6 @@ class TransformerMemcpyImpl {
                         const logging::Logger& logger);
   void AddCopyNode(onnxruntime::NodeArg* arg,
                    bool is_input,
-                   const KernelRegistryManager& kernel_registries,
                    const logging::Logger& logger);
   bool ProcessInitializers(const KernelRegistryManager& kernel_registries,
                            const InitializedTensorSet& initializers_consumed,
@@ -166,21 +165,21 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
     // For inputs we need to create a copy node only when the input is connected to both provider
     // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
     if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
-      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true, kernel_registries, logger);
+      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true, logger);
       copy_node_counter++;
       modified = true;
     }
 
   for (auto arg : non_provider_output_defs_)
     if (provider_input_defs_.count(arg)) {
-      AddCopyNode(arg, true, kernel_registries, logger);
+      AddCopyNode(arg, true, logger);
       copy_node_counter++;
       modified = true;
     }
 
   for (auto arg : provider_output_defs_)
     if (non_provider_input_defs_.count(arg)) {
-      AddCopyNode(arg, false, kernel_registries, logger);
+      AddCopyNode(arg, false, logger);
       copy_node_counter++;
       modified = true;
     }
@@ -208,7 +207,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
         // (the name will be the same as the parent node's implicit input)
         const auto* node_arg_in_current_graph_level = *provider_input_defs_.find(arg);
 
-        AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true, kernel_registries, logger);
+        AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true, logger);
         copy_node_counter++;
         modified = true;
       }
@@ -333,7 +332,6 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg,
 
 void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg,
                                         bool is_input,
-                                        const KernelRegistryManager& kernel_registries,
                                         const logging::Logger& logger) {
   // create unique name for new def
   std::string new_def_name = graph_.GenerateNodeArgName(arg->Name() + "_" + provider_.Type());
@@ -353,17 +351,7 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg,
                                   std::vector<onnxruntime::NodeArg*>{src_arg},
                                   std::vector<onnxruntime::NodeArg*>{dst_arg});
 
-  // Try to use memcpy kernel from `provider_`. If unavailable, fall back to generic memcpy kernel from CPU EP.
   new_node.SetExecutionProviderType(provider_.Type());
-  {
-    const KernelCreateInfo* kci = nullptr;
-    ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(new_node, logger, &kci));
-    if (kci == nullptr) {
-      LOGS(logger, VERBOSE) << op_name << " kernel from provider " << provider_.Type()
-                            << " was not found. Falling back to generic kernel from CPU EP.";
-      new_node.SetExecutionProviderType(kCpuExecutionProvider);
-    }
-  }
 
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
   auto it = provider_input_nodes_.find(arg);

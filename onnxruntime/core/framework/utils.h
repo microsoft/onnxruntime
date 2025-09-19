@@ -55,6 +55,8 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 // return true if the execution provider is CPU based (meaning no copies to device are required)
 bool ProviderIsCpuBased(const IExecutionProvider& provider);
 
+bool IsMemcpyNode(const Node& node);
+
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 

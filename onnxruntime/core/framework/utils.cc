@@ -50,6 +50,11 @@ bool ProviderIsCpuBased(const IExecutionProvider& provider) {
   return provider.GetDevice().Type() == OrtDevice::CPU;
 }
 
+bool IsMemcpyNode(const Node& node) {
+  return node.Domain() == kOnnxDomain &&
+         (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost");
+}
+
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
                                      Stream* target_stream,
                                      const OrtValue& source_mlvalue,

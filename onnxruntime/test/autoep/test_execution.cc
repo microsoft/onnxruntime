@@ -111,7 +111,7 @@ TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
   }
 }
 
-TEST(OrtEplibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
+TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   RegisteredEpDeviceUniquePtr example_ep;
   Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
