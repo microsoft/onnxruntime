@@ -49,19 +49,17 @@ TEST(UnsqueezeOpTest, Unsqueeze_3) {
 
 TEST(UnsqueezeOpTest, Unsqueeze_21) {
   OpTester test("Unsqueeze", 21);
-
-  test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0});
-  test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0}, true);
+  test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
   test.Run();
 }
 
 TEST(UnsqueezeOpTest, Unsqueeze_23) {
   OpTester test("Unsqueeze", 23);
-
-  test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0});
-  test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0}, true);
+  test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
   test.Run();
 }
 
