@@ -232,6 +232,8 @@ class TestAutoEP(AutoEpTestCase):
 
         test_sync_stream = test_ep_device.create_sync_stream()
         self.assertIsNotNone(test_sync_stream)
+        stream_handle = test_sync_stream.get_handle()
+        self.assertIsNotNone(stream_handle)
         del test_sync_stream
 
         # Add EP plugin's OrtEpDevice to the SessionOptions.

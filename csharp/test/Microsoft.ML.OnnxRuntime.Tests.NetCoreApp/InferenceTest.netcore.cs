@@ -42,33 +42,38 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void CanCreateAndDisposeSessionWithModelPath()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            using (var session = new InferenceSession(modelPath))
+            using var session = new InferenceSession(modelPath);
+            Assert.NotNull(session);
+            Assert.NotNull(session.InputMetadata);
+            Assert.Single(session.InputMetadata); // 1 input nodeMeta
+            Assert.True(session.InputMetadata.ContainsKey("data_0")); // input nodeMeta name
+            Assert.Equal(typeof(float), session.InputMetadata["data_0"].ElementType);
+            Assert.True(session.InputMetadata["data_0"].IsTensor);
+            var expectedInputDimensions = new int[] { 1, 3, 224, 224 };
+            Assert.Equal(expectedInputDimensions.Length, session.InputMetadata["data_0"].Dimensions.Length);
+            for (int i = 0; i < expectedInputDimensions.Length; i++)
             {
-                Assert.NotNull(session);
-                Assert.NotNull(session.InputMetadata);
-                Assert.Single(session.InputMetadata); // 1 input nodeMeta
-                Assert.True(session.InputMetadata.ContainsKey("data_0")); // input nodeMeta name
-                Assert.Equal(typeof(float), session.InputMetadata["data_0"].ElementType);
-                Assert.True(session.InputMetadata["data_0"].IsTensor);
-                var expectedInputDimensions = new int[] { 1, 3, 224, 224 };
-                Assert.Equal(expectedInputDimensions.Length, session.InputMetadata["data_0"].Dimensions.Length);
-                for (int i = 0; i < expectedInputDimensions.Length; i++)
-                {
-                    Assert.Equal(expectedInputDimensions[i], session.InputMetadata["data_0"].Dimensions[i]);
-                }
-
-                Assert.NotNull(session.OutputMetadata);
-                Assert.Single(session.OutputMetadata); // 1 output nodeMeta
-                Assert.True(session.OutputMetadata.ContainsKey("softmaxout_1")); // output nodeMeta name
-                Assert.Equal(typeof(float), session.OutputMetadata["softmaxout_1"].ElementType);
-                Assert.True(session.OutputMetadata["softmaxout_1"].IsTensor);
-                var expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
-                Assert.Equal(expectedOutputDimensions.Length, session.OutputMetadata["softmaxout_1"].Dimensions.Length);
-                for (int i = 0; i < expectedOutputDimensions.Length; i++)
-                {
-                    Assert.Equal(expectedOutputDimensions[i], session.OutputMetadata["softmaxout_1"].Dimensions[i]);
-                }
+                Assert.Equal(expectedInputDimensions[i], session.InputMetadata["data_0"].Dimensions[i]);
             }
+
+            Assert.NotNull(session.OutputMetadata);
+            Assert.Single(session.OutputMetadata); // 1 output nodeMeta
+            Assert.True(session.OutputMetadata.ContainsKey("softmaxout_1")); // output nodeMeta name
+            Assert.Equal(typeof(float), session.OutputMetadata["softmaxout_1"].ElementType);
+            Assert.True(session.OutputMetadata["softmaxout_1"].IsTensor);
+            var expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
+            Assert.Equal(expectedOutputDimensions.Length, session.OutputMetadata["softmaxout_1"].Dimensions.Length);
+            for (int i = 0; i < expectedOutputDimensions.Length; i++)
+            {
+                Assert.Equal(expectedOutputDimensions[i], session.OutputMetadata["softmaxout_1"].Dimensions[i]);
+            }
+
+            using var inputsMemoryInfos = session.GetMemoryInfosForInputs();
+            Assert.Equal(session.InputNames.Count, inputsMemoryInfos.Count);
+            using var outputsMemoryInfos = session.GetMemoryInfosForOutputs();
+            Assert.Equal(session.OutputNames.Count, outputsMemoryInfos.Count);
+            var inputsEpDevices = session.GetEpDeviceForInputs();
+            Assert.Equal(session.InputNames.Count, inputsEpDevices.Count);
         }
 
 #if NET8_0_OR_GREATER
@@ -154,7 +159,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         {
                             Assert.Equal(typeof(float), inputMeta[name].ElementType);
                             Assert.True(inputMeta[name].IsTensor);
-                            var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
+                            var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint)x).ToArray());
                             inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                         }
 

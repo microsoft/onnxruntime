@@ -329,14 +329,115 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Create and register an allocator to the OrtEnv instance
-        /// so as to enable sharing across all sessions using the OrtEnv instance
+        /// Create and register an allocator to the OrtEnv instance.
+        ///  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
+        ///  Enables sharing the allocator between multiple sessions that use the same env instance.
+        /// Lifetime of the created allocator will be valid for the duration of the environment.
+        /// so as to enable sharing across all sessions using the OrtEnv instance.
         /// <param name="memInfo">OrtMemoryInfo instance to be used for allocator creation</param>
         /// <param name="arenaCfg">OrtArenaCfg instance that will be used to define the behavior of the arena based allocator</param>
         /// </summary>
         public void CreateAndRegisterAllocator(OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAndRegisterAllocator(Handle, memInfo.Pointer, arenaCfg.Pointer));
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtCreateAndRegisterAllocator(Handle, memInfo.Pointer, arenaCfg.Pointer));
+        }
+
+        /// <summary>
+        /// Create and register an allocator to the OrtEnv instance.
+        /// Use UnregisterAllocator to unregister it.
+        /// </summary>
+        /// <param name="providerType"></param>
+        /// <param name="memInfo"></param>
+        /// <param name="arenaCfg"></param>
+        /// <param name="provider_options"></param>
+        public void CreateAndRegisterAllocator(string providerType, OrtMemoryInfo memInfo, OrtArenaCfg arenaCfg,
+            IReadOnlyDictionary<string, string> provider_options)
+        {
+            MarshaledStringArray marshalledKeys = default;
+            MarshaledStringArray marshalledValues = default;
+            var keysPtrs = new IntPtr[provider_options.Count];
+            var valuesPtrs = new IntPtr[provider_options.Count];
+
+            try
+            {
+                marshalledKeys = new MarshaledStringArray(provider_options.Keys);
+                marshalledValues = new MarshaledStringArray(provider_options.Values);
+                marshalledKeys.Fill(keysPtrs);
+                marshalledValues.Fill(valuesPtrs);
+                using var marshalledProviderType = new MarshaledString(providerType);
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtCreateAndRegisterAllocatorV2(Handle, marshalledProviderType.Value,
+                                                                  memInfo.Pointer, arenaCfg.Pointer,
+                                                                  keysPtrs, valuesPtrs,
+                                                                  (UIntPtr)provider_options.Count));
+            }
+            finally
+            {
+                marshalledValues.Dispose();
+                marshalledKeys.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Unregister a custom allocator previously registered with the OrtEnv instance
+        /// using CreateAndRegisterAllocator
+        /// The memory info instance should correspond the one that is used for registration
+        /// </summary>
+        /// <param name="memInfo">The memory info instance should correspond the one that is used for registration</param>
+        public void UnregisterAllocator(OrtMemoryInfo memInfo)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtUnregisterAllocator(Handle, memInfo.Pointer));
+        }
+
+        /// <summary>
+        /// Creates shared allocator owned by the OrtEnv instance.
+        /// </summary>
+        /// <param name="epDevice"></param>
+        /// <param name="deviceMemoryType"></param>
+        /// <param name="ortAllocatorType"></param>
+        /// <param name="allocatorOptions">allocator specific options</param>
+        /// <returns>OrtAllocator instance</returns>
+        public OrtAllocator CreateSharedAllocator(OrtEpDevice epDevice, OrtDeviceMemoryType deviceMemoryType,
+            OrtAllocatorType ortAllocatorType, IReadOnlyDictionary<string, string> allocatorOptions)
+        {
+            using var keyValueOptions = new OrtKeyValuePairs(allocatorOptions);
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtCreateSharedAllocator(Handle, epDevice.Handle, deviceMemoryType,
+                    ortAllocatorType, keyValueOptions.Handle, out IntPtr allocatorHandle));
+            return new OrtAllocator(allocatorHandle, /* owned= */ false);
+        }
+
+        /// <summary>
+        /// Returns a shared allocator owned by the OrtEnv instance if such exists
+        /// (was previously created). If no such allocator exists, the API returns null.
+        /// </summary>
+        /// <param name="memoryInfo"></param>
+        /// <returns>OrtAllocator instance or null if the requested allocator does not exist</returns>
+        public OrtAllocator GetSharedAllocator(OrtMemoryInfo memoryInfo)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetSharedAllocator(Handle, memoryInfo.Pointer, out IntPtr allocatorHandle));
+            if (allocatorHandle == IntPtr.Zero)
+            {
+                return null;
+            }
+            return new OrtAllocator(allocatorHandle, /* owned= */ false);
+        }
+
+        /// <summary>
+        /// Release a shared allocator from the OrtEnv for the OrtEpDevice and memory type.
+        /// This will release the shared allocator for the given OrtEpDevice and memory type.
+        /// If no shared allocator exists, this is a no-op.
+        /// </summary>
+        /// <param name="epDevice"></param>
+        /// <param name="deviceMemoryType"></param>
+        public void ReleaseSharedAllocator(OrtEpDevice epDevice, OrtDeviceMemoryType deviceMemoryType)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtReleaseSharedAllocator(Handle, epDevice.Handle, deviceMemoryType));
         }
 
         /// <summary>
@@ -477,7 +578,37 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             return epDevices.AsReadOnly();
-        }        
+        }
+
+        /// <summary>
+        /// Copies data from source OrtValue tensors to destination OrtValue tensors.
+        /// The tensors may reside on difference devices if such are supported
+        /// by the registered execution providers.
+        /// </summary>
+        /// <param name="srcValues">Source OrtValues</param>
+        /// <param name="dstValues">pre-allocated OrtValues</param>
+        /// <param name="stream">optional stream or null</param>
+        /// <exception cref="ArgumentNullException"></exception>
+        public void CopyTensors(IReadOnlyList<OrtValue> srcValues, IReadOnlyList<OrtValue> dstValues,
+            OrtSyncStream stream)
+        {
+            IntPtr streamHandle = stream != null ? stream.Handle : IntPtr.Zero;
+            IntPtr[] srcPtrs = new IntPtr[srcValues.Count];
+            IntPtr[] dstPtrs = new IntPtr[dstValues.Count];
+
+            for (int i = 0; i < srcPtrs.Length; i++)
+            {
+                if (srcValues[i] == null)
+                    throw new ArgumentNullException($"srcValues[{i}]");
+                if (dstValues[i] == null)
+                    throw new ArgumentNullException($"dstValues[{i}]");
+                srcPtrs[i] = srcValues[i].Handle;
+                dstPtrs[i] = dstValues[i].Handle;
+            }
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtCopyTensors(handle, srcPtrs, dstPtrs, streamHandle, (UIntPtr)srcPtrs.Length));
+        }
 
         #endregion
 
