@@ -18,18 +18,9 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
   for (size_t i = 0; i < rank; ++i) {
     transposed_kernel_shape_vector[i] = kernel_shape[perm[i]];
   }
-  uint32_t output_size = onnxruntime::narrow<uint32_t>(kernel_shape.Size());
   TensorShape transposed_kernel_shape(transposed_kernel_shape_vector);
   *transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
-  bool use_shared = false;
-  TransposeProgram program{perm, use_shared};
-  program
-      .CacheHint(absl::StrJoin(perm, "-"))
-      .AddInput({kernel, ProgramTensorMetadataDependency::TypeAndRank, kernel_shape, 1})
-      .AddOutput({transposed_kernel, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariable({output_size})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-  return context.RunProgram(program);
+  return Transpose::DoTranspose(context, perm, *kernel, *transposed_kernel, &kernel_shape, &transposed_kernel_shape);
 }
 
 template <bool is_channels_last, bool is_fused>
