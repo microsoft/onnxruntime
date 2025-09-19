@@ -47,6 +47,7 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpLowBalanced,
   kHtpBalanced,
   kHtpExtremePowerSaver,
+  kHtpInvalid = 255
 };
 
 enum class ContextPriority : uint8_t {
