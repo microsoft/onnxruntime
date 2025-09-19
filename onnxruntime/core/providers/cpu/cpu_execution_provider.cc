@@ -42,7 +42,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9()),
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -52,7 +52,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypesIRv9()),
     Memcpy);
 
 CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
