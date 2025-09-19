@@ -62,7 +62,7 @@ def have_root() -> bool:
 
 
 def is_host_arm64() -> bool:
-    return platform.processor().startswith("ARMv8")
+    return platform.machine().lower() == "arm64"
 
 
 def is_host_in_ci():
@@ -85,6 +85,11 @@ def is_host_mac():
 
 def is_host_windows():
     return platform.uname().system == "Windows"
+
+
+def is_host_x86_64():
+    machine = platform.machine()
+    return machine == "AMD64" or machine == "x86_64"
 
 
 def process_output(process: subprocess.CompletedProcess):

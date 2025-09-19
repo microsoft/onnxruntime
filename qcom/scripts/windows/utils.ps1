@@ -2,6 +2,24 @@
 # SPDX-License-Identifier: MIT
 
 
+function Assert-Success() {
+    param(
+        [scriptblock]$Code,
+        [Parameter(Mandatory = $false)]
+        [string]$ErrorMessage = "Execution failed"
+    )
+    Invoke-Command -ScriptBlock $Code
+
+    # This has some limitations. In particular, not every command indicates error
+    # by $LASTEXITCODE other than 0. This is especially true of built-in commands
+    # such as New-Item, but also some native things like robocopy. Still, we choose
+    # to use $LASTEXITCODE because Invoke-Command does not propogate the success
+    # of the command it invoked.
+    if ($LASTEXITCODE -ne 0) {
+        throw $ErrorMessage
+    }
+}
+
 function Enter-MsvcEnv() {
     param(
         [Parameter(Mandatory = $true)]
@@ -16,7 +34,6 @@ function Enter-MsvcEnv() {
 
     & "$env:ProgramW6432\Microsoft Visual Studio\2022\Professional\Common7\Tools\Launch-VsDevShell.ps1" `
         -Arch $MsvcArch `
-        -HostArch amd64 `
         -SkipAutomaticLocation
 
     if (-not $?) {
@@ -35,7 +52,7 @@ function Enter-PyVenv() {
         $DesiredVenv = (Resolve-Path "$PyVEnv\").Path
 
         if ($LoadedVenv -ne $DesiredVenv) {
-            throw "Refusing to activate different Python venv."
+            throw "Refusing to activate different Python venv ($LoadedVenv vs $DesiredVenv)."
         }
         else {
             Write-Host "Python venv $PyVEnv already activated."
@@ -95,46 +112,6 @@ function Get-QairtSdkFilePath() {
         [string]$Config
     )
     "$BuildDir\qairt-sdk-path-$Config.txt"
-}
-
-function Invoke-Directory {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [scriptblock]$Code
-    )
-
-    Push-Location $Path
-    try {
-        Invoke-Command $Code
-    }
-    finally {
-        Pop-Location
-    }
-}
-
-function Invoke-PyVEnv() {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$PyVEnv,
-        [scriptblock]$Code
-    )
-
-    if ($null -ne $env:VIRTUAL_ENV) {
-        $PrevVenv = $env:VIRTUAL_ENV
-        Exit-PyVenv
-    }
-
-    try {
-        Enter-PyVenv -PyVEnv $PyVEnv
-        Invoke-Command $Code
-    }
-    finally {
-        Exit-PyVenv
-        if ($null -ne $PrevVenv) {
-            Enter-PyVenv $PrevVenv
-        }
-    }
 }
 
 function Save-QairtSdkFilePath() {
@@ -207,4 +184,44 @@ function Test-UpdateNeeded() {
 
     Write-Host "No need to update build system."
     return $False
+}
+
+function Use-PyVEnv() {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PyVEnv,
+        [scriptblock]$Code
+    )
+
+    if ($env:VIRTUAL_ENV) {
+        $PrevVenv = $env:VIRTUAL_ENV
+        Exit-PyVenv
+    }
+
+    try {
+        Enter-PyVenv -PyVEnv $PyVEnv
+        Invoke-Command $Code
+    }
+    finally {
+        Exit-PyVenv
+        if ($null -ne $PrevVenv) {
+            Enter-PyVenv $PrevVenv
+        }
+    }
+}
+
+function Use-WorkingDir {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [scriptblock]$Code
+    )
+
+    Push-Location $Path
+    try {
+        Invoke-Command $Code
+    }
+    finally {
+        Pop-Location
+    }
 }

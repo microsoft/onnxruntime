@@ -4,18 +4,25 @@
 param (
     [Parameter(Mandatory = $true,
                HelpMessage = "The architecture for which to build.")]
+    [ValidateSet("aarch64", "arm64", "arm64ec", "x86_64")]
     [string]$Arch,
+
+    [Parameter(Mandatory = $false,
+               HelpMessage = "If true, build for ARM64x.")]
+    [bool]$BuildAsX = $false,
 
     [Parameter(Mandatory = $false,
                HelpMessage = "Path to QAIRT SDK.")]
     [string]$QairtSdkRoot,
 
     [Parameter(Mandatory = $false,
-               HelpMessage = "What to do: build|test|generate_sln.")]
+               HelpMessage = "What to do: build|archive|test|generate_sln.")]
+    [ValidateSet("build", "archive", "test", "generate_sln")]
     [string]$Mode = "build",
 
     [Parameter(Mandatory = $false,
                HelpMessage = "The configuration to build.")]
+    [ValidateSet("Debug", "Release", "RelWithDebInfo")]
     [string]$Config = "Release",
 
     [Parameter(Mandatory = $false,
@@ -37,18 +44,20 @@ $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.De
 . "$RepoRoot\qcom\scripts\windows\utils.ps1"
 
 $BuildRoot = (Join-Path $RepoRoot "build")
+$BuildDirArch = $Arch
 
 if ($Mode -eq "generate_sln") {
     $BuildDir = (Join-Path $BuildRoot "vs")
 }
 else {
-    $BuildDir = (Join-Path $BuildRoot "windows-$Arch")
-}
-
-$ValidArchs = "aarch64", "arm64", "arm64ec", "x86_64"
-
-if (-Not ($ValidArchs -contains $Arch)) {
-    throw "Invalid arch $Arch. Supported architectures: $ValidArchs"
+    if ($BuildAsX) {
+        switch ($Arch) {
+            "ARM64" { $BuildDirArch = "arm64-x-slice" }
+            "ARM64ec" { $BuildDirArch = "arm64x" }
+            Default { throw "Invalid arch $Arch for ARM64x" }
+        }
+    }
+    $BuildDir = (Join-Path $BuildRoot "windows-$BuildDirArch")
 }
 
 Enter-PyVenv $PyVEnv
@@ -90,7 +99,7 @@ if ($CMakeGenerator -eq "Ninja") {
 $CommonArgs = `
     "--build_dir", $BuildDir, `
     "--build_shared_lib", `
-    "--cmake_generator", $CmakeGenerator, `
+    "--cmake_generator", $CMakeGenerator, `
     "--config", $Config, `
     "--parallel"
 
@@ -118,6 +127,10 @@ if ($TargetPyExe -ne "")
 else {
     $BuildVEnv = $PyVEnv
     Write-Host "Not building a Python wheel"
+}
+
+if ($BuildAsX) {
+    $CommonArgs += "--buildasx"
 }
 
 # The ORT build incorrectly enables use of Kleidiai when using Ninja on Windows,
@@ -163,7 +176,7 @@ if ($MakeTestArchive) {
     python.exe "$RepoRoot\qcom\scripts\all\archive_tests.py" `
         "--config=$Config" `
         "--qairt-sdk-root=$QairtSdkRoot" `
-        "--target-platform=windows-$Arch"
+        "--target-platform=windows-$BuildDirArch"
     if (-not $?) {
         $failed = $true
     }
@@ -190,43 +203,39 @@ else {
 
             if ($GenerateBuild) {
                 if (-not (Test-Path $BuildVEnv)) {
-                    & $TargetPyExe -m venv $BuildVEnv
-                    if (-not $?) {
-                        throw "Failed to create build virtual environment"
+                    Assert-Success -ErrorMessage "Failed to create build virtual environment" {
+                        & $TargetPyExe -m venv $BuildVEnv
                     }
                 }
 
-                Invoke-PyVenv -PyVenv $BuildVEnv {
-                    & python.exe -m pip install uv
-                    & uv.exe pip install -r "$RepoRoot\tools\ci_build\github\windows\python\requirements.txt"
-                    .\build.bat --update $ArchArgs $CommonArgs $QnnArgs $PlatformArgs
-                    if (-not $?) {
-                        throw "Failed to generate build"
+                Use-PyVenv -PyVenv $BuildVEnv {
+                    Assert-Success { python.exe -m pip install uv }
+                    Assert-Success { uv.exe pip install -r "$RepoRoot\tools\ci_build\github\windows\python\requirements.txt" }
+                    Assert-Success -ErrorMessage "Failed to generate build" {
+                        .\build.bat --update $ArchArgs $CommonArgs $QnnArgs $PlatformArgs
                     }
                 }
             }
 
             if ($DoBuild) {
-                & cmake --build (Join-Path $BuildDir $Config) --config $Config
-                if (-not $?) {
-                    throw "Failed to build"
+                Assert-Success -ErrorMessage "Failed to build" {
+                    & cmake --build (Join-Path $BuildDir $Config) --config $Config
                 }
 
                 if ($BuildWheel) {
                     $BuildOutputDir = (Join-Path $BuildDir $Config)
-                    if ($CmakeGenerator -eq "Visual Studio 17 2022") {
+                    if ($CMakeGenerator -eq "Visual Studio 17 2022") {
                         $BuildOutputDir = (Join-Path $BuildOutputDir $Config)
                     }
 
                     if ($env:ORT_NIGHTLY_BUILD) {
                         $PyNightlyArg = "--nightly_build"
                     }
-                    Invoke-PyVenv -PyVenv $BuildVEnv {
-                        Invoke-Directory -Path $BuildOutputDir {
-                            & python.exe (Join-Path $RepoRoot "setup.py") `
-                                bdist_wheel --wheel_name_suffix=qnn_qcom_internal $PyNightlyArg
-                            if (-not $?) {
-                                throw "Failed to build wheel"
+                    Use-PyVenv -PyVenv $BuildVEnv {
+                        Use-WorkingDir -Path $BuildOutputDir {
+                            Assert-Success -ErrorMessage "Failed to build wheel" {
+                                python.exe (Join-Path $RepoRoot "setup.py") `
+                                    bdist_wheel --wheel_name_suffix=qnn_qcom_internal $PyNightlyArg
                             }
                         }
                     }

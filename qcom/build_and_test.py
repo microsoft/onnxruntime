@@ -41,6 +41,7 @@ from ep_build.util import (
     is_host_linux,
     is_host_mac,
     is_host_windows,
+    is_host_x86_64,
 )
 
 QAIRT_SDK_ROOT_ENV_VAR = "QAIRT_SDK_ROOT"
@@ -153,80 +154,107 @@ class TaskLibrary:
         elements_str = "\n".join([f"  {element};" for element in elements])
         return f"digraph {{\n{elements_str}\n}}"
 
-    @task
-    @depends(["build_ort_android_aarch64"])
-    def archive_ort_android_aarch64(self, plan: Plan) -> str:
-        if is_host_linux() or is_host_mac():
+    if is_host_linux() or is_host_mac():
+
+        @task
+        @depends(["build_ort_android_aarch64"])
+        def archive_ort_android_aarch64(self, plan: Plan) -> str:
+            if is_host_linux() or is_host_mac():
+                return plan.add_step(
+                    BuildEpLinuxTask(
+                        "Archiving ONNX Runtime for Android",
+                        self.__venv_path,
+                        "android",
+                        "aarch64",
+                        self.__qairt_sdk_root,
+                        "archive",
+                    )
+                )
+            else:
+                raise NotImplementedError("Archiving for Android on this host is not supported.")
+
+    if is_host_linux():
+
+        @task
+        @depends(["build_ort_linux_x86_64"])
+        def archive_ort_linux_x86_64(self, plan: Plan) -> str:
             return plan.add_step(
                 BuildEpLinuxTask(
-                    "Archiving ONNX Runtime for Android",
+                    "Archiving ONNX Runtime for Linux",
                     self.__venv_path,
-                    "android",
-                    "aarch64",
+                    "linux",
+                    "x86_64",
                     self.__qairt_sdk_root,
                     "archive",
                 )
             )
-        else:
-            raise NotImplementedError("Archiving for Android on this host is not supported.")
 
-    @task
-    @depends(["build_ort_linux_x86_64"])
-    def archive_ort_linux_x86_64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpLinuxTask(
-                "Archiving ONNX Runtime for Linux",
-                self.__venv_path,
-                "linux",
-                "x86_64",
-                self.__qairt_sdk_root,
-                "archive",
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64"])
+        def archive_ort_windows_arm64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Archiving ONNX Runtime for Windows on ARM64",
+                    self.__venv_path,
+                    "arm64",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "archive",
+                )
             )
-        )
 
-    @task
-    @depends(["build_ort_windows_arm64"])
-    def archive_ort_windows_arm64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Archiving ONNX Runtime for Windows on ARM64",
-                self.__venv_path,
-                "arm64",
-                "Release",
-                self.__qairt_sdk_root,
-                "archive",
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64ec"])
+        def archive_ort_windows_arm64ec(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Archiving ONNX Runtime for Windows on ARM64ec",
+                    self.__venv_path,
+                    "arm64ec",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "archive",
+                )
             )
-        )
 
-    @task
-    @depends(["build_ort_windows_arm64ec"])
-    def archive_ort_windows_arm64ec(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Archiving ONNX Runtime for Windows on ARM64EC",
-                self.__venv_path,
-                "arm64ec",
-                "Release",
-                self.__qairt_sdk_root,
-                "archive",
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64x"])
+        def archive_ort_windows_arm64x(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Archiving ONNX Runtime for Windows on ARM64x",
+                    self.__venv_path,
+                    "arm64ec",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "archive",
+                    build_as_x=True,
+                )
             )
-        )
 
-    @task
-    @depends(["build_ort_windows_x86_64"])
-    def archive_ort_windows_x86_64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Archiving ONNX Runtime for Windows on x86_64",
-                self.__venv_path,
-                "x86_64",
-                "Release",
-                self.__qairt_sdk_root,
-                "archive",
+    if is_host_windows() and is_host_x86_64():
+
+        @task
+        @depends(["build_ort_windows_x86_64"])
+        def archive_ort_windows_x86_64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Archiving ONNX Runtime for Windows on x86_64",
+                    self.__venv_path,
+                    "x86_64",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "archive",
+                )
             )
-        )
 
-    @public_task("Build ONNX Runtime")
+    @public_task("Build ONNX Runtime for this host's native architecture")
     @depends(
         [
             (is_host_linux(), "build_ort_linux_host"),
@@ -236,107 +264,154 @@ class TaskLibrary:
     def build(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
 
-    @task
-    @depends(["create_venv"])
-    def build_ort_android_aarch64(self, plan: Plan) -> str:
-        if is_host_linux() or is_host_mac():
+    if is_host_linux() or is_host_mac():
+
+        @task
+        @depends(["create_venv"])
+        def build_ort_android_aarch64(self, plan: Plan) -> str:
+            if is_host_linux() or is_host_mac():
+                return plan.add_step(
+                    BuildEpLinuxTask(
+                        "Building ONNX Runtime for Android",
+                        self.__venv_path,
+                        "android",
+                        "aarch64",
+                        self.__qairt_sdk_root,
+                        "build",
+                    )
+                )
+            else:
+                raise NotImplementedError("Building for Android on this host is not supported.")
+
+    if is_host_linux():
+
+        @task
+        @depends(["create_venv"])
+        def build_ort_linux_aarch64_oe_gcc11_2(self, plan: Plan) -> str:
             return plan.add_step(
                 BuildEpLinuxTask(
-                    "Building ONNX Runtime for Android",
+                    "Building ONNX Runtime for Linux on AArch64 OE GCC 11.2",
                     self.__venv_path,
-                    "android",
-                    "aarch64",
+                    "linux",
+                    "aarch64-oe-gcc11.2",
                     self.__qairt_sdk_root,
                     "build",
                 )
             )
-        else:
-            raise NotImplementedError("Building for Android on this host is not supported.")
 
-    @task
-    @depends(["create_venv"])
-    def build_ort_linux_aarch64_oe_gcc11_2(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpLinuxTask(
-                "Building ONNX Runtime for Linux on AArch64 OE GCC 11.2",
-                self.__venv_path,
-                "linux",
-                "aarch64-oe-gcc11.2",
-                self.__qairt_sdk_root,
-                "build",
+    if is_host_linux():
+
+        @task
+        @depends(["build_ort_linux_x86_64"])
+        def build_ort_linux_host(self, plan: Plan) -> str:
+            return plan.add_step(NoOpTask())
+
+    if is_host_linux():
+
+        @task
+        @depends(["create_venv"])
+        def build_ort_linux_x86_64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpLinuxTask(
+                    "Building ONNX Runtime for Linux on x86_64",
+                    self.__venv_path,
+                    "linux",
+                    "x86_64",
+                    self.__qairt_sdk_root,
+                    "build",
+                )
             )
-        )
 
-    @task
-    @depends(["build_ort_linux_x86_64"])
-    def build_ort_linux_host(self, plan: Plan) -> str:
-        return plan.add_step(NoOpTask())
+    if is_host_windows():
 
-    @task
-    @depends(["create_venv"])
-    def build_ort_linux_x86_64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpLinuxTask(
-                "Building ONNX Runtime for Linux on x86_64",
-                self.__venv_path,
-                "linux",
-                "x86_64",
-                self.__qairt_sdk_root,
-                "build",
+        @public_task("Build ONNX Runtime for ARM64 Windows")
+        @depends(["create_venv"])
+        def build_ort_windows_arm64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Building ONNX Runtime for Windows on ARM64",
+                    self.__venv_path,
+                    "arm64",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "build",
+                )
             )
-        )
 
-    @task
-    @depends(["create_venv"])
-    def build_ort_windows_arm64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Building ONNX Runtime for Windows on ARM64",
-                self.__venv_path,
-                "arm64",
-                "Release",
-                self.__qairt_sdk_root,
-                "build",
+    if is_host_windows():
+
+        @public_task("Build ONNX Runtime for ARM64ec Windows")
+        @depends(["create_venv"])
+        def build_ort_windows_arm64ec(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Building ONNX Runtime for Windows on ARM64EC",
+                    self.__venv_path,
+                    "arm64ec",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "build",
+                )
             )
-        )
 
-    @task
-    @depends(["create_venv"])
-    def build_ort_windows_arm64ec(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Building ONNX Runtime for Windows on ARM64EC",
-                self.__venv_path,
-                "arm64ec",
-                "Release",
-                self.__qairt_sdk_root,
-                "build",
+    if is_host_windows():
+
+        @public_task("Build ONNX Runtime for ARM64x Windows")
+        @depends(["create_venv"])
+        def build_ort_windows_arm64x(self, plan: Plan) -> str:
+            return plan.add_step(
+                CompositeTask(
+                    "Building ONNX Runtime for Windows on ARM64x",
+                    [
+                        BuildEpWindowsTask(
+                            "Building ARM64 slice of ONNX Runtime for Windows on ARM64x",
+                            self.__venv_path,
+                            "arm64",
+                            "Release",
+                            self.__qairt_sdk_root,
+                            "build",
+                            build_as_x=True,
+                        ),
+                        BuildEpWindowsTask(
+                            "Building ARM64ec slice of ONNX Runtime for Windows on ARM64x",
+                            self.__venv_path,
+                            "arm64ec",
+                            "Release",
+                            self.__qairt_sdk_root,
+                            "build",
+                            build_as_x=True,
+                        ),
+                    ],
+                )
             )
+
+    if is_host_windows():
+
+        @task
+        @depends(
+            [
+                (is_host_arm64(), "build_ort_windows_arm64"),
+                (not is_host_arm64(), "build_ort_windows_x86_64"),
+            ]
         )
+        def build_ort_windows_host(self, plan: Plan) -> str:
+            return plan.add_step(NoOpTask())
 
-    @task
-    @depends(
-        [
-            (is_host_arm64(), "build_ort_windows_arm64"),
-            (not is_host_arm64(), "build_ort_windows_x86_64"),
-        ]
-    )
-    def build_ort_windows_host(self, plan: Plan) -> str:
-        return plan.add_step(NoOpTask())
+    if is_host_windows() and is_host_x86_64():
 
-    @task
-    @depends(["create_venv"])
-    def build_ort_windows_x86_64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Building ONNX Runtime for Windows on x86_64",
-                self.__venv_path,
-                "x86_64",
-                "Release",
-                self.__qairt_sdk_root,
-                "build",
+        @public_task("Build ONNX Runtime for x86_64")
+        @depends(["create_venv"])
+        def build_ort_windows_x86_64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Building ONNX Runtime for Windows on x86_64",
+                    self.__venv_path,
+                    "x86_64",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "build",
+                )
             )
-        )
 
     @task
     def create_venv(self, plan: Plan) -> str:
@@ -372,19 +447,21 @@ class TaskLibrary:
             )
         )
 
-    @public_task("Generate build\\vs\\Debug\\onnxruntime.sln")
-    @depends(["create_venv"])
-    def generate_sln(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Generating Visual Studio .sln",
-                self.__venv_path,
-                "x86_64",
-                "Debug",
-                self.__qairt_sdk_root,
-                "generate_sln",
+    if is_host_windows():
+
+        @public_task("Generate build\\vs\\Debug\\onnxruntime.sln")
+        @depends(["create_venv"])
+        def generate_sln(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Generating Visual Studio .sln",
+                    self.__venv_path,
+                    "x86_64",
+                    "Debug",
+                    self.__qairt_sdk_root,
+                    "generate_sln",
+                )
             )
-        )
 
     @public_task("Run the source linter")
     @depends(["create_venv"])
@@ -409,146 +486,166 @@ class TaskLibrary:
     def list_public(self, plan: Plan) -> str:
         return plan.add_step(ListTasksTask(PUBLIC_TASKS))
 
-    @public_task("Test ONNX Runtime")
-    @depends(
-        [
-            (is_host_linux(), "test_ort_linux"),
-            (is_host_windows(), "test_ort_windows"),
-        ]
-    )
-    def test(self, plan: Plan) -> str:
-        return plan.add_step(NoOpTask())
+    if is_host_linux() or is_host_windows():
 
-    @task
-    @depends(["test_ort_linux_x86_64"])
-    def test_ort_linux(self, plan: Plan) -> str:
-        return plan.add_step(NoOpTask())
-
-    @task
-    @depends(["build_ort_linux_x86_64"])
-    def test_ort_linux_x86_64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpLinuxTask(
-                "Testing ONNX Runtime for Linux",
-                self.__venv_path,
-                "linux",
-                "x86_64",
-                self.__qairt_sdk_root,
-                "test",
-            )
+        @public_task("Test ONNX Runtime")
+        @depends(
+            [
+                (is_host_linux(), "test_ort_linux"),
+                (is_host_windows(), "test_ort_windows"),
+            ]
         )
+        def test(self, plan: Plan) -> str:
+            return plan.add_step(NoOpTask())
 
-    @task
-    @depends(["archive_ort_android_aarch64"])
-    def test_ort_local_android_aarch64(self, plan: Plan) -> str:
-        env = dict(os.environ)
-        test_root = REPO_ROOT / "build" / "qdc_test_root"
-        env["QDC_TEST_ROOT"] = str(test_root)
-        env["MODEL_TEST_ROOT"] = str(REPO_ROOT / "build" / "android-aarch64" / "model_tests")
+    if is_host_linux():
 
-        # This is a pretty slow way to do this, but it's easy to implement
-        # and essentially free to maintain. If you find yourself using this
-        # often enough that your life would be better if we didn't roundtrip
-        # through a zip file, please open a Jira and we'll invest more here.
-        return plan.add_step(
-            CompositeTask(
-                group_name=None,
-                tasks=[
-                    ExtractArchiveTask(
-                        "Extracting ONNX Runtime for Android",
-                        REPO_ROOT / "build" / "onnxruntime-tests-android-aarch64.zip",
-                        test_root,
-                    ),
-                    PyTestTask(
-                        "Testing ONNX Runtime for Android with a local device",
-                        self.__venv_path,
-                        ["tests"],
-                        env=env,
-                        cwd=REPO_ROOT / "qcom" / "scripts" / "linux" / "appium",
-                    ),
-                ],
+        @task
+        @depends(["test_ort_linux_x86_64"])
+        def test_ort_linux(self, plan: Plan) -> str:
+            return plan.add_step(NoOpTask())
+
+    if is_host_linux():
+
+        @task
+        @depends(["build_ort_linux_x86_64"])
+        def test_ort_linux_x86_64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpLinuxTask(
+                    "Testing ONNX Runtime for Linux",
+                    self.__venv_path,
+                    "linux",
+                    "x86_64",
+                    self.__qairt_sdk_root,
+                    "test",
+                )
             )
-        )
 
-    @task
-    @depends(["archive_ort_android_aarch64"])
-    def test_ort_qdc_android_aarch64(self, plan: Plan) -> str:
-        return plan.add_step(
-            QdcTestsTask(
-                "Testing ONNX Runtime for Android in QDC",
-                self.__venv_path,
-                ["android"],
-                extra_args=[
-                    "--append-android-package=onnx_models:model_tests/onnx_models",
-                ],
+    if is_host_linux() or is_host_mac():
+
+        @task
+        @depends(["archive_ort_android_aarch64"])
+        def test_ort_local_android_aarch64(self, plan: Plan) -> str:
+            env = dict(os.environ)
+            test_root = REPO_ROOT / "build" / "qdc_test_root"
+            env["QDC_TEST_ROOT"] = str(test_root)
+            env["MODEL_TEST_ROOT"] = str(REPO_ROOT / "build" / "android-aarch64" / "model_tests")
+
+            # This is a pretty slow way to do this, but it's easy to implement
+            # and essentially free to maintain. If you find yourself using this
+            # often enough that your life would be better if we didn't roundtrip
+            # through a zip file, please open a Jira and we'll invest more here.
+            return plan.add_step(
+                CompositeTask(
+                    group_name=None,
+                    tasks=[
+                        ExtractArchiveTask(
+                            "Extracting ONNX Runtime for Android",
+                            REPO_ROOT / "build" / "onnxruntime-tests-android-aarch64.zip",
+                            test_root,
+                        ),
+                        PyTestTask(
+                            "Testing ONNX Runtime for Android with a local device",
+                            self.__venv_path,
+                            ["tests"],
+                            env=env,
+                            cwd=REPO_ROOT / "qcom" / "scripts" / "linux" / "appium",
+                        ),
+                    ],
+                )
             )
-        )
 
-    @task
-    @depends(["archive_ort_windows_arm64"])
-    def test_ort_qdc_windows_arm64(self, plan: Plan) -> str:
-        return plan.add_step(
-            QdcTestsTask(
-                "Testing ONNX Runtime for Windows on ARM64 in QDC",
-                self.__venv_path,
-                ["windows"],
-                extra_args=[
-                    "--append-windows-package=onnx_models:model_tests/onnx_models",
-                ],
+    if is_host_linux() or is_host_mac():
+
+        @task
+        @depends(["archive_ort_android_aarch64"])
+        def test_ort_qdc_android_aarch64(self, plan: Plan) -> str:
+            return plan.add_step(
+                QdcTestsTask(
+                    "Testing ONNX Runtime for Android in QDC",
+                    self.__venv_path,
+                    ["android"],
+                    extra_args=[
+                        "--append-android-package=onnx_models:model_tests/onnx_models",
+                    ],
+                )
             )
-        )
 
-    @task
-    @depends(
-        [
-            (is_host_arm64(), "test_ort_windows_arm64"),
-            (not is_host_arm64(), "test_ort_windows_x86_64"),
-        ]
-    )
-    def test_ort_windows(self, plan: Plan) -> str:
-        return plan.add_step(NoOpTask())
+    if is_host_windows():
 
-    @task
-    @depends(["build_ort_windows_arm64"])
-    def test_ort_windows_arm64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Testing ONNX Runtime for Windows on ARM64",
-                self.__venv_path,
-                "arm64",
-                "Release",
-                self.__qairt_sdk_root,
-                "test",
+        @task
+        @depends(["archive_ort_windows_arm64"])
+        def test_ort_qdc_windows_arm64(self, plan: Plan) -> str:
+            return plan.add_step(
+                QdcTestsTask(
+                    "Testing ONNX Runtime for Windows on ARM64 in QDC",
+                    self.__venv_path,
+                    ["windows"],
+                    extra_args=[
+                        "--append-windows-package=onnx_models:model_tests/onnx_models",
+                    ],
+                )
             )
-        )
 
-    @task
-    @depends(["build_ort_windows_arm64ec"])
-    def test_ort_windows_arm64ec(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Testing ONNX Runtime for Windows on ARM64EC",
-                self.__venv_path,
-                "arm64ec",
-                "Release",
-                self.__qairt_sdk_root,
-                "test",
-            )
-        )
+    if is_host_windows():
 
-    @task
-    @depends(["build_ort_windows_x86_64"])
-    def test_ort_windows_x86_64(self, plan: Plan) -> str:
-        return plan.add_step(
-            BuildEpWindowsTask(
-                "Testing ONNX Runtime for Windows on x86_64",
-                self.__venv_path,
-                "x86_64",
-                "Release",
-                self.__qairt_sdk_root,
-                "test",
-            )
+        @task
+        @depends(
+            [
+                (is_host_arm64(), "test_ort_windows_arm64"),
+                (not is_host_arm64(), "test_ort_windows_x86_64"),
+            ]
         )
+        def test_ort_windows(self, plan: Plan) -> str:
+            return plan.add_step(NoOpTask())
+
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64"])
+        def test_ort_windows_arm64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Testing ONNX Runtime for Windows on ARM64",
+                    self.__venv_path,
+                    "arm64",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "test",
+                )
+            )
+
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64ec"])
+        def test_ort_windows_arm64ec(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Testing ONNX Runtime for Windows on ARM64EC",
+                    self.__venv_path,
+                    "arm64ec",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "test",
+                )
+            )
+
+    if is_host_windows() and is_host_x86_64():
+
+        @task
+        @depends(["build_ort_windows_x86_64"])
+        def test_ort_windows_x86_64(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpWindowsTask(
+                    "Testing ONNX Runtime for Windows on x86_64",
+                    self.__venv_path,
+                    "x86_64",
+                    "Release",
+                    self.__qairt_sdk_root,
+                    "test",
+                )
+            )
 
 
 def get_qairt_sdk_root(root_from_args: Path | None) -> Path | None:

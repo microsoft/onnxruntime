@@ -21,6 +21,16 @@ jobs:
       nightly_build: true
       windows_arm64_runner_arch: "ARM64"
 
+  # ARM64x builds take twice as long so we don't run them on every PR.
+  build-windows-arm64x:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-windows.yml
+    secrets: inherit
+    with:
+      nightly_build: true
+      target_arch: arm64x
+      upload_wheel: false
+      run_tests: false
+
   publish-wheel-workflow:
     name: "Publish distribution to PyPI"
     runs-on: [Linux, self-hosted, Build]

@@ -13,19 +13,24 @@ android_commandlinetools_windows_x86_64:
   content_root: cmdline-tools
   bindir: bin
 ccache_linux:
-  version: 4.11.3
+  version: 4.12
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-linux-x86_64.tar.xz
-  sha256: 7766991b91b3a5a177ab33fa043fe09e72c68586d5a86d20a563a05b74f119c0
+  sha256: d77e140d0403175b93f979f0b0d36e821bf31728b282f4bfda939f65836bcabe
   content_root: ccache-{version}-linux-x86_64
 ccache_macos:
-  version: 4.11.3
+  version: 4.12
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-darwin.tar.gz
-  sha256: 6f187a79fc57864d900aff28f9c3f93d020ed7a849be2f2ead6799959ccf30b0
+  sha256: 95cb03de0f2e0edb264d2443f2fe4500a13086689cc9ecd1095eb274dd8d9aee
   content_root: ccache-{version}-darwin
+ccache_windows_arm64:
+  version: 4.12
+  url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-windows-aarch64.zip
+  sha256: 12d8a95507ce19bb90cff49faa5f5de07919d5d8d91f129bcf597dbc30d0c250
+  content_root: ccache-{version}-windows-aarch64
 ccache_windows_x86_64:
-  version: 4.11.3
+  version: 4.12
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-windows-x86_64.zip
-  sha256: bfd031cad091b7db7e68c3303be542b0f7fee7a3e716d76ec6f7e6c7ef4b3526
+  sha256: 85c963b154dcf5e38dc6839d660218433a3b0b86387c302675d236e17ae7220d
   content_root: ccache-{version}-windows-x86_64
 cmake_linux:
   version: 3.31.7

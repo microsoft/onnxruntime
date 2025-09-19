@@ -3,12 +3,18 @@
 
 $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)\..\..\..").Path
 
+. "$RepoRoot\qcom\scripts\windows\utils.ps1"
+
 function Get-ToolsDir() {
     if (Test-Path Env:ORT_BUILD_TOOLS_PATH) {
         $ToolsDir = $Env:ORT_BUILD_TOOLS_PATH
     } else {
         $ToolsDir = (Join-Path $RepoRoot "build\Tools")
     }
+
+    # We don't use Assert-Success because this has an exit code of 1
+    # when the directory already exists. Powershell somehow knows that
+    # this is not a failure so we test $? directly.
     New-Item -ItemType Directory $ToolsDir -Force | Out-Null
     if (-not $?) {
         throw "Failed to create $ToolsDir"
@@ -16,21 +22,8 @@ function Get-ToolsDir() {
     return $ToolsDir
 }
 
-function Get-AndroidNdkRoot() {
-    $InstallNdk = "$RepoRoot\qcom\scripts\all\install_ndk.py"
-
-    python.exe $InstallNdk --cli-tools-root (Get-PackageContentDir android_commandlinetools_windows_x86_64)
-    if (-not $?) {
-        throw "Failed to get NDK content root."
-    }
-}
-
-function Get-AndroidSdkRoot() {
-    (Resolve-Path "$(Get-PackageContentDir android_commandlinetools_windows_x86_64)\..").Path
-}
-
 function Get-CCacheBinDir () {
-    Get-PackageBinDir ccache_windows_x86_64
+    Get-PackageBinDir ccache_windows_$(Get-HostArch)
 }
 
 function Get-CMakeBinDir() {
@@ -57,9 +50,8 @@ function Get-PackageBinDir() {
     )
 
     Install-Package $Package
-    python.exe (Get-PackageManager) --print-bin-dir --package $Package --package-root (Get-ToolsDir)
-    if (-not $?) {
-        throw "Failed to get bin directory for $Package."
+    Assert-Success -ErrorMessage "Failed to get bin directory for $Package." {
+        python.exe (Get-PackageManager) --print-bin-dir --package $Package --package-root (Get-ToolsDir)
     }
 }
 
@@ -71,9 +63,8 @@ function Get-PackageContentDir() {
     )
 
     Install-Package $Package
-    python.exe (Get-PackageManager) --print-content-dir --package $Package --package-root (Get-ToolsDir)
-    if (-not $?) {
-        throw "Failed to get content directory for $Package."
+    Assert-Success -ErrorMessage "Failed to get content directory for $Package." {
+        python.exe (Get-PackageManager) --print-content-dir --package $Package --package-root (Get-ToolsDir)
     }
 }
 
@@ -92,16 +83,14 @@ function Install-Package() {
         [string]$Package
     )
 
-    python.exe (Get-PackageManager) --install --package $Package --package-root (Get-ToolsDir)
-    if (-not $?) {
-        throw "Failed to install package $Package."
+    Assert-Success -ErrorMessage "Failed to install package $Package" {
+        python.exe (Get-PackageManager) --install --package $Package --package-root (Get-ToolsDir)
     }
 }
 
 # We call this "Optimize" to conform to the PowerShell approved verbs list.
 function Optimize-ToolsDir() {
-    python.exe (Get-PackageManager) --clean --package-root (Get-ToolsDir)
-    if (-not $?) {
-        throw "Failed to optimize tools directory."
+    Assert-Success -ErrorMessage "Failed to optimize tools directory." {
+        python.exe (Get-PackageManager) --clean --package-root (Get-ToolsDir)
     }
 }

@@ -147,7 +147,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--target-platform",
         help="The platform for which to package tests.",
-        choices=["android-aarch64", "linux-x86_64", "windows-arm64", "windows-arm64ec", "windows-x86_64"],
+        choices=[
+            "android-aarch64",
+            "linux-x86_64",
+            "windows-arm64",
+            "windows-arm64ec",
+            "windows-arm64x",
+            "windows-x86_64",
+        ],
         required=True,
     )
 

@@ -52,6 +52,7 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         config: Literal["Debug", "Release", "RelWithDebInfo"],
         qairt_sdk_root: Path | None,
         mode: str,
+        build_as_x: bool = False,
     ) -> None:
         cmd = [
             str(REPO_ROOT / "qcom" / "scripts" / "windows" / "build.ps1"),
@@ -68,7 +69,15 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         if qairt_sdk_root is not None:
             cmd.extend(["-QairtSdkRoot", str(qairt_sdk_root).replace(" ", "` ")])
 
-        target_py_exe = self.__target_py_exe(target_arch)
+        if build_as_x:
+            cmd.extend(["-BuildAsX", "1"])
+
+        # When building for ARM64x, we only build the Python bits for ARM64ec
+        if build_as_x and target_arch == "arm64":
+            target_py_exe = None
+        else:
+            target_py_exe = self.__target_py_exe(target_arch)
+
         if target_py_exe is not None:
             cmd.extend(["-TargetPyExe", str(target_py_exe).replace(" ", "` ")])
 
