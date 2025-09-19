@@ -119,6 +119,8 @@ void CreateModOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 
 void CreateThresholdedReluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateSTFTOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateInverseOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn
