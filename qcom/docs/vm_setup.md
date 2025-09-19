@@ -126,6 +126,16 @@ The GitHub runner runs as a Windows service. Log in as the local administrator a
   `%ProgramData%\Netskope\STAgent\download\nscacert_combined.pem` disappear unexpectedly on a WoS CI machine so
   consider putting this file somewhere else, such as `C:\certificates\nscacert_combined.pem`.
 
+#### Certificate Issues
+
+We have experienced Python SSL issues caused by Windows VMs being initialized or updated with different root authority certificates.
+The following commands can be used to force an update for the root authority certificates via PowerShell:
+
+```
+certutil -generateSSTFromWU roots.sst
+certutil -addstore -f root roots.sst
+```
+
 ## Linux
 
 ### Provisioning
