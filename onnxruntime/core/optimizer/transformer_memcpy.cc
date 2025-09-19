@@ -223,6 +223,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node,
                                         InitializedTensorSet& initializers_consumed,
                                         const logging::Logger& logger) {
   auto node_provider_type = node.GetExecutionProviderType();
+  // TODO consider using info from provider device to detect compatibility instead of checking provider types
   if ((node_provider_type == provider_.Type()) ||
       (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_.Type()) ||
       (node_provider_type == kCudaExecutionProvider && kNvTensorRTRTXExecutionProvider == provider_.Type()) ||
