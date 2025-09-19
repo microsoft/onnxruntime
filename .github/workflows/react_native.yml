@@ -264,11 +264,7 @@ jobs:
 
       - name: Run React Native iOS Instrumented Tests
         run: |
-          xcodebuild ARCHS=arm64 ONLY_ACTIVE_ARCH=NO test \
-            -workspace OnnxruntimeModule.xcworkspace \
-            -scheme OnnxruntimeModuleTest \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.4'
+          /usr/bin/xcodebuild -sdk iphonesimulator -configuration Debug -workspace ${{ github.workspace }}/js/react_native/ios/OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.4' test CODE_SIGNING_ALLOWED=NO
         working-directory: ${{ github.workspace }}/js/react_native/ios
 
   react_native_ci_ios_e2e_tests:
