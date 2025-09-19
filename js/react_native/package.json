@@ -20,12 +20,11 @@
     "ONNX Runtime"
   ],
   "devDependencies": {
-    "@react-native/typescript-config": "0.73.1",
-    "@types/react": "^18.2.6",
+    "@react-native/typescript-config": "0.76.0",
     "pod-install": "^0.1.36",
     "prettier": "^2.8.8",
-    "react": "^18.2.0",
-    "react-native": "^0.73.11",
+    "react": "18.2.0",
+    "react-native": "0.76.0",
     "react-native-builder-bob": "^0.37.0"
   },
   "peerDependencies": {
@@ -86,9 +85,9 @@
     "bootstrap-no-pods": "npm run pack-common && npm run unpack-common && npm run pack-libs && npm run unpack-libs && npm run e2e",
     "bootstrap": "npm run bootstrap-no-pods && npm run pods",
     "test": "jest",
-    "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
+    "pack-common": "cd ../common && npm pack && move onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
     "unpack-common": "npm --prefix e2e install ./e2e/onnxruntime-common.tgz",
-    "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
+    "pack-libs": "npm pack --ort-js-pack-mode=e2e && move onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
     "unpack-libs": "npm --prefix e2e install ./e2e/onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && npx pod-install --quiet",

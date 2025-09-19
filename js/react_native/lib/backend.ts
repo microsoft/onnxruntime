@@ -94,7 +94,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
         if (!this.#inferenceSession.loadModelFromBlob) {
           throw new Error('Native module method "loadModelFromBlob" is not defined');
         }
-        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer.buffer);
+        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer.buffer as ArrayBuffer);
         results = await this.#inferenceSession.loadModelFromBlob(modelBlob, options);
       }
       // resolve promise if onnxruntime session is successfully created
@@ -148,7 +148,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
         if (Array.isArray(feeds[key].data)) {
           data = feeds[key].data as string[];
         } else {
-          const buffer = (feeds[key].data as SupportedTypedArray).buffer;
+          const buffer = (feeds[key].data as SupportedTypedArray).buffer as ArrayBuffer;
           data = jsiHelper.storeArrayBuffer(buffer);
         }
 
@@ -171,9 +171,9 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
         if (Array.isArray(results[key].data)) {
           tensorData = results[key].data as string[];
         } else {
-          const buffer = jsiHelper.resolveArrayBuffer(results[key].data as JSIBlob) as SupportedTypedArray;
+          const buffer = jsiHelper.resolveArrayBuffer(results[key].data as JSIBlob);
           const typedArray = tensorTypeToTypedArray(results[key].type as Tensor.Type);
-          tensorData = new typedArray(buffer, buffer.byteOffset, buffer.byteLength / typedArray.BYTES_PER_ELEMENT);
+          tensorData = new typedArray(buffer);
         }
 
         returnValue[key] = new Tensor(results[key].type as Tensor.Type, tensorData, results[key].dims);
