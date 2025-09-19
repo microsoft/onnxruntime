@@ -18,6 +18,16 @@ namespace Microsoft.ML.OnnxRuntime
             handle = streamHandle;
         }
 
+        /// <summary>
+        /// Fetch sync stream handle for possible use
+        /// in session options.
+        /// </summary>
+        /// <returns>Opaque stream handle</returns>
+        public IntPtr GetHandle()
+        {
+            return NativeMethods.OrtSyncStream_GetHandle(handle);
+        }
+
         internal IntPtr Handle => handle;
 
         /// <summary>

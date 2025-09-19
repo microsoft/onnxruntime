@@ -846,7 +846,12 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCreateSyncStreamForEpDevice)Marshal.GetDelegateForFunctionPointer(
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
-            
+
+            OrtSyncStream_GetHandle = 
+                (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
+                    api_.SyncStream_GetHandle,
+                    typeof(DOrtSyncStream_GetHandle));
+
             OrtReleaseSyncStream =
                 (DOrtReleaseSyncStream)Marshal.GetDelegateForFunctionPointer(
                     api_.ReleaseSyncStream,
@@ -2737,6 +2742,11 @@ namespace Microsoft.ML.OnnxRuntime
             );
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* void* */ DOrtSyncStream_GetHandle(
+            IntPtr /* OrtSyncStream* */ stream
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtReleaseSyncStream(
             IntPtr /* OrtSyncStream* */ stream
             );
@@ -2748,6 +2758,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtEpDevice_Device OrtEpDevice_Device;
         public static DOrtEpDevice_MemoryInfo OrtEpDevice_MemoryInfo;
         public static DOrtCreateSyncStreamForEpDevice OrtCreateSyncStreamForEpDevice;
+        public static DOrtSyncStream_GetHandle OrtSyncStream_GetHandle;
         public static DOrtReleaseSyncStream OrtReleaseSyncStream;
 
         //

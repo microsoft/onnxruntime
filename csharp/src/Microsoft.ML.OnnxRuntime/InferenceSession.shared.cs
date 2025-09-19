@@ -262,6 +262,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Fetches OrtEpDevice instances for all inputs in the same order as their input names.
+        /// For inputs that do not have a device, the corresponding entry in the returned list is null.
         /// See InputNames property.
         /// </summary>
         /// <returns>IReadOnlyList<OrtEpDevice></returns>
@@ -272,6 +273,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (numInputs == UIntPtr.Zero)
             {
+                // OrtSessionGetEpDeviceForInputs expects numInputs > 0, otherwise it is an invalid arg.
                 return [];
             }
 
@@ -280,8 +282,10 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetEpDeviceForInputs(_nativeHandle,
                 epDevicesForInputs, numInputs));
 
+            // Some entries in epDevicesForInputs can be IntPtr.Zero, indicating the input does not
+            // have a device; return null for those entries.
             return epDevicesForInputs
-                .Select(static ptr => new OrtEpDevice(ptr))
+                .Select(static ptr => ptr == IntPtr.Zero ? null : new OrtEpDevice(ptr))
                 .ToList()
                 .AsReadOnly();
         }

@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using Xunit;
 
@@ -349,10 +350,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestCreateGetReleaseSharedAllocator")]
         private void TestCreateGetReleaseSharedAllocator()
         {
-            var env = OrtEnv.Instance();
-
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
+                var env = OrtEnv.Instance();
                 string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), "example_plugin_ep.dll");
                 Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
 
@@ -380,6 +380,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         { "arena.initial_chunk_size_bytes", "25600" },
                     };
 
+                    // Strictly speaking the allocator is owned by the env
+                    // but we want to dispose the C# object anyway
                     using var sharedAllocator = env.CreateSharedAllocator(epDevice,
                                                                            OrtDeviceMemoryType.DEFAULT,
                                                                            OrtAllocatorType.DeviceAllocator,
@@ -406,7 +408,88 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestCopyTensors")]
         void TestCopyTensors()
         {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var env = OrtEnv.Instance();
+                string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), "example_plugin_ep.dll");
+                Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
 
+                // example plugin ep uses the registration name as the ep name
+                const string epName = "csharp_ep";
+
+                env.RegisterExecutionProviderLibrary(epName, libFullPath);
+                try
+                {
+                    // Find the example device
+                    OrtEpDevice epDevice = null;
+                    var epDevices = env.GetEpDevices();
+                    foreach (var d in epDevices)
+                    {
+                        if (string.Equals(epName, d.EpName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            epDevice = d;
+                        }
+                    }
+                    Assert.NotNull(epDevice);
+
+                    using var syncStream = epDevice.CreateSyncStream(null);
+                    Assert.NotNull(syncStream);
+                    // This returned Zero for example EP, but we need this for coverage
+                    var streamHandle = syncStream.GetHandle();
+                    // Assert.NotEqual(IntPtr.Zero, streamHandle);
+
+                    var inputDims = new long[] { 3, 2 };
+                    float[] inputData1 = [1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F];
+                    long[] inputData2 = [1, 2, 3, 4, 5, 6];
+
+                    // Create source OrtValues on CPU on top of inputData
+                    using var inputList = new DisposableListTest<OrtValue>(2)
+                    {
+                        OrtValue.CreateTensorValueFromMemory(inputData1, inputDims),
+                        OrtValue.CreateTensorValueFromMemory(inputData2, inputDims)
+                    };
+
+                    using var epMemoryInfo = epDevice.GetMemoryInfo(OrtDeviceMemoryType.DEFAULT);
+                    var options = new Dictionary<string, string>() {
+                        { "arena.initial_chunk_size_bytes", "25600" },
+                    };
+
+                    // Strictly speaking the allocator is owned by the env
+                    // but we want to dispose the C# object anyway
+                    using var sharedAllocator = env.CreateSharedAllocator(epDevice,
+                                                                           OrtDeviceMemoryType.DEFAULT,
+                                                                           OrtAllocatorType.DeviceAllocator,
+                                                                           options);
+                    try
+                    {
+                        // Create destination empty OrtValues on the example EP device
+                        using var outputList = new DisposableListTest<OrtValue>(2)
+                        {
+                            OrtValue.CreateAllocatedTensorValue(sharedAllocator,
+                            TensorElementType.Float, inputDims),
+                            OrtValue.CreateAllocatedTensorValue(sharedAllocator,
+                            TensorElementType.Int64, inputDims)
+                        };
+
+                        env.CopyTensors(inputList, outputList, syncStream);
+
+                        // Assert.Equal data on inputList and outputList
+                        Assert.Equal(inputList[0].GetTensorDataAsSpan<float>(),
+                                     outputList[0].GetTensorDataAsSpan<float>());
+                        Assert.Equal(inputList[1].GetTensorDataAsSpan<long>(),
+                                        outputList[1].GetTensorDataAsSpan<long>());
+                    }
+                    finally
+                    {
+                        // Unregister from the env
+                        env.ReleaseSharedAllocator(epDevice, OrtDeviceMemoryType.DEFAULT);
+                    }
+                }
+                finally
+                {
+                    env.UnregisterExecutionProviderLibrary(epName);
+                }
+            }
         }
     }
 }
