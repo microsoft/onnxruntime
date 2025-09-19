@@ -127,7 +127,7 @@ const setExecutionProviders = async (
                 ? webgpuOptions.forceCpuNodeNames
                 : [webgpuOptions.forceCpuNodeNames];
 
-              appendEpOption(epOptions, 'forceCpuFallback', names.join('\n'), allocs);
+              appendEpOption(epOptions, 'forceCpuNodeNames', names.join('\n'), allocs);
             }
           }
 
