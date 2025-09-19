@@ -33,7 +33,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win-CPU-2022
+      name: onnxruntime-Win-CPU-VS2022-Latest
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
@@ -49,7 +49,10 @@ stages:
         clean: true
         submodules: none
 
+      
       - template: ../../templates/setup-build-tools.yml      
+        parameters:
+          host_cpu_arch: 'x64'
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
