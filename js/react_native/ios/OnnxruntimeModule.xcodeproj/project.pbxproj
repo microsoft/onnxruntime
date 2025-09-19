@@ -201,7 +201,6 @@
 					};
 					DBDB57D62603211A004F16BE = {
 						CreatedOnToolsVersion = 12.4;
-						DevelopmentTeam = X7YWPPMK53;
 						ProvisioningStyle = Automatic;
 					};
 				};
