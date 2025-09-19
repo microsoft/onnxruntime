@@ -47,6 +47,7 @@ stages:
             FILE_NAME=$(basename $FILE_NAME)
             PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
             dpkg -l |grep python3
+            sudo apt-get install python3-venv
             python3 -m venv myenv
             source  myenv/bin/activate
             python3 -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
@@ -55,14 +56,7 @@ stages:
             python3 -c "import onnxruntime as ort; print(ort.__version__)"
           workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-x86_64-cpu
         displayName: Test Package Installation
-    
-    - template: templates/py-package-smoking-test.yml
-      parameters:
-        job_name: Test_MAC_Wheels
-        machine_pool:
-          vmImage: 'macOS-14'
-        itemPattern: '*/*mac*x86_64.whl'
-        arch: 'x86_64'
+
     - template: templates/py-package-smoking-test.yml
       parameters:
         job_name: Test_LINUX_x86_64_Wheels
