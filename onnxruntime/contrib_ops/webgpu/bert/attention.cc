@@ -560,7 +560,7 @@ Attention::Attention(const OpKernelInfo& info)
 // QKV preparation program - computes Q, K, V from input, weights, and bias
 class AttentionPrepareProgram final : public Program<AttentionPrepareProgram> {
  public:
-  AttentionPrepareProgram(int components) : Program{"AttentionPrepare"}, components_(components) {}
+  AttentionPrepareProgram() : Program{"AttentionPrepare"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -632,9 +632,6 @@ class AttentionPrepareProgram final : public Program<AttentionPrepareProgram> {
                                           {"head_size", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"ldb", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int components_;
 };
 
 Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
@@ -649,7 +646,7 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   const uint32_t dispatch_y = (parameters.sequence_length_ + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t dispatch_z = parameters.batch_size_ * parameters.num_heads_;
 
-  AttentionPrepareProgram program{1};
+  AttentionPrepareProgram program{};
   program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
                      {weights, ProgramTensorMetadataDependency::TypeAndRank},
                      {bias, ProgramTensorMetadataDependency::TypeAndRank}})
