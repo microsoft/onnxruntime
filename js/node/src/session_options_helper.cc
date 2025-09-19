@@ -73,12 +73,37 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
         for (const auto& nameIter : obj.GetPropertyNames()) {
           Napi::Value nameVar = nameIter.second;
           std::string name = nameVar.As<Napi::String>().Utf8Value();
-          if (name != "name") {
-            Napi::Value valueVar = obj.Get(nameVar);
-            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
-            std::string value = valueVar.As<Napi::String>().Utf8Value();
-            webgpu_options[name] = value;
+          Napi::Value valueVar = obj.Get(nameVar);
+          std::string value;
+          if (name == "preferredLayout" ||
+              name == "validationMode" ||
+              name == "storageBufferCacheMode" ||
+              name == "uniformBufferCacheMode" ||
+              name == "queryResolveBufferCacheMode" ||
+              name == "defaultBufferCacheMode") {
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(),
+                                        "Invalid argument: \"", name, "\" must be a string.");
+            value = valueVar.As<Napi::String>().Utf8Value();
+          } else if (name == "forceCpuNodeNames") {
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsArray(), epList.Env(),
+                                        "Invalid argument: \"forceCpuNodeNames\" must be a string array.");
+            auto arr = valueVar.As<Napi::Array>();
+            for (uint32_t i = 0; i < arr.Length(); i++) {
+              Napi::Value v = arr[i];
+              ORT_NAPI_THROW_TYPEERROR_IF(!v.IsString(), epList.Env(),
+                                          "Invalid argument: elements of \"forceCpuNodeNames\" must be strings.");
+              if (i > 0) {
+                value += '\n';
+              }
+              value += v.As<Napi::String>().Utf8Value();
+            }
+          } else {
+            // unrecognized option
+            ORT_NAPI_THROW_TYPEERROR_IF(name != "name", epList.Env(),
+                                        "Invalid argument: WebGPU EP has an unrecognized option: '", name, "'.");
+            continue;
           }
+          webgpu_options[name] = value;
         }
       }
 #endif
