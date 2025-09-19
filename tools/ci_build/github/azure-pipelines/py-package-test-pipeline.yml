@@ -51,7 +51,7 @@ stages:
             python3 -m venv myenv
             source  myenv/bin/activate
             python3 -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
-            python3 -m pip install --no-index --find-links "$(Pipeline.Workspace)/build" $PYTHON_PACKAGE_NAME
+            python3 -m pip install --no-index --find-links . $PYTHON_PACKAGE_NAME
             python3 -m pip show $PYTHON_PACKAGE_NAME
             python3 -c "import onnxruntime as ort; print(ort.__version__)"
           workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-x86_64-cpu
