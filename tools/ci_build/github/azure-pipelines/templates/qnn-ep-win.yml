@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.37.1.250807'
+  QnnSdk: '2.38.0.250901'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -52,10 +52,9 @@ stages:
     steps:
     - template: set-version-number-variables-step.yml
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'x64'
 
     - template: jobs/download_win_qnn_sdk.yml
       parameters:

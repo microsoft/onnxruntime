@@ -744,9 +744,11 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 #endif
 
   if (nullptr != data.gemm_buffer) {  // Attention operator
-    ORT_RETURN_IF_ERROR(PrepareQkv_Attention<T>(parameters, data, stream, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(PrepareQkv_Attention<T>(
+        parameters, data, stream, max_threads_per_block));
   } else {  // MultiHeadAttention operator
-    ORT_RETURN_IF_ERROR(PrepareQkv_MultiHeadAttention<T>(parameters, data, stream, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(PrepareQkv_MultiHeadAttention<T>(
+        parameters, data, stream, max_threads_per_block));
   }
 
   assert(data.qkv_format != AttentionQkvFormat::UNKNOWN);
@@ -773,6 +775,12 @@ template Status PrepareQkv<float>(
 template Status PrepareQkv<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+template Status PrepareQkv<BFloat16>(
+    contrib::AttentionParameters& parameters,
+    AttentionData<BFloat16>& data,
     cudaStream_t stream,
     int max_threads_per_block);
 

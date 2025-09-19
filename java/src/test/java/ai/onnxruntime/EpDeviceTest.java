@@ -52,11 +52,11 @@ public class EpDeviceTest {
     Assertions.assertNotNull(epDevices);
     Assertions.assertFalse(epDevices.isEmpty());
     for (OrtEpDevice epDevice : epDevices) {
-      Assertions.assertFalse(epDevice.getName().isEmpty());
-      Assertions.assertFalse(epDevice.getVendor().isEmpty());
-      Map<String, String> metadata = epDevice.getMetadata();
+      Assertions.assertFalse(epDevice.getEpName().isEmpty());
+      Assertions.assertFalse(epDevice.getEpVendor().isEmpty());
+      Map<String, String> metadata = epDevice.getEpMetadata();
       Assertions.assertNotNull(metadata);
-      Map<String, String> options = epDevice.getOptions();
+      Map<String, String> options = epDevice.getEpOptions();
       Assertions.assertNotNull(options);
       readHardwareDeviceValues(epDevice.getDevice());
     }
@@ -76,7 +76,7 @@ public class EpDeviceTest {
 
     // check OrtEpDevice was found
     List<OrtEpDevice> epDevices = ortEnv.getEpDevices();
-    boolean found = epDevices.stream().anyMatch(a -> a.getName().equals(epName));
+    boolean found = epDevices.stream().anyMatch(a -> a.getEpName().equals(epName));
     Assertions.assertTrue(found);
 
     // unregister
@@ -96,7 +96,7 @@ public class EpDeviceTest {
             // break.
             List<OrtEpDevice> selectedEpDevices =
                 epDevices.stream()
-                    .filter(a -> a.getName().equals("CPUExecutionProvider"))
+                    .filter(a -> a.getEpName().equals("CPUExecutionProvider"))
                     .collect(Collectors.toList());
 
             Map<String, String> epOptions = options.get();
@@ -119,5 +119,35 @@ public class EpDeviceTest {
 
     // dummy options
     runTest.accept(() -> Collections.singletonMap("random_key", "value"));
+  }
+
+  @Test
+  public void GetEpCompatibilityInvalidArgs() {
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> ortEnv.getModelCompatibilityForEpDevices(null, "info"));
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> ortEnv.getModelCompatibilityForEpDevices(Collections.emptyList(), "info"));
+  }
+
+  @Test
+  public void GetEpCompatibilitySingleDeviceCpuProvider() throws OrtException {
+    List<OrtEpDevice> epDevices = ortEnv.getEpDevices();
+    String someInfo = "arbitrary-compat-string";
+
+    // Use CPU device
+    OrtEpDevice cpu =
+        epDevices.stream()
+            .filter(d -> d.getEpName().equals("CPUExecutionProvider"))
+            .findFirst()
+            .get();
+    Assertions.assertNotNull(cpu);
+    List<OrtEpDevice> selected = Collections.singletonList(cpu);
+    OrtEnvironment.OrtCompiledModelCompatibility status =
+        ortEnv.getModelCompatibilityForEpDevices(selected, someInfo);
+
+    // CPU defaults to not applicable in this scenario
+    Assertions.assertEquals(OrtEnvironment.OrtCompiledModelCompatibility.EP_NOT_APPLICABLE, status);
   }
 }

@@ -4,13 +4,6 @@ parameters:
   values:
   - 'x86_64'
   - 'arm64'
-  - 'universal2'
-  default: 'x86_64'
-
-- name: WithCache
-  displayName: Build with Cache
-  type: boolean
-  default: false
 
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
@@ -33,9 +26,6 @@ jobs:
   variables:
     MACOSX_DEPLOYMENT_TARGET: '13.4'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-    PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
-    ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
     name: "Azure Pipelines"
     image: 'macOS-15'
@@ -46,67 +36,36 @@ jobs:
     clean: true
     submodules: none
 
-  - task: UsePythonVersion@0
-    displayName: Use Python 3.10
-    inputs:
-      versionSpec: 3.10
-
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '22.x'
-
   - task: JavaToolInstaller@0
     inputs:
       versionSpec: "17"
       jdkArchitectureOption: "x64"
       jdkSourceOption: 'PreInstalled'
 
-  - template: set-version-number-variables-step.yml
-
   - template: use-xcode-version.yml
     parameters:
       xcodeVersion: 16.4
 
+  - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: ${{ parameters.MacosArch }}
+
+  - template: set-version-number-variables-step.yml
+
   - script: |
       set -e -x
-      export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
       export ONNX_ML=1
       export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
-      python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-
-
-  - ${{ if eq(parameters.MacosArch, 'universal2') }}:
-    - template: mac-cpu-packaging-steps.yml
-      parameters:
-        MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --use_webgpu --no_kleidiai --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-        BuildJava: false
-        BuildNodejs: false
-        WithCache: ${{ parameters.WithCache }}
-        ${{ if eq(parameters.WithCache, true) }}:
-          Today: $(TODAY)
-          CacheDir: $(ORT_CACHE_DIR)
+      python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'    
 
   - ${{ if eq(parameters.MacosArch, 'arm64') }}:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
-        BuildJava: true
-        BuildNodejs: true
-        WithCache: ${{ parameters.WithCache }}
-        ${{ if eq(parameters.WithCache, true) }}:
-          Today: $(TODAY)
-          CacheDir: $(ORT_CACHE_DIR)
 
   - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
-        BuildJava: true
-        BuildNodejs: true
-        WithCache: ${{ parameters.WithCache }}
-        ${{ if eq(parameters.WithCache, true) }}:
-          Today: $(TODAY)
-          CacheDir: $(ORT_CACHE_DIR)

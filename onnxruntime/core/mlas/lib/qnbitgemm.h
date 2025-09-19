@@ -53,16 +53,25 @@ struct PackedQuantBDataStruct {
     {
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
-        if constexpr (BlkBitWidth == 8) {
-            PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
-        } else {
 #if defined(MLAS_TARGET_AMD64_IX86)
         // avx512 requires alignment on a 64-byte boundary
         PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 64);
+#elif defined (MLAS_TARGET_ARM64)
+        // Only for 8-bit Gemms is the `PackedQuantBData` is to be 32-byte aligned and
+        // there is enough memory allocated to support this alignment.
+        // See QNBitGemmPackQuantBDataSize().
+        // When bit width is 4, there is no alignment guarantee.
+        // TODO(hasesh): Can we unify the alignment for 4-bit and 8-bit ARM64 Gemms so as to
+        // simpify this logic and make code here cleaner ?
+        if constexpr (BlkBitWidth == 8) {
+            PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);        
+        }
+        else {
+            PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
+        }
 #else
         PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
 #endif
-        }
 
         QuantBBlkSum = (T*)(PackedQuantBData + PackedQuantBDataSize);
         QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
