@@ -527,6 +527,9 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSessionGetInputTypeInfo = (DOrtSessionGetInputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputTypeInfo, typeof(DOrtSessionGetInputTypeInfo));
             OrtSessionGetOutputTypeInfo = (DOrtSessionGetOutputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputTypeInfo, typeof(DOrtSessionGetOutputTypeInfo));
             OrtSessionGetOverridableInitializerTypeInfo = (DOrtSessionGetOverridableInitializerTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerTypeInfo, typeof(DOrtSessionGetOverridableInitializerTypeInfo));
+            OrtSessionGetMemoryInfoForInputs = (DOrtSessionGetMemoryInfoForInputs)Marshal.GetDelegateForFunctionPointer(api_.SessionGetMemoryInfoForInputs, typeof(DOrtSessionGetMemoryInfoForInputs));
+            OrtSessionGetMemoryInfoForOutputs = (DOrtSessionGetMemoryInfoForOutputs)Marshal.GetDelegateForFunctionPointer(api_.SessionGetMemoryInfoForOutputs, typeof(DOrtSessionGetMemoryInfoForOutputs));
+            OrtSessionGetEpDeviceForInputs = (DOrtSessionGetEpDeviceForInputs)Marshal.GetDelegateForFunctionPointer(api_.SessionGetEpDeviceForInputs, typeof(DOrtSessionGetEpDeviceForInputs));
             OrtReleaseTypeInfo = (DOrtReleaseTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTypeInfo, typeof(DOrtReleaseTypeInfo));
             OrtReleaseSession = (DOrtReleaseSession)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSession, typeof(DOrtReleaseSession));
             OrtSessionGetProfilingStartTimeNs = (DOrtSessionGetProfilingStartTimeNs)Marshal.GetDelegateForFunctionPointer(api_.SessionGetProfilingStartTimeNs, typeof(DOrtSessionGetProfilingStartTimeNs));
@@ -838,6 +841,21 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtReleaseSharedAllocator)Marshal.GetDelegateForFunctionPointer(
                     api_.ReleaseSharedAllocator,
                     typeof(DOrtReleaseSharedAllocator));
+
+            OrtCreateSyncStreamForEpDevice =
+                (DOrtCreateSyncStreamForEpDevice)Marshal.GetDelegateForFunctionPointer(
+                    api_.CreateSyncStreamForEpDevice,
+                    typeof(DOrtCreateSyncStreamForEpDevice));
+            
+            OrtReleaseSyncStream =
+                (DOrtReleaseSyncStream)Marshal.GetDelegateForFunctionPointer(
+                    api_.ReleaseSyncStream,
+                    typeof(DOrtReleaseSyncStream));
+
+            OrtCopyTensors =
+                (DOrtCopyTensors)Marshal.GetDelegateForFunctionPointer(
+                    api_.CopyTensors,
+                    typeof(DOrtCopyTensors));
         }
 
         internal class NativeLib
@@ -916,6 +934,55 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtUpdateEnvWithCustomLogLevel(IntPtr /*(OrtEnv*)*/ env, OrtLoggingLevel custom_log_level);
         public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(ONNStatus*)*/ DCreateAndRegisterAllocatorV2(
+            IntPtr /* (OrtEnv*) */ environment,
+            IntPtr /*(char*)*/ provider_type,
+            IntPtr /*(OrtMemoryInfo*)*/ mem_info,
+            IntPtr /*(OrtArenaCfg*)*/ arena_cfg,
+            IntPtr[] /*(char**)*/ provider_options_keys,
+            IntPtr[] /*(char**)*/ provider_options_values,
+            UIntPtr /*(size_t)*/ num_keys);
+        public static DCreateAndRegisterAllocatorV2 OrtCreateAndRegisterAllocatorV2;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateSharedAllocator(
+            IntPtr /* OrtEnv* */ ortEnv,
+            IntPtr /* OrtEpDevice* */ epDevice,
+            OrtDeviceMemoryType deviceMemoryType,
+            OrtAllocatorType allocatorType,
+            IntPtr /* const OrtKeyValuePairs* */ allocatorOptions,
+            out IntPtr /* OrtAllocator** */ allocator);
+
+        public static DOrtCreateSharedAllocator OrtCreateSharedAllocator;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetSharedAllocator(
+            IntPtr /*(OrtEnv*)*/ env,
+            IntPtr /*(const OrtMemoryInfo*)*/ memInfo,
+            out IntPtr /* OrtAllocator** */ allocator);
+
+        public static DOrtGetSharedAllocator OrtGetSharedAllocator;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtReleaseSharedAllocator(
+            IntPtr /*(OrtEnv*)*/ env,
+            IntPtr /* const OrtEpDevice* */ epDevice,
+            OrtDeviceMemoryType deviceMemoryType);
+
+        public static DOrtReleaseSharedAllocator OrtReleaseSharedAllocator;
+
+        public delegate IntPtr /* OrtStatus* */ DOrtCopyTensors(
+            IntPtr /* const OrtEnv* */ env,
+            IntPtr[] /* const OrtValue* const* */ srcTensors,
+            IntPtr[] /* OrtValue* const* */ dstTensors,
+            IntPtr /* OrtSynStream* */ stream,
+            UIntPtr /* size_t */ numTensors
+            );
+
+        public static DOrtCopyTensors OrtCopyTensors;
+
 
         #endregion Runtime / Environment API
 
@@ -1237,6 +1304,30 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtSessionGetOverridableInitializerTypeInfo OrtSessionGetOverridableInitializerTypeInfo;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetMemoryInfoForInputs(
+            IntPtr /*(const OrtSession*)*/ session,
+            IntPtr[] /* const OrtMemoryInfo** */ inputsMemoryInfos,
+            UIntPtr /* size_t */ numInputs);
+
+        public static DOrtSessionGetMemoryInfoForInputs OrtSessionGetMemoryInfoForInputs;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetMemoryInfoForOutputs(
+            IntPtr /*(const OrtSession*)*/ session,
+            IntPtr[] /* OrtMemoryInfo** */ outputsMemoryInfos,
+            UIntPtr /* size_t */ numOutputs);
+
+        public static DOrtSessionGetMemoryInfoForOutputs OrtSessionGetMemoryInfoForOutputs;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetEpDeviceForInputs(
+            IntPtr /*(const OrtSession*)*/ session,
+            IntPtr[] /* const OrtDevice** */ devices,
+            UIntPtr /* size_t */ numInputs);
+
+        public static DOrtSessionGetEpDeviceForInputs OrtSessionGetEpDeviceForInputs;
+
         // release the typeinfo using OrtReleaseTypeInfo
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseTypeInfo(IntPtr /*(OrtTypeInfo*)*/ session);
@@ -1251,17 +1342,6 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /*(const OrtSession*)*/ session,
             out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
-
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(ONNStatus*)*/ DCreateAndRegisterAllocatorV2(
-            IntPtr /* (OrtEnv*) */ environment,
-            IntPtr /*(char*)*/ provider_type,
-            IntPtr /*(OrtMemoryInfo*)*/ mem_info,
-            IntPtr /*(OrtArenaCfg*)*/ arena_cfg,
-            IntPtr[] /*(char**)*/ provider_options_keys,
-            IntPtr[] /*(char**)*/ provider_options_values,
-            UIntPtr /*(size_t)*/ num_keys);
-        public static DCreateAndRegisterAllocatorV2 OrtCreateAndRegisterAllocatorV2;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(
@@ -2536,33 +2616,6 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtExternalInitializerInfo_GetFileOffset OrtExternalInitializerInfo_GetFileOffset;
         public static DOrtExternalInitializerInfo_GetByteSize OrtExternalInitializerInfo_GetByteSize;
 
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */ DOrtCreateSharedAllocator(
-            IntPtr /* OrtEnv* */ ortEnv,
-            IntPtr /* OrtEpDevice* */ epDevice,
-            OrtDeviceMemoryType deviceMemoryType,
-            OrtAllocatorType allocatorType,
-            IntPtr /* const OrtKeyValuePairs* */ allocatorOptions,
-            out IntPtr /* OrtAllocator** */ allocator);
-
-        public static DOrtCreateSharedAllocator OrtCreateSharedAllocator;
-
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */ DOrtGetSharedAllocator(
-            IntPtr /*(OrtEnv*)*/ env,
-            IntPtr /*(const OrtMemoryInfo*)*/ memInfo,
-            out IntPtr /* OrtAllocator** */ allocator);
-
-        public static DOrtGetSharedAllocator OrtGetSharedAllocator;
-
-        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */ DOrtReleaseSharedAllocator(
-            IntPtr /*(OrtEnv*)*/ env,
-            IntPtr /* const OrtEpDevice* */ epDevice,
-            OrtDeviceMemoryType deviceMemoryType);
-
-        public static DOrtReleaseSharedAllocator OrtReleaseSharedAllocator;
-
         #endregion
 
         #region Auto EP API related
@@ -2672,10 +2725,21 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* const OrtHardwareDevice* */ DOrtEpDevice_Device(
             IntPtr /* const OrtEpDevice* */ ep_device);
 
-        // Add EpDevice_MemoryInfo
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* const OrtMemoryInfo* */ DOrtEpDevice_MemoryInfo(
             IntPtr /* const OrtEpDevice* */ ep_device, OrtDeviceMemoryType deviceMemoryType);
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtCreateSyncStreamForEpDevice(
+            IntPtr /* const OrtEpDevice* */ epDevice,
+            IntPtr /* const OrtKeyValuePairs* */ streamOptions,
+            out IntPtr /* OrtSyncStream** */ stream
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtReleaseSyncStream(
+            IntPtr /* OrtSyncStream* */ stream
+            );
 
         public static DOrtEpDevice_EpName OrtEpDevice_EpName;
         public static DOrtEpDevice_EpVendor OrtEpDevice_EpVendor;
@@ -2683,6 +2747,8 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtEpDevice_EpOptions OrtEpDevice_EpOptions;
         public static DOrtEpDevice_Device OrtEpDevice_Device;
         public static DOrtEpDevice_MemoryInfo OrtEpDevice_MemoryInfo;
+        public static DOrtCreateSyncStreamForEpDevice OrtCreateSyncStreamForEpDevice;
+        public static DOrtReleaseSyncStream OrtReleaseSyncStream;
 
         //
         // Auto Selection EP registration and selection customization

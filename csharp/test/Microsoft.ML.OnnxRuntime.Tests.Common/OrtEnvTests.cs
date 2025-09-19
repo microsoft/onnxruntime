@@ -402,6 +402,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+
+        [Fact(DisplayName = "TestCopyTensors")]
+        void TestCopyTensors()
+        {
+
+        }
     }
 }
 

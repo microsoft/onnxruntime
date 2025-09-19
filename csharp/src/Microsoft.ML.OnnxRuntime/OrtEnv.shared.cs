@@ -580,6 +580,36 @@ namespace Microsoft.ML.OnnxRuntime
             return epDevices.AsReadOnly();
         }
 
+        /// <summary>
+        /// Copies data from source OrtValue tensors to destination OrtValue tensors.
+        /// The tensors may reside on difference devices if such are supported
+        /// by the registered execution providers.
+        /// </summary>
+        /// <param name="srcValues">Source OrtValues</param>
+        /// <param name="dstValues">pre-allocated OrtValues</param>
+        /// <param name="stream">optional stream or null</param>
+        /// <exception cref="ArgumentNullException"></exception>
+        public void CopyTensors(IReadOnlyList<OrtValue> srcValues, IReadOnlyList<OrtValue> dstValues,
+            OrtSyncStream stream)
+        {
+            IntPtr streamHandle = stream != null ? stream.Handle : IntPtr.Zero;
+            IntPtr[] srcPtrs = new IntPtr[srcValues.Count];
+            IntPtr[] dstPtrs = new IntPtr[dstValues.Count];
+
+            for (int i = 0; i < srcPtrs.Length; i++)
+            {
+                if (srcValues[i] == null)
+                    throw new ArgumentNullException($"srcValues[{i}]");
+                if (dstValues[i] == null)
+                    throw new ArgumentNullException($"dstValues[{i}]");
+                srcPtrs[i] = srcValues[i].Handle;
+                dstPtrs[i] = dstValues[i].Handle;
+            }
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtCopyTensors(handle, srcPtrs, dstPtrs, streamHandle, (UIntPtr)srcPtrs.Length));
+        }
+
         #endregion
 
         #region SafeHandle overrides

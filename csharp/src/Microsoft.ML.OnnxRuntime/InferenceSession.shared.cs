@@ -215,6 +215,78 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Fetches memory info for all inputs in the same order as their names.
+        /// (See InputNames property).
+        /// </summary>
+        /// <returns>A disposable readonly collection of OrtMemoryInfo</returns>
+        public IDisposableReadOnlyCollection<OrtMemoryInfo> GetMemoryInfosForInputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out UIntPtr numInputs));
+
+            if(numInputs == UIntPtr.Zero)
+            {
+                return new DisposableList<OrtMemoryInfo>();
+            }
+
+            var memoryInfoArray = new IntPtr[(ulong)numInputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetMemoryInfoForInputs(_nativeHandle,
+                memoryInfoArray, numInputs));
+
+            return new DisposableList<OrtMemoryInfo>(
+                memoryInfoArray.Select(static ptr => new OrtMemoryInfo(ptr, /* owned= */ false)));
+        }
+
+        /// <summary>
+        /// Fetches memory info for all outputs in the same order as their names.
+        /// (See OutputNames property).
+        /// </summary>
+        /// <returns>A disposable readonly collection of OrtMemoryInfo</returns>
+        public IDisposableReadOnlyCollection<OrtMemoryInfo> GetMemoryInfosForOutputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle,
+                out UIntPtr numOutputs));
+
+            if(numOutputs == UIntPtr.Zero)
+            {
+                return new DisposableList<OrtMemoryInfo>();
+            }
+
+            var memoryInfoArray = new IntPtr[(ulong)numOutputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetMemoryInfoForOutputs(_nativeHandle,
+                memoryInfoArray, numOutputs));
+            return new DisposableList<OrtMemoryInfo>(
+                memoryInfoArray.Select(static ptr => new OrtMemoryInfo(ptr, /* owned= */ false)));
+        }
+
+        /// <summary>
+        /// Fetches OrtEpDevice instances for all inputs in the same order as their input names.
+        /// See InputNames property.
+        /// </summary>
+        /// <returns>IReadOnlyList<OrtEpDevice></returns>
+        public IReadOnlyList<OrtEpDevice> GetEpDeviceForInputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle,
+                out UIntPtr numInputs));
+
+            if (numInputs == UIntPtr.Zero)
+            {
+                return [];
+            }
+
+            var epDevicesForInputs = new IntPtr[(ulong)numInputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetEpDeviceForInputs(_nativeHandle,
+                epDevicesForInputs, numInputs));
+
+            return epDevicesForInputs
+                .Select(static ptr => new OrtEpDevice(ptr))
+                .ToList()
+                .AsReadOnly();
+        }
+
+        /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
         /// </summary>
         /// <param name="inputs">specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
