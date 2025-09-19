@@ -9,6 +9,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider_info.h"
 #include <string>
 #include <thread>
 #include <filesystem>
@@ -21,6 +22,26 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 
 namespace test {
+
+TEST(TensorrtProviderOptions, UseTF32_ToProviderOptions_MapContainsKey) {
+  OrtTensorRTProviderOptionsV2 params{};
+  params.trt_use_tf32 = 0;  // disable
+  auto opts = TensorrtExecutionProviderInfo::ToProviderOptions(params);
+  auto it = opts.find("use_tf32");
+  ASSERT_TRUE(it != opts.end());
+  EXPECT_EQ(it->second, std::string("0"));
+}
+
+TEST(TensorrtProviderOptions, UseTF32_FromProviderOptions_Parsed) {
+  ProviderOptions options;
+  options["use_tf32"] = "0";
+  auto info = TensorrtExecutionProviderInfo::FromProviderOptions(options);
+  EXPECT_FALSE(info.use_tf32);
+
+  options["use_tf32"] = "1";
+  info = TensorrtExecutionProviderInfo::FromProviderOptions(options);
+  EXPECT_TRUE(info.use_tf32);
+}
 class TensorrtExecutionProviderCacheTest : public testing::TestWithParam<std::string> {};
 
 template <typename T>
@@ -711,6 +732,111 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   ASSERT_TRUE(status.IsOK());
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
+}
+
+// Verify engine cache separation when toggling use_tf32 with same cache prefix
+TEST(TensorrtExecutionProviderTest, UseTF32EngineCacheSeparation) {
+#if !defined(USE_TENSORRT)
+  GTEST_SKIP() << "TensorRT EP is not enabled in this build.";
+#else
+#if !(defined(NV_TENSORRT_MAJOR) && (NV_TENSORRT_MAJOR >= 8))
+  GTEST_SKIP() << "TensorRT version does not support TF32 builder flag.";
+#else
+  // Clean caches to ensure a pristine state
+  RemoveCachesByType("./", ".engine");
+  RemoveCachesByType("./", ".profile");
+  RemoveCachesByType("./", ".timing");
+
+  // Build a small model fully supported by TRT
+  PathString model_name = ORT_TSTR("trt_use_tf32_separation.onnx");
+  std::string graph_name = "use_tf32_test";
+  std::vector<int> dims = {1, 3, 2};
+  CreateBaseModel(model_name, graph_name, dims);
+
+  SessionOptions so;
+  so.session_logid = "TRTUseTF32Separation";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  // Prepare inputs
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_mul_x = {1, 3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+  OrtValue ml_value_y;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+  OrtValue ml_value_z;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("Y", ml_value_y));
+  feeds.insert(std::make_pair("Z", ml_value_z));
+  std::vector<std::string> output_names = {"M"};
+  std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
+  std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+
+  const std::string cache_prefix = "TRT_TF32_SEP";
+
+  // Session A: use_tf32 enabled
+  {
+    InferenceSession session_object{so, GetEnvironment()};
+    OrtTensorRTProviderOptionsV2 params{};
+    params.trt_engine_cache_enable = 1;
+    params.trt_engine_cache_prefix = cache_prefix.c_str();
+    params.trt_use_tf32 = 1;
+    std::unique_ptr<IExecutionProvider> ep = TensorrtExecutionProviderWithOptions(&params);
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(ep)));
+    ASSERT_STATUS_OK(session_object.Load(model_name));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+    VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+  }
+
+  // Session B: use_tf32 disabled with the same cache prefix
+  {
+    InferenceSession session_object{so, GetEnvironment()};
+    OrtTensorRTProviderOptionsV2 params{};
+    params.trt_engine_cache_enable = 1;
+    params.trt_engine_cache_prefix = cache_prefix.c_str();
+    params.trt_use_tf32 = 0;
+    std::unique_ptr<IExecutionProvider> ep = TensorrtExecutionProviderWithOptions(&params);
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(ep)));
+    ASSERT_STATUS_OK(session_object.Load(model_name));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+    VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+  }
+
+  // Verify two distinct engine cache files exist for the same prefix (implies name separation)
+  auto engine_files = GetCachesByType("./", ".engine");
+  size_t count_with_prefix = 0;
+  size_t count_tf32 = 0;
+  size_t count_notf32 = 0;
+  for (const auto& p : engine_files) {
+    auto fname = p.filename().string();
+    if (fname.rfind(cache_prefix, 0) == 0) {
+      ++count_with_prefix;
+      if (fname.find("_tf32") != std::string::npos) ++count_tf32;
+      if (fname.find("_notf32") != std::string::npos) ++count_notf32;
+    }
+  }
+  // Expect at least two engines created for the same prefix due to use_tf32 separation
+  ASSERT_GE(count_with_prefix, static_cast<size_t>(2));
+  // Expect one with _tf32 and one with _notf32 in name when TF32 flag is present
+  ASSERT_GE(count_tf32, static_cast<size_t>(1));
+  ASSERT_GE(count_notf32, static_cast<size_t>(1));
+
+  // Cleanup only our test artifacts
+  RemoveCachesByType("./", ".engine");
+  RemoveCachesByType("./", ".profile");
+#endif
+#endif
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {

@@ -81,6 +81,7 @@ struct Tensorrt_Provider : Provider {
     info.max_partition_iterations = options.trt_max_partition_iterations;
     info.min_subgraph_size = options.trt_min_subgraph_size;
     info.max_workspace_size = options.trt_max_workspace_size;
+    info.use_tf32 = options.trt_use_tf32 != 0;
     info.fp16_enable = options.trt_fp16_enable != 0;
     info.bf16_enable = options.trt_bf16_enable != 0;
     info.int8_enable = options.trt_int8_enable != 0;
