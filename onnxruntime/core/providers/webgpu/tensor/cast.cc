@@ -20,8 +20,7 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<float>(),
       DataTypeImpl::GetTensorType<int32_t>(),
       DataTypeImpl::GetTensorType<uint32_t>(),
-      DataTypeImpl::GetTensorType<bool>(),
-      DataTypeImpl::GetTensorType<int64_t>()};
+      DataTypeImpl::GetTensorType<bool>()};
   return types;
 }
 }  // namespace
@@ -88,17 +87,12 @@ Status Cast::ComputeInternal(ComputeContext& context) const {
   if (size == 0) {
     return Status::OK();
   }
-  bool is_from_int64 = input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
-  const int in_components = is_from_int64 ? 1 : 4;
-  const int out_components = to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64 ? 1 : 4;
   uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
-  uint32_t in_vec_size = onnxruntime::narrow<uint32_t>(in_components == 1 ? size : vec_size);
-  uint32_t out_vec_size = onnxruntime::narrow<uint32_t>(out_components == 1 ? size : vec_size);
 
-  CastProgram program{to_, is_from_int64};
+  CastProgram program{to_};
   program
-      .AddInput({input_tensor, ProgramTensorMetadataDependency::Type, {in_vec_size}, in_components})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {out_vec_size}, out_components})
+      .AddInput({input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, {vec_size}, 4})
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
@@ -127,31 +121,12 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
       expression = "vec4<bool>(a)";
       break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      expression = "int32(a)";
-      break;
     default:
       ORT_NOT_IMPLEMENTED("Cast to type ", to_, " is not supported.");
   }
-
-  sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
-  if (is_from_int64_) {
-    sh.MainFunctionBody() << "  let a0 = " << input.GetByOffset("global_idx * 4") << ";\n"
-                          << "  let a1 = " << input.GetByOffset("global_idx * 4 + 1") << ";\n"
-                          << "  let a2 = " << input.GetByOffset("global_idx * 4 + 2") << ";\n"
-                          << "  let a3 = " << input.GetByOffset("global_idx * 4 + 3") << ";\n"
-                          << "  let a = vec4<i32>(a0, a1, a2, a3);\n";
-  } else {
-    sh.MainFunctionBody() << "  let a = " << input.GetByOffset("global_idx") << ";\n";
-  }
-  if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    sh.MainFunctionBody() << output.SetByOffset("global_idx * 4", "a.x") << "\n"
-                          << output.SetByOffset("global_idx * 4 + 1", "a.y") << "\n"
-                          << output.SetByOffset("global_idx * 4 + 2", "a.z") << "\n"
-                          << output.SetByOffset("global_idx * 4 + 3", "a.w") << "\n";
-  } else {
-    sh.MainFunctionBody() << output.SetByOffset("global_idx", expression);
-  }
+  sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
+                        << "  let a = " << input.GetByOffset("global_idx") << ";\n  "
+                        << output.SetByOffset("global_idx", expression);
 
   return Status::OK();
 }

@@ -145,7 +145,7 @@ static bool HasControlflowNodes(const Graph& graph) {
 
 static bool HasMemcpyNodes(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "MemcpyFromHost") {
+    if (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost") {
       return true;
     }
   }
