@@ -241,7 +241,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 resultArray[i] = resultTensor.GetValue(i);
             }
-            // var resultArray = resultTensor.ToArray();
             Assert.Equal(expectedOutput.Length, resultArray.Length);
             Assert.Equal(expectedOutput, resultArray, new FloatComparer());
         }
@@ -434,7 +433,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                     using var syncStream = epDevice.CreateSyncStream(null);
                     Assert.NotNull(syncStream);
-                    // This returned Zero for example EP, but we need this for coverage
+                    // This returned Zero for example EP
+                    // therefore do not assert for zero.
                     var streamHandle = syncStream.GetHandle();
                     // Assert.NotEqual(IntPtr.Zero, streamHandle);
 

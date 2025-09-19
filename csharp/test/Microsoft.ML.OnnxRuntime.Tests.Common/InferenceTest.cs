@@ -835,7 +835,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }));
             }
-            ;
             await Task.WhenAll(tasks);
             session.Dispose();
         }
@@ -1724,7 +1723,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         [Fact(DisplayName = "TestMemoryInfoCreateV2")]
         void TestMemoryInfoCreateV2()
-
         {
             const int device_id = 0;
             const uint vendor_id = 1234U;
