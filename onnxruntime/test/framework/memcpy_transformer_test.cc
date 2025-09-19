@@ -72,6 +72,8 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
   EXPECT_TRUE(false) << "Copy node expected but not found";
 }
 
+#ifdef USE_CUDA
+
 static InlinedVector<gsl::not_null<const IExecutionProvider*>> GetNotNullProviderPtrs(
     const ExecutionProviders& providers) {
   InlinedVector<gsl::not_null<const IExecutionProvider*>> not_null_provider_ptrs{};
@@ -80,8 +82,6 @@ static InlinedVector<gsl::not_null<const IExecutionProvider*>> GetNotNullProvide
   }
   return not_null_provider_ptrs;
 }
-
-#ifdef USE_CUDA
 
 TEST(TransformerTest, MemcpyTransformerTest) {
   std::unordered_map<std::string, int> domain_to_version;
