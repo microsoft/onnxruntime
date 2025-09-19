@@ -614,13 +614,10 @@ TEST(MatMulNBits, Float32_Large) {
   // Keep tolerance similar to Float16_Large (float path typically equal or better numerically).
   constexpr float abs_error = 0.1f;
   constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+  constexpr auto block_size = 16;
 
-  // Use a single block_size (16) to minimize additional memory/time while still covering the large-output case.
-  for (auto block_size : {16}) {
-    for (auto has_zeropoint : {false}) {
-      RunTest<float>(4 /*M*/, 8388612 /*N*/, 32 /*K*/, block_size, has_zeropoint, zp_is_4bit, abs_error);
-    }
-  }
+  RunTest<float>(4 /*M*/, 8388612 /*N*/, 32 /*K*/, block_size, has_zeropoint, zp_is_4bit, abs_error);
 }
 #endif
 

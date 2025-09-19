@@ -431,22 +431,23 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
 
   WriteTimestamp(num_pending_dispatches_ * 2);
 
+  const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
+
   std::vector<WGPUBuffer> bind_buffers;
   std::vector<uint32_t> bind_buffers_segments;
-  bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
-  bind_buffers_segments.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
+  bind_buffers.reserve(total_buffer_count);
+  bind_buffers_segments.reserve(total_buffer_count);
   for (const auto& input : inputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
     bind_buffers_segments.push_back(input.segments);
   }
   for (const auto& output : outputs) {
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
-    // outputs may be segmented; segments were calculated in ProgramManager
     bind_buffers_segments.push_back(output.segments);
   }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
-    bind_buffers_segments.push_back(1);  // uniform buffer also defaults to 1 segment
+    bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
   }
 
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_segments, *program_artifact, x, y, z);

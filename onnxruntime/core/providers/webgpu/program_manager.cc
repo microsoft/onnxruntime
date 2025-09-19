@@ -44,18 +44,16 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(ProgramBase& program
   // Inputs
   for (size_t i = 0; i < program.Inputs().size(); ++i) {
     const auto& input = program.Inputs()[i];
-    uint32_t segments = 1;
     if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
-      segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+      uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       program.setSegmentsForInput(i, segments);
     }
   }
   // Outputs
   for (size_t i = 0; i < program.Outputs().size(); ++i) {
     const auto& output = program.Outputs()[i];
-    uint32_t segments = 1;
     if (output.tensor && output.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
-      segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
+      uint32_t segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       program.setSegmentsForOutput(i, segments);
     }
   }
