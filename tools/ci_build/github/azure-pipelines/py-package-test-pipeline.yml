@@ -27,13 +27,6 @@ stages:
   jobs:
     - template: templates/py-package-smoking-test.yml
       parameters:
-        job_name: Test_MAC_Wheels
-        machine_pool:
-          vmImage: 'macOS-14'
-        itemPattern: '*/*mac*x86_64.whl'
-        arch: 'x86_64'
-    - template: templates/py-package-smoking-test.yml
-      parameters:
         job_name: Test_LINUX_x86_64_Wheels
         itemPattern: '*/*manylinux*x86_64.whl'
         arch: 'x86_64'
@@ -41,9 +34,6 @@ stages:
           name: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 # ****The following Stage depend on all previous tags. ***
-
-# GPU resources are very limited,
-# To utilize gpu resource more efficiently, run GPU job only after all cpus jobs succeed
 
 # if final job not extecuted, it will not run nightlly build
 - stage: Final

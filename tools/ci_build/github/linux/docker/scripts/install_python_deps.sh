@@ -32,8 +32,6 @@ if [[ $USE_CONDA = true ]]; then
   # so, /home/onnxruntimedev/miniconda3/bin/python should point
   # to the correct version of the python version
    PYTHON_EXE="/home/onnxruntimedev/miniconda3/bin/python"
-elif [[ "$PYTHON_VER" = "3.10" && -d "/opt/python/cp310-cp310"  ]]; then
-   PYTHON_EXE="/opt/python/cp310-cp310/bin/python3.10"
 elif [[ "$PYTHON_VER" = "3.11" && -d "/opt/python/cp311-cp311"  ]]; then
    PYTHON_EXE="/opt/python/cp311-cp311/bin/python3.11"
 elif [[ "$PYTHON_VER" = "3.12" && -d "/opt/python/cp312-cp312"  ]]; then

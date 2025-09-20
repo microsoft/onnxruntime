@@ -24,7 +24,7 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '13.4'
+    MACOSX_DEPLOYMENT_TARGET: '14.0'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
   pool:
     name: "Azure Pipelines"
