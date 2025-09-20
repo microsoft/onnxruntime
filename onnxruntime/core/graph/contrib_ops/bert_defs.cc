@@ -1113,8 +1113,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "normalized Q * K, of shape (batch_size, num_heads, sequence_length, total_sequence_length). ",
                 "QK",
                 OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("QK", {"tensor(float)", "tensor(float16)"}, "Constrain QK output to float32 or float16 tensors, independent of input type or output type.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("QK", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain QK output to float32 or float16 tensors, independent of input type or output type.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           MultiHeadAttentionTypeAndShapeInference(ctx, 6);

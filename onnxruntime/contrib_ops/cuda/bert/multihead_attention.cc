@@ -38,6 +38,9 @@ REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(float, MLFloat16)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
 REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
+REGISTER_KERNEL_TYPED(float, BFloat16)
+REGISTER_KERNEL_TYPED(BFloat16, float)
+REGISTER_KERNEL_TYPED(BFloat16, BFloat16)
 
 template <typename T, typename QK>
 MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
@@ -56,10 +59,12 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
-  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
-  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
+  constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
 
-  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
+  disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
+
+  disable_flash_attention_ = !kIsFp16 || !kernel_options_->UseFlashAttention();
 
 #if USE_LEAN_ATTENTION
   enable_lean_attention_ = sizeof(T) == 2 && kernel_options_->UseLeanAttention();
@@ -67,9 +72,9 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
-  disable_fused_cross_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtCrossAttention();
+  disable_fused_cross_attention_ = !kIsFp16 || !kernel_options_->UseTrtCrossAttention();
 
-  enable_cudnn_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseCudnnFlashAttention();
+  enable_cudnn_flash_attention_ = kIsFp16 && kernel_options_->UseCudnnFlashAttention();
 
   disable_decoder_attention_ = !kernel_options_->UseDecoderAttention();
 
