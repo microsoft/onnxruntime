@@ -193,7 +193,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
-    // SVE is enabled only on Linux-based ARM CPUs for now, where it has been tested. 
+    // SVE is enabled only on Linux-based ARM CPUs for now, where it has been tested.
     has_arm_sve_ = cpuinfo_has_arm_sve();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
