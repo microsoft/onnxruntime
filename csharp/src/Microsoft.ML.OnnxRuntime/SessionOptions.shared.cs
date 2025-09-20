@@ -660,7 +660,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
-                    handle,
+                    handle, 
                     funcPtr,
                     GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
         }

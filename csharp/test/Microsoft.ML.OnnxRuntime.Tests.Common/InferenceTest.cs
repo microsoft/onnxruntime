@@ -126,11 +126,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
 
-#if USE_VITISAI
-                Dictionary<string, string> provider_options = new Dictionary<string, string>();
-                opt.AppendExecutionProvider_VitisAI(provider_options);
-#endif
-
 #if USE_DML
                 // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
