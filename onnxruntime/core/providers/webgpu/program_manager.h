@@ -37,6 +37,7 @@ class ProgramManager {
   ProgramManager(const wgpu::Device& device, const wgpu::Limits& limits) : device_(device), limits_(limits) {}
 
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
+  Status CalculateSegmentsForInputsAndOutputs(ProgramBase& program);
 
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,

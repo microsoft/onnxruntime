@@ -12,6 +12,8 @@
 #param tile_size_k
 #param tile_size
 
+#use .getByOffset .setByOffset
+
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
 // Shared memory
@@ -22,7 +24,7 @@ fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 {
     let k_offset = kidx / component_a + col;
     if (batch < uniforms.batch_count && k_offset < uniforms.K_of_a) {
-        tile_A[col] = input_a[batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset];
+        tile_A[col] = a.getByOffset(batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset);
     } else {
         tile_A[col] = input_a_value_t(0);
     }
@@ -38,7 +40,7 @@ $MAIN {
 
 #if single_scale_weights
   let block_idx = 0;
-  let scale_b = scales_b[0];
+  let scale_b = scales_b.getByOffset(0);
   let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
 
@@ -58,10 +60,10 @@ $MAIN {
       {
 #if !single_scale_weights
         let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
-        let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
+        let scale_b = scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
-        var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
+        var b_value = b.getByOffset(b_global * uniforms.K_of_b + k_offset);
 
 #if n_bits == 4
         var sum = output_element_t(0);
@@ -152,7 +154,7 @@ $MAIN {
     let b_global =  b_global_base + local_idx;
     let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
-      output[output_idx] = output_value;
+      output.setByOffset(output_idx, output_value);
     }
   }
 }  // MAIN
