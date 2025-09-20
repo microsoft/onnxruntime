@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -256,6 +257,58 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA_V2(handle, cudaProviderOptions.Handle));
 #endif
         }
+
+        /// <summary>
+        /// Append a VitisAI EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="providerOptions">Native OrtSessionOptions instance</param>
+        public void AppendExecutionProvider_VitisAI(Dictionary<string, string> providerOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The VitisAI Execution Provider is not supported in this build");
+#else
+            int count = providerOptions.Count;
+            var keyPtrs = new IntPtr[count];
+            var valuePtrs = new IntPtr[count];
+
+            var handles = new List<GCHandle>(count * 2);
+
+            try
+            {
+                int i = 0;
+                foreach (var kvp in providerOptions)
+                {
+                    var keyWithNull = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(kvp.Key);
+                    var valueWithNull = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(kvp.Value);
+
+                    var keyHandle = GCHandle.Alloc(keyWithNull, GCHandleType.Pinned);
+                    var valHandle = GCHandle.Alloc(valueWithNull, GCHandleType.Pinned);
+
+                    handles.Add(keyHandle);
+                    handles.Add(valHandle);
+
+                    keyPtrs[i] = keyHandle.AddrOfPinnedObject();
+                    valuePtrs[i] = valHandle.AddrOfPinnedObject();
+                    i++;
+                }
+
+                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_VitisAI(
+                    Handle,
+                    keyPtrs,
+                    valuePtrs,
+                    (UIntPtr)count));
+            }
+            finally
+            {
+                foreach (var h in handles)
+                {
+                    if (h.IsAllocated) 
+                        h.Free();
+                }
+            }
+#endif
+        }
+
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
