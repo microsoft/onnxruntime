@@ -334,7 +334,7 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
         << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
-    if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
+    if (node.GetExecutionProviderType() == kInternalTestingExecutionProvider) {
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);
       EXPECT_THAT(node.OpType(), ::testing::StartsWith(expected_op_type_prefix));
@@ -353,7 +353,7 @@ static int CountAndValidateAssignedNodes(const Graph& current_graph,
   for (const auto& node : current_graph.Nodes()) {
     EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
         << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
-    if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
+    if (node.GetExecutionProviderType() == kInternalTestingExecutionProvider) {
       const NodeComputeInfo* compute_func = nullptr;
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);

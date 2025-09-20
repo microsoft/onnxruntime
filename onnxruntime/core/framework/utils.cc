@@ -46,22 +46,13 @@ void DestroyStrings(void* p_data, int64_t elements) {
     ptr[i].~string();
 }
 
-bool ProviderIsCpuBased(const std::string& provider_type) {
-  return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kDnnlExecutionProvider ||
-         provider_type == onnxruntime::kVitisAIExecutionProvider ||
-         provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-         provider_type == onnxruntime::kNnapiExecutionProvider ||
-         provider_type == onnxruntime::kVSINPUExecutionProvider ||
-         provider_type == onnxruntime::kAclExecutionProvider ||
-         provider_type == onnxruntime::kArmNNExecutionProvider ||
-         provider_type == onnxruntime::kRknpuExecutionProvider ||
-         provider_type == onnxruntime::kCoreMLExecutionProvider ||
-         provider_type == onnxruntime::kSnpeExecutionProvider ||
-         provider_type == onnxruntime::kQnnExecutionProvider ||
-         provider_type == onnxruntime::kXnnpackExecutionProvider ||
-         provider_type == onnxruntime::kAzureExecutionProvider ||
-         provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
+bool ProviderIsCpuBased(const IExecutionProvider& provider) {
+  return provider.GetDevice().Type() == OrtDevice::CPU;
+}
+
+bool IsMemcpyNode(const Node& node) {
+  return node.Domain() == kOnnxDomain &&
+         (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost");
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
@@ -210,7 +201,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
 
 static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_providers) {
   for (const auto& execution_provider : execution_providers) {
-    if (!ProviderIsCpuBased(execution_provider->Type())) {
+    if (!ProviderIsCpuBased(*execution_provider)) {
       return false;
     }
   }

@@ -248,6 +248,27 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
           continue;  // Input or output is not of type float
         }
 
+        {
+          const auto input_0_shape = GetTensorShape(inputs[0]),
+                     input_1_shape = GetTensorShape(inputs[1]);
+
+          if (!input_0_shape.has_value() || !input_1_shape.has_value()) {
+            continue;  // unable to get input shape
+          }
+
+          const auto is_static_shape = [](gsl::span<const int64_t> shape) -> bool {
+            return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim >= 0; });
+          };
+
+          if (!is_static_shape(*input_0_shape) || !is_static_shape(*input_1_shape)) {
+            continue;  // input shape has dynamic dimensions
+          }
+
+          if (*input_0_shape != *input_1_shape) {
+            continue;  // input shapes do not match (no broadcasting support for now)
+          }
+        }
+
         supported_nodes.push_back(node);  // Only support a single Mul for now.
         break;
       }

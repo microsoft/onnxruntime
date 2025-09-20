@@ -22,7 +22,8 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
-void RunModelWithPluginEp(Ort::SessionOptions& session_options) {
+
+void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
 
   // Create input
@@ -47,6 +48,38 @@ void RunModelWithPluginEp(Ort::SessionOptions& session_options) {
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
+
+void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_options) {
+  // This model has Add -> Mul -> Add. The example plugin EP only supports Mul.
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/add_mul_add.onnx"), session_options);
+
+  // Create inputs
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+
+  std::vector<float> a_data{1, 2, 3, 4, 5, 6};
+  std::vector<float> b_data{2, 3, 4, 5, 6, 7};
+
+  std::vector<Ort::Value> ort_inputs{};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, a_data.data(), a_data.size(), shape.data(), shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), shape.data(), shape.size()));
+
+  std::array ort_input_names{"A", "B"};
+
+  // Run session and get outputs
+  std::array output_names{"C"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(7, 17, 31, 49, 71, 97));
+}
+
 }  // namespace
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -61,7 +94,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  RunModelWithPluginEp(session_options);
+  RunMulModelWithPluginEp(session_options);
 }
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -74,8 +107,21 @@ TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
     // PREFER_CPU pick our example EP over ORT CPU EP. TODO: Actually assert this.
     Ort::SessionOptions session_options;
     session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
-    RunModelWithPluginEp(session_options);
+    RunMulModelWithPluginEp(session_options);
   }
+}
+
+TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // Create session with example plugin EP
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  RunPartiallySupportedModelWithPluginEp(session_options);
 }
 
 // Generate an EPContext model with a plugin EP.

@@ -35,3 +35,14 @@ void IsFloatTensor(Ort::ConstValueInfo value_info, bool& result) {
   }
   result = true;
 }
+
+std::optional<std::vector<int64_t>> GetTensorShape(Ort::ConstValueInfo value_info) {
+  const auto type_info = value_info.TypeInfo();
+  const auto onnx_type = type_info.GetONNXType();
+  if (onnx_type != ONNX_TYPE_TENSOR) {
+    return std::nullopt;
+  }
+
+  const auto type_shape = type_info.GetTensorTypeAndShapeInfo();
+  return type_shape.GetShape();
+}

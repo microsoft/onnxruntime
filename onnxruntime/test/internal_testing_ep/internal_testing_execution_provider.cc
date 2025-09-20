@@ -26,17 +26,15 @@ namespace internal_testing_ep {
 
 // NHWC Conv requires contrib ops
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
-// the 'utils::' breaks the kernel registration macros
-constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
 
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 11, Conv);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kInternalTestingExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
 
 // register static kernels we have implementations for
 static std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   ORT_THROW_IF_ERROR(kernel_registry->Register(
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kInternalTestingExecutionProvider,
                                                             kMSInternalNHWCDomain, 11, Conv)>()));
 
   return kernel_registry;
@@ -68,7 +66,7 @@ void RegisterDummyStaticKernel(KernelRegistry& registry, const Node& node) {
   builder.SetName(node.OpType())
       .SetDomain(node.Domain())
       .SinceVersion(node.SinceVersion())
-      .Provider(internal_testing_ep);
+      .Provider(kInternalTestingExecutionProvider);
 
   ORT_THROW_IF_ERROR(registry.Register(builder, DummyCreateKernel));
 }
@@ -85,7 +83,7 @@ constexpr const char* INTERNAL_TESTING_EP = "InternalTestingEP";
 InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
                                                                    const std::unordered_set<std::string>& stop_ops,
                                                                    DataLayout preferred_layout)
-    : IExecutionProvider{utils::kInternalTestingExecutionProvider},
+    : IExecutionProvider{kInternalTestingExecutionProvider},
       ep_name_{INTERNAL_TESTING_EP},
       ops_{ops},
       stop_ops_{stop_ops},
@@ -221,7 +219,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
 
   auto compile_capabilities = utils::CreateSupportedPartitions(graph_viewer, supported_compiled_nodes, stop_ops_,
                                                                generate_metadef_name, ep_name_,
-                                                               onnxruntime::utils::kInternalTestingExecutionProvider,
+                                                               kInternalTestingExecutionProvider,
                                                                /*QDQ NodeUnit map*/ nullptr,
                                                                debug_output_);
 
