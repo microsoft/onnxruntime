@@ -896,6 +896,9 @@ def generate_build_tree(
         ):
             cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
 
+    if not args.no_sve:
+        cmake_args += ["-Donnxruntime_USE_SVE=ON"]
+
     if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
         if args.macos == "Catalyst" and args.cmake_generator == "Xcode":
