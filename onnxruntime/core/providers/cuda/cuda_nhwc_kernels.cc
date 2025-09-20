@@ -53,10 +53,16 @@ class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(10, 10, float, MaxPool);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(10, 10, MLFloat16, MaxPool);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(11, float, Conv);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(11, MLFloat16, Conv);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, Conv);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, MLFloat16, Conv);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, BFloat16, Conv);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(11, float, ConvTranspose);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(11, MLFloat16, ConvTranspose);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(11, float, AveragePool);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(11, MLFloat16, AveragePool);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, AveragePool);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, MLFloat16, AveragePool);
+class CUDA_NHWC_OP_TYPED_CLASS_NAME(22, BFloat16, AveragePool);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(11, 11, float, MaxPool);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(11, 11, MLFloat16, MaxPool);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(12, float, MaxPool);
@@ -96,10 +102,13 @@ Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(15, MLFloat16, BatchNormalization)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(15, float, BatchNormalization)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(15, double, BatchNormalization)>,
-      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 10, MLFloat16, Conv)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 10, float, Conv)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 10, MLFloat16, Conv)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(11, float, Conv)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(11, MLFloat16, Conv)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, float, Conv)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, MLFloat16, Conv)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(22, BFloat16, Conv)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(7, 9, float, AveragePool)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(7, 9, MLFloat16, AveragePool)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_TYPED_CLASS_NAME(1, float, GlobalAveragePool)>,

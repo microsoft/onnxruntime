@@ -1484,7 +1484,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
   std::vector<F4> fp4_data;
   fp4_data.reserve(num_fp4_elements);
 
-  for (size_t i = 0; i < num_pairs; ++i) {
+  for (int i = 0; i < num_pairs; ++i) {
     fp4_data.emplace_back(F4(float_data[i * 2], float_data[i * 2 + 1]));
   }
 
@@ -1498,7 +1498,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
 
   } else {
     std::vector<float> casted_back_float;
-    for (size_t i = 0; i < num_pairs; ++i) {
+    for (int i = 0; i < num_pairs; ++i) {
       auto pair = fp4_data[i].ToFloat2();
       casted_back_float.push_back(pair.first);
       casted_back_float.push_back(pair.second);
