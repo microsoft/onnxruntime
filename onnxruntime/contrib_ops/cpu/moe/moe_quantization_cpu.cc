@@ -60,6 +60,9 @@ bool CanUseMlasQ4Dequant(int64_t num_bits, int64_t block_size) {
 
 bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
                       int64_t rows, int64_t cols, MLAS_BLK_QUANT_TYPE& out_qtype) {
+  // TEMPORARY: Disable direct Q4 GEMM to test if it's causing gibberish output
+  return false;
+
   if (expert_weight_bits != 4) {
     return false;
   }
@@ -390,6 +393,9 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int64_t num_experts = moe_params.num_experts;
   const int64_t fc1_out_features = inter_size * (swiglu_fusion_ > 0 ? 2 : 1);
 
+  // Validate block-wise quantization requirements
+  ORT_RETURN_IF_ERROR(moe_helper::ValidateBlockwiseQuantization(block_size_, hidden_size, inter_size));
+
   auto* output = context->Output(0, input_shape);
   auto* tp = context->GetOperatorThreadPool();
 
@@ -420,7 +426,22 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int max_threads = tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1;
   const int64_t thread_divisor = std::max(1, max_threads * 4);
   const int64_t min_work_per_thread = std::max(int64_t{32}, static_cast<int64_t>(num_tokens / thread_divisor));
-  const int optimal_routing_threads = (tp == nullptr || num_tokens < min_work_per_thread) ? 1 : std::min(static_cast<int>(num_tokens / std::max(int64_t{1}, min_work_per_thread)), max_threads);
+
+  // Optimize routing threads for both decoding and batch scenarios
+  // For decoding (small num_tokens), we still want some parallelization since each token processes all experts
+  int optimal_routing_threads;
+  if (tp == nullptr) {
+    optimal_routing_threads = 1;
+  } else if (num_tokens == 1) {
+    // Single token decoding: use 1 thread (routing overhead not worth parallelizing)
+    optimal_routing_threads = 1;
+  } else if (num_tokens < min_work_per_thread) {
+    // Small batch: use limited threads (2-4) to avoid over-threading
+    optimal_routing_threads = std::min(std::max(1, static_cast<int>(num_tokens / 8)), std::min(4, max_threads));
+  } else {
+    // Large batch: use standard calculation
+    optimal_routing_threads = std::min(static_cast<int>(num_tokens / min_work_per_thread), max_threads);
+  }
   const int num_routing_threads = std::max(1, optimal_routing_threads);
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
@@ -501,7 +522,11 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int max_expert_threads = tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1;
   const int64_t total_expert_work = std::accumulate(expert_token_map.begin(), expert_token_map.end(), 0LL,
                                                     [](int64_t sum, const std::vector<int64_t>& tokens) { return sum + static_cast<int64_t>(tokens.size()); });
+  // Expert threading uses larger divisor (8x vs 4x for routing) because expert processing involves
+  // heavier computation (GEMM operations) that benefits more from parallelization
   const int64_t expert_thread_divisor = std::max(1, max_expert_threads * 8);
+  // Minimum work per expert thread is smaller (16 vs 32 for routing) because expert work
+  // involves matrix operations that are more compute-intensive per token
   const int64_t min_expert_work_per_thread = std::max(int64_t{16}, total_expert_work / expert_thread_divisor);
 
   int num_expert_threads = (tp == nullptr || total_expert_work < min_expert_work_per_thread) ? 1 : std::min(static_cast<int>(total_expert_work / std::max(int64_t{1}, min_expert_work_per_thread)), std::min(static_cast<int>(num_experts), max_expert_threads));
@@ -566,12 +591,26 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  if (total_work < 48) {
+  // Adaptive thresholds optimized for both decoding (1 token) and batch inference
+  // For single-token decoding: allow more parallelization across experts since each expert
+  // represents substantial work (especially for large hidden_size)
+  // For batch: higher thresholds ensure efficient thread utilization
+  if (total_work < 4) {
+    // Very small workload - single token with few experts, use 1 thread
     num_expert_threads = 1;
-  } else if (total_work < 192) {
-    num_expert_threads = std::min(num_expert_threads, 2);
-  } else if (total_work < 512) {
+  } else if (total_work < 12) {
+    // Small workload - single token or small batch, use up to 4 threads
+    // This covers typical decoding case with top-k=2-4 where each expert is substantial work
     num_expert_threads = std::min(num_expert_threads, 4);
+  } else if (total_work < 32) {
+    // Medium workload - use up to 6 threads
+    num_expert_threads = std::min(num_expert_threads, 6);
+  } else if (total_work < 128) {
+    // Large workload - use up to 8 threads
+    num_expert_threads = std::min(num_expert_threads, 8);
+  } else if (total_work < 384) {
+    // Very large workload - use more threads
+    num_expert_threads = std::min(num_expert_threads, 12);
   }
 
   std::sort(expert_workload.begin(), expert_workload.end(),
@@ -650,7 +689,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const T* fc1_scales_ptr;
 
       if (is_fc1_block_wise) {
-        const int64_t fc1_blocks_per_row = fc1_scales_dims[2];
+        const int64_t fc1_blocks_per_row = (hidden_size + block_size_ - 1) / block_size_;
         fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features * fc1_blocks_per_row;
       } else {
         fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features;
@@ -716,15 +755,19 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       // Traditional approach: dequantize + regular GEMM
+      // Use parallel dequantization when we have multiple blocks and sufficient work per thread
+      // Threshold of 32 features ensures each thread has meaningful work to justify threading overhead
       if (num_dequant_blocks > 1 && fc1_out_features >= 32) {
+        // Calculate blocks_per_row for the current layer (FC1 uses hidden_size as input dimension)
+        const int64_t fc1_blocks_per_row = is_fc1_block_wise ? (hidden_size + block_size_ - 1) / block_size_ : 1;
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * dequant_block_size;
           const int64_t end_row = std::min(start_row + dequant_block_size, fc1_out_features);
           const auto offset = expert_idx * fc1_out_features * fc1_packed_cols + start_row * fc1_packed_cols;
           DequantizeBlock(fc1_weights_data + offset,
-                          fc1_scales_ptr + (is_fc1_block_wise ? start_row * fc1_scales_dims[2] : start_row),
+                          fc1_scales_ptr + (is_fc1_block_wise ? start_row * fc1_blocks_per_row : start_row),
                           is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, tp);
+                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, nullptr);
         });
       } else {
         DequantizeBlock(fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
@@ -780,7 +823,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
     fc1_gemm_done:
 
-      const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
+      // Activation threshold scales inversely with inter_size to balance work per thread
+      // For large inter_size, fewer tokens justify parallel activation; for small inter_size, more tokens needed
+      // Base value of 256 ensures reasonable work distribution across different model configurations
+      const int64_t activation_threshold = std::max(int64_t{4}, 256 / inter_size);
       if (num_expert_tokens >= activation_threshold && tp != nullptr) {
         const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
         const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
@@ -814,7 +860,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const T* fc2_scales_ptr;
 
       if (is_fc2_block_wise) {
-        const int64_t fc2_blocks_per_row = fc2_scales_dims[2];
+        const int64_t fc2_blocks_per_row = (inter_size + block_size_ - 1) / block_size_;
         fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size * fc2_blocks_per_row;
       } else {
         fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size;
@@ -880,15 +926,19 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       // Traditional approach: dequantize + regular GEMM
+      // Use parallel dequantization when we have multiple blocks and sufficient work per thread
+      // Threshold of 32 for hidden_size ensures each thread has meaningful work to justify threading overhead
       if (num_fc2_dequant_blocks > 1 && hidden_size >= 32) {
+        // Calculate blocks_per_row for the current layer (FC2 uses inter_size as input dimension)
+        const int64_t fc2_blocks_per_row = is_fc2_block_wise ? (inter_size + block_size_ - 1) / block_size_ : 1;
         concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * fc2_dequant_block_size;
           const int64_t end_row = std::min(start_row + fc2_dequant_block_size, hidden_size);
           const auto offset = expert_idx * hidden_size * fc2_packed_cols + start_row * fc2_packed_cols;
           DequantizeBlock(fc2_weights_data + offset,
-                          fc2_scales_ptr + (is_fc2_block_wise ? start_row * fc2_scales_dims[2] : start_row),
+                          fc2_scales_ptr + (is_fc2_block_wise ? start_row * fc2_blocks_per_row : start_row),
                           is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size, tp);
+                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size, nullptr);
         });
       } else {
         DequantizeBlock(fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
