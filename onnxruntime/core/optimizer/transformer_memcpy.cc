@@ -348,7 +348,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg,
                                              const KernelRegistryManager& kernel_registries,
                                              const logging::Logger& logger) {
   for (auto& it : graph_.Nodes()) {
-    if (it.OpType() == "MemcpyFromHost" || it.OpType() == "MemcpyToHost") continue;
+    if (utils::IsMemcpyNode(it)) continue;
     auto input_it =
         std::find(it.MutableInputDefs().begin(), it.MutableInputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
     auto output_it =
