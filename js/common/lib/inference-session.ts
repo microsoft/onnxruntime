@@ -245,7 +245,23 @@ export declare namespace InferenceSession {
   }
   export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgpu';
+
+    /**
+     * Specify the preferred layout when running layout sensitive operators.
+     *
+     * @default 'NCHW'
+     */
     preferredLayout?: 'NCHW' | 'NHWC';
+
+    /**
+     * Specify a list of node names that should be executed on CPU even when WebGPU EP is used.
+     */
+    forceCpuNodeNames?: readonly string[];
+
+    /**
+     * Specify an optional WebGPU device to be used by the WebGPU execution provider.
+     */
+    device?: TryGetGlobalType<'GPUDevice'>;
   }
 
   // #region WebNN options
