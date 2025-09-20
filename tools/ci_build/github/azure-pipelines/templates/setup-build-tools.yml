@@ -1,33 +1,60 @@
 # Setup python/nodejs/cmake/vcpkg tools. Also, setup telemetry header file if the current OS is Windows.
 
 parameters:
-- name: BuildArch
-  displayName: BuildArch
+# for selecting python binary
+- name: host_cpu_arch
   type: string
-  default: 'x64'
+
+- name: python_version
+  type: string
+  default: '3.12'
   
-- name: actionVersion
+- name: action_version
   type: string
-  default: 'v0.0.8'
+  default: 'v0.0.9'
 
 steps:
 - template: telemetry-steps.yml
-  
+
+# Currently all ADO macOS machines are x64 machines
 - task: UsePythonVersion@0
-  displayName: Use Python 3.12
+  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (macOS)'
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Darwin'))
   inputs:
-    versionSpec: 3.12
-    ${{ if eq(parameters.BuildArch, 'x86') }}:
-      architecture: 'x86'
+    versionSpec: ${{ parameters.python_version }}    
+    architecture: 'x64'
+    
+- task: UsePythonVersion@0
+  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (non-macOS)'
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Darwin'))
+  inputs:
+    versionSpec: ${{ parameters.python_version }}    
+    architecture: ${{ parameters.host_cpu_arch }}
 
 - task: PipAuthenticate@1
   displayName: 'Pip Authenticate'
   inputs:
     artifactFeeds: 'Lotus'
 
-- task: NodeTool@0
+# The following task does not support different arches.
+- task: UseNode@1
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Windows_NT'))
   inputs:
-    versionSpec: '22.x'
+    version: '22.x'
+
+- task: PowerShell@2
+  displayName: 'Setup Latest Node.js v20 (Win)'
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+  inputs:
+    filePath: '$(System.DefaultWorkingDirectory)\tools\ci_build\github\windows\setup_nodejs.ps1' 
+    arguments: '-MajorVersion 22'
+
+- script: |
+    node -v
+    npm -v
+
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Verify Node.js Version'
 
 - script: python3 -m pip install requests
 
@@ -35,16 +62,4 @@ steps:
   displayName: 'Run GitHub Action via Python Wrapper'
   inputs:
     scriptPath: 'tools/ci_build/run_gh_action.py'
-    arguments: '${{ parameters.actionVersion }}'
-
-- pwsh: |
-    $ErrorActionPreference = 'Stop'
-
-    Write-Host "Verifying CMake installation..."
-    cmake --version
-
-    Write-Host "Verifying vcpkg installation..."
-    & "$env:VCPKG_INSTALLATION_ROOT/vcpkg" version
-    
-    Write-Host "Tool verification successful."
-  displayName: 'Verify Tools'
+    arguments: '${{ parameters.action_version }}'

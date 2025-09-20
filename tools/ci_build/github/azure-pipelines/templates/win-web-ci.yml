@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - name: PackageName
   displayName: 'Package name'
@@ -78,6 +78,8 @@ jobs:
     displayName: 'Testing: force EOL to lf on windows for /js/**'
   
   - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: 'x64'
 
   - task: DownloadPipelineArtifact@2
     inputs:
