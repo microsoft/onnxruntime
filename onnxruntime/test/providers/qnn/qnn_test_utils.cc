@@ -130,6 +130,75 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
                             {}, verify_outputs);
 }
 
+void RunQnnModelTestHTPNoVerify(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
+                                int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
+                                logging::Severity log_severity,
+                                std::function<void(const Graph&)>* ep_graph_checker) {
+  // Add kMSDomain to cover contrib op like Gelu
+  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(log_severity);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  TryEnableQNNSaver(provider_options);
+
+  SessionOptions so;
+  so.session_logid = "QNN_EP_TestLogID";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  std::string provider_type = kCpuExecutionProvider;
+  auto qnn_ep = QnnExecutionProviderWithOptions(provider_options, &so);
+  provider_type = qnn_ep->Type();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(qnn_ep)));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto& graph_from_session = session_object.GetGraph();
+
+  auto ep_nodes = CountAssignedNodes(graph_from_session, provider_type);
+  if (expected_ep_assignment == ExpectedEPNodeAssignment::All) {
+    // Verify the entire graph is assigned to the EP
+    ASSERT_EQ(ep_nodes, graph_from_session.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
+  } else if (expected_ep_assignment == ExpectedEPNodeAssignment::None) {
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << provider_type;
+  } else {
+    ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
+  }
+
+  if (ep_graph_checker) {
+    (*ep_graph_checker)(graph_from_session);
+  }
+
+  // Run the model but don't verify outputs
+  const auto& outputs = graph_from_session.GetOutputs();
+  std::vector<std::string> output_names;
+  std::vector<OrtValue> output_vals;
+
+  output_names.reserve(outputs.size());
+  for (const auto* node_arg : outputs) {
+    if (node_arg->Exists()) {
+      output_names.push_back(node_arg->Name());
+    }
+  }
+
+  ASSERT_STATUS_OK(session_object.Run(run_options, helper.feeds_, output_names, &output_vals));
+}
+
 void InferenceModel(const std::string& model_data, const char* log_id,
                     const ProviderOptions& provider_options,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
