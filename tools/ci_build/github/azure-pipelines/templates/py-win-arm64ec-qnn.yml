@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.37.1.250807
+  default: 2.38.0.250901
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -45,18 +45,10 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: telemetry-steps.yml
-
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: $(PythonVersion)
-      addToPath: true
-      architecture: 'x64'
-
-  - task: PipAuthenticate@1
-    displayName: 'Pip Authenticate'
-    inputs:
-      artifactFeeds: 'Lotus'
+  - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: 'x64'
+      python_version: $(PythonVersion)
 
   - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 

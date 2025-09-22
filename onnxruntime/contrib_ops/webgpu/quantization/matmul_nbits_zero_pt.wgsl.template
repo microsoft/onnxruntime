@@ -17,6 +17,8 @@
 #elif n_bits == 8
   const default_zero_point = 128;
   const bit_mask = 0xFFu;
+#elif n_bits == 2
+  const default_zero_point = 2;
 #endif
 
 #if has_zero_points

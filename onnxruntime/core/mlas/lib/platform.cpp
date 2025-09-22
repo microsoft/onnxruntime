@@ -558,6 +558,15 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
+    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
+    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
+    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
+    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
+    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelNeon;
+    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelNeon;
+    this->NchwcBlockSize = MLAS_NEON_NCHWC_BLOCK_SIZE;
+
     //
     // Check if the processor supports ASIMD dot product instructions.
     //
@@ -582,7 +591,6 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
@@ -593,16 +601,22 @@ Return Value:
     }
 #endif
 
-#if defined(__linux__)
     //
     // Check if the processor supports ASIMD I8MM instructions.
     //
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+
+    const bool HasI8MMInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM();
+    if (HasI8MMInstructions) {
+#if defined(__linux__)
+
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
-    }
 #endif
+    }
+
+    this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
+    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;

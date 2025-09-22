@@ -23,6 +23,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::GetSupportedDevices = Forward::GetSupportedDevices;
   OrtEpFactory::CreateEp = Forward::CreateEp;
   OrtEpFactory::ReleaseEp = Forward::ReleaseEp;
+  OrtEpFactory::ValidateCompiledModelCompatibilityInfo = Forward::ValidateCompiledModelCompatibilityInfo;
   OrtEpFactory::CreateAllocator = Forward::CreateAllocator;
   OrtEpFactory::ReleaseAllocator = Forward::ReleaseAllocator;
   OrtEpFactory::CreateDataTransfer = Forward::CreateDataTransfer;

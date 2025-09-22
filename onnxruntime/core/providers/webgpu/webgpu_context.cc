@@ -41,30 +41,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
   std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
     if (device_ == nullptr) {
       // Create wgpu::Adapter
-#if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
-      // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
-      //
-      // Dawn will try to load them later, but if they are in the different directory to the executable, it may fail to find them.
-      // To avoid this issue, we try to load them from the same directory as current module (usually onnxruntime.dll).
-      auto runtime_path = Env::Default().GetRuntimePath();
-      if (!runtime_path.empty()) {
-        Status status;
-        void* module_handle = nullptr;
-
-        PathString dxil_path = runtime_path + ToPathString(L"dxil.dll");
-        status = Env::Default().LoadDynamicLibrary(dxil_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxil_path, module_handle);
-        }
-
-        PathString dxcompiler_path = runtime_path + ToPathString(L"dxcompiler.dll");
-        status = Env::Default().LoadDynamicLibrary(dxcompiler_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxcompiler_path, module_handle);
-        }
-      }
-#endif
-
       wgpu::RequestAdapterOptions req_adapter_options = {};
       req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
       req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
@@ -216,7 +192,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All inputs must be tensors on WebGPU buffers.");
 
@@ -225,7 +201,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All outputs must be tensors on WebGPU buffers.");
   }
@@ -279,7 +255,14 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   uint32_t x = program.DispatchGroupSizeX();
   uint32_t y = program.DispatchGroupSizeY();
   uint32_t z = program.DispatchGroupSizeZ();
-  ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+
+  // Skip normalization for indirect dispatch since dimensions are determined by the indirect buffer
+  if (program.IndirectDispatchTensor() == nullptr) {
+    ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+  } else {
+    ORT_ENFORCE(x == 0 && y == 0 && z == 0,
+                "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
+  }
 
   bool is_1d_dispatch = (y == 1 && z == 1);
 
@@ -466,7 +449,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     bind_buffers.push_back(uniform_buffer);
   }
 
-  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z, program.IndirectDispatchTensor());
   if (uniform_buffer) {
     buffer_mgr.Release(uniform_buffer);
   }
@@ -746,7 +729,8 @@ void WebGpuContext::OnRunEnd() {
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                                           const std::vector<WGPUBuffer>& bind_buffers,
                                           const ProgramArtifact& program_artifact,
-                                          uint32_t x, uint32_t y, uint32_t z) {
+                                          uint32_t x, uint32_t y, uint32_t z,
+                                          const Tensor* indirect_dispatch_tensor) {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
   for (WGPUBuffer buffer : bind_buffers) {
@@ -762,14 +746,27 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
 
   auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
   if (graph_capture_state_ == GraphCaptureState::Capturing) {
+    WGPUBuffer indirect_buffer = nullptr;
+    if (indirect_dispatch_tensor != nullptr) {
+      indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
+    }
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
                                             bind_group_layout,
-                                            {x, y, z}});
+                                            {x, y, z},
+                                            indirect_buffer});
   } else {
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
-    compute_pass_encoder.DispatchWorkgroups(x, y, z);
+
+    if (indirect_dispatch_tensor != nullptr) {
+      // Use indirect dispatch
+      WGPUBuffer indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
+      compute_pass_encoder.DispatchWorkgroupsIndirect(indirect_buffer, 0);
+    } else {
+      // Use direct dispatch
+      compute_pass_encoder.DispatchWorkgroups(x, y, z);
+    }
 
     wgpuBindGroupRelease(bind_group);
     wgpuBindGroupLayoutRelease(bind_group_layout);
@@ -805,7 +802,15 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     WriteTimestamp(num_pending_dispatches_ * 2);
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
-    compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
+
+    if (command.indirect_buffer != nullptr) {
+      // Use indirect dispatch
+      compute_pass_encoder.DispatchWorkgroupsIndirect(command.indirect_buffer, 0);
+    } else {
+      // Use direct dispatch
+      compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
+    }
+
     WriteTimestamp(num_pending_dispatches_ * 2 + 1);
     ++num_pending_dispatches_;
     if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||

@@ -18,6 +18,13 @@ using ::google::protobuf::RepeatedPtrField;
 using ::ONNX_NAMESPACE::StringStringEntryProto;
 
 namespace onnxruntime {
+ExternalDataInfo::ExternalDataInfo() = default;
+
+#if !defined(ORT_MINIMAL_BUILD)
+ExternalDataInfo::ExternalDataInfo(const PathString& rel_path, OFFSET_TYPE offset, size_t length)
+    : rel_path_(rel_path), offset_(offset), length_(length) {}
+#endif
+
 Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& input,
                                 std::unique_ptr<ExternalDataInfo>& external_data_info_result) {
   auto external_data_info = std::make_unique<ExternalDataInfo>();
@@ -107,7 +114,7 @@ void ExternalDataInfo::SetExternalLocationToProto(const std::filesystem::path& e
 std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
     const PrepackedWeightsForGraph& prepacked_for_graph,
     const InlinedHashSet<std::string>& blob_keys, bool align,
-    int64_t align_threshold, int64_t allocation_granularity,
+    int64_t align_threshold, int64_t on_disk_alignment,
     std::ostream& os, int64_t& external_offset, ::ONNX_NAMESPACE::TensorProto& proto) {
   size_t key_count = 0;
   for (const auto& key : blob_keys) {
@@ -120,7 +127,7 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
       const auto size_in_bytes = prepacked_weights->buffer_sizes_[i];
       if (align && static_cast<int64_t>(size_in_bytes) > align_threshold) {
         // return early on error
-        if (!AlignAndPad(os, allocation_granularity, external_offset)) {
+        if (!AlignAndPad(os, on_disk_alignment, external_offset)) {
           return os;
         }
       }

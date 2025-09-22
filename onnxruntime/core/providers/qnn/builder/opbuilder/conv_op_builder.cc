@@ -119,14 +119,6 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant, quant_axis));
 
     if (is_per_axis_quant) {
-      int32_t elem_data_type = 0;
-      ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(input_1.node_arg, elem_data_type));
-
-      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
-                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
-                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
-      ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
-
       if (conv_type == OnnxConvType::kConvTranspose) {
         ORT_RETURN_IF_NOT(quant_axis == 1,
                           "ConvTranspose's input[1] must be use axis == 1 for per-channel quantization");
@@ -244,6 +236,12 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
                     "Non-constant Conv inputs only support per-tensor quantization");
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Add HWCN Transpose node after input: " << input1_name;
+
+      if (!qnn_model_wrapper.IsQnnTensorWrapperExist(input1_name)) {
+        QnnTensorWrapper weight_tensor_wrapper;
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], weight_tensor_wrapper));
+        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)), "Failed to add weight tensor.");
+      }
 
       if (conv_type == OnnxConvType::kConv) {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddNchwToHwcnTranspose(node_unit.Index(),
@@ -425,7 +423,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
   //
   // Input 1: weight
-  // We need to first reshape the weight inorder to handle 1D convolutions with the Conv2d operator.
+  // We need to first reshape the weight in order to handle 1D convolutions with the Conv2d operator.
   // Next, we have to transpose the weight because ORT layout transformations do not change the weight layout.
   //
   {
@@ -510,6 +508,12 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       // Dynamic weight: Add nodes to reshape to 2D, and then transpose.
       ORT_RETURN_IF(input_info.quant_param.IsPerChannel(),
                     "Non-constant Conv inputs only support per-tensor quantization");
+
+      if (!qnn_model_wrapper.IsQnnTensorWrapperExist(input1_name)) {
+        QnnTensorWrapper weight_tensor_wrapper;
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], weight_tensor_wrapper));
+        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)), "Failed to add weight tensor.");
+      }
 
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Adding Reshape (to 2D) and HWCN Transpose node after input: " << input1_name;
