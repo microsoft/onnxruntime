@@ -276,6 +276,8 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
   if_node.AddAttribute("then_branch", subgraph.ToGraphProto());
   if_node.AddAttribute("else_branch", subgraph.ToGraphProto());
 
+  if_node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+
   onnxruntime::Graph* subgraph_1 = if_node.GetMutableGraphAttribute("then_branch");
   for (auto& node : subgraph_1->Nodes()) {
     if (node.Name() == "node2") {
@@ -411,6 +413,8 @@ TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevice
 
   if_node.AddAttribute("then_branch", subgraph.ToGraphProto());
   if_node.AddAttribute("else_branch", subgraph.ToGraphProto());
+
+  if_node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
 
   graph.SetInputs({&i1_def, &i2_def});
 
