@@ -25,6 +25,7 @@
       <Item Name="[inline_capacity]" ExcludeView="simple">_inline_capacity()</Item>
       <Item Name="[storage_kind]" Condition="_is_allocated()" ExcludeView="simple">"heap"</Item>
       <Item Name="[storage_kind]" Condition="!_is_allocated()" ExcludeView="simple">"inline"</Item>
+      <Item Name="[data]" Condition="_size() == 0" ExcludeView="simple">"empty"</Item>
       <Item Name="[data]" ExcludeView="simple">_data()</Item>
       <Item Name="[front]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[0]</Item>
       <Item Name="[back]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[_size()-1]</Item>
@@ -73,31 +74,4 @@
       </IndexListItems>
     </Expand>
   </Type>
-
-	<!-- raw_hash_set (base for flat_hash_{set,map}) -->
-	<Type Name="absl::lts_20250512::container_internal::raw_hash_set&lt;*&gt;">
-		<Intrinsic Name="_commonfields" Expression="settings_.value"/>
-		<Intrinsic Name="_size" Expression="settings_.value.compressed_tuple_.value"/>
-		<Intrinsic Name="_capacity" Expression="_commonfields().capacity_"/>
-		<Intrinsic Name="_control" Expression="_commonfields().control_"/>
-		<Intrinsic Name="_slots" Expression="(slot_type*)(_commonfields().slots_)"/>
-		<DisplayString IncludeView="noparens">size={ _size() }</DisplayString>
-		<DisplayString ExcludeView="noparens">size=({_size()})</DisplayString>
-		<Expand>
-			<Item Name="[Size]">_size()</Item>
-			<Item Name="[Capacity]" ExcludeView="noparens">_capacity()</Item>
-			<Item Name="[Load Factor]" Condition="_capacity()&gt;0">(float)_size()/(float)_capacity()</Item>
-			<CustomListItems MaxItemsPerView="100">
-				<Variable Name="nslot" InitialValue="0" />
-				<Size>_size()</Size>
-				<Loop>
-					<If Condition="_control()[nslot] &gt;= 0">
-						<Item>_slots()[nslot]</Item>
-					</If>
-					<Exec>nslot++</Exec>
-					<Break Condition="nslot == _capacity()" />
-				</Loop>
-			</CustomListItems>
-		</Expand>
-	</Type>
 </AutoVisualizer>
