@@ -74,7 +74,7 @@
     </Expand>
   </Type>
 
-	<!-- Should handle both flat hash_set and hash_map -->
+	<!-- raw_hash_set (base for flat_hash_{set,map}) -->
 	<Type Name="absl::lts_20250512::container_internal::raw_hash_set&lt;*&gt;">
 		<Intrinsic Name="_commonfields" Expression="settings_.value"/>
 		<Intrinsic Name="_size" Expression="settings_.value.compressed_tuple_.value"/>
@@ -86,11 +86,11 @@
 		<Expand>
 			<Item Name="[Size]">_size()</Item>
 			<Item Name="[Capacity]" ExcludeView="noparens">_capacity()</Item>
+			<Item Name="[Load Factor]" Condition="_capacity()&gt;0">(float)_size()/(float)_capacity()</Item>
 			<CustomListItems MaxItemsPerView="100">
 				<Variable Name="nslot" InitialValue="0" />
 				<Size>_size()</Size>
 				<Loop>
-					<!-- bool IsFull(ctrl_t c) const { return c >= 0; } -->
 					<If Condition="_control()[nslot] &gt;= 0">
 						<Item>_slots()[nslot]</Item>
 					</If>
@@ -98,33 +98,6 @@
 					<Break Condition="nslot == _capacity()" />
 				</Loop>
 			</CustomListItems>
-		</Expand>
-	</Type>
-
-	<!-- Primitive types stored as a value -->
-	<Type Name="absl::lts_20250512::container_internal::Storage&lt;*,*,0&gt;">
-		<DisplayString IncludeView="noparens">*($T1 *){value}</DisplayString>
-		<DisplayString ExcludeView="noparens">(*($T1 *){value})</DisplayString>
-		<Expand>
-			<ExpandedItem>*($T1 *){value}</ExpandedItem>
-		</Expand>
-	</Type>
-
-	<!-- For storage inherited from the type -->
-	<Type Name="absl::lts_20250512::container_internal::Storage&lt;*,*,1&gt;">
-		<DisplayString IncludeView="noparens">*($T1 *)this</DisplayString>
-		<DisplayString ExcludeView="noparens">(*($T1 *)this)</DisplayString>
-		<Expand>
-			<ExpandedItem>*($T1 *)this</ExpandedItem>
-		</Expand>
-	</Type>
-
-	<Type Name="absl::lts_20250512::container_internal::map_slot_type&lt;*&gt;">
-		<DisplayString IncludeView="noparens">{value.first}, {value.second}</DisplayString>
-		<DisplayString ExcludeView="noparens">({value.first}, {value.second})</DisplayString>
-		<Expand>
-			<Item Name="first" ExcludeView="simple">value.first</Item>
-			<Item Name="second" ExcludeView="simple">value.second</Item>
 		</Expand>
 	</Type>
 </AutoVisualizer>
