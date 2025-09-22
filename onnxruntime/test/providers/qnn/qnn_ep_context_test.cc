@@ -2166,7 +2166,7 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptionsPerfModes) {
   session.SetEpDynamicOptions(workload_type, hbal_mode, 1);
   ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
                            output_names_c.data(), 1);
-  session.SetEpDynamicOptions(workload_type, emps_mode, 1);
+  session.SetEpDynamicOptions(workload_type, eps_mode, 1);
   ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
                            output_names_c.data(), 1);
 
