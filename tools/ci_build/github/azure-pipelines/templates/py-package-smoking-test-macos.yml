@@ -24,7 +24,7 @@ jobs:
       versionSpec: ${{ parameters.python_version }}
 
   - download: build   # pipeline resource identifier.
-    artifact: 'onnxruntime-macos-x86_64_${{ replace(parameters.python_version,'.','_') }}
+    artifact: onnxruntime-macos-x86_64_${{ replace(parameters.python_version,'.','_') }}
 
   - task: Bash@3
     inputs:
