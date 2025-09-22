@@ -190,7 +190,7 @@ stages:
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
     dependsOn: []
-    jobs:         
+    jobs:
       - template: ../templates/py-macos.yml
         parameters:
           arch: 'arm64'
