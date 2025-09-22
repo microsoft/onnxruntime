@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm_template.h"
 
 namespace onnxruntime::llm {
@@ -23,3 +23,4 @@ template class CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, cutlass::WeightO
 }  // namespace cutlass_kernels
 }  // namespace kernels
 }  // namespace onnxruntime::llm
+#endif

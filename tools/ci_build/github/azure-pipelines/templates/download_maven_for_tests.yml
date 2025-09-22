@@ -16,13 +16,3 @@ steps:
     echo "Maven is now on the PATH."
     mvn --version
     
-- task: Maven@4
-  displayName: 'Download Java Dependencies'
-  inputs:
-    mavenPomFile: '$(Build.SourcesDirectory)/tools/ci_build/java/pom.xml'
-    goals: 'dependency:copy-dependencies'
-    options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
-    publishJUnitTestResults: false
-    javaHomeOption: 'JDKVersion'
-    jdkVersionOption: '1.17'
-    mavenVersionOption: 'Default'

@@ -122,12 +122,12 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: stages/download-java-tools-stage.yml
-
     - template: templates/c-api-cpu.yml
       parameters:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
         ${{ else }}:
@@ -135,16 +135,10 @@ extends:
         AdditionalBuildFlags: ''
         AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
         BuildVariant: 'default'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
         QnnSDKVersion: ${{ parameters.QnnSdk }}
         is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
-      parameters:
-        CudaVersion: 12.2
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
@@ -159,6 +153,8 @@ extends:
         buildNodejs: true
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
     - template: stages/nodejs-win-packaging-stage.yml
       parameters:
