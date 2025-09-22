@@ -125,7 +125,7 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
   } else {
     LOGS_DEFAULT(WARNING) << "Htp performance mode not valid.";
-    htp_performance_mode = qnn : HtpPerformanceMode::kHtpInvalid;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpInvalid;
   }
 }
 
