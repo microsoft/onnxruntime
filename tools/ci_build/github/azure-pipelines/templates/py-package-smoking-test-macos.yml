@@ -1,7 +1,4 @@
 parameters:
-- name: machine_pool
-  type: object
-
 - name: python_version
   type: string
 
