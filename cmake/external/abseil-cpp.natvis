@@ -60,7 +60,8 @@
       <!-- Replaced ternary expression with conditional items to avoid literal-in-expression error -->
       <Item Name="[storage_kind]" Condition="_is_allocated()" ExcludeView="simple">"heap"</Item>
       <Item Name="[storage_kind]" Condition="!_is_allocated()" ExcludeView="simple">"inline"</Item>
-      <Item Name="[data]" ExcludeView="simple">_data()</Item>
+      <Item Name="[data]" Condition="_size() == 0" ExcludeView="simple">"empty"</Item>
+      <Item Name="[data]" Condition="_size() &gt; 0" ExcludeView="simple">_data()</Item>
       <Item Name="[front]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[0]</Item>
       <Item Name="[back]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[_size()-1]</Item>
       <Item Name="[WARNING]" Condition="_size() &gt; _capacity()" ExcludeView="simple">"CORRUPT: size &gt; capacity"</Item>
