@@ -1,0 +1,333 @@
+name: React Native CI Pipeline
+
+on:
+  push:
+    branches: [main, 'rel-*']
+  pull_request:
+    branches: [main, 'rel-*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build_android_packages:
+    name: Build Android AAR Packages
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    timeout-minutes: 120
+    outputs:
+      aar_path: ${{ runner.temp }}/.artifacts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: false
+
+      - name: Set version number variables
+        id: set_versions
+        run: |
+          echo "OnnxRuntimeVersion=$(head -1 VERSION_NUMBER)" >> $GITHUB_ENV
+          echo "OnnxRuntimeGitCommitHash=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          echo "OnnxRuntimeGitCommitHashShort=$(git rev-parse --short=8 HEAD)" >> $GITHUB_ENV
+
+      - name: Setup Android NDK
+        uses: ./.github/actions/setup-android-ndk
+        with:
+          ndk-version: 28.0.13004108
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Build Android AAR Packages
+        run: |
+          set -e -x
+          mkdir -p ${{ runner.temp }}/.build_settings
+          mkdir -p ${{ runner.temp }}/artifacts
+          cp tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
+
+          python3 -m pip install --user -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
+          
+          python3 ${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_ROOT --android_ndk_path $ANDROID_NDK_ROOT ${{ runner.temp }}/.build_settings/build_settings.json      
+
+          # Copy the built artifacts to give folder for publishing
+          BASE_PATH=${{ runner.temp }}/aar_out/Release/com/microsoft/onnxruntime/onnxruntime-android/${OnnxRuntimeVersion}
+          cp ${BASE_PATH}/*.jar  ${{ runner.temp }}/artifacts
+          cp ${BASE_PATH}/*.aar          ${{ runner.temp }}/artifacts
+          cp ${BASE_PATH}/*.pom          ${{ runner.temp }}/artifacts          
+
+      - name: Upload Android AAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-android-full-aar
+          path: ${{ runner.temp }}/artifacts
+
+  react_native_ci_android:
+    name: React Native CI Android
+    needs: build_android_packages
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    timeout-minutes: 90
+    steps:
+      - name: Set ANDROID_AVD_HOME environment variable
+        run: echo "ANDROID_AVD_HOME=${{ runner.temp }}/android-avd" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: "x64"
+
+      - name: Use Java 17 (Temurin)
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          architecture: x64
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+
+      - name: Install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Download Android AAR artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: onnxruntime-android-full-aar
+          path: ${{ runner.temp }}/android-full-aar
+
+      - name: Copy AAR to React Native and E2E directories
+        run: |
+          mkdir -p ${{ github.workspace }}/js/react_native/android/libs
+          cp ${{ runner.temp }}/android-full-aar/*.aar ${{ github.workspace }}/js/react_native/android/libs
+          mkdir -p ${{ github.workspace }}/js/react_native/e2e/android/app/libs
+          cp ${{ runner.temp }}/android-full-aar/*.aar ${{ github.workspace }}/js/react_native/e2e/android/app/libs
+
+      - name: Install dependencies and bootstrap
+        run: |
+          npm install -g detox-cli
+          npm ci
+        working-directory: ${{ github.workspace }}/js
+      - run: npm ci
+        working-directory: ${{ github.workspace }}/js/common
+      - run: |
+          npm ci
+          npm run bootstrap-no-pods
+        working-directory: ${{ github.workspace }}/js/react_native
+
+      - name: Generate a debug keystore
+        run: |
+          keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
+            -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+        working-directory: ${{ github.workspace }}/js/react_native/e2e/android
+
+      - name: Build React Native Detox Android e2e Tests
+        run: detox build --configuration android.emu.release
+        working-directory: ${{ github.workspace }}/js/react_native/e2e
+
+      - name: Setup Android Emulator
+        uses: ./.github/actions/setup-android-ndk
+        with:
+          ndk-version: 28.0.13004108
+
+      - name: Run React Native Android Instrumented Tests
+        run: ./gradlew connectedDebugAndroidTest --stacktrace
+        working-directory: ${{ github.workspace }}/js/react_native/android
+
+      - name: Run React Native Detox Android e2e Tests
+        run: |
+          JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/android-test-results.xml \
+            detox test --record-logs all \
+                         --configuration android.emu.release \
+                         --loglevel trace \
+                         --take-screenshots failing
+        working-directory: ${{ github.workspace }}/js/react_native/e2e
+
+      - name: Install psutil and Stop Android Emulator
+        if: always()
+        run: |
+          python3 -m pip install psutil
+          if test -f ./emulator.pid; then
+            echo "Emulator PID: $(cat ./emulator.pid)"
+            python3 tools/python/run_android_emulator.py \
+              --android-sdk-root "${ANDROID_SDK_ROOT}" \
+              --stop \
+              --emulator-pid-file ./emulator.pid
+            rm ./emulator.pid
+          else
+            echo "Emulator PID file was expected to exist but does not."
+          fi
+
+  react_native_ci_ios_build:
+    name: React Native CI iOS Build
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Use Xcode 15.3.0
+        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: "x64"
+
+      - name: Install Python requirements
+        run: pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Build iOS package and assemble pods
+        run: |
+          python ${{ github.workspace }}/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+            --build-dir "${{ runner.temp }}/ios_framework_full" \
+            --staging-dir "${{ runner.temp }}/ios_pod" \
+            --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
+
+      - name: Upload iOS Pod Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios_pod
+          path: ${{ runner.temp }}/ios_pod
+
+  react_native_ci_ios_unit_tests:
+    name: React Native CI iOS Unit Tests
+    needs: react_native_ci_ios_build
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download iOS pod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ios_pod
+          path: ${{ runner.temp }}/ios_pod
+
+      - name: Use Xcode 15.3.0
+        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+          
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Install dependencies and bootstrap
+        run: |
+          npm ci
+        working-directory: ${{ github.workspace }}/js
+      - run: npm ci
+        working-directory: ${{ github.workspace }}/js/common
+      - run: |
+          set -e -x
+          npm ci
+          npm run bootstrap-no-pods
+        working-directory: ${{ github.workspace }}/js/react_native
+
+      - name: Pod install
+        run: |
+          set -e -x
+          ls ${{ runner.temp }}/ios_pod/onnxruntime-c
+          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
+        working-directory: ${{ github.workspace }}/js/react_native/ios
+
+      - name: Run React Native iOS Instrumented Tests
+        run: |
+          /usr/bin/xcodebuild -sdk iphonesimulator -configuration Debug -workspace ${{ github.workspace }}/js/react_native/ios/OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.4' test CODE_SIGNING_ALLOWED=NO
+        working-directory: ${{ github.workspace }}/js/react_native/ios
+
+  react_native_ci_ios_e2e_tests:
+    name: React Native CI iOS E2E Tests
+    needs: react_native_ci_ios_build
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download iOS pod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ios_pod
+          path: ${{ runner.temp }}/ios_pod
+
+      - name: Use Xcode 15.3.0
+        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Install dependencies and bootstrap
+        run: |
+          set -e -x
+          npm install -g detox-cli
+          brew tap wix/brew
+          brew install applesimutils
+          npm ci
+        working-directory: ${{ github.workspace }}/js
+      - run: npm ci
+        working-directory: ${{ github.workspace }}/js/common
+      - run: |
+          set -e -x
+          npm ci
+          npm run bootstrap-no-pods
+        working-directory: ${{ github.workspace }}/js/react_native
+      
+      - name: Pod install for e2e tests
+        run: |
+          set -e -x
+          ls ${{ runner.temp }}/ios_pod/onnxruntime-c
+          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
+        working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
+
+      - name: Build and Run Detox iOS e2e Tests
+        run: |
+          detox build --configuration ios.sim.release
+          JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml \
+            detox test --record-logs all \
+                         --configuration ios.sim.release \
+                         --loglevel verbose \
+                         --take-screenshots failing
+        working-directory: ${{ github.workspace }}/js/react_native/e2e

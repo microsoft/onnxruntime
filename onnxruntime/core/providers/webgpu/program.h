@@ -352,7 +352,6 @@ class ProgramBase {
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }
   inline uint32_t DispatchGroupSizeZ() const { return dispatch_group_size_z_; }
   inline const Tensor* IndirectDispatchTensor() const { return indirect_dispatch_tensor_; }
-  inline bool UseIndirectDispatch() const { return indirect_dispatch_tensor_ != nullptr; }
   inline uint32_t WorkgroupSizeX() const { return workgroup_size_x_; }
   inline uint32_t WorkgroupSizeY() const { return workgroup_size_y_; }
   inline uint32_t WorkgroupSizeZ() const { return workgroup_size_z_; }
