@@ -101,7 +101,6 @@ option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 #  Usually, SIMD instructions in kernel compile fine, and we detect at run-time if they are supported
 #   But on some platforms, even compiling these SIMD specific instructions could fail.
 #   So we provide options to disable compiling these SIMD instructions.
-option(onnxruntime_DISABLE_SSE4 "Disable compiling kernel with SSE4 instructions" OFF)
 option(onnxruntime_DISABLE_AVX "Disable compiling kernel with AVX instructions" OFF)
 option(onnxruntime_DISABLE_AVX2 "Disable compiling kernel with AVX2 instructions" OFF)
 option(onnxruntime_DISABLE_AVX512 "Disable compiling kernel with AVX512 instructions" OFF)
@@ -1016,12 +1015,8 @@ if (onnxruntime_FORCE_GENERIC_ALGORITHMS)
     add_compile_definitions(FORCE_GENERIC_ALGORITHMS)
 endif()
 
-if (onnxruntime_DISABLE_SSE4)
-  add_compile_definitions(ORT_DISABLE_SSE4)
-endif()
-
 if (onnxruntime_DISABLE_AVX)
-  add_compile_definitions(DISABLE_AVX)
+  add_compile_definitions(ORT_DISABLE_AVX)
 endif()
 
 if (onnxruntime_DISABLE_AVX2)

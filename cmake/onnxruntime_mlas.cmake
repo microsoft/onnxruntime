@@ -198,16 +198,14 @@ function(setup_mlas_source_for_windows)
 
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
-      ${mlas_platform_srcs_avx}
-      ${mlas_platform_srcs_avx2}
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
@@ -248,6 +246,18 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/TanhKernelFma3.asm
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
+
+    if(NOT onnxruntime_DISABLE_AVX)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_avx}
+      )
+    endif()
+
+    if(NOT onnxruntime_DISABLE_AVX2)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_avx2}
+      )
+    endif()
 
     if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
       set_source_files_properties(${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx2.asm PROPERTIES COMPILE_FLAGS "-DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
@@ -605,8 +615,19 @@ else()
 
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}
-          ${mlas_platform_srcs_avx}
         )
+
+        if (NOT onnxruntime_DISABLE_AVX)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs_avx}
+          )
+        endif()
+
+        if (NOT onnxruntime_DISABLE_AMX)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs_amx}
+          )
+        endif()
 
         # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
         # implementation to avoid external dependency.
@@ -649,11 +670,6 @@ else()
           )
         endif()
         set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
-
-        set(mlas_platform_srcs_sse41
-          ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
-        )
-        set_source_files_properties(${mlas_platform_srcs_sse41} PROPERTIES COMPILE_FLAGS "-msse4.1")
 
         set(mlas_platform_srcs_avx
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx.S
@@ -747,13 +763,6 @@ endif()
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
           ${mlas_platform_srcs_sse2}
         )
-
-        if (NOT onnxruntime_DISABLE_SSE4)
-          set(mlas_platform_srcs
-            ${mlas_platform_srcs}
-            ${mlas_platform_srcs_sse41}
-          )
-        endif()
 
         if (NOT onnxruntime_DISABLE_AVX)
           set(mlas_platform_srcs
