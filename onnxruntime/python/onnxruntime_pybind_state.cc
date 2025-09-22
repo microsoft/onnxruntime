@@ -22,6 +22,7 @@
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -1380,11 +1381,14 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
 
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
   ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env,
-                                                                  py_sess_options.value,
                                                                   ep_devices,
-                                                                  ep_option_keys,
-                                                                  ep_option_vals,
                                                                   /*output*/ provider_factory));
+
+  ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices,
+                                                   ep_option_keys,
+                                                   ep_option_vals,
+                                                   py_sess_options.value));
+
   py_sess_options.provider_factories.push_back(std::move(provider_factory));
   return Status::OK();
 }
@@ -1583,6 +1587,18 @@ void addGlobalMethods(py::module& m) {
         return status;
       },
       R"pbdoc("Validate a compiled model's compatibility information for one or more EP devices.)pbdoc");
+
+  m.def(
+      "copy_tensors",
+      [](const std::vector<const OrtValue*>& src, const std::vector<OrtValue*>& dest, py::object& py_arg) {
+        const OrtEnv* ort_env = GetOrtEnv();
+        OrtSyncStream* stream = nullptr;
+        if (!py_arg.is_none()) {
+          stream = py_arg.cast<OrtSyncStream*>();
+        }
+        Ort::ThrowOnError(Ort::GetApi().CopyTensors(ort_env, src.data(), dest.data(), stream, src.size()));
+      },
+      R"pbdoc("Copy tensors from sources to destinations using specified stream handle (or None))pbdoc");
 
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
@@ -1785,6 +1801,16 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("CPU", OrtMemTypeCPU)
       .value("DEFAULT", OrtMemTypeDefault);
 
+  py::enum_<OrtMemoryInfoDeviceType>(m, "OrtMemoryInfoDeviceType")
+      .value("CPU", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU)
+      .value("GPU", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU)
+      .value("NPU", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_NPU)
+      .value("FPGA", OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_FPGA);
+
+  py::enum_<OrtDeviceMemoryType>(m, "OrtDeviceMemoryType")
+      .value("DEFAULT", OrtDeviceMemoryType_DEFAULT)
+      .value("HOST_ACCESSIBLE", OrtDeviceMemoryType_HOST_ACCESSIBLE);
+
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device information.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::VendorId, OrtDevice::DeviceId>())
       .def(py::init([](OrtDevice::DeviceType type,
@@ -1813,6 +1839,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def("vendor_id", &OrtDevice::Vendor, R"pbdoc(Vendor Id.)pbdoc")
+      .def("mem_type", &OrtDevice::MemType, R"pbdoc(Device Memory Type.)pbdoc")
       // generic device types that are typically used with a vendor id.
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("gpu", []() { return OrtDevice::GPU; })
@@ -1863,36 +1890,55 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
           },
           R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
 
+  py::class_<OrtSyncStream> py_sync_stream(m, "OrtSyncStream",
+                                           R"pbdoc(Represents a synchronization stream for model inference.)pbdoc");
+
   py::class_<OrtEpDevice> py_ep_device(m, "OrtEpDevice",
                                        R"pbdoc(Represents a hardware device that an execution provider supports
 for model inference.)pbdoc");
   py_ep_device.def_property_readonly(
                   "ep_name",
-                  [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
+                  [](const OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
                   R"pbdoc(The execution provider's name.)pbdoc")
       .def_property_readonly(
           "ep_vendor",
-          [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
+          [](const OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
           R"pbdoc(The execution provider's vendor name.)pbdoc")
       .def_property_readonly(
           "ep_metadata",
-          [](OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
+          [](const OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
             return ep_device->ep_metadata.Entries();
           },
           R"pbdoc(The execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "ep_options",
-          [](OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
+          [](const OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
             return ep_device->ep_options.Entries();
           },
           R"pbdoc(The execution provider's options used to configure the provider to use the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "device",
-          [](OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
+          [](const OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
             return *ep_device->device;
           },
           R"pbdoc(The OrtHardwareDevice instance for the OrtEpDevice.)pbdoc",
-          py::return_value_policy::reference_internal);
+          py::return_value_policy::reference_internal)
+      .def(
+          "memory_info",
+          [](const OrtEpDevice* ep_device, OrtDeviceMemoryType memory_type) -> const OrtMemoryInfo* {
+            Ort::ConstEpDevice ep_dev(ep_device);
+            return static_cast<const OrtMemoryInfo*>(ep_dev.GetMemoryInfo(memory_type));
+          },
+          R"pbdoc(The OrtMemoryInfo instance for the OrtEpDevice specific to the device memory type.)pbdoc",
+          py::return_value_policy::reference_internal)
+      .def(
+          "create_sync_stream",
+          [](const OrtEpDevice* ep_device) -> std::unique_ptr<OrtSyncStream> {
+            Ort::ConstEpDevice ep_dev(ep_device);
+            Ort::SyncStream stream = ep_dev.CreateSyncStream();
+            return std::unique_ptr<OrtSyncStream>(stream.release());
+          },
+          R"pbdoc(The OrtSyncStream instance for the OrtEpDevice.)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
@@ -1938,25 +1984,28 @@ for model inference.)pbdoc");
       .def_readwrite("max_power_of_two_extend_bytes", &OrtArenaCfg::max_power_of_two_extend_bytes);
 
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
-  ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
-    if (strcmp(name, onnxruntime::CPU) == 0) {
-      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), mem_type);
-    } else if (strcmp(name, onnxruntime::CUDA) == 0) {
-      return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA, type,
-          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
-                    static_cast<OrtDevice::DeviceId>(id)),
-          mem_type);
-    } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
-      return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA_PINNED, type,
-          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                    static_cast<OrtDevice::DeviceId>(id)),
-          mem_type);
-    } else {
-      throw std::runtime_error("Specified device is not supported.");
-    }
-  }));
+  ort_memory_info_binding.def(
+                             py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
+                               Ort::MemoryInfo result(name, type, id, mem_type);
+                               return std::unique_ptr<OrtMemoryInfo>(result.release());
+                             }))
+      .def_static(
+          "create_v2",
+          [](const char* name, OrtMemoryInfoDeviceType device_type, uint32_t vendor_id,
+             int32_t device_id, OrtDeviceMemoryType device_mem_type, size_t alignment, OrtAllocatorType type) {
+            Ort::MemoryInfo result(name, device_type, vendor_id, device_id, device_mem_type, alignment, type);
+            return std::unique_ptr<OrtMemoryInfo>(result.release());
+          },
+          R"pbdoc(Create an OrtMemoryInfo instance using CreateMemoryInfo_V2())pbdoc")
+      .def_property_readonly("name", [](const OrtMemoryInfo* mem_info) -> std::string { return mem_info->name; }, R"pbdoc(Arbitrary name supplied by the user)pbdoc")
+      .def_property_readonly("device_id", [](const OrtMemoryInfo* mem_info) -> int { return mem_info->device.Id(); }, R"pbdoc(Device Id.)pbdoc")
+      .def_property_readonly("mem_type", [](const OrtMemoryInfo* mem_info) -> OrtMemType { return mem_info->mem_type; }, R"pbdoc(OrtMemoryInfo memory type.)pbdoc")
+      .def_property_readonly("allocator_type", [](const OrtMemoryInfo* mem_info) -> OrtAllocatorType { return mem_info->alloc_type; }, R"pbdoc(Allocator type)pbdoc")
+      .def_property_readonly("device_mem_type", [](const OrtMemoryInfo* mem_info) -> OrtDeviceMemoryType {
+              auto mem_type = mem_info->device.MemType();
+              return (mem_type == OrtDevice::MemType::DEFAULT) ? 
+                  OrtDeviceMemoryType_DEFAULT: OrtDeviceMemoryType_HOST_ACCESSIBLE ; }, R"pbdoc(Device memory type (Device or Host accessible).)pbdoc")
+      .def_property_readonly("device_vendor_id", [](const OrtMemoryInfo* mem_info) -> uint32_t { return mem_info->device.Vendor(); });
 
   py::class_<PySessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
@@ -2297,7 +2346,50 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         ORT_UNUSED_PARAMETER(ort_values);
         ORT_THROW("External initializers are not supported in this build.");
 #endif
-      });
+      })
+      .def("add_external_initializers_from_files_in_memory", [](PySessionOptions* options, std::vector<std::string> names, std::vector<py::buffer> buffers, std::vector<size_t> lengths) -> void {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+        const auto num = names.size();
+        ORT_ENFORCE(num == buffers.size() && num == lengths.size(),
+                    "add_external_initializers_from_files_in_memory: expecting 'names', 'buffers' and 'lengths' to have equal length");
+
+        InlinedVector<PathString> file_names;
+        InlinedVector<std::pair<char*, const size_t>> files_buffers;
+        file_names.reserve(num);
+        files_buffers.reserve(num);
+
+        for (size_t i = 0; i < num; ++i) {
+          // Convert name and buffer using pybind-provided conversions
+          file_names.emplace_back(ToPathString(names[i]));
+
+          // buffers[i] is a py::buffer; request() retrieves pointer without copying
+          py::buffer_info info = buffers[i].request();
+          char* data_ptr = static_cast<char*>(info.ptr);
+
+          files_buffers.emplace_back(std::make_pair(data_ptr, lengths[i]));
+        }
+
+        ORT_THROW_IF_ERROR(options->value.AddExternalInitializersFromFilesInMemory(file_names, files_buffers));
+#else
+        ORT_UNUSED_PARAMETER(options);
+        ORT_UNUSED_PARAMETER(names);
+        ORT_UNUSED_PARAMETER(buffers);
+        ORT_UNUSED_PARAMETER(lengths);
+        ORT_THROW("External initializers are not supported in this build.");
+#endif
+      },
+           R"pbdoc(
+Provide external initializer file contents from memory.
+
+Args:
+  names: sequence[str] of external file names (as referenced by the model's external_data locations).
+  buffers: sequence[bytes-like] objects exposing the buffer protocol (e.g., bytes, bytearray, memoryview, numpy uint8 array) containing the corresponding file contents.
+  lengths: sequence[int] sizes in bytes for each buffer.
+
+Notes:
+  - Keep the provided buffers alive until after session creation completes. ONNX Runtime copies needed data during session creation.
+  - The bytestream must match the external file layout expected by the model (raw tensor bytes at the specified offsets).
+)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -2653,6 +2745,33 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             auto res = sess->GetSessionHandle()->GetModelMetadata();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
+      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+          Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
+          auto inputs_mem_info = session.GetMemoryInfoForInputs();
+          py::list result;
+          for (const auto& info : inputs_mem_info) {
+            const auto* p_info = static_cast<const OrtMemoryInfo*>(info);
+            result.append(py::cast(p_info, py::return_value_policy::reference));
+          }
+          return result; })
+      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+          Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
+          auto outputs_mem_info = session.GetMemoryInfoForOutputs();
+          py::list result;
+          for (const auto& info : outputs_mem_info) {
+            const auto* p_info = static_cast<const OrtMemoryInfo*>(info);
+            result.append(py::cast(p_info, py::return_value_policy::reference));
+          }
+          return result; })
+      .def_property_readonly("input_epdevices", [](const PyInferenceSession* sess) -> py::list {
+         Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
+         auto ep_devices = session.GetEpDeviceForInputs();
+         py::list result;
+         for (const auto& device : ep_devices) {
+           const auto* p_device = static_cast<const OrtEpDevice*>(device);
+           result.append(py::cast(p_device, py::return_value_policy::reference));
+         }
+         return result; })
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
 
         Status status;
