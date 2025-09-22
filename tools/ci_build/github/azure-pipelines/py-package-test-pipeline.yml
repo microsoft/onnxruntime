@@ -29,74 +29,62 @@ stages:
       parameters:
         job_name_suffix: 14
         python_version: 3.10
-        machine_pool:
-          vmImage: 'macOS-14'
+        os_version: 14
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 14
         python_version: 3.11
-        machine_pool:
-          vmImage: 'macOS-14'
+        os_version: 14
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 14
         python_version: 3.12
-        machine_pool:
-          vmImage: 'macOS-14'
+        os_version: 14
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 14
         python_version: 3.13
-        machine_pool:
-          vmImage: 'macOS-14'
+        os_version: 14
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 13
         python_version: 3.10
-        machine_pool:
-          vmImage: 'macOS-13'
+        os_version: 13
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 13
         python_version: 3.11
-        machine_pool:
-          vmImage: 'macOS-13'
+        os_version: 13
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 13
         python_version: 3.12
-        machine_pool:
-          vmImage: 'macOS-13'
+        os_version: 13
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 13
         python_version: 3.13
-        machine_pool:
-          vmImage: 'macOS-13'
+        os_version: 13
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 15
         python_version: 3.10
-        machine_pool:
-          vmImage: 'macOS-15'
+        os_version: 15
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 15
         python_version: 3.11
-        machine_pool:
-          vmImage: 'macOS-15'
+        os_version: 15
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 15
         python_version: 3.12
-        machine_pool:
-          vmImage: 'macOS-15'
+        os_version: 15
     - template: templates/py-package-smoking-test-macos.yml
       parameters:
         job_name_suffix: 15
         python_version: 3.13
-        machine_pool:
-          vmImage: 'macOS-15'
+        os_version: 15
 
     - template: templates/py-package-smoking-test-linux.yml
       parameters:

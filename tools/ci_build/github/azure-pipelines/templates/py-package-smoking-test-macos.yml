@@ -5,16 +5,16 @@ parameters:
 - name: python_version
   type: string
 
-- name: job_name_suffix
+- name: os_version
   type: string
   
 jobs:
-- job: Test_MAC_Wheels_${{ parameters.job_name_suffix }}_${{ replace(parameters.python_version,'.','_') }}
+- job: Test_MAC_Wheels_${{ parameters.os_version }}_${{ replace(parameters.python_version,'.','_') }}
   timeoutInMinutes: 30
   workspace:
     clean: all
   pool:
-    ${{ parameters.machine_pool }}  
+    vmImage: 'macOS-${{ parameters.os_version }}'
   steps:
   - checkout: none
 
