@@ -43,11 +43,11 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         """
 
         def assert_similar_array(ref_output, output):
-            np.testing.assert_equal(ref_output.dtype, output.dtype)
+            np.testing.assert_equal(output.dtype, ref_output.dtype)
             if ref_output.dtype == object:
-                np.testing.assert_array_equal(ref_output, output)
+                np.testing.assert_array_equal(output, ref_output)
             else:
-                np.testing.assert_allclose(ref_output, output, rtol=rtol, atol=atol)
+                np.testing.assert_allclose(output, ref_output, rtol=rtol, atol=atol)
 
         np.testing.assert_equal(len(ref_outputs), len(outputs))
         for i in range(len(outputs)):  # pylint: disable=consider-using-enumerate
