@@ -27,8 +27,6 @@ stages:
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
-    - name: SKIPNONPACKAGETESTS
-      value: 'ON'
     - name: runCodesignValidationInjection
       value: false
     - name: CUDA_MODULE_LOADINGL
