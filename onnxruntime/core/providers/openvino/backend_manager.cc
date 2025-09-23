@@ -672,7 +672,10 @@ void BackendManager::Compute(OrtKernelContext* context) {
 
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      dynamic_backend = backend_map_[key];
+      auto it = backend_map_.find(key);
+      if (it != backend_map_.end()) {
+        dynamic_backend = it->second;
+      }
     }
 
     if (!dynamic_backend) {
