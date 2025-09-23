@@ -649,6 +649,37 @@ TEST_F(GraphTransformationTests, ConstantFoldingTransposeEmptyInitializer) {
   ASSERT_TRUE(op_to_count["Transpose"] == 0);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16TopK) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant_float16_topk.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["TopK"] == 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const ConfigOptions empty_config_options;
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      TransformerLevel::Level1));
+
+  // assign all nodes to CUDA. constant folding will attempt CPU but fail, leaving nodes on CUDA.
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["TopK"] == 1);
+
+  for (auto& node : graph.Nodes()) {
+    EXPECT_STREQ(node.GetExecutionProviderType().c_str(), kCudaExecutionProvider);
+  }
+}
+
 TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
   TensorProto value_tensor;
   value_tensor.add_dims(1);
