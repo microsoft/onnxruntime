@@ -17,6 +17,26 @@ ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
+// Opaque types for kernel-based EPs
+ORT_RUNTIME_CLASS(KernelCreateInfo);
+ORT_RUNTIME_CLASS(KernelCreateContext);  // stand-in for FuncManager. may not be needed.
+ORT_RUNTIME_CLASS(KernelDef);
+ORT_RUNTIME_CLASS(MLDataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
+
+// struct that an EP implements for OpKernel computation.
+struct OrtKernelImpl {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+
+  ORT_API2_STATUS(Compute, _In_ OrtKernelImpl* this_ptr, _In_ OrtKernelContext* context);
+  ORT_API_T(void, Release, _In_ OrtKernelImpl* this_ptr);
+};
+
+typedef struct OrtKernelImpl OrtKernelImpl;
+typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ OrtKernelCreateContext* ctx,
+                                                      _In_ void* ep_state,
+                                                      _In_ const OrtKernelInfo* info,
+                                                      _Outptr_result_maybenull_ OrtKernelImpl** kernel_out);
+
 // struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
 struct OrtDataTransferImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
@@ -465,6 +485,25 @@ struct OrtEpApi {
    */
   ORT_API_T(uint64_t, GetSyncIdForLastWaitOnSyncStream,
             _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
+
+  ORT_API2_STATUS(CreateKernelCreationInfo, _In_ const OrtKernelDef* kernel_def,
+                  _In_ OrtKernelCreateFunc kernel_create_func,
+                  _In_ void* ep_state,
+                  _Outptr_ OrtKernelCreateInfo** kernel_create_info_out);
+
+  ORT_CLASS_RELEASE(KernelCreateInfo);
+
+  ORT_API2_STATUS(CreateKernelDef, _In_ const char* operator_name, _In_ const char* domain_name,
+                  _In_ int since_version_start, _In_ int since_version_end, _In_ const char* ep_name,
+                  _Outptr_ OrtKernelDef** kernel_def_out);
+
+  ORT_CLASS_RELEASE(KernelDef);
+
+  ORT_API2_STATUS(KernelDef_SetInputMemType, _In_ OrtKernelDef* kernel_def, size_t input_index, OrtMemType mem_type);
+
+  ORT_API2_STATUS(KernelDef_SetOutputMemType, _In_ OrtKernelDef* kernel_def, size_t output_index, OrtMemType mem_type);
+
+  ORT_API_T(const OrtMLDataType*, GetTensorMLDataType, ONNXTensorElementDataType elem_type);
 };
 
 /**
@@ -981,6 +1020,12 @@ struct OrtEpFactory {
                   _In_ const OrtMemoryDevice* memory_device,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
+
+  ORT_API_T(size_t, GetNumKernelCreateInfos, _In_ const OrtEpFactory* this_ptr);
+
+  ORT_API2_STATUS(GetKernelCreateInfos, _In_ OrtEpFactory* this_ptr,
+                  _Inout_ OrtKernelCreateInfo** kernel_create_infos,
+                  _In_ size_t num_kernel_create_infos);
 };
 
 #ifdef __cplusplus
