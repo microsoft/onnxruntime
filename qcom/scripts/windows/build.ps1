@@ -30,8 +30,9 @@ param (
     [bool]$Update = $false,
 
     [Parameter(Mandatory = $false,
-               HelpMessage = "Path to a target-native python executable.")]
-    [string]$TargetPyExe,
+               HelpMessage = "Build a wheel targeting this Python version.")]
+    [ValidateSet("", "3.10", "3.11", "3.12", "3.13")]
+    [string]$TargetPyVersion = "",
 
     [Parameter(Mandatory = $true,
                HelpMessage = "Python virtual environment to activate.")]
@@ -76,9 +77,12 @@ if ($Mode -eq "generate_sln") {
 else {
     $CMakeGenerator = (Get-DefaultCMakeGenerator -Arch $Arch)
 
-    if (Test-UpdateNeeded -BuildDir $BuildDir -Config $Config -CMakeGenerator $CMakeGenerator -Update $Update) {
+    if (Test-UpdateNeeded -BuildDir $BuildDir -Config $Config `
+            -TargetPyVersion $TargetPyVersion -QairtSdkRoot $QairtSdkRoot `
+            -CMakeGenerator $CMakeGenerator -Update $Update) {
         $BuildIsDirty = $true
         Save-QairtSdkFilePath -BuildDir $BuildDir -Config $Config
+        Save-TargetPyVersion -BuildDir $BuildDir -Config $Config -TargetPyVersion $TargetPyVersion
     } else {
         $BuildIsDirty = $false
     }
@@ -116,12 +120,14 @@ if ($CMakeGenerator -eq "Ninja") {
     $env:Path = "$(Get-CCacheBinDir);" + $env:Path
 }
 
-if ($TargetPyExe -ne "")
+$TargetPyExe = $null
+if ($TargetPyVersion -ne "")
 {
     # Wheels only supported when we can run Python for the target arch.
+    $TargetPyExe = (Join-Path (Get-PythonBinDir -Version $TargetPyVersion -Arch $Arch) "python.exe")
     $BuildWheel = $true
     $ArchArgs += "--enable_pybind"
-    $BuildVEnv = (Join-Path $BuildDir "venv.build")
+    $BuildVEnv = (Join-Path $BuildDir "venv-$TargetPyVersion")
     Write-Host "Building Python wheel using $TargetPyExe"
 }
 else {

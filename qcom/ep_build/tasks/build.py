@@ -1,17 +1,14 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
-import logging
 import os
-import subprocess
-import sys
 from collections.abc import Collection, Iterable
 from pathlib import Path
 from typing import Literal
 
 from ..github import is_host_github_runner
 from ..task import BashScriptsWithVenvTask, RunExecutablesWithVenvTask
-from ..util import REPO_ROOT, git_head_sha, run_and_get_output
+from ..util import REPO_ROOT, git_head_sha
 from .windows import RunPowershellScriptsTask
 
 
@@ -41,6 +38,7 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
 
 
 TargetArchWindowsT = Literal["arm64", "arm64ec", "x86_64"]
+TargetPyVersionT = Literal["3.10", "3.11", "3.12", "3.13"]
 
 
 class BuildEpWindowsTask(RunPowershellScriptsTask):
@@ -50,6 +48,7 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         venv: Path | None,
         target_arch: TargetArchWindowsT,
         config: Literal["Debug", "Release", "RelWithDebInfo"],
+        target_py_version: TargetPyVersionT | None,
         qairt_sdk_root: Path | None,
         mode: str,
         build_as_x: bool = False,
@@ -72,28 +71,10 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         if build_as_x:
             cmd.extend(["-BuildAsX", "1"])
 
-        # When building for ARM64x, we only build the Python bits for ARM64ec
-        if build_as_x and target_arch == "arm64":
-            target_py_exe = None
-        else:
-            target_py_exe = self.__target_py_exe(target_arch)
-
-        if target_py_exe is not None:
-            cmd.extend(["-TargetPyExe", str(target_py_exe).replace(" ", "` ")])
+        if target_py_version is not None:
+            cmd.extend(["-TargetPyVersion", str(target_py_version)])
 
         super().__init__(group_name, [cmd], env=ort_build_env_vars())
-
-    @staticmethod
-    def __target_py_exe(target_arch: TargetArchWindowsT) -> Path | None:
-        if target_arch == "arm64":
-            try:
-                return Path(
-                    run_and_get_output(["py", "-3.12-arm64", "-c", "import sys; print(sys.executable)"], quiet=True)
-                )
-            except subprocess.CalledProcessError:
-                logging.warning(f"Could not find native Python for {target_arch}.")
-                return None
-        return Path(sys.executable)
 
 
 class QdcTestsTask(RunExecutablesWithVenvTask):

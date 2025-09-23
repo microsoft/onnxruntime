@@ -22,6 +22,9 @@ on:
       windows_arm64_runner_arch:
         type: string
         default: "X64"
+      target_py_vsn:
+        default: "3.12"
+        type: string
 
 env:
   ORT_NIGHTLY_BUILD: "${{ inputs.nightly_build == true && '1' || '0' }}"
@@ -91,6 +94,7 @@ jobs:
       build_runner_arch: ${{ inputs.windows_arm64_runner_arch }}
       target_arch: arm64
       upload_wheel: ${{ inputs.windows_arm64_runner_arch == 'ARM64' }}
+      target_py_vsn: ${{ inputs.windows_arm64_runner_arch == 'ARM64' && inputs.target_py_vsn || 'None' }}
       test_runner_arch: arm64
 
   build-and-test-windows-arm64ec:
@@ -101,6 +105,7 @@ jobs:
       nightly_build: ${{ inputs.nightly_build }}
       target_arch: arm64ec
       upload_wheel: false  # ARM64x is the way to go so let's not confuse matters by publishing artifacts
+      target_py_vsn: ${{ inputs.target_py_vsn }}
       run_tests: false  # ARM64ec tests are horribly broken so this is a build-only config in CI.
 
   build-and-test-windows-x86_64:
@@ -110,6 +115,7 @@ jobs:
     with:
       nightly_build: ${{ inputs.nightly_build }}
       target_arch: x86_64
+      target_py_vsn: ${{ inputs.target_py_vsn }}
 
   lint:
     if: ${{ inputs.do_all }}

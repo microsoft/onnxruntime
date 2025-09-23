@@ -114,6 +114,16 @@ function Get-QairtSdkFilePath() {
     "$BuildDir\qairt-sdk-path-$Config.txt"
 }
 
+function Get-TargetPyVersionFilePath() {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$BuildDir,
+        [Parameter(Mandatory = $true)]
+        [string]$Config
+    )
+    "$BuildDir\target-py-version-$Config.txt"
+}
+
 function Save-QairtSdkFilePath() {
     param (
         [Parameter(Mandatory = $true)]
@@ -129,12 +139,31 @@ function Save-QairtSdkFilePath() {
     $QairtSdkRoot | Out-File -FilePath $SdkFilePath
 }
 
+function Save-TargetPyVersion() {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$BuildDir,
+        [Parameter(Mandatory = $true)]
+        [string]$Config,
+        [Parameter(Mandatory = $false)]
+        [string]$TargetPyVersion = ""
+    )
+
+    $TargetPyVersionFilePath = (Get-TargetPyVersionFilePath -BuildDir $BuildDir -Config $Config)
+    if (-Not (Test-Path "$TargetPyVersionFilePath\..")) {
+        New-Item -Path "$TargetPyVersionFilePath\.." -ItemType Directory | Out-Null
+    }
+    $TargetPyVersion | Out-File -FilePath $TargetPyVersionFilePath
+}
+
 function Test-QairtSdkDiffers() {
     param (
         [Parameter(Mandatory = $true)]
         [string]$BuildDir,
         [Parameter(Mandatory = $true)]
-        [string]$Config
+        [string]$Config,
+        [Parameter(Mandatory = $true)]
+        [string]$QairtSdkRoot
     )
 
     $QairtSdkPathPath = (Get-QairtSdkFilePath -BuildDir $BuildDir -Config $Config)
@@ -146,12 +175,35 @@ function Test-QairtSdkDiffers() {
     return $LastSdkPath -ne $QairtSdkRoot
 }
 
+function Test-TargetPyVersionDiffers() {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$BuildDir,
+        [Parameter(Mandatory = $true)]
+        [string]$Config,
+        [Parameter(Mandatory = $false)]
+        [string]$TargetPyVersion = ""
+    )
+
+    $TargetPyVersionFilePath = (Get-TargetPyVersionFilePath -BuildDir $BuildDir -Config $Config)
+    if (-Not (Test-Path -Path $TargetPyVersionFilePath)) {
+        return $True
+    }
+
+    $LastTargetPyVersion = Get-Content -Path $TargetPyVersionFilePath
+    return $LastTargetPyVersion -ne $TargetPyVersion
+}
+
 function Test-UpdateNeeded() {
     param (
         [Parameter(Mandatory = $true)]
         [string]$BuildDir,
         [Parameter(Mandatory = $true)]
         [string]$Config,
+        [Parameter(Mandatory = $false)]
+        [string]$TargetPyVersion = "",
+        [Parameter(Mandatory = $true)]
+        [string]$QairtSdkRoot,
         [Parameter(Mandatory = $true)]
         [string]$CMakeGenerator,
         [Parameter(Mandatory = $true)]
@@ -177,7 +229,12 @@ function Test-UpdateNeeded() {
         }
     }
 
-    if (Test-QairtSdkDiffers -BuildDir $BuildDir -Config $Config) {
+    if (Test-TargetPyVersionDiffers -BuildDir $BuildDir -Config $Config -TargetPyVersion $TargetPyVersion) {
+        Write-Host "Previous build used a different Python version."
+        return $True
+    }
+
+    if (Test-QairtSdkDiffers -BuildDir $BuildDir -Config $Config -QairtSdkRoot $QairtSdkRoot) {
         Write-Host "Previous build used a different QAIRT SDK."
         return $True
     }

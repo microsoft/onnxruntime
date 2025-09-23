@@ -72,6 +72,54 @@ function Get-PackageManager() {
     Join-Path $RepoRoot "qcom\scripts\all\package_manager.py"
 }
 
+function Get-PythonBinDir() {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Version,
+        [Parameter(Mandatory = $true)]
+        [string]$Arch
+    )
+
+    switch ($Arch) {
+        "arm64" { $PyVsn = "$Version-arm64"; $PkgArch = "arm64" }
+        "arm64ec" { $PyVsn = "$Version"; $PkgArch = "x86_64" }
+        "x86_64" { $PyVsn = $Version; $PkgArch = "x86_64" }
+        Default { throw "Unknown Python executable arch $Arch "}
+    }
+
+    if ((Get-HostArch) -eq "x86_64" -and $Arch -eq "arm64") {
+        throw "Python for $Arch not supported on x86_64 host."
+    }
+
+    # An appropriate Python might exist on the system already. If so, let's use it
+    # so we don't clobber something someone might be using.
+    $PythonExePath = (py "-$PyVsn" -c "import sys; print(sys.executable)")
+
+    $PkgName = "python_$($Version.Replace('.', ''))_windows_$PkgArch"
+
+    # See https://docs.python.org/3/using/windows.html#return-codes
+    # 101 --> Failed to launch Python
+    # 103 --> Unable to locate the requested version
+    switch ($LASTEXITCODE) {
+        0 {
+            Write-Host "Using existing $PyVsn in $PythonExePath"
+            return (Resolve-Path (Split-Path -Parent $PythonExePath))
+        }
+        103 {
+            Write-Host "Installing $PkgName"
+            return Get-PackageBinDir $PkgName
+        }
+        101 {
+            Write-Host "Repairing $PkgName"
+            Repair-Package $PkgName
+            return Get-PackageBinDir $PkgName
+        }
+        Default {
+            throw "Could not locate/install Python $Version for $Arch."
+        }
+    }
+}
+
 function Get-QairtRoot() {
     Get-PackageContentDir qairt
 }
@@ -92,5 +140,17 @@ function Install-Package() {
 function Optimize-ToolsDir() {
     Assert-Success -ErrorMessage "Failed to optimize tools directory." {
         python.exe (Get-PackageManager) --clean --package-root (Get-ToolsDir)
+    }
+}
+
+function Repair-Package() {
+    param(
+        [Parameter(Mandatory = $true,
+        HelpMessage = "The package to repair.")]
+        [string]$Package
+    )
+
+    Assert-Success -ErrorMessage "Failed to repair package $Package" {
+        python.exe (Get-PackageManager) --repair --package $Package --package-root (Get-ToolsDir)
     }
 }

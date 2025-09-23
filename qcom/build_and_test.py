@@ -32,6 +32,7 @@ from ep_build.tasks.build import (
     BuildEpLinuxTask,
     BuildEpWindowsTask,
     QdcTestsTask,
+    TargetPyVersionT,
 )
 from ep_build.tasks.python import CreateVenvTask, RunLinterTask
 from ep_build.util import (
@@ -111,8 +112,16 @@ Environment variables
         help=f"Path to QAIRT SDK. Overrides default version and {QAIRT_SDK_ROOT_ENV_VAR}, {QNN_SDK_ROOT_ENV_VAR}, and {SNPE_ROOT_ENV_VAR} environment variables.",
     )
     parser.add_argument("--skip", metavar="TASK_RE", type=str, nargs="+", help="List of tasks to skip.")
+    parser.add_argument(
+        "--target-py-version",
+        choices=["3.10", "3.11", "3.12", "3.13", "None"],
+        default="3.12",
+        help="[Windows only] Build a wheel for this version of Python",
+    )
 
     args = parser.parse_args()
+    if args.target_py_version.lower() == "none":
+        args.target_py_version = None
     return args
 
 
@@ -126,10 +135,13 @@ class TaskLibrary:
         self,
         python_executable: Path,
         venv_path: Path,
+        target_py_version: TargetPyVersionT | None,
         qairt_sdk_root: Path | None,
     ) -> None:
         self.__python_executable = python_executable
         self.__venv_path = venv_path
+        # pylance somehow cannot correctly deduce the type of self.__target_py_version
+        self.__target_py_version: TargetPyVersionT | None = target_py_version
         self.__qairt_sdk_root = qairt_sdk_root
 
     @staticmethod
@@ -200,6 +212,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "arm64",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
                 )
@@ -216,6 +229,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "arm64ec",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
                 )
@@ -232,6 +246,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "arm64ec",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
                     build_as_x=True,
@@ -249,6 +264,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "x86_64",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
                 )
@@ -333,6 +349,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "arm64",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -349,6 +366,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "arm64ec",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -368,6 +386,7 @@ class TaskLibrary:
                             self.__venv_path,
                             "arm64",
                             "Release",
+                            None,  # Never build the arm64 slice against Python
                             self.__qairt_sdk_root,
                             "build",
                             build_as_x=True,
@@ -377,6 +396,7 @@ class TaskLibrary:
                             self.__venv_path,
                             "arm64ec",
                             "Release",
+                            self.__target_py_version,
                             self.__qairt_sdk_root,
                             "build",
                             build_as_x=True,
@@ -408,6 +428,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "x86_64",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -458,6 +479,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "x86_64",
                     "Debug",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "generate_sln",
                 )
@@ -610,6 +632,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "arm64",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
                 )
@@ -626,6 +649,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "arm64ec",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
                 )
@@ -642,6 +666,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "x86_64",
                     "Release",
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
                 )
@@ -672,13 +697,14 @@ def plan_from_dependencies(
     main_tasks: list[str],
     python_executable: Path,
     venv_path: Path,
+    target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
 ) -> Plan:
     """
     Uses a work list algorithm to create a Plan to build the given tasks and their
     dependencies in a valid order. This is the default planner.
     """
-    task_library = TaskLibrary(python_executable, venv_path, qairt_sdk_root)
+    task_library = TaskLibrary(python_executable, venv_path, target_py_version, qairt_sdk_root)
     plan = Plan()
 
     # We always run summarizers, which perform conditional work on the output
@@ -724,13 +750,14 @@ def plan_from_task_list(
     tasks: list[str],
     python_executable: Path,
     venv_path: Path,
+    target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
 ) -> Plan:
     """
     Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.
     Used by --only.
     """
-    task_library = TaskLibrary(python_executable, venv_path, qairt_sdk_root)
+    task_library = TaskLibrary(python_executable, venv_path, target_py_version, qairt_sdk_root)
     plan = Plan()
     for task_name in tasks:
         # add task_name to plan
@@ -754,7 +781,7 @@ def build_and_test():
 
     if len(args.task) > 0:
         planner = plan_from_task_list if args.only else plan_from_dependencies
-        plan = planner(args.task, DEFAULT_PYTHON, VENV_PATH, qairt_sdk_root)
+        plan = planner(args.task, DEFAULT_PYTHON, VENV_PATH, args.target_py_version, qairt_sdk_root)
 
     if args.skip is not None:
         for skip in args.skip:

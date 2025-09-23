@@ -16,6 +16,9 @@ on:
       build_runner_arch:
         default: "X64"
         type: string
+      target_py_vsn:
+        default: "3.12"
+        type: string
       run_tests:
         default: true
         type: boolean
@@ -40,6 +43,10 @@ on:
       build_runner_arch:
         description: "The architecture of the build machine to use. X64 are faster, but ARM64 can produce ARM64 wheels."
         default: "X64"
+        type: string
+      target_py_vsn:
+        description: "Build a wheel for this version of Python (3.10, 3.11, 3.12, 3.13, None)"
+        default: "3.12"
         type: string
       test_runner_arch:
         description: "The architecture of the test machine to use: X64 or ARM64."
@@ -69,7 +76,7 @@ jobs:
       - name: Build Windows ${{ inputs.target_arch }}
         shell: cmd
         run: |
-          python .\qcom\build_and_test.py archive_ort_windows_${{ inputs.target_arch }}
+          python .\qcom\build_and_test.py --target-py-version ${{inputs.target_py_vsn}} archive_ort_windows_${{ inputs.target_arch }}
 
       - uses: actions/upload-artifact@v3
         with:
