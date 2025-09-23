@@ -27,6 +27,28 @@ class QMoE final : public MoE {
 
   Status ComputeInternal(ComputeContext& context) const override;
 
+  // FIXME: for debug only, will remove it later.
+  template <typename T>
+  void DumpTensor(const Tensor* t, char *txt, ComputeContext& context) const {
+    int n = 16;
+    if (t->Shape().Size() < n) {
+      n = static_cast<int>(t->Shape().Size());
+    }
+    std::cout << txt << ": " << t->Shape().ToString() << std::endl;
+    auto t_cpu = context.CreateCPUTensor(t->DataType(), t->Shape());
+    Info().GetDataTransferManager().CopyTensor(*t, t_cpu);
+    const T * t_data = t_cpu.Data<T>();
+    for (int64_t i = 0; i < n; i++) {
+      std::cout << txt << "[" << i << "] = " << static_cast<float>(t_data[i]) << std::endl;
+    }
+    std::cout << "...\n";
+    int size = static_cast<int>(t->Shape().Size());
+    for (int64_t i = size - n; i < size; i++) {
+      std::cout << txt << "[" << i << "] = " << static_cast<float>(t_data[i]) << std::endl;
+    }
+    std::cout << "--\n";
+  }
+
  private:
   int64_t expert_weight_bits_;
   int64_t block_size_;

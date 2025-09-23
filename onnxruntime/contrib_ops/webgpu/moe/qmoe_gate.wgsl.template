@@ -31,25 +31,18 @@ $MAIN {
     shared_idxs[tid] = max_idx;
     workgroupBarrier();
 
-    // Bitonic Top-K sorting algorithm
-    for (var size = 2u; size <= workgroup_size_x; size *= 2u) {
-        for (var stride = size / 2u; stride > 0u; stride /= 2u) {
-            let partner = tid ^ stride;
-            if (partner > tid && partner < workgroup_size_x && tid < cols && partner < cols) {
-                let ascending_block = ((tid & size) != 0u);
-                let should_swap = select(
-                    shared_vals[partner] > shared_vals[tid],
-                    shared_vals[partner] < shared_vals[tid],
-                    ascending_block
-                );
-                if (should_swap) {
-                    // Swap values and indices
+    // K is very small, use a simple bubble sort
+    for (var i = 0u; i < workgroup_size_x - 1u; i++) {
+        for (var j = 0u; j < workgroup_size_x - 1u - i; j++) {
+            if (tid == j && tid < cols && (tid + 1u) < cols) {
+                // Compare adjacent elements and swap if needed (descending order)
+                if (shared_vals[tid] < shared_vals[tid + 1u]) {
                     let temp_val = shared_vals[tid];
                     let temp_idx = shared_idxs[tid];
-                    shared_vals[tid] = shared_vals[partner];
-                    shared_idxs[tid] = shared_idxs[partner];
-                    shared_vals[partner] = temp_val;
-                    shared_idxs[partner] = temp_idx;
+                    shared_vals[tid] = shared_vals[tid + 1u];
+                    shared_idxs[tid] = shared_idxs[tid + 1u];
+                    shared_vals[tid + 1u] = temp_val;
+                    shared_idxs[tid + 1u] = temp_idx;
                 }
             }
             workgroupBarrier();
@@ -57,17 +50,17 @@ $MAIN {
     }
     if (tid < K) {
         let output_base = row * K;
-        let src_idx = tid;
-        if (src_idx < cols) {
-            // setup for fc1 nbitmm, x=input offset, y=weight offset, z=output offset
+        if (tid < cols) {
+            let idx = shared_idxs[tid];
             topk_indices_fc1[output_base + tid].x = 0u;
-            topk_indices_fc1[output_base + tid].y = shared_idxs[src_idx];
-            topk_indices_fc1[output_base + tid].z = shared_idxs[src_idx];
+            topk_indices_fc1[output_base + tid].y = idx;
+            topk_indices_fc1[output_base + tid].z = row * K + tid;
+            topk_indices_fc1[output_base + tid].w = 99u;
 
-            // setup for fc2 nbitmm, x=input offset, y=weight offset, z=output offset
-            topk_indices_fc2[output_base + tid].x = shared_idxs[src_idx];
-            topk_indices_fc2[output_base + tid].y = shared_idxs[src_idx];
-            topk_indices_fc2[output_base + tid].z = shared_idxs[src_idx];
+            topk_indices_fc2[output_base + tid].x = tid;
+            topk_indices_fc2[output_base + tid].y = idx;
+            topk_indices_fc2[output_base + tid].z = row * K + tid;
+            topk_indices_fc2[output_base + tid].w = 99u;
         }
     }
     workgroupBarrier();
@@ -78,7 +71,7 @@ $MAIN {
             sum += exp(f32(shared_vals[i]));
         }
         for (var i = 0u; i < K; i++) {
-            topk_values[output_base + i] = input_element_t(exp(f32(shared_vals[i])) / sum);
+            topk_values[output_base + i] = topk_values_value_t(exp(f32(shared_vals[i])) / sum);
         }
     }
 } // MAIN

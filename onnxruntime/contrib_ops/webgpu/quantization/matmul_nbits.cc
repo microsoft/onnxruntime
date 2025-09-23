@@ -111,6 +111,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const Tensor* g_idx = context.Input(4);
   const Tensor* bias = context.Input(5);
 
+  // FIXME: this is for debgguing only, will remove it later.
+  const Tensor* offsets = context.Input(6);
+
   ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
 
   const bool has_zero_points = zero_points != nullptr;
@@ -123,13 +126,25 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   MatMulComputeHelper helper;
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
-  auto* y = context.Output(0, helper.OutputShape());
+  Tensor *y;
+  auto output_shape = helper.OutputShape();
+  if (offsets != nullptr) {
+    // FIXME: this is for debgguing only, will remove it later.
+    auto new_output_shape = output_shape.AsShapeVector();
+    std::vector<int64_t> offsets_shape = {offsets->Shape()[0]};
+    for (size_t i = 0; i < output_shape.NumDimensions(); i++) {
+      offsets_shape.push_back(output_shape[i]);
+    }
+    y = context.Output(0, TensorShape(offsets_shape));
+  } else {
+    y = context.Output(0, output_shape);
+  }
   const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
   }
 
-  return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, nullptr);
+  return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, offsets);
 }
 
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
@@ -146,7 +161,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
 
   const bool has_offsets = offsets != nullptr;
-  const uint32_t weight_index = has_offsets ? static_cast<uint32_t>(offsets->Shape()[1]) : 0;
+  const uint32_t weight_index = has_offsets ? static_cast<uint32_t>(offsets->Shape()[0]) : 0;
   const bool has_bias = bias != nullptr;
   const bool has_zero_points = zero_points != nullptr;
   if (has_zero_points) {

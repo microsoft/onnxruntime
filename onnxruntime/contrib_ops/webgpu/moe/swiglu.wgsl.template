@@ -3,17 +3,23 @@
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
 
+// This implemnts:
+// gate, up = gate_up[..., 0::2], gate_up[..., 1::2]
+// gate = gate.clamp(min=None, max=self.limit)
+// up = up.clamp(min=-self.limit, max=self.limit)
+// glu = gate * torch.sigmoid(gate * self.alpha)
+// gated_output = (up + 1) * glu
+
 $MAIN {
   let total = uniforms.rows * uniforms.cols;
   guardAgainstOutOfBoundsWorkgroupSizes(total);
 
   let row = global_idx / uniforms.cols;
   let col = global_idx % uniforms.cols;
-  let base = row * (2u * uniforms.cols);
-
-  let gate_val = min(f32(input[base + col]), uniforms.swiglu_limit);
-  let linear_val = clamp(f32(input[base + uniforms.cols + col]), -uniforms.swiglu_limit, uniforms.swiglu_limit);
-  let sigmoid_out = 1.0f / (1.0f + exp(-uniforms.alpha * gate_val));
-  let swish_out = gate_val * sigmoid_out;
-  output[global_idx] = output_element_t(swish_out * (linear_val + uniforms.beta));
+  let base = row * uniforms.cols;
+  let gate_up = vec2<f32>(input[base + col]);
+  let gate_val = min(gate_up.x, uniforms.swiglu_limit);
+  let up_val = clamp(gate_up.y, -uniforms.swiglu_limit, uniforms.swiglu_limit);
+  let glu = gate_val * 1.0f / (1.0f + exp(-uniforms.alpha * gate_val));
+  output[global_idx] = output_element_t(glu * (up_val + uniforms.beta));
 } // MAIN

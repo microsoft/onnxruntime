@@ -83,6 +83,7 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
  private:
 };
 
+// #define GSDEBUG 1
 
 Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* input = context.Input<Tensor>(0);
@@ -123,7 +124,6 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   }
 
   const int64_t fc1_output_size = is_swiglu && swiglu_fusion_ > 0 ? 2 * moe_params.inter_size : moe_params.inter_size;
-  const int64_t fc2_output_size = moe_params.inter_size;
   const int64_t total_output_size = moe_params.num_rows * moe_params.hidden_size;
   const bool is_fp16 = input->DataType() == DataTypeImpl::GetType<MLFloat16>();
   const auto dtype = is_fp16 ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
@@ -153,16 +153,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
   const int64_t K_fc1 = moe_params.hidden_size; // left_shape[left_num_dims - 1]
   const int64_t N_fc1 = fc1_output_size;        // right_shape[right_num_dims - 1]
-  const int64_t K_fc2 = moe_params.inter_size; // left_shape[left_num_dims - 1]
-  const int64_t N_fc2 = fc2_output_size;        // right_shape[right_num_dims - 1]
+  const int64_t K_fc2 = moe_params.inter_size;  // left_shape[left_num_dims - 1]
+  const int64_t N_fc2 = moe_params.inter_size;  // right_shape[right_num_dims - 1]
   const int64_t accuracy_level = 4;
   const int64_t block_size = (block_size_ != 0) ? block_size_ : fc1_experts_weights->Shape()[2];
   Status status;
 
   //
-  // Step 2: matmul the input with fc1 of the selected experts
+  // Step 2: matmul the input with fc1 (gate_up) of the selected experts
   //
-  TensorShape fc1_output_shape({k_ * moe_params.num_rows, fc1_output_size});
+  TensorShape fc1_output_shape({k_, moe_params.num_rows, fc1_output_size});
   Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
 
   status = ApplyMatMulNBits(input, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
@@ -170,33 +170,50 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                             &fc1_outputs, &router_idx_fc1);
   ORT_RETURN_IF_ERROR(status);
 
+#ifdef GSDEBUG
+  DumpTensor<MLFloat16>(input, "input", context);
+  DumpTensor<MLFloat16>(router_logits, "router_logits", context);
+  DumpTensor<MLFloat16>(&router_values, "router_values", context);
+  DumpTensor<MLFloat16>(&fc1_outputs, "fc1_outputs", context);
+  DumpTensor<uint32_t>(&router_idx_fc1, "router_idx_fc1", context);
+  DumpTensor<uint32_t>(&router_idx_fc2, "router_idx_fc2", context);
+#endif
+
   //
   // Step 3: apply swigly
   //
-  TensorShape fc1_activated_shape({k_ * moe_params.num_rows, moe_params.inter_size});
+  TensorShape fc1_activated_shape({k_, moe_params.num_rows, moe_params.inter_size});
   Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
   if (is_swiglu) {
     SwigLuProgram swiglu;
     swiglu
-        .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}})
+        .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type, 2}})
         .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
-        .SetDispatchGroupSize((fc1_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-        .AddUniformVariables({static_cast<uint32_t>(fc1_activated_shape[1]), static_cast<uint32_t>(moe_params.inter_size), activation_alpha_, activation_beta_, swiglu_limit_});
+        .SetDispatchGroupSize(((k_ * moe_params.num_rows * moe_params.inter_size) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({static_cast<uint32_t>(k_ * moe_params.num_rows), static_cast<uint32_t>(moe_params.inter_size), activation_alpha_, activation_beta_, swiglu_limit_});
     ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
   } else {
     ORT_THROW("only swiglu is supported for now.");
   }
 
+#ifdef GSDEBUG
+  DumpTensor<MLFloat16>(&fc1_activated, "fc1_activated", context);
+#endif
+
   //
-  // Step 4: multiply fc1_activated with fc2 of the selected experts
+  // Step 4: multiply fc1_activated with fc2 (gate_down) of the selected experts
   //
-  TensorShape fc2_output_shape({k_ * moe_params.num_rows, fc2_output_size});
+  TensorShape fc2_output_shape({k_, moe_params.num_rows, moe_params.inter_size});
   Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
 
   status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
                             K_fc2, N_fc2, block_size, accuracy_level, expert_weight_bits_, context,
                             &fc2_outputs, &router_idx_fc2);
   ORT_RETURN_IF_ERROR(status);
+
+#ifdef GSDEBUG
+  DumpTensor<MLFloat16>(&fc2_outputs, "fc2_outputs", context);
+#endif
 
   //
   // Step 5: multiply fc2_outputs with router_values and accumulate
@@ -214,6 +231,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                             static_cast<uint32_t>(k_)});
 
   ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
+
+#ifdef GSDEBUG
+  DumpTensor<MLFloat16>(output_tensor, "output_tensor", context);
+#endif
 
   return Status::OK();
 }
