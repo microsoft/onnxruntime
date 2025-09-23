@@ -1084,8 +1084,7 @@ Return Value:
 #endif
 
 MLAS_FORCEINLINE
-float*
-MlasSgemmKernelLoop(
+float* MlasSgemmKernelLoop(
     const float* A,
     const float* B,
     float* C,
@@ -1096,67 +1095,45 @@ MlasSgemmKernelLoop(
     size_t ldc,
     float alpha,
     bool ZeroMode
-    )
-/*++
-
-Routine Description:
-
-    This routine steps through the rows of the input and output matrices calling
-    the kernel until all rows have been processed.
-
-Arguments:
-
-    A - Supplies the address of matrix A.
-
-    B - Supplies the address of matrix B. The matrix data has been packed using
-        MlasSgemmCopyPackB or MlasSgemmTransposePackB.
-
-    C - Supplies the address of matrix C.
-
-    CountK - Supplies the number of columns from matrix A and the number of rows
-        from matrix B to iterate over.
-
-    CountM - Supplies the number of rows from matrix A and matrix C to iterate
-        over.
-
-    CountN - Supplies the number of columns from matrix B and matrix C to
-        iterate over.
-
-    lda - Supplies the first dimension of matrix A.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
-
-    ZeroMode - Supplies true if the output matrix must be zero initialized,
-        else false if the output matrix is accumulated into.
-
-Return Value:
-
-    Returns the next address of matrix C.
-
---*/
+)
 {
     while (CountM > 0) {
 
-        size_t RowsHandled;
+        size_t RowsHandled = 0;
 
 #if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
+
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+
 #else
-        if (ZeroMode) { 
-            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-              RowsHandled = MlasSgemmKernelZero_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);  
-            } else {          
-            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha); }
-        } else {
-            
-            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-                RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);  
-            } else {          
-                RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha); }
-        }
+
+        if (ZeroMode) {
+
+#if defined(MLAS_USE_SVE)
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+                RowsHandled = MlasSgemmKernelZero_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            } else {
+                RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            }
+#else
+            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
 #endif
+
+        } else {
+
+#if defined(MLAS_USE_SVE)
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+                RowsHandled = MlasSgemmKernelAdd_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            } else {
+                RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            }
+#else
+            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+#endif
+
+        }
+
+#endif // platform check
 
         C += ldc * RowsHandled;
         A += lda * RowsHandled;
@@ -1165,6 +1142,7 @@ Return Value:
 
     return C;
 }
+
 
 void
 MlasSgemmOperation(

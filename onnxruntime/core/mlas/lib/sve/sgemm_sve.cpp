@@ -85,14 +85,14 @@ processrows_8(
                     a6 = MlasSvedupFloat32(a[6 * lda + p]);
                     a7 = MlasSvedupFloat32(a[7 * lda + p]);
                 }
-                partial0 = MlasSveMultiplyAddFloat32(pg, partial0, bvals, a0);
-                partial1 = MlasSveMultiplyAddFloat32(pg, partial1, bvals, a1);
-                partial2 = MlasSveMultiplyAddFloat32(pg, partial2, bvals, a2);
-                partial3 = MlasSveMultiplyAddFloat32(pg, partial3, bvals, a3);
-                partial4 = MlasSveMultiplyAddFloat32(pg, partial4, bvals, a4);
-                partial5 = MlasSveMultiplyAddFloat32(pg, partial5, bvals, a5);
-                partial6 = MlasSveMultiplyAddFloat32(pg, partial6, bvals, a6);
-                partial7 = MlasSveMultiplyAddFloat32(pg, partial7, bvals, a7);
+                partial0 = MlasSveMultiplyAddFloat32(pg, bvals, a0, partial0);
+                partial1 = MlasSveMultiplyAddFloat32(pg, bvals, a1, partial1);
+                partial2 = MlasSveMultiplyAddFloat32(pg, bvals, a2, partial2);
+                partial3 = MlasSveMultiplyAddFloat32(pg, bvals, a3, partial3);
+                partial4 = MlasSveMultiplyAddFloat32(pg, bvals, a4, partial4);
+                partial5 = MlasSveMultiplyAddFloat32(pg, bvals, a5, partial5);
+                partial6 = MlasSveMultiplyAddFloat32(pg, bvals, a6, partial6);
+                partial7 = MlasSveMultiplyAddFloat32(pg, bvals, a7, partial7);
             }
             // Accumulate partials into accumulators
             acc0 = MlasSveAddFloat32(pg, acc0, partial0);
@@ -184,12 +184,12 @@ processrows_6(
                     a4 = MlasSvedupFloat32(a[4 * lda + p]);
                     a5 = MlasSvedupFloat32(a[5 * lda + p]);
                 }
-                partial0 = MlasSveMultiplyAddFloat32(pg, partial0, bvals, a0);
-                partial1 = MlasSveMultiplyAddFloat32(pg, partial1, bvals, a1);
-                partial2 = MlasSveMultiplyAddFloat32(pg, partial2, bvals, a2);
-                partial3 = MlasSveMultiplyAddFloat32(pg, partial3, bvals, a3);
-                partial4 = MlasSveMultiplyAddFloat32(pg, partial4, bvals, a4);
-                partial5 = MlasSveMultiplyAddFloat32(pg, partial5, bvals, a5);
+                partial0 = MlasSveMultiplyAddFloat32(pg, bvals, a0, partial0);
+                partial1 = MlasSveMultiplyAddFloat32(pg, bvals, a1, partial1);
+                partial2 = MlasSveMultiplyAddFloat32(pg, bvals, a2, partial2);
+                partial3 = MlasSveMultiplyAddFloat32(pg, bvals, a3, partial3);
+                partial4 = MlasSveMultiplyAddFloat32(pg, bvals, a4, partial4);
+                partial5 = MlasSveMultiplyAddFloat32(pg, bvals, a5, partial5);
             }
             acc0 = MlasSveAddFloat32(pg, acc0, partial0);
             acc1 = MlasSveAddFloat32(pg, acc1, partial1);
@@ -264,10 +264,10 @@ processrows_4(
                     a2 = MlasSvedupFloat32(a[2 * lda + p]);
                     a3 = MlasSvedupFloat32(a[3 * lda + p]);
                 }
-                partial0 = MlasSveMultiplyAddFloat32(pg, partial0, bvals, a0);
-                partial1 = MlasSveMultiplyAddFloat32(pg, partial1, bvals, a1);
-                partial2 = MlasSveMultiplyAddFloat32(pg, partial2, bvals, a2);
-                partial3 = MlasSveMultiplyAddFloat32(pg, partial3, bvals, a3);
+                partial0 = MlasSveMultiplyAddFloat32(pg, bvals, a0, partial0);
+                partial1 = MlasSveMultiplyAddFloat32(pg, bvals, a1, partial1);
+                partial2 = MlasSveMultiplyAddFloat32(pg, bvals, a2, partial2);
+                partial3 = MlasSveMultiplyAddFloat32(pg, bvals, a3, partial3);
             }
             acc0 = MlasSveAddFloat32(pg, acc0, partial0);
             acc1 = MlasSveAddFloat32(pg, acc1, partial1);
@@ -327,8 +327,8 @@ processrows_2(
                     a0 = MlasSvedupFloat32(a[0 * lda + p]);
                     a1 = MlasSvedupFloat32(a[1 * lda + p]);
                 }
-                partial0 = MlasSveMultiplyAddFloat32(pg, partial0, bvals, a0);
-                partial1 = MlasSveMultiplyAddFloat32(pg, partial1, bvals, a1);
+                partial0 = MlasSveMultiplyAddFloat32(pg, bvals, a0, partial0);
+                partial1 = MlasSveMultiplyAddFloat32(pg, bvals, a1, partial1);
             }
             acc0 = MlasSveAddFloat32(pg, acc0, partial0);
             acc1 = MlasSveAddFloat32(pg, acc1, partial1);
@@ -376,13 +376,13 @@ processrows_1(
                 } else {
                     a0 = MlasSvedupFloat32(a[p + 0 * lda]);
                 }
-                partial = MlasSveMultiplyAddFloat32(pg, partial, bvals, a0);
+                partial = MlasSveMultiplyAddFloat32(pg, bvals, a0, partial);
             }
             acc0 = MlasSveAddFloat32(pg, acc0, partial);
         }
         // In Add mode (ZeroMode == false), add existing res at the end
         if constexpr (!ZeroMode) {
-            svfloat32_t prev = svld1(pg, out0);
+            svfloat32_t prev = MlasSveLoadFloat32(pg, out0);
             acc0 = MlasSveAddFloat32(pg, acc0, prev);
         }
         // Store final result
@@ -502,9 +502,7 @@ MlasSgemmKernelAdd_sve(
         if (CountM >= 8) {
             ProcessRowsTemplate<processrows_8<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
             return 8;
-        }
-
-        else if (CountM >= 6) {
+        } else if (CountM >= 6) {
             ProcessRowsTemplate<processrows_6<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
             return 6;
         } else if (CountM >= 4) {
@@ -573,7 +571,7 @@ SCATTER_STORE(float* d, const float* b)
 }
 
 void MLAS_SVE_TARGET
-    MLAS_FORCEINLINE MLASCALL
+    MLASCALL
     SVE_LOAD_STORE(float* D, const float* b)
 {
     for (int i = 0; i < MLAS_SGEMM_STRIDEN_THREAD_ALIGN; i += VL()) {
@@ -583,7 +581,7 @@ void MLAS_SVE_TARGET
 }
 
 void MLAS_SVE_TARGET
-    MLAS_FORCEINLINE MLASCALL
+    MLASCALL
     SVE_ZERO_INITIALIZE(float* d)
 {
     if (VL() == PACKED_B_BLOCK_WIDTH) {

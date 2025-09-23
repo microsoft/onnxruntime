@@ -142,11 +142,11 @@ MlasSgemmKernelZero_sve(
 );
 
 void MLAS_SVE_TARGET
-    MLAS_FORCEINLINE MLASCALL
+ MLASCALL
     SVE_ZERO_INITIALIZE(float* d);
 
 void MLAS_SVE_TARGET
-    MLAS_FORCEINLINE MLASCALL
+ MLASCALL
     SVE_LOAD_STORE(float* D, const float* b);
 
 void MLAS_SVE_TARGET MLASCALL
@@ -376,13 +376,6 @@ MLAS_SVFLOAT32
 MlasSveBroadcastFloat32(const float* Value)
 {
     return svld1_f32(svptrue_b32(), Value);
-}
-
-MLAS_SVBOOL
-MLAS_FORCEINLINE
-MlasSveptrue(void)
-{
-    return svptrue_b32();
 }
 
 MLAS_SVE_TARGET
@@ -689,7 +682,10 @@ MlasSveSelect(svbool_t Pred, MLAS_SVFLOAT32 TrueValue, MLAS_SVFLOAT32 FalseValue
 {
     return svsel_f32(Pred, TrueValue, FalseValue);
 }
-svfloat32_t
+
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVFLOAT32
 MlasSvedupFloat32(float Vector)
 {
     return svdup_f32(Vector);
@@ -703,6 +699,8 @@ MlasSveCompareLessThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
     return svcmplt_f32(Pred, A, B);
 }
 
+MLASCALL
+inline
 void
 Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
 {
@@ -736,6 +734,9 @@ MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
 {
     return svcmpgt_f32(Pred, A, B);
 }
+
+MLASCALL
+inline
 void
 Transpose_SVE256_4x4(float* D, const float* B, size_t ldb)
 {
@@ -1059,4 +1060,6 @@ MlasSveTransposePackBNx4(
 // GCC: Pop options after SVE-specific functions
 #ifndef __clang__
 #pragma GCC pop_options
+#endif
+
 #endif
