@@ -205,7 +205,6 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
@@ -247,6 +246,12 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
 
+    if (NOT onnxruntime_DISABLE_SSE4)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_sse41}
+      )
+    endif()
+
     if(NOT onnxruntime_DISABLE_AVX)
       target_sources(onnxruntime_mlas PRIVATE
         ${mlas_platform_srcs_avx}
@@ -277,10 +282,14 @@ function(setup_mlas_source_for_windows)
   else()
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/i386/SgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
+    if (NOT onnxruntime_DISABLE_SSE4)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_sse41}
+      )
+    endif()
   endif()
 endfunction()
 
@@ -671,6 +680,11 @@ else()
         endif()
         set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
 
+        set(mlas_platform_srcs_sse41
+          ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+        )
+        set_source_files_properties(${mlas_platform_srcs_sse41} PROPERTIES COMPILE_FLAGS "-msse4.1")
+
         set(mlas_platform_srcs_avx
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx.S
@@ -763,6 +777,13 @@ endif()
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
           ${mlas_platform_srcs_sse2}
         )
+
+        if (NOT onnxruntime_DISABLE_SSE4)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_sse41}
+          )
+        endif()
 
         if (NOT onnxruntime_DISABLE_AVX)
           set(mlas_platform_srcs
