@@ -941,14 +941,14 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(ONNStatus*)*/ DCreateAndRegisterAllocatorV2(
-            IntPtr /* (OrtEnv*) */ environment,
-            IntPtr /*(char*)*/ provider_type,
-            IntPtr /*(OrtMemoryInfo*)*/ mem_info,
-            IntPtr /*(OrtArenaCfg*)*/ arena_cfg,
-            IntPtr[] /*(char**)*/ provider_options_keys,
-            IntPtr[] /*(char**)*/ provider_options_values,
-            UIntPtr /*(size_t)*/ num_keys);
+        public delegate IntPtr /*(OrtStatus*)*/ DCreateAndRegisterAllocatorV2(
+            IntPtr /* OrtEnv* */ environment,
+            IntPtr /*const char* */ provderType,
+            IntPtr /* const OrtMemoryInfo* */ memInfo,
+            IntPtr /* const OrtArenaCfg* */ arenaCfg,
+            IntPtr[] /* const char* const*  */ providerOptionsKeys,
+            IntPtr[] /* const char* const* */ providerOptionsValues,
+            UIntPtr /* size_t */ num_keys);
         public static DCreateAndRegisterAllocatorV2 OrtCreateAndRegisterAllocatorV2;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
