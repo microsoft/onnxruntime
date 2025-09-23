@@ -1584,10 +1584,8 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
       ParseHtpPerformanceMode(value, htp_performance_mode);
       if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
-        if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-          ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                      htp_performance_mode));
-        }
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    htp_performance_mode));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
