@@ -147,6 +147,44 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, offsets);
 }
 
+
+/**
+ * @brief Applies a quantized matrix multiplication using N-bit precision.
+ *
+ * This function computes the matrix multiplication of the quantized tensor inputs with multiple
+ * optional optimizations tailored to the GPU backend. Depending on the provided parameters and GPU
+ * capabilities, it selects one of several optimized kernels (such as subgroup matrix multiplication,
+ * DP4A, wide tile programs, or the default matmul program) to perform the computation.
+ * It can be called by the MatMulNBits operator or directly for custom scenarios like QMoe.
+ *
+ * @param a              Pointer to the left-hand side (activation) tensor.
+ * @param b              Pointer to the quantized weight tensor.
+ * @param scales         Pointer to the tensor containing scaling factors for quantization.
+ * @param zero_points    Pointer to the zero-point tensor for quantization; must be of type uint8 if provided.
+ * @param bias           Pointer to the bias tensor; optional.
+ * @param K_op           The K dimension of the operation (number of columns in 'a' and rows in 'b' before quantization).
+ * @param N_op           The N dimension of the operation (number of columns in 'b').
+ * @param block_size_op  The block size used for quantization partitioning.
+ * @param accuracy_level Accuracy level influencing the choice of optimized kernel.
+ * @param nbits          Number of bits used for quantization.
+ * @param context        Compute context for WebGPU, providing device-specific information and execution facilities.
+ * @param y              Pointer to the output tensor that will hold the result.
+ * @param offsets        Pointer to an optional offsets tensor; may be nullptr if not used.
+ *
+ * @return Status indicating whether the operation was successful or if an error occurred.
+ *
+ * @note Use of offsets: this allows you to use stacked weights, input and outputs. If provided, offset is a
+ *       on device tensor of shape [k, 4]. It contains k entries of vec4<uint32>. Entry.x is the offset of input,
+ *       entry.y is the offset of weights and entry.z is the offset of output.
+ *       For example: you want to multiply the same input a with 2 different weights (that are stacked) you'd pass
+ *        [vec4<uint32>(0, 0, 0), vec4<uint32>(0, 1, 1)] and the output will contain 2 stacked results.
+ *
+ * @note Special optimizations are considered:
+ *       - Subgroup matrix multiplication for eligible Apple/Intel GPUs without offsets or bias.
+ *       - DP4A-based multiplication on FP32-only GPUs for specific dimensions and conditions.
+ *       - A wide tile program is used when block size, component count, and other criteria are met.
+ *       - Otherwise, a default matmul program is used.
+ */
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
                         int64_t K_op,
                         int64_t N_op,
