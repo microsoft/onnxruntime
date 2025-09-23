@@ -64,7 +64,8 @@ if (-not $?) {
     $Failed = $true
 }
 
-if (Get-Command python -ErrorAction SilentlyContinue) {
+# AISW-152430 - Do not run Python tests on Windows ARM for now due to frankenstein build process for ARM Python wheel
+if ((Get-CimInstance Win32_Processor).Architecture -ne 12) {  # Architecture code 12 corresponds to ARM64
     Write-Host "--=-=-=- Running Python tests -=--=-=-"
     $PythonTestFilesPath = (Join-Path $RootDir "python_test_files.txt")
 
@@ -108,7 +109,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
         $Failed = $true
     }
 } else {
-    Write-Warning "python.exe not found - skipping Python testing."
+    Write-Warning "Host is Windows ARM - skipping Python testing for now."
 }
 
 Write-Host "--=-=-=- Running ONNX model tests -=--=-=-"

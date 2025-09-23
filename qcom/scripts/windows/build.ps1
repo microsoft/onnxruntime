@@ -210,7 +210,7 @@ else {
 
                 Use-PyVenv -PyVenv $BuildVEnv {
                     Assert-Success { python.exe -m pip install uv }
-                    Assert-Success { uv.exe pip install -r "$RepoRoot\tools\ci_build\github\windows\python\requirements.txt" }
+                    Assert-Success { uv.exe pip install -r "$RepoRoot\tools\ci_build\github\windows\python\requirements.txt" --native-tls }
                     Assert-Success -ErrorMessage "Failed to generate build" {
                         .\build.bat --update $ArchArgs $CommonArgs $QnnArgs $PlatformArgs
                     }
