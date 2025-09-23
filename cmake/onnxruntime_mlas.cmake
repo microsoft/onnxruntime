@@ -109,6 +109,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+        ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+        ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -431,7 +433,18 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+          ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
         )
+        
+        # Conditionally add the SVE implementation if compiler supports it
+        if (onnxruntime_USE_SVE)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_SVE)
+        endif()
+
         if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()

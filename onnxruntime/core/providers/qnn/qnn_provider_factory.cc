@@ -82,15 +82,11 @@ struct QNN_Provider : Provider {
 
   Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
                                   const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                  size_t num_devices,
+                                  size_t /*num_devices*/,
                                   ProviderOptions& provider_options,
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
-    if (num_devices != 1) {
-      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "QNN EP only supports one device.");
-    }
-
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
     std::array<const void*, 2> configs_array = {&provider_options, config_options};
@@ -153,13 +149,11 @@ struct QnnEpFactory : OrtEpFactory {
   QnnEpFactory(const OrtApi& ort_api_in,
                const OrtLogger& default_logger_in,
                const char* ep_name,
-               OrtHardwareDeviceType hw_type,
-               std::string qnn_backend_path)
+               std::unordered_map<OrtHardwareDeviceType, std::string> supported_backends)
       : ort_api{ort_api_in},
         default_logger{default_logger_in},
         ep_name{ep_name},
-        ort_hw_device_type{hw_type},
-        qnn_backend_path{std::move(qnn_backend_path)} {
+        supported_backends{std::move(supported_backends)} {
     ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
@@ -200,9 +194,8 @@ struct QnnEpFactory : OrtEpFactory {
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
   // An EP created with this factory is expected to be able to execute a model with *all* supported
   // hardware devices at once. A single instance of QNN EP is not currently setup to partition a model among
-  // multiple different QNN backends at once (e.g, npu, cpu, gpu), so this factory instance is set to only
-  // support one backend: npu. To support a different backend, like gpu, create a different factory instance
-  // that only supports GPU.
+  // multiple different QNN backends at once (e.g, npu, cpu, gpu), so currently this factory instance is set
+  // to pick the last specified backend only.
   static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                             const OrtHardwareDevice* const* devices,
                                             size_t num_devices,
@@ -214,14 +207,14 @@ struct QnnEpFactory : OrtEpFactory {
 
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
       const OrtHardwareDevice& device = *devices[i];
-      if (factory->ort_api.HardwareDevice_Type(&device) == factory->ort_hw_device_type &&
+      auto supported_backend_it = factory->supported_backends.find(factory->ort_api.HardwareDevice_Type(&device));
+      if (supported_backend_it != factory->supported_backends.end() &&
           factory->ort_api.HardwareDevice_VendorId(&device) == factory->vendor_id) {
         OrtKeyValuePairs* ep_options = nullptr;
         factory->ort_api.CreateKeyValuePairs(&ep_options);
-        factory->ort_api.AddKeyValuePair(ep_options, "backend_path", factory->qnn_backend_path.c_str());
+        factory->ort_api.AddKeyValuePair(ep_options, "backend_path", supported_backend_it->second.c_str());
         OrtStatus* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, ep_options,
                                                                         &ep_devices[num_ep_devices++]);
-
         factory->ort_api.ReleaseKeyValuePairs(ep_options);
         ORT_API_RETURN_IF_ERROR(status);
       }
@@ -289,8 +282,8 @@ struct QnnEpFactory : OrtEpFactory {
 
   // Qualcomm vendor ID. Refer to the ACPI ID registry (search Qualcomm): https://uefi.org/ACPI_ID_List
   const uint32_t vendor_id{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)};
-  const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
-  const std::string qnn_backend_path;              // QNN backend path for OrtHardwareDevice
+  const std::unordered_map<OrtHardwareDeviceType, std::string> supported_backends;  // Supported OrtHardwareDeviceTypes
+                                                                                    // and their QNN backend paths
 };
 
 extern "C" {
@@ -302,35 +295,36 @@ OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
 
-  // Factory could use registration_name or define its own EP name.
+  std::unordered_map<OrtHardwareDeviceType, std::string> supported_backends = {
 #if defined(_WIN32)
-  std::string backend_path = "QnnHtp.dll";
+      {OrtHardwareDeviceType_NPU, "QnnHtp.dll"},
+      {OrtHardwareDeviceType_GPU, "QnnGpu.dll"},
 #else
-  std::string backend_path = "libQnnHtp.so";
+      {OrtHardwareDeviceType_NPU, "libQnnHtp.so"},
+      {OrtHardwareDeviceType_GPU, "libQnnGpu.so"},
 #endif
+  };
 
-  // Identify the path of the current dynamic library, and expect that backend_path is in the same directory.
-  onnxruntime::PathString current_path = GetDynamicLibraryLocationByAddress(reinterpret_cast<const void*>(&CreateEpFactories));
-  if (!current_path.empty()) {
-    const std::filesystem::path parent_path = std::filesystem::path{std::move(current_path)}.parent_path();
-    backend_path = (parent_path / backend_path).string();
+  for (auto& [_, backend_path] : supported_backends) {
+    // Identify the path of the current dynamic library, and expect that backend_path is in the same directory.
+    onnxruntime::PathString current_path = GetDynamicLibraryLocationByAddress(
+        reinterpret_cast<const void*>(&CreateEpFactories));
+
+    if (!current_path.empty()) {
+      const std::filesystem::path parent_path = std::filesystem::path{std::move(current_path)}.parent_path();
+      backend_path = (parent_path / backend_path).string();
+    }
   }
-
-  auto factory_npu = std::make_unique<QnnEpFactory>(*ort_api, *default_logger,
-                                                    onnxruntime::kQnnExecutionProvider,
-                                                    OrtHardwareDeviceType_NPU,
-                                                    std::move(backend_path));
-
-  // If want to support GPU, create a new factory instance because QNN EP is not currently setup to partition a single model
-  // among heterogeneous devices.
-  // std::unique_ptr<OrtEpFactory> factory_gpu = std::make_unique<QnnEpFactory>(*ort_api, "QNNExecutionProvider_GPU", OrtHardwareDeviceType_GPU, "gpu");
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
                                  "Not enough space to return EP factory. Need at least one.");
   }
 
-  factories[0] = factory_npu.release();
+  auto factory = std::make_unique<QnnEpFactory>(*ort_api, *default_logger,
+                                                onnxruntime::kQnnExecutionProvider,
+                                                supported_backends);
+  factories[0] = factory.release();
   *num_factories = 1;
 
   return nullptr;

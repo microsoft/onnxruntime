@@ -60,7 +60,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: Onnxruntime-Win-CPU-2022
+    pool: onnxruntime-Win-CPU-VS2022-Latest
     steps:
     - task: PowerShell@2
       displayName: 'Add Build Tag'

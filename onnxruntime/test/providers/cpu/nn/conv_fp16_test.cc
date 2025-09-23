@@ -7,7 +7,6 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/providers/run_options_config_keys.h"
 #include "default_providers.h"
 
 using namespace std;

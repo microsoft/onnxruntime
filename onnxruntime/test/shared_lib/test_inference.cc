@@ -494,6 +494,35 @@ INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                          CApiTestWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
 
+TEST(CApiTest, TestInputPassThroughToOutput) {
+  const ORTCHAR_T* model_uri = TSTR("testdata/input_propagated_to_output.onnx");
+  Ort::Session session(*ort_env, model_uri, Ort::SessionOptions{});
+  auto inputs_meminfos = session.GetMemoryInfoForInputs();
+  ASSERT_EQ(1U, inputs_meminfos.size());
+  auto inputs_epdevices = session.GetEpDeviceForInputs();
+  ASSERT_EQ(1U, inputs_epdevices.size());
+  auto outputs_meminfos = session.GetMemoryInfoForOutputs();
+  ASSERT_EQ(7U, outputs_meminfos.size());
+}
+
+TEST(CApiTest, TestDanglingInput) {
+  // Here we test an issue with segments_ids that is an input not consumed by anything
+  // This kind of model is unlikely to be used in practice but we want to make sure it works
+  const ORTCHAR_T* model_uri = TSTR("testdata/test_dangling_input_segment_ids.onnx");
+  Ort::Session session(*ort_env, model_uri, Ort::SessionOptions{});
+  auto inputs_meminfos = session.GetMemoryInfoForInputs();
+  ASSERT_EQ(2U, inputs_meminfos.size());
+  auto outputs_meminfos = session.GetMemoryInfoForOutputs();
+  ASSERT_EQ(2U, outputs_meminfos.size());
+  auto inputs_epdevices = session.GetEpDeviceForInputs();
+  ASSERT_EQ(2U, inputs_epdevices.size());
+  // One of the devices returning is null since the input is not consumed
+  // there is not a device for it.
+  const bool null_present = std::any_of(inputs_epdevices.begin(), inputs_epdevices.end(),
+                                        [](const auto& device) { return device == nullptr; });
+  ASSERT_TRUE(null_present);
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(CApiTest, SparseOutputModel) {
   std::vector<int64_t> dense_shape{3, 3};
@@ -505,7 +534,15 @@ TEST(CApiTest, SparseOutputModel) {
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
   const char* const output_names[] = {"values"};
+  // This model produces a sparse output from a constant sparse initializer
   Ort::Session session(*ort_env, SPARSE_OUTPUT_MODEL_URI, Ort::SessionOptions{});
+  auto inputs_meminfos = session.GetMemoryInfoForInputs();
+  ASSERT_TRUE(inputs_meminfos.empty());
+  auto outputs_meminfos = session.GetMemoryInfoForOutputs();
+  ASSERT_EQ(1U, outputs_meminfos.size());
+  auto inputs_epdevices = session.GetEpDeviceForInputs();
+  ASSERT_TRUE(inputs_epdevices.empty());
+
   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
                                  output_names, 1);
   ASSERT_EQ(ort_outputs.size(), 1U);
