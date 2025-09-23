@@ -948,7 +948,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /* const OrtArenaCfg* */ arenaCfg,
             IntPtr[] /* const char* const*  */ providerOptionsKeys,
             IntPtr[] /* const char* const* */ providerOptionsValues,
-            UIntPtr /* size_t */ num_keys);
+            UIntPtr /* size_t */ numKeys);
         public static DCreateAndRegisterAllocatorV2 OrtCreateAndRegisterAllocatorV2;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
