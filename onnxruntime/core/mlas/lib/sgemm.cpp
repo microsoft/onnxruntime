@@ -257,7 +257,7 @@ Return Value:
     //
 
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE())
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve())
     {
             
         while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
@@ -328,6 +328,7 @@ Return Value:
         B += 16;
         CountX -= 16;
     }
+
 #endif
     //
     // Special case the handling of the remaining columns less than 16 elements
@@ -335,9 +336,6 @@ Return Value:
     //
 
     if (CountX > 0) {
-
-        
-
 
 #if defined(MLAS_NEON_INTRINSICS)
         MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
@@ -352,7 +350,7 @@ Return Value:
             float* d = D;
             const float* b = B;
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
             SVE_ZERO_INITIALIZE(d);
             }
             else {
@@ -482,8 +480,6 @@ Return Value:
     }
 }
 
-
-
 void
 MlasSgemmTransposePackB(
     float* D,
@@ -546,10 +542,8 @@ Return Value:
         }
 
 #elif defined(MLAS_USE_SVE)
-        if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
-            
-            SVE_TRANSPOSE(D,b,ldb,x);
-            
+        if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {          
+            SVE_TRANSPOSE(D,b,ldb,x);            
         }
         else
         {
@@ -562,9 +556,6 @@ Return Value:
             x -= 4;
         }
         }
-
-    
-
 #endif
 
         while (x > 0) {
@@ -633,7 +624,7 @@ Return Value:
 
             if ((CountY & 8) != 0) {
                 #if defined(MLAS_USE_SVE) || defined(NEON)
-                    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()){
+                    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()){
                     MlasSveTransposePackBNx4<8>(&d[0], &b[0], ldb);}
                     else{
                         MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
@@ -660,7 +651,7 @@ Return Value:
             if ((CountY & 4) != 0) {
 
                 #if defined(MLAS_USE_SVE)
-                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()){
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()){
                 MlasSveTransposePackBNx4<4>(&d[0], &b[0], ldb);}
                 else{
                     MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
@@ -716,7 +707,7 @@ Return Value:
 
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
 
-            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE())
+            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve())
             {
                 SCATTER_STORE(&d[0],&b[0]);
             }
@@ -1154,13 +1145,13 @@ Return Value:
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) { 
-            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
               RowsHandled = MlasSgemmKernelZero_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);  
             } else {          
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha); }
         } else {
             
-            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
                 RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);  
             } else {          
                 RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha); }
@@ -1668,7 +1659,13 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-
+    // Override
+    if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
+        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        return;
+    }
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1733,6 +1730,8 @@ MlasGemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     )
@@ -1757,6 +1756,22 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+    // KleidiAI or other override
+    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans) {
+        size_t bytes_required;
+        //TODO pass status by reference to indicate success/fail
+        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
+        if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
+            return bytes_required;
+        }
+    }
+    #endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1772,6 +1787,7 @@ Return Value:
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -1808,6 +1824,17 @@ Return Value:
 
 --*/
 {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
+        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+         return;
+    }
+#endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+
+
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
 
