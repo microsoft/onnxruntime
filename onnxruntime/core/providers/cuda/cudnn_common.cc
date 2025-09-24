@@ -330,11 +330,7 @@ cudnn_frontend::DataType_t CudnnFeTensor::GetDataType<half>() {
 
 template <>
 cudnn_frontend::DataType_t CudnnFeTensor::GetDataType<BFloat16>() {
-#if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8200
   return cudnn_frontend::DataType_t::BFLOAT16;
-#else
-  ORT_THROW("cuDNN doesn't support BFloat16.");
-#endif
 }
 
 template <>
