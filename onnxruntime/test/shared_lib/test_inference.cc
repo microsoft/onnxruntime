@@ -494,7 +494,8 @@ INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                          CApiTestWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
 
-TEST(CApiTest, TestInputPassThroughToOutput) {
+// Disabled for ORT 1.23.1: Test model created with newer ONNX IR version.
+TEST(CApiTest, DISABLED_TestInputPassThroughToOutput) {
   const ORTCHAR_T* model_uri = TSTR("testdata/input_propagated_to_output.onnx");
   Ort::Session session(*ort_env, model_uri, Ort::SessionOptions{});
   auto inputs_meminfos = session.GetMemoryInfoForInputs();
@@ -505,7 +506,8 @@ TEST(CApiTest, TestInputPassThroughToOutput) {
   ASSERT_EQ(7U, outputs_meminfos.size());
 }
 
-TEST(CApiTest, TestDanglingInput) {
+// Disabled for ORT 1.23.1: Test model created with newer ONNX IR version.
+TEST(CApiTest, DISABLED_TestDanglingInput) {
   // Here we test an issue with segments_ids that is an input not consumed by anything
   // This kind of model is unlikely to be used in practice but we want to make sure it works
   const ORTCHAR_T* model_uri = TSTR("testdata/test_dangling_input_segment_ids.onnx");
