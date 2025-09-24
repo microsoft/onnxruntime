@@ -974,6 +974,11 @@ class SymbolicShapeInference:
 
     def _infer_ConstantOfShape(self, node):  # noqa: N802
         sympy_shape = self._get_int_or_float_values(node)[0]
+        # according to spec, ConstantOfShape may have empty input; in this case output must be scalar
+        # also we can infer shape of this fake input for free
+        if sympy_shape == []:
+            sympy_shape = [1]
+            self.sympy_data_[node.input[0]] = [1]
         vi = self.known_vi_[node.output[0]]
         if sympy_shape is not None:
             if type(sympy_shape) != list:  # noqa: E721
