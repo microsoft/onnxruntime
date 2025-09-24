@@ -154,6 +154,7 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              int64_t cols,
                              float* dequantized_data,
                              MLAS_THREADPOOL* thread_pool) {
+  ORT_UNUSED_PARAMETER(thread_pool);
   const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
   const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
 
