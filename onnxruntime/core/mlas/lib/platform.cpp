@@ -350,9 +350,11 @@ Return Value:
 
 #if !defined(ORT_DISABLE_AVX)
             this->GemmFloatKernel = MlasGemmFloatKernelAvx;
+#endif // !defined(ORT_DISABLE_AVX)
 
 #if defined(MLAS_TARGET_AMD64)
 
+#if !defined(ORT_DISABLE_AVX)
             this->KernelM1Routine = MlasSgemmKernelM1Avx;
             this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
             this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
@@ -369,7 +371,7 @@ Return Value:
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
             this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelAvx;
             this->GemmU8U8Kernel = nullptr;
-
+#endif // !defined(ORT_DISABLE_AVX)
             //
             // Check if the processor supports AVX2/FMA3 features.
             //
@@ -381,9 +383,8 @@ Return Value:
             __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
 #endif
 
-#if !defined(ORT_DISABLE_AVX2)
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
-
+#if !defined(ORT_DISABLE_AVX2)
                 this->Avx2Supported_ = true;
 
                 this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
@@ -443,6 +444,7 @@ Return Value:
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
                     this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
+#endif // !defined(ORT_DISABLE_AVX2)
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -504,6 +506,8 @@ Return Value:
                 }
 #endif // !defined(ORT_DISABLE_AVX512)
 
+
+#if !defined(ORT_DISABLE_AVX2)
                 //
                 // Check if the processor supports AVX-VNNI-INT8
                 //
@@ -514,15 +518,18 @@ Return Value:
                     this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchAvx2Vnni;
                     this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
                 }
+#endif // !defined(ORT_DISABLE_AVX2)
 
 #if !defined(__APPLE__)
 #if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+#if !defined(ORT_DISABLE_AVX)
                 //
                 // Check if the processor supports AVX NE CONVERT.
                 //
                 if ((Cpuid7_1[3] & (0b1 << 5)) != 0) {
                     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx;
                 }
+#endif // !defined(ORT_DISABLE_AVX)
 #endif  // (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
 
 
@@ -545,10 +552,8 @@ Return Value:
 #endif // ORT_MINIMAL_BUILD
 
             }
-#endif // !defined(ORT_DISABLE_AVX2)
 
 #endif // MLAS_TARGET_AMD64
-#endif  // !defined(ORT_DISABLE_AVX)
 
 
         }
