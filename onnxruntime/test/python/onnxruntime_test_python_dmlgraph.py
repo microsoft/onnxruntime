@@ -63,7 +63,7 @@ class TestInferenceSessionWithDmlGraph(unittest.TestCase):
     def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
-        np.testing.assert_allclose( ortvalue_cpu.numpy(), x0)
+        np.testing.assert_allclose(ortvalue_cpu.numpy(), x0)
 
         x1 = np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32)
         ortvalue_cpu.update_inplace(x1)
