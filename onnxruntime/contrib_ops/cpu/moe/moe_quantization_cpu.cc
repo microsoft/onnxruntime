@@ -50,7 +50,7 @@ inline int64_t GetDequantBlockSize(int64_t features, int64_t total_work) {
   return std::min(target_block_size, work_based_size);
 }
 
-bool CanUseMlasQ4Dequant(int64_t num_bits, int64_t block_size) {
+bool CanUseMlasQ4Dequant(int64_t num_bits) {
   if (num_bits != 4) {
     return false;
   }
@@ -154,10 +154,11 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              int64_t cols,
                              float* dequantized_data,
                              MLAS_THREADPOOL* thread_pool) {
+  ORT_UNUSED_PARAMETER(thread_pool);
   const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
   const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
 
-  if (CanUseMlasQ4Dequant(num_bits, block_size)) {
+  if (CanUseMlasQ4Dequant(num_bits)) {
     const int64_t packed_cols = (cols + 1) / 2;
 
     if (block_size == 0) {
@@ -752,8 +753,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
             const int64_t unroll_factor = GetUnrollFactor(fc1_out_features);
             int64_t j = 0;
             for (; j + unroll_factor <= fc1_out_features; j += unroll_factor) {
-              for (int64_t k = 0; k < unroll_factor; ++k) {
-                thread_bias1_buffer[j + k] = static_cast<float>(B1_bias[j + k]);
+              for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+                thread_bias1_buffer[j + loop_k] = static_cast<float>(B1_bias[j + loop_k]);
               }
             }
             for (; j < fc1_out_features; ++j) {
@@ -768,8 +769,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           int64_t j = 0;
           for (; j + unroll_factor <= fc1_out_features; j += unroll_factor) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              C1_row[j + k] += thread_bias1_buffer[j + k];
+            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              C1_row[j + loop_k] += thread_bias1_buffer[j + loop_k];
             }
           }
           for (; j < fc1_out_features; ++j) {
@@ -918,8 +919,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
             const int64_t unroll_factor = GetUnrollFactor(hidden_size);
             int64_t j = 0;
             for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-              for (int64_t k = 0; k < unroll_factor; ++k) {
-                thread_bias2_buffer[j + k] = static_cast<float>(B2_bias[j + k]);
+              for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+                thread_bias2_buffer[j + loop_k] = static_cast<float>(B2_bias[j + loop_k]);
               }
             }
             for (; j < hidden_size; ++j) {
@@ -946,8 +947,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           const int64_t unroll_factor = GetUnrollFactor(hidden_size);
           int64_t j = 0;
           for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              dest[j + k] += weight * (src[j + k] + thread_bias2_buffer[j + k]);
+            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              dest[j + loop_k] += weight * (src[j + loop_k] + thread_bias2_buffer[j + loop_k]);
             }
           }
           for (; j < hidden_size; ++j) {
@@ -957,8 +958,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           const int64_t unroll_factor = GetUnrollFactor(hidden_size);
           int64_t j = 0;
           for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              dest[j + k] += weight * src[j + k];
+            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              dest[j + loop_k] += weight * src[j + loop_k];
             }
           }
           for (; j < hidden_size; ++j) {
@@ -993,8 +994,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           const size_t chunk_size = end_idx - start_idx;
           const int64_t unroll_factor = GetUnrollFactor(static_cast<int64_t>(chunk_size));
           for (; j + static_cast<size_t>(unroll_factor) <= chunk_size; j += static_cast<size_t>(unroll_factor)) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              dst[j + static_cast<size_t>(k)] += src[j + static_cast<size_t>(k)];
+            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              dst[j + static_cast<size_t>(loop_k)] += src[j + static_cast<size_t>(loop_k)];
             }
           }
           for (; j < chunk_size; ++j) {
@@ -1010,8 +1011,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         size_t j = 0;
         const int64_t unroll_factor = GetUnrollFactor(static_cast<int64_t>(output_buffer_size));
         for (; j + static_cast<size_t>(unroll_factor) <= output_buffer_size; j += static_cast<size_t>(unroll_factor)) {
-          for (int64_t k = 0; k < unroll_factor; ++k) {
-            buffer[j + static_cast<size_t>(k)] += src[j + static_cast<size_t>(k)];
+          for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+            buffer[j + static_cast<size_t>(loop_k)] += src[j + static_cast<size_t>(loop_k)];
           }
         }
         for (; j < output_buffer_size; ++j) {

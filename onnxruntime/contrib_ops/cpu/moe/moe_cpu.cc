@@ -440,6 +440,11 @@ Status MoE<T>::ProcessExpertBatch(const T* input_tokens,
                                   int64_t inter_size,
                                   T* fc1_output_buffer,
                                   T* activation_output_buffer) const {
+  ORT_UNUSED_PARAMETER(token_expert_ids);
+  ORT_UNUSED_PARAMETER(token_weights);
+  ORT_UNUSED_PARAMETER(expert_id);
+  ORT_UNUSED_PARAMETER(fc1_output_buffer);
+  ORT_UNUSED_PARAMETER(activation_output_buffer);
   const bool is_swiglu = activation_type_ == ActivationType::SwiGLU;
   const int64_t fc1_output_size = is_swiglu ? (inter_size * 2) : inter_size;
 
