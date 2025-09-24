@@ -33,6 +33,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <d3d12.h>
 
 /** \brief The API version defined in this header
  *
@@ -6485,6 +6486,10 @@ struct OrtApi {
   ORT_API2_STATUS(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
+
+  ORT_API2_STATUS(SessionInitializeGpuProviders, _In_ OrtSession* session, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
 
   /** \brief Get the native handle of the sync stream.
    *

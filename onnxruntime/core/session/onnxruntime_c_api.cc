@@ -3399,6 +3399,140 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProviders, _In_ OrtSession* session, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence) {
+  API_IMPL_BEGIN
+  auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
+  if (!inference_session) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
+  }
+
+  // Session must be initialized to have the graph and providers finalized.
+  // if (!inference_session->IsInitialized()) {
+  //   return OrtApis::CreateStatus(ORT_FAIL, "Session must be initialized before setting up interop.");
+  // }
+
+  const auto& session_state = inference_session->GetSessionState();
+  const auto& execution_providers = session_state.GetExecutionProviders();
+  const auto& graph_viewer = session_state.GetGraphViewer();
+
+  // Collect the unique set of execution providers assigned to nodes in the graph.
+  std::unordered_set<std::string> active_provider_types;
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (!node.GetExecutionProviderType().empty()) {
+      active_provider_types.insert(node.GetExecutionProviderType());
+    }
+  }
+
+  // Call InitializeGpuResources only for the providers that are actively being used.
+  for (const auto& provider_type : active_provider_types) {
+    const onnxruntime::IExecutionProvider* const_provider = execution_providers.Get(provider_type);
+    if (const_provider) {
+      auto* provider = const_cast<onnxruntime::IExecutionProvider*>(const_provider);
+      auto status = provider->InitializeGpuResources(sharedFenceHandle, extSemFence);
+      if (!status.IsOK()) {
+        return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      }
+    }
+  }
+
+  return nullptr;  // Indicates success
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+  API_IMPL_BEGIN
+  if(pCommandQueue == nullptr || extSemFence == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
+  }
+  auto* session = reinterpret_cast<onnxruntime::InferenceSession*>(ort_session);
+  if (!session)
+  {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
+  }
+
+  // Session must be initialized to have the graph and providers finalized.
+  // if (!session->IsInitialized()) {
+  //   return OrtApis::CreateStatus(ORT_FAIL, "Session must be initialized before setting up interop.");
+  // }
+
+  const auto& session_state = session->GetSessionState();
+  const auto& execution_providers = session_state.GetExecutionProviders();
+  const auto& graph_viewer = session_state.GetGraphViewer();
+
+  // Collect the unique set of execution providers assigned to nodes in the graph.
+  std::unordered_set<std::string> active_provider_types;
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (!node.GetExecutionProviderType().empty()) {
+      active_provider_types.insert(node.GetExecutionProviderType());
+    }
+  }
+
+  // Call SetupInteropEpWait only for the providers that are actively being used.
+  for (const auto& provider_type : active_provider_types) {
+    const onnxruntime::IExecutionProvider* provider = execution_providers.Get(provider_type);
+    if (provider) {
+      // We get a const pointer, so use const_cast as the method is non-const.
+      // This is safe here as we are just triggering a setup function.
+      auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
+      auto status = execution_provider->SetupInteropEpWait(use_cig, extSemFence, OrtApis::SyncStream_GetHandle(stream), pDevice, pFence, pCommandQueue);
+      if (!status.IsOK()) {
+        return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      }
+    }
+  }
+  use_cig = false;
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+  API_IMPL_BEGIN
+  if(pCommandQueue == nullptr || extSemFence == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
+  }
+  auto* session = reinterpret_cast<onnxruntime::InferenceSession*>(ort_session);
+  if (!session)
+  {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
+  }
+
+  // Session must be initialized to have the graph and providers finalized.
+  // if (!session->IsInitialized()) {
+  //   return OrtApis::CreateStatus(ORT_FAIL, "Session must be initialized before setting up interop.");
+  // }
+
+  const auto& session_state = session->GetSessionState();
+  const auto& execution_providers = session_state.GetExecutionProviders();
+  const auto& graph_viewer = session_state.GetGraphViewer();
+
+  // Collect the unique set of execution providers assigned to nodes in the graph.
+  std::unordered_set<std::string> active_provider_types;
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (!node.GetExecutionProviderType().empty()) {
+      active_provider_types.insert(node.GetExecutionProviderType());
+    }
+  }
+
+  // Call SetupInteropEpSignal only for the providers that are actively being used.
+  for (const auto& provider_type : active_provider_types) {
+    const onnxruntime::IExecutionProvider* provider = execution_providers.Get(provider_type);
+    if (provider) {
+      // We get a const pointer, so use const_cast as the method is non-const.
+      // This is safe here as we are just triggering a setup function.
+      auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
+      auto status = execution_provider->SetupInteropEpSignal(use_cig, extSemFence, OrtApis::SyncStream_GetHandle(stream), pFence, pCommandQueue);
+      if (!status.IsOK()) {
+        return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      }
+    }
+  }
+  use_cig = false;
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void*, OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* stream) {
   return stream->GetHandle();
 }
@@ -3585,6 +3719,42 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
                     _Outptr_ OrtSyncStream** /*ort_stream*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateSyncStreamForEpDevice is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetupInterop, _In_ ID3D12CommandQueue* pCommandQueue) {
+  API_IMPL_BEGIN
+  if(pCommandQueue == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
+  }
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SetupInterop is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(SessionInitializeGpuProviders, _In_ OrtSession* session, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence) {
+  API_IMPL_BEGIN
+  if(session == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "session is null.");
+  }
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionInitializeGpuProviders is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+  API_IMPL_BEGIN
+  if(pCommandQueue == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
+  }
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpWait is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+  API_IMPL_BEGIN
+  if(pCommandQueue == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
+  }
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpSignal is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4212,6 +4382,9 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::SessionGetEpDeviceForInputs,
 
     &OrtApis::CreateSyncStreamForEpDevice,
+    &OrtApis::SessionInitializeGpuProviders,
+    &OrtApis::InteropEpWait,
+    &OrtApis::InteropEpSignal,
     &OrtApis::SyncStream_GetHandle,
     &OrtApis::ReleaseSyncStream,
 
