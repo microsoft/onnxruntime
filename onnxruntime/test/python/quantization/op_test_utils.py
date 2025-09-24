@@ -417,7 +417,7 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
         raw = np.array([int(i) for i in init.raw_data])
         got_sign = raw <= 128
         try:
-            np.testing.assert_allclose(got_sign, expected_sign.ravel())
+            np.testing.assert_allclose(expected_sign.ravel(), got_sign)
         except AssertionError as e:
             scale_value = onnx.numpy_helper.to_array(names_f8[scale[0]])
             err_msg = f"Sign are different for {name!r}, scale={scale_value}."
@@ -470,8 +470,8 @@ def check_model_correctness(
         for idx, ref_output in enumerate(origin_results):
             output = ref_origin_results[idx]
             np.testing.assert_allclose(
-                output,
                 ref_output,
+                output,
                 rtol=rtol,
                 atol=atol,
                 err_msg=f"Model {model_path_origin!r} failed for providers={providers!r}.",
@@ -549,8 +549,8 @@ def check_model_correctness(
             for idx, ref_output in enumerate(origin_results):
                 output = target_results[idx]
                 np.testing.assert_allclose(
-                    output,
                     ref_output,
+                    output,
                     rtol=rtol,
                     atol=atol,
                     err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
@@ -581,8 +581,8 @@ def check_model_correctness(
     for idx, ref_output in enumerate(origin_results):
         output = target_results[idx]
         np.testing.assert_allclose(
-            output,
             ref_output,
+            output,
             rtol=rtol,
             atol=atol,
             err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
