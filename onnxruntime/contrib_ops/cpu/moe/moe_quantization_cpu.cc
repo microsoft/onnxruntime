@@ -706,10 +706,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           if (gemm_status.IsOK()) {
             fc1_used_direct_q4 = true;
-#ifdef ONNXRUNTIME_ENABLE_VERBOSE_LOGGING
-            LOGS_DEFAULT(VERBOSE) << "QMoE: Using direct MLAS Q4 GEMM for FC1 expert " << expert_idx
-                                  << " (M=" << num_expert_tokens << ", N=" << fc1_out_features << ", K=" << hidden_size << ")";
-#endif
             goto fc1_gemm_done;
           }
         }
@@ -753,7 +749,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
             const int64_t unroll_factor = GetUnrollFactor(fc1_out_features);
             int64_t j = 0;
             for (; j + unroll_factor <= fc1_out_features; j += unroll_factor) {
-              for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
                 thread_bias1_buffer[j + loop_k] = static_cast<float>(B1_bias[j + loop_k]);
               }
             }
@@ -769,7 +765,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           int64_t j = 0;
           for (; j + unroll_factor <= fc1_out_features; j += unroll_factor) {
-            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
               C1_row[j + loop_k] += thread_bias1_buffer[j + loop_k];
             }
           }
@@ -869,10 +865,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           if (gemm_status.IsOK()) {
             fc2_used_direct_q4 = true;
-#ifdef ONNXRUNTIME_ENABLE_VERBOSE_LOGGING
-            LOGS_DEFAULT(VERBOSE) << "QMoE: Using direct MLAS Q4 GEMM for FC2 expert " << expert_idx
-                                  << " (M=" << num_expert_tokens << ", N=" << hidden_size << ", K=" << inter_size << ")";
-#endif
             goto fc2_gemm_done;
           }
         }
@@ -992,10 +984,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           size_t j = 0;
           const size_t chunk_size = end_idx - start_idx;
-          const int64_t unroll_factor = GetUnrollFactor(static_cast<int64_t>(chunk_size));
-          for (; j + static_cast<size_t>(unroll_factor) <= chunk_size; j += static_cast<size_t>(unroll_factor)) {
-            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
-              dst[j + static_cast<size_t>(loop_k)] += src[j + static_cast<size_t>(loop_k)];
+          const size_t unroll_factor = static_cast<size_t>(GetUnrollFactor(static_cast<int64_t>(chunk_size)));
+          for (; j + unroll_factor <= chunk_size; j += unroll_factor) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              dst[j + loop_k] += src[j + loop_k];
             }
           }
           for (; j < chunk_size; ++j) {
@@ -1009,10 +1001,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         const float* src = thread_local_outputs + thread_offset;
 
         size_t j = 0;
-        const int64_t unroll_factor = GetUnrollFactor(static_cast<int64_t>(output_buffer_size));
-        for (; j + static_cast<size_t>(unroll_factor) <= output_buffer_size; j += static_cast<size_t>(unroll_factor)) {
-          for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
-            buffer[j + static_cast<size_t>(loop_k)] += src[j + static_cast<size_t>(loop_k)];
+        const size_t unroll_factor = static_cast<size_t>(GetUnrollFactor(static_cast<int64_t>(output_buffer_size)));
+        for (; j + unroll_factor <= output_buffer_size; j += unroll_factor) {
+          for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+            buffer[j + loop_k] += src[j + loop_k];
           }
         }
         for (; j < output_buffer_size; ++j) {
