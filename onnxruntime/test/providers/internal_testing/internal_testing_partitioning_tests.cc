@@ -57,7 +57,7 @@ auto RunTest(const std::string& op, const ORTCHAR_T* model_path) {
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
         << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
-    if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
+    if (node.GetExecutionProviderType() == kInternalTestingExecutionProvider) {
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);
       ++num_partitions;
@@ -116,7 +116,7 @@ TEST(InternalTestingEP, TestDependenciesCorrectlyHandled) {
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
         << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
-    if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
+    if (node.GetExecutionProviderType() == kInternalTestingExecutionProvider) {
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);
       ++num_partitions;
@@ -227,7 +227,7 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
   std::string unsupported_op_str;
 
   for (const Node& node : graph.Nodes()) {
-    if (node.GetExecutionProviderType() != utils::kInternalTestingExecutionProvider &&
+    if (node.GetExecutionProviderType() != kInternalTestingExecutionProvider &&
         ops.count(node.OpType()) == 0) {
       auto entry = unsupported_ops.find(node.OpType());
       if (entry != unsupported_ops.end()) {
@@ -288,12 +288,12 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
           << "Nodes with supported op types should have been replaced. Node with type "
           << node.OpType() << " was not.";
     } else {
-      EXPECT_NE(node.GetExecutionProviderType(), utils::kInternalTestingExecutionProvider)
+      EXPECT_NE(node.GetExecutionProviderType(), kInternalTestingExecutionProvider)
           << "Node is downstream from a 'stop at' node and should not have been taken. Node:"
           << node.Name();
     }
 
-    if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
+    if (node.GetExecutionProviderType() == kInternalTestingExecutionProvider) {
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);
       ++stats.num_compiled_nodes;

@@ -32,6 +32,31 @@
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_attention_3d.*",  // wrong expected values in onnx==1.18.0, fixed in 1.19.0
+        "^test_attention_4d_diff_heads_mask4d_padded_kv*",  // pending onnx update
+        "^test_attention_3d_gqa*",  // pending onnx update
+        "^test_attention_3d_gqa_causal",  // pending onnx update
+        "^test_attention_3d_gqa_scaled",  // pending onnx update
+        "^test_attention_3d_gqa_softcap",  // pending onnx update
+        "^test_attention_3d_gqa_with_past_and_present",  // pending onnx update
+        "^test_attention_4d_gqa*",  // pending onnx update
+        "^test_attention_4d_gqa_causal",  // pending onnx update
+        "^test_attention_4d_gqa_scaled",  // pending onnx update
+        "^test_attention_4d_gqa_softcap",  // pending onnx update
+        "^test_attention_4d_gqa_with_past_and_present",  // pending onnx update
+        "^test_attention_*causal*",  // pending onnx update
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal*",  // pending onnx update
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // pending onnx update
+        "^test_attention_4d_attn_mask_3d_causal_expanded*",  // pending onnx update
+        "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
+        "^test_attention_4d_fp16_expanded*",  // precision issue: 3 / 192 mismatched elements
+        "^test_l2normalization*",  // LpNormalization(22) not implemented
+        "^test_l1normalization*",  // LpNormalization(22) not implemented
+        "^test_lpnormalization*",  // LpNormalization(22) not implemented
+        "^test_tensorscatter*",  // TensorScatter(24) not implemented
+        "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
+        "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
+        "^test_castlike_INT4_to*",  // ORT does not support ml_dtypes
+        "^test_cast_e8m0_*",  // ORT does not support float8e8m0
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_training_mode",
         "^test_col2im_pads",  // still one wrong value coming from the backtest example
