@@ -328,6 +328,8 @@ TEST(PoolBF16Test, AveragePool) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
+#else
+  return;
 #endif
 
   OpTester test("AveragePool", 22);

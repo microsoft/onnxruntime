@@ -278,6 +278,8 @@ TEST(ConvBF16Test, Conv2D_1) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
+#else
+  return;
 #endif
 
   OpTester test("Conv", 22);
