@@ -45,6 +45,7 @@ Return Value:
 --*/
 {
     if (TransA != CblasNoTrans ||  N == 0  || K == 0) {
+        KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize returning 0 size. N=" << N << " K=" << K);
         return 0;
     }
     //
@@ -61,9 +62,11 @@ Return Value:
                 bytes = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(N, K);
                 break;
             default:
+                KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize TransB is neither CblasNoTrans nor CblasTrans, returning 0.");
                 return 0;
         }
     } else {
+        KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize TransA is CblasTrans, returning 0.");
         return 0;
     }
 
@@ -130,17 +133,23 @@ Return Value:
 
         switch (TransB) {
             case CblasNoTrans:
+            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme Groups=1"
+                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
                 kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
                 break;
             case CblasTrans:
+            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme Groups=1"
+                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
                 kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
                 break;
             default:
+            KLEIDIAI_DEBUG_LOG("MlasGemmPackB TransB is neither CblasNoTrans nor CblasTrans, falling back to MLAS.");
                 return false;
         }
         return true;
     }
     else{
+        KLEIDIAI_DEBUG_LOG("MlasGemmPackB TransA is CblasTrans, falling back to MLAS.");
         return false;
     }
 }
@@ -247,6 +256,8 @@ Return Value:
         // We have already decided the matmul variant we are using, before having values for M,N,K
         MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
             std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
+            KLEIDIAI_KERNEL_LOG("kai_run_lhs_pack_f32p2vlx1_f32_sme"
+                                    << " M=" << M << " K=" << K << " mr=" << mr << " kr=" << kr << " sr=" << sr);
             kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
             KaiPackedData[batch_idx].A = reinterpret_cast<const float*>(LhsPackedPtr);
             KaiPackedData[batch_idx].B = Data[batch_idx].B;
@@ -341,6 +352,8 @@ Return Value:
         float* temp_tile = OutputTile.data();
 
         if (UseSME2) {
+            KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa"
+                                << " M=" << TileSizeM << " << N=" << TileSizeN << " K=" << K);
             kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(
                 TileSizeM,
                 TileSizeN,
@@ -350,6 +363,8 @@ Return Value:
                 -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
             );
         } else {
+            KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa"
+                                << " M=" << TileSizeM << " N=" << TileSizeN << " K=" << K);
             kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(
                 TileSizeM,
                 TileSizeN,

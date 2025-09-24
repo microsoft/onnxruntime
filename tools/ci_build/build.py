@@ -887,7 +887,6 @@ def generate_build_tree(
     # * Finally enable if platform.machine contains "arm64" and not a WebAssembly build. This should cover the following cases:
     #     *  Linux on Arm
     #     *  MacOs (case must be ignored)
-    # * TODO Delegate responsibility for Onnxruntime_USE_KLEIDIAI = ON to CMake logic
     if not args.no_kleidiai:
         if (
             (args.android and "arm64" in args.android_abi.lower())

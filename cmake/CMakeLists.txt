@@ -678,25 +678,14 @@ if(onnxruntime_USE_SVE)
   endif()
 endif()
 
-if (onnxruntime_USE_KLEIDIAI AND (
-      (onnxruntime_target_platform STREQUAL "aarch64") OR
-      (onnxruntime_target_platform STREQUAL "ARM64") OR
-      (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
-
-  # TODO Add checks for MSVC Compilation
-  if(NOT MSVC)
-    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-    if (NOT HAS_ARM64_DOTPROD)
-      message(FATAL_ERROR "The compiler doesn't support dotprod")
-    endif()
-    if (NOT HAS_ARM64_I8MM)
-      message(FATAL_ERROR "The compiler doesn't support i8mm")
-    endif()
-  else()
-    message(STATUS "Skipping -march= checks on MSVC (not supported), assuming dotprod/i8mm support manually.")
-    set(HAS_ARM64_DOTPROD TRUE)
-    set(HAS_ARM64_I8MM TRUE)
+if(onnxruntime_USE_KLEIDIAI)
+  # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
+  if(KLEIDIAI_DEBUG)
+    add_definitions(-DKLEIDIAI_DEBUG=1)
+    add_definitions(-DKLEIDIAI_KERNEL=1)
+  endif()
+  if(KLEIDIAI_KERNEL)
+    add_definitions(-DKLEIDIAI_KERNEL=1)
   endif()
 endif()
 
