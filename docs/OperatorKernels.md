@@ -1015,7 +1015,7 @@ Do not modify directly.*
 | |
 | |
 |**Operator Domain:** *com.ms.internal.nhwc*||||
-|AveragePool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
+|AveragePool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
 |||[19, 21]|**T** = tensor(float), tensor(float16)|
 |||[11, 18]|**T** = tensor(float), tensor(float16)|
 |||10|**T** = tensor(float), tensor(float16)|
@@ -1024,7 +1024,7 @@ Do not modify directly.*
 |||14|**T** = tensor(double), tensor(float), tensor(float16)<br/> **U** = tensor(double), tensor(float), tensor(float16)|
 |||[9, 13]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
-|Conv|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *out* Y:**T**|22+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
+|Conv|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
 |||[11, 21]|**T** = tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(float), tensor(float16)|
 |ConvTranspose|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *out* Y:**T**|11+|**T** = tensor(float), tensor(float16)|

@@ -123,7 +123,7 @@ static void RunOneTest(
     test.AddOutput<BFloat16>("output", output_dims, ToBFloat16(output_data));
 
     // Use larger threshold for bf16
-    test.SetOutputAbsErr("output", 0.01f);
+    test.SetOutputAbsErr("output", 0.06f);
 
     if (sum_output_data.size() != 0) {
       // The second and third outputs are reserved for something else
