@@ -31,7 +31,7 @@
     "current_failing_tests": [
         "^test_adagrad",
         "^test_adagrad_multiple",
-	"^test_attention_3d.*",  // wrong expected values in onnx==1.18.0, fixed in 1.19.0
+        "^test_attention_3d.*",  // wrong expected values in onnx==1.18.0, fixed in 1.19.0
         "^test_attention_4d_diff_heads_mask4d_padded_kv*",  // pending onnx update
         "^test_attention_3d_gqa*",  // pending onnx update
         "^test_attention_3d_gqa_causal",  // pending onnx update
