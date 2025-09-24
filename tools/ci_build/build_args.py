@@ -629,6 +629,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         help="Enable CUDA kernel profiling (requires CUPTI in PATH).",
     )
 
+    cpu_group = parser.add_argument_group("CPU Execution Provider")
+    cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
+
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")
     dnnl_group.add_argument("--use_dnnl", action="store_true", help="Enable DNNL EP.")
