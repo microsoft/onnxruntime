@@ -138,6 +138,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           transB = trans_b_iter->second.i();
         }
         expected_axis = transB == 0 ? 1 : 0;
+        axis = (axis == -1) ? 1 : axis;  // normalize for comparison
       }
 
       if (axis != expected_axis) {
