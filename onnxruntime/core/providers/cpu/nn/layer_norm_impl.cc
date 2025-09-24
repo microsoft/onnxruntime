@@ -82,7 +82,7 @@ void ComputeJob(
 
 // Helper to convert int64_t -> Eigen::Index safely
 inline Eigen::Index ToEigenIndex(int64_t v) {
-  return gsl::narrow<Eigen::Index>(v);
+  return narrow<Eigen::Index>(v);
 }
 
 template <typename U>
