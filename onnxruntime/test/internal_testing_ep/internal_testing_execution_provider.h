@@ -9,6 +9,9 @@
 namespace onnxruntime {
 namespace internal_testing_ep {
 
+// Provider type of `InternalTestingExecutionProvider`, an EP used for internal testing.
+constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecutionProvider";
+
 class InternalTestingExecutionProvider : public IExecutionProvider {
  public:
   InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,

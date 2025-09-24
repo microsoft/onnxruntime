@@ -213,6 +213,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateSTFTOpBuilder("STFT", *this);
+  }
+
+  {
     CreateInverseOpBuilder("Inverse", *this);
   }
 }
