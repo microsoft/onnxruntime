@@ -33,7 +33,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win-CPU-2022
+      name: onnxruntime-Win-CPU-VS2022-Latest
       os: windows
     templateContext:
       sdl:
@@ -71,23 +71,9 @@ stages:
         clean: true
         submodules: none
 
-      - template: ../templates/telemetry-steps.yml
-
-      - task: NodeTool@0
-        inputs:
-          versionSpec: '22.x'
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.12'
-          addToPath: true
-          architecture: ${{ parameters.BuildArch }}
-
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
-
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: ${{ parameters.BuildArch }}
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2

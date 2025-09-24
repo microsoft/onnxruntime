@@ -128,6 +128,148 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
 
     # Calculate scale like C++ implementation
     abs_max = weights.abs().max(dim=-1, keepdim=True)[0]
+
+    # Set minimum scale to avoid division by zero
+    scale = torch.clamp(abs_max, min=1e-6)
+
+    # Quantization ranges for symmetric quantization
+    if is_4_bit_quantization:
+        qmin, qmax = -8, 7
+        zero_point = 8  # Offset to make values unsigned
+    else:
+        qmin, qmax = -128, 127
+        zero_point = 128  # Offset to make values unsigned
+
+    # Quantize using double precision division and C-like rounding (half away from zero)
+    scaled = weights.double() / scale.double()
+    sign = torch.sign(scaled)
+    abs_scaled = torch.abs(scaled)
+    quant_rounded = torch.floor(abs_scaled + 0.5)
+    quantized = torch.clamp((sign * quant_rounded).to(torch.int32), qmin, qmax).to(weights.dtype)
+
+    # Convert to unsigned and pack for storage
+    if is_4_bit_quantization:
+        # Convert to unsigned 4-bit and pack into uint8
+        unsigned_quantized = (quantized + zero_point).to(torch.uint8)
+
+        # Pack two 4-bit values into one uint8
+        packed_size = (weights.shape[-1] + 1) // 2
+        packed_quantized = torch.zeros((*weights.shape[:-1], packed_size), dtype=torch.uint8, device=weights.device)
+
+        for i in range(0, weights.shape[-1], 2):
+            val1 = unsigned_quantized[..., i]
+            val2 = unsigned_quantized[..., i + 1] if i + 1 < weights.shape[-1] else torch.zeros_like(val1)
+            packed_quantized[..., i // 2] = (val1 & 0xF) | ((val2 & 0xF) << 4)
+
+        quantized_storage = packed_quantized
+    else:
+        # 8-bit: convert to unsigned uint8
+        quantized_storage = (quantized + zero_point).to(torch.uint8)
+
+    # Dequantize for verification (use float32 scale for higher precision)
+    dequantized = quantized.to(torch.float32) * scale
+
+    return scale.squeeze(-1).to(torch.float32), quantized_storage, dequantized
+
+
+def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = True):
+    """
+    Block-wise quantization and dequantization for testing purposes.
+    This function uses symmetric quantization centered around 0 (no zero-point).
+
+    Args:
+        weights: Input tensor of shape [rows, cols]
+        block_size: Size of each quantization block
+        is_4_bit_quantization: Whether to use 4-bit (True) or 8-bit (False) quantization
+
+    Returns:
+        scales: Scale tensor of shape [rows, num_blocks]
+        quantized: Quantized tensor
+        dequantized: Dequantized tensor for verification
+    """
+    rows, cols = weights.shape
+    num_blocks = (cols + block_size - 1) // block_size
+
+    # Handle edge case of all-zero weights tensor
+    if torch.all(weights == 0):
+        scales = torch.zeros((rows, num_blocks), dtype=torch.float16, device=weights.device)
+        if is_4_bit_quantization:
+            packed_size = (cols + 1) // 2
+            quantized = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
+        else:
+            quantized = torch.zeros((rows, cols), dtype=torch.uint8, device=weights.device)
+        dequantized = torch.zeros_like(weights)
+        return scales, quantized, dequantized
+
+    # Initialize output tensors; use float32 for scales to reduce precision loss
+    scales = torch.zeros((rows, num_blocks), dtype=torch.float32, device=weights.device)
+    dequantized = torch.zeros_like(weights)
+
+    # Quantization ranges and zero point
+    if is_4_bit_quantization:
+        qmin, qmax = -8, 7
+        zero_point = 8
+        packed_size = (cols + 1) // 2
+        quantized = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
+    else:
+        qmin, qmax = -128, 127
+        zero_point = 128
+        quantized = torch.zeros((rows, cols), dtype=torch.uint8, device=weights.device)
+
+    # Process each block with higher-precision math to match C++ behavior
+    for row in range(rows):
+        for block_idx in range(num_blocks):
+            start_col = block_idx * block_size
+            end_col = min(start_col + block_size, cols)
+
+            # Get block data
+            block_data = weights[row, start_col:end_col]
+
+            # Calculate absolute max and ensure small epsilon to avoid div-by-zero
+            abs_max = block_data.abs().max()
+            abs_max = torch.clamp(abs_max, min=1e-8)
+
+            # Compute scale consistent with C++: use 7.0 for 4-bit positive max, 127.0 for 8-bit
+            if is_4_bit_quantization:
+                # Use higher precision then keep as float32 for scale
+                scale = (abs_max.double() / 7.0).float() + 1e-12
+            else:
+                scale = (abs_max.double() / 127.0).float() + 1e-12
+
+            scales[row, block_idx] = scale.to(torch.float32)
+
+            if scale == 0:
+                continue
+
+            # Quantize using double precision for the division to reduce rounding error
+            scaled = block_data.double() / scale.double()
+            # Emulate C's round() behavior (round half away from zero) to match C++ implementation
+            sign = torch.sign(scaled)
+            abs_scaled = torch.abs(scaled)
+            quant_rounded = torch.floor(abs_scaled + 0.5)
+            quantized_block = (sign * quant_rounded).clamp(qmin, qmax).to(torch.int32)
+
+            # Pack for 4-bit or store directly for 8-bit
+            if is_4_bit_quantization:
+                for i in range(0, end_col - start_col, 2):
+                    col_idx = start_col + i
+                    packed_idx = col_idx // 2
+
+                    val1 = int(quantized_block[i]) + zero_point
+                    val2 = int(quantized_block[i + 1]) + zero_point if i + 1 < len(quantized_block) else zero_point
+
+                    # Pack two 4-bit values into one uint8
+                    packed_val = (val1 & 0xF) | ((val2 & 0xF) << 4)
+                    quantized[row, packed_idx] = packed_val
+            else:
+                quantized_vals = (quantized_block + zero_point).to(torch.uint8)
+                quantized[row, start_col:end_col] = quantized_vals
+
+            # Dequantize for verification (signed quantized values multiplied by scale)
+            signed = quantized_block.to(torch.float32)
+            dequantized[row, start_col:end_col] = signed * scale
+
+    return scales, quantized, dequantized
     abs_max = torch.clamp(abs_max, min=1e-8)  # More conservative clamping for better precision
 
     if is_4_bit_quantization:
@@ -247,6 +389,7 @@ def create_cpu_moe_onnx_graph(
     use_quant=False,
     quant_bits=4,
     swiglu_interleaved=False,
+    block_size=0,  # New parameter for block-wise quantization
 ):
     if not has_onnx:
         return None
@@ -254,7 +397,8 @@ def create_cpu_moe_onnx_graph(
     inter_size = intermediate_size
     topk = top_k
 
-    use_quant = True
+    # Only override use_quant for backward compatibility if not explicitly set
+    # use_quant = True  # This line was causing issues for regular MoE tests
 
     if fc1_scales is None and use_quant:
         return None
@@ -267,25 +411,46 @@ def create_cpu_moe_onnx_graph(
     assert fc2_experts_weights.dtype == torch.uint8, "FC2 weights must be uint8 for QMoE"
     assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
     assert fc2_scales is not None, "FC2 scales must be provided for QMoE"
-    assert fc1_scales.dtype == torch.float16, "FC1 scales must be float16 for QMoE"
-    assert fc2_scales.dtype == torch.float16, "FC2 scales must be float16 for QMoE"
+    # Accept float16 or float32 scales; tests may produce float32 for better precision
+    assert fc1_scales.dtype in (torch.float16, torch.float32), "FC1 scales must be float16 or float32 for QMoE"
+    assert fc2_scales.dtype in (torch.float16, torch.float32), "FC2 scales must be float16 or float32 for QMoE"
 
     if not has_onnx:
         return None
 
-    op_name = "QMoE"
-    inputs = [
-        "input",
-        "router_probs",
-        "fc1_experts_weights",
-        "fc1_scales",
-        "",
-        "fc2_experts_weights",
-        "fc2_scales",
-        "",
-    ]
+    # Set operator name and inputs based on quantization mode
+    if use_quant:
+        op_name = "QMoE"
+        inputs = [
+            "input",
+            "router_probs",
+            "fc1_experts_weights",
+            "fc1_scales",
+            "",
+            "fc2_experts_weights",
+            "fc2_scales",
+            "",
+        ]
+    else:
+        # For regular (non-quantized) MoE, use different operator and input layout
+        op_name = "MoE"  # Regular MoE operator
+        inputs = [
+            "input",
+            "router_probs",
+            "fc1_experts_weights",
+            "fc1_experts_bias" if fc1_bias is not None else "",  # fc1_bias as input 3
+            "fc2_experts_weights",
+            "fc2_experts_bias" if fc2_bias is not None else "",  # fc2_bias as input 5
+            "",  # fc3_experts_weights (not used)
+            "",  # fc3_experts_bias (not used)
+        ]
 
     activation = "swiglu" if use_swiglu else "silu"
+
+    # Set normalization behavior based on operator type:
+    # - QMoE: Raw logits passed, needs normalization in C++ kernel
+    # - Regular MoE: Pre-computed probabilities passed, no additional normalization needed
+    normalize_routing = 1 if use_quant else 0
 
     nodes = [
         helper.make_node(
@@ -294,19 +459,24 @@ def create_cpu_moe_onnx_graph(
             ["output"],
             "MoE_0",
             k=topk,
-            normalize_routing_weights=1,  # Use proper routing normalization to match PyTorch behavior
+            normalize_routing_weights=normalize_routing,
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
-            swiglu_fusion=1 if (use_swiglu and swiglu_interleaved) else 0,  # 1 = fused and interleaved
+            swiglu_fusion=1 if use_swiglu else 0,  # 1 if using SwiGLU activation
             swiglu_limit=7.0,
             activation_alpha=1.702,
             activation_beta=1.0,
+            swiglu_interleaved=1 if swiglu_interleaved else 0,  # Enable this attribute
             domain="com.microsoft",
         ),
     ]
 
     if use_quant:
         nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
+
+    # Add block_size attribute for block-wise quantization
+    if block_size > 0:
+        nodes[0].attribute.extend([helper.make_attribute("block_size", block_size)])
 
     # Weights are store in column major order. Need pack 2 int4 values into uint8.
     # Use the actual tensor shapes instead of calculating them to avoid size mismatches
@@ -318,79 +488,113 @@ def create_cpu_moe_onnx_graph(
     weight_numpy_type = numpy.uint8 if use_quant else ort_to_numpy_type_map[onnx_dtype]
     weight_onnx_type = TensorProto.UINT8 if use_quant else onnx_dtype
 
+    # Use raw bytes from C-contiguous numpy arrays to ensure the exact memory layout
+    # of the packed uint8 weight tensors is preserved when writing the ONNX initializer.
+    fc1_np = fc1_experts_weights.detach().cpu().numpy().astype(weight_numpy_type)
+    fc2_np = fc2_experts_weights.detach().cpu().numpy().astype(weight_numpy_type)
+    fc1_np = numpy.ascontiguousarray(fc1_np)
+    fc2_np = numpy.ascontiguousarray(fc2_np)
+
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
             weight_onnx_type,
             fc1_shape,
-            fc1_experts_weights.flatten().detach().cpu().numpy().astype(weight_numpy_type).tolist(),
+            fc1_np.tobytes(),
+            raw=True,
         ),
         helper.make_tensor(
             "fc2_experts_weights",
             weight_onnx_type,
             fc2_shape,
-            fc2_experts_weights.flatten().detach().cpu().numpy().astype(weight_numpy_type).tolist(),
+            fc2_np.tobytes(),
+            raw=True,
         ),
     ]
 
-    fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size]
-    fc2_scale_shape = [num_experts, hidden_size]
+    # Calculate scale tensor shapes based on block_size
+    if block_size > 0:
+        # Block-wise quantization: 3D scale tensors
+        fc1_blocks_per_row = (hidden_size + block_size - 1) // block_size
+        fc2_blocks_per_row = (inter_size + block_size - 1) // block_size
 
-    fc1_scale_size = num_experts * (2 * inter_size if use_swiglu else inter_size)
-    fc2_scale_size = num_experts * hidden_size
+        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size, fc1_blocks_per_row]
+        fc2_scale_shape = [num_experts, hidden_size, fc2_blocks_per_row]
+
+        fc1_scale_size = num_experts * (2 * inter_size if use_swiglu else inter_size) * fc1_blocks_per_row
+        fc2_scale_size = num_experts * hidden_size * fc2_blocks_per_row
+    else:
+        # Row-wise quantization: 2D scale tensors
+        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size]
+        fc2_scale_shape = [num_experts, hidden_size]
+
+        fc1_scale_size = num_experts * (2 * inter_size if use_swiglu else inter_size)
+        fc2_scale_size = num_experts * hidden_size
 
     # Handle scale tensors - fc1_scales and fc2_scales are guaranteed to be not None due to earlier assertions
-    # Handle different possible scale tensor structures for fc1_scales
-    if len(fc1_scales.shape) == 4:
-        # 4D case: [num_experts, inter_size, hidden_size, 1] - extract first scale per expert per output
-        if use_swiglu:
-            fc1_scale_tensor = fc1_scales.to(torch_dtype)[:, : 2 * inter_size, 0, 0].flatten().detach().cpu().numpy()
-        else:
-            fc1_scale_tensor = fc1_scales.to(torch_dtype)[:, :inter_size, 0, 0].flatten().detach().cpu().numpy()
-    elif len(fc1_scales.shape) == 2:
-        # 2D case: already flattened, just ensure correct size
+    # Process scale tensors based on whether block-wise quantization is used
+    if block_size > 0:
+        # For block-wise quantization, the scales are already in the correct 3D shape
+        # [num_experts, output_features, num_blocks] from quant_dequant_blockwise
+        # Convert scales to the selected ONNX dtype (prefer float32 for higher precision)
         fc1_scale_tensor = fc1_scales.to(torch_dtype).flatten().detach().cpu().numpy()
-        if use_swiglu and fc1_scale_tensor.size == num_experts * inter_size:
-            # For SwiGLU, duplicate the scales to cover both gate and value components
-            fc1_scale_tensor = numpy.tile(fc1_scale_tensor.reshape(num_experts, inter_size), (1, 2)).flatten()
-        elif fc1_scale_tensor.size > fc1_scale_size:
-            # Truncate to expected size
-            fc1_scale_tensor = fc1_scale_tensor[:fc1_scale_size]
+        fc2_scale_tensor = fc2_scales.to(torch_dtype).flatten().detach().cpu().numpy()
     else:
-        # Other cases: flatten and truncate/pad as needed
-        fc1_scale_tensor = fc1_scales.to(torch_dtype).flatten().detach().cpu().numpy()
-        if fc1_scale_tensor.size > fc1_scale_size:
-            fc1_scale_tensor = fc1_scale_tensor[:fc1_scale_size]
-        elif fc1_scale_tensor.size < fc1_scale_size:
-            # Pad with ones if too small
-            pad_size = fc1_scale_size - fc1_scale_tensor.size
-            fc1_scale_tensor = numpy.concatenate([fc1_scale_tensor, numpy.ones(pad_size, dtype=fc1_scale_tensor.dtype)])
+        # For row-wise quantization, handle different possible scale tensor structures for fc1_scales
+        if len(fc1_scales.shape) == 4:
+            # 4D case: [num_experts, inter_size, hidden_size, 1] - extract first scale per expert per output
+            if use_swiglu:
+                fc1_scale_tensor = (
+                    fc1_scales.to(torch_dtype)[:, : 2 * inter_size, 0, 0].flatten().detach().cpu().numpy()
+                )
+            else:
+                fc1_scale_tensor = fc1_scales.to(torch_dtype)[:, :inter_size, 0, 0].flatten().detach().cpu().numpy()
+        elif len(fc1_scales.shape) == 2:
+            # 2D case: already flattened, just ensure correct size
+            fc1_scale_tensor = fc1_scales.to(torch_dtype).flatten().detach().cpu().numpy()
+            if use_swiglu and fc1_scale_tensor.size == num_experts * inter_size:
+                # For SwiGLU, duplicate the scales to cover both gate and value components
+                fc1_scale_tensor = numpy.tile(fc1_scale_tensor.reshape(num_experts, inter_size), (1, 2)).flatten()
+            elif fc1_scale_tensor.size > fc1_scale_size:
+                # Truncate to expected size
+                fc1_scale_tensor = fc1_scale_tensor[:fc1_scale_size]
+        else:
+            # Other cases: flatten and truncate/pad as needed
+            fc1_scale_tensor = fc1_scales.to(torch_dtype).flatten().detach().cpu().numpy()
+            if fc1_scale_tensor.size > fc1_scale_size:
+                fc1_scale_tensor = fc1_scale_tensor[:fc1_scale_size]
+            elif fc1_scale_tensor.size < fc1_scale_size:
+                # Pad with ones if too small
+                pad_size = fc1_scale_size - fc1_scale_tensor.size
+                fc1_scale_tensor = numpy.concatenate(
+                    [fc1_scale_tensor, numpy.ones(pad_size, dtype=fc1_scale_tensor.dtype)]
+                )
 
-    # Process scale tensor for proper shape
+        # Handle different possible scale tensor structures for fc2_scales
+        if len(fc2_scales.shape) == 4:
+            # 4D case: [num_experts, hidden_size, inter_size, 1] - extract first scale per expert per output
+            fc2_scale_tensor = fc2_scales.to(torch_dtype)[:, :hidden_size, 0, 0].flatten().detach().cpu().numpy()
+        elif len(fc2_scales.shape) == 2:
+            # 2D case: already flattened, just ensure correct size
+            fc2_scale_tensor = fc2_scales.to(torch_dtype).flatten().detach().cpu().numpy()
+            if fc2_scale_tensor.size > fc2_scale_size:
+                # Truncate to expected size
+                fc2_scale_tensor = fc2_scale_tensor[:fc2_scale_size]
+        else:
+            # Other cases: flatten and truncate/pad as needed
+            fc2_scale_tensor = fc2_scales.to(torch_dtype).flatten().detach().cpu().numpy()
+            if fc2_scale_tensor.size > fc2_scale_size:
+                fc2_scale_tensor = fc2_scale_tensor[:fc2_scale_size]
+            elif fc2_scale_tensor.size < fc2_scale_size:
+                # Pad with ones if too small
+                pad_size = fc2_scale_size - fc2_scale_tensor.size
+                fc2_scale_tensor = numpy.concatenate(
+                    [fc2_scale_tensor, numpy.ones(pad_size, dtype=fc2_scale_tensor.dtype)]
+                )
+
+    # Process scale tensors for proper data format
     fc1_scale_data_list = fc1_scale_tensor.tolist()
     fc1_scale_data = fc1_scale_data_list
-
-    # Handle different possible scale tensor structures for fc2_scales
-    if len(fc2_scales.shape) == 4:
-        # 4D case: [num_experts, hidden_size, inter_size, 1] - extract first scale per expert per output
-        fc2_scale_tensor = fc2_scales.to(torch_dtype)[:, :hidden_size, 0, 0].flatten().detach().cpu().numpy()
-    elif len(fc2_scales.shape) == 2:
-        # 2D case: already flattened, just ensure correct size
-        fc2_scale_tensor = fc2_scales.to(torch_dtype).flatten().detach().cpu().numpy()
-        if fc2_scale_tensor.size > fc2_scale_size:
-            # Truncate to expected size
-            fc2_scale_tensor = fc2_scale_tensor[:fc2_scale_size]
-    else:
-        # Other cases: flatten and truncate/pad as needed
-        fc2_scale_tensor = fc2_scales.to(torch_dtype).flatten().detach().cpu().numpy()
-        if fc2_scale_tensor.size > fc2_scale_size:
-            fc2_scale_tensor = fc2_scale_tensor[:fc2_scale_size]
-        elif fc2_scale_tensor.size < fc2_scale_size:
-            # Pad with ones if too small
-            pad_size = fc2_scale_size - fc2_scale_tensor.size
-            fc2_scale_tensor = numpy.concatenate([fc2_scale_tensor, numpy.ones(pad_size, dtype=fc2_scale_tensor.dtype)])
-
-    # Process scale tensor for proper shape
     fc2_scale_data_list = fc2_scale_tensor.tolist()
     fc2_scale_data = fc2_scale_data_list
 
@@ -594,10 +798,7 @@ class SparseMoeBlockORTHelper(nn.Module):
     def __init__(self, quant_bits=0, onnx_dtype=None):
         super().__init__()
         self.quant_bits = quant_bits
-        if onnx_dtype is None:
-            self.onnx_dtype = TensorProto.FLOAT16 if self.quant_bits > 0 else TensorProto.FLOAT
-        else:
-            self.onnx_dtype = onnx_dtype
+        self.onnx_dtype = onnx_dtype
         self.np_type = numpy.float16 if self.onnx_dtype == TensorProto.FLOAT16 else numpy.float32
 
     def create_ort_session(self, moe_onnx_graph):
@@ -619,18 +820,55 @@ class SparseMoeBlockORTHelper(nn.Module):
 
     def ort_forward(self, hidden_states: torch.Tensor, enable_performance_test=False) -> torch.Tensor:
         if self.ort_sess is None:
+            print(f"ERROR: ORT session is None for {self.__class__.__name__}")
             return None
 
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states_flat = hidden_states.view(-1, hidden_dim)
         router_logits = self.gate(hidden_states_flat)
 
+        # Different routing logic for QMoE vs regular MoE:
+        # - QMoE expects raw logits (does its own softmax internally)
+        # - Regular MoE expects pre-computed routing probabilities
+        if hasattr(self, "quant_bits") and self.quant_bits > 0:
+            # QMoE: Pass raw logits directly (QMoE does softmax internally)
+            router_input = router_logits
+            # print("DEBUG: Using QMoE routing (raw logits)")
+        else:
+            # Regular MoE: Apply the same routing logic as PyTorch reference
+            # This converts raw logits to proper routing probabilities
+            routing_weights, selected_experts = masked_sampling_omp_inference(
+                router_logits,
+                top_k=self.top_k,
+                jitter_eps=self.router_jitter_noise,
+                training=False,
+            )
+
+            # IMPORTANT: The routing weights from masked_sampling_omp_inference sum to top_k,
+            # but ONNX Runtime expects normalized probabilities that sum to 1.0
+            # Normalize the routing weights per token
+            routing_weights = routing_weights / routing_weights.sum(dim=1, keepdim=True)
+
+            # Create proper router probabilities tensor that matches PyTorch routing
+            router_input = torch.zeros_like(router_logits)
+            for i in range(router_logits.shape[0]):  # For each token
+                for j in range(self.top_k):  # For each top-k expert
+                    expert_idx = selected_experts[i, j]
+                    router_input[i, expert_idx] = routing_weights[i, j]
+
+        #     print("DEBUG: Using regular MoE routing (processed probabilities)")
+
+        # print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
+        # print(
+        #     f"DEBUG: hidden_states_flat stats: mean={hidden_states_flat.mean():.6f}, std={hidden_states_flat.std():.6f}"
+        # )
+
         torch_dtype = onnx_to_torch_type_map[self.onnx_dtype]
 
         tensors = {
             "input": hidden_states_flat.clone().to(device=device, dtype=torch_dtype),
             "router_probs": router_logits.clone().to(device=device, dtype=torch_dtype),
-            "output": torch.zeros_like(hidden_states_flat, device=device, dtype=torch_dtype),
+            "output": torch.zeros((batch_size * sequence_length, hidden_dim), device=device, dtype=torch_dtype),
         }
 
         try:
@@ -656,9 +894,13 @@ class SparseMoeBlockORTHelper(nn.Module):
                         buffer_ptr=tensor.data_ptr(),
                     )
 
+            # print("DEBUG: About to run ORT inference...")
+
             iobinding.synchronize_inputs()
             self.ort_sess.run_with_iobinding(iobinding)
             iobinding.synchronize_outputs()
+
+            # print("DEBUG: ORT inference completed successfully")
 
             if enable_performance_test:
                 repeat = 100
@@ -687,14 +929,29 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         is_4_bit = self.quant_bits == 4
         for i in range(self.num_experts):
-            w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, is_4_bit)
-            w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, is_4_bit)
+            if self.block_size > 0:
+                # Use block-wise quantization
+                w1_scale, pre_qweight1, w1_qdq = quant_dequant_blockwise(
+                    self.experts[i].w1.weight, self.block_size, is_4_bit
+                )
+                w2_scale, pre_qweight2, w2_qdq = quant_dequant_blockwise(
+                    self.experts[i].w2.weight, self.block_size, is_4_bit
+                )
+            else:
+                # Use row-wise quantization
+                w1_scale, pre_qweight1, w1_qdq = quant_dequant(self.experts[i].w1.weight, is_4_bit)
+                w2_scale, pre_qweight2, w2_qdq = quant_dequant(self.experts[i].w2.weight, is_4_bit)
 
             if self.use_swiglu:
                 if self.swiglu_interleaved:
                     pass
                 else:
-                    w3_scale, pre_qweight3, w3_qdq = quant_dequant(self.experts[i].w3.weight, is_4_bit)
+                    if self.block_size > 0:
+                        w3_scale, pre_qweight3, w3_qdq = quant_dequant_blockwise(
+                            self.experts[i].w3.weight, self.block_size, is_4_bit
+                        )
+                    else:
+                        w3_scale, pre_qweight3, w3_qdq = quant_dequant(self.experts[i].w3.weight, is_4_bit)
 
                     gate_weights = pre_qweight1
                     value_weights = pre_qweight3
@@ -755,6 +1012,7 @@ class SparseMoeBlockORTHelper(nn.Module):
                 use_quant=True,  # Always use QMoE
                 quant_bits=self.quant_bits,
                 swiglu_interleaved=self.swiglu_interleaved if hasattr(self, "swiglu_interleaved") else False,
+                block_size=self.block_size,  # Add block_size for block-wise quantization
             )
         except Exception:
             self.moe_onnx_graph = None
@@ -803,6 +1061,45 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         print(f"Parity check - {act_type} {self.quant_bits}-bit: max_diff = {max_diff:.6f}")
 
+        # Diagnostic dump: when differences are large, show the index and nearby values
+        if max_diff > 1e-3:
+            diff = (torch_output.cpu() - ort_output.cpu()).abs()
+            idx = torch.argmax(diff)
+            flat_idx = int(idx)
+            # Derive coordinates (batch, seq, hidden) from flattened index
+            total_elems = torch_output.numel()
+            # Work in flattened [batch, seq, hidden] ordering
+            hidden_dim = self.hidden_dim
+            seq = self.sequence_length
+            # Clamp to safe bounds
+            flat_idx = min(flat_idx, total_elems - 1)
+            i = flat_idx // (hidden_dim)
+            j = i // seq
+            k = flat_idx % hidden_dim
+            print(
+                f"Diagnostic - max diff at flat_idx={flat_idx} -> sample (batch_idx={j}, seq_idx={i % seq}, hidden_idx={k})"
+            )
+            print("Torch sample:", torch_output.cpu().reshape(-1, hidden_dim)[i, k].item())
+            print("ORT  sample:", ort_output.cpu().reshape(-1, hidden_dim)[i, k].item())
+            # Print routing and per-expert contributions for this token from the PyTorch reference
+            try:
+                hidden_states_flat = hidden_state.view(-1, hidden_dim)
+                token_vec = hidden_states_flat[i : i + 1]
+                gate_logits = self.gate(token_vec)
+                topk_vals, topk_experts = torch.topk(gate_logits, self.top_k, dim=-1)
+                topk_soft = F.softmax(topk_vals, dim=1)
+                print("Gate logits:", gate_logits.detach().cpu().numpy())
+                print("Selected experts:", topk_experts.detach().cpu().numpy())
+                print("Routing weights:", topk_soft.detach().cpu().numpy())
+                # Compute per-expert contributions for selected experts
+                for idx_e, e in enumerate(topk_experts[0].tolist()):
+                    expert_layer = self.experts[e]
+                    expert_out = expert_layer(token_vec)
+                    contrib = expert_out[0, k].item() * topk_soft[0, idx_e].item()
+                    print(f"Expert {e} contrib at hidden {k}: {contrib}")
+            except Exception as _:
+                pass
+
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (5e-2, 1e-3),
@@ -843,7 +1140,13 @@ def small_test_cases():
 
 class SwigluMoEBlock(SparseMoeBlockORTHelper):
     def __init__(
-        self, config: SwigluMoeConfig, batch_size: int, sequence_length: int, quant_bits: int = 0, onnx_dtype=None
+        self,
+        config: SwigluMoeConfig,
+        batch_size: int,
+        sequence_length: int,
+        quant_bits: int = 0,
+        onnx_dtype=None,
+        block_size: int = 0,
     ):
         super().__init__(quant_bits, onnx_dtype=onnx_dtype)
         self.hidden_dim = config.hidden_size
@@ -852,6 +1155,7 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
         self.top_k = config.num_experts_per_token
         self.use_swiglu = True
         self.swiglu_interleaved = True
+        self.block_size = block_size  # Store block_size for QMoE
         use_quant = self.quant_bits > 0
 
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=True)
@@ -921,7 +1225,13 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
 
 class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
     def __init__(
-        self, config: PhiMoEConfig, batch_size: int, sequence_length: int, quant_bits: int = 0, onnx_dtype=None
+        self,
+        config: PhiMoEConfig,
+        batch_size: int,
+        sequence_length: int,
+        quant_bits: int = 0,
+        onnx_dtype=None,
+        block_size: int = 0,
     ):
         super().__init__(quant_bits, onnx_dtype=onnx_dtype)
         self.hidden_dim = config.hidden_size
@@ -931,6 +1241,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         self.router_jitter_noise = config.router_jitter_noise
         self.use_swiglu = True
         self.swiglu_interleaved = True
+        self.block_size = block_size  # Store block_size for QMoE
         use_quant = self.quant_bits > 0
 
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=True)
@@ -950,8 +1261,14 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
             else:
                 is_4_bit = self.quant_bits == 4
 
-                scale1, pre_qweight1, w1_qdq = quant_dequant(expert.w1.weight, is_4_bit)
-                scale2, pre_qweight2, w2_qdq = quant_dequant(expert.w2.weight, is_4_bit)
+                if self.block_size > 0:
+                    # Use block-wise quantization
+                    scale1, pre_qweight1, w1_qdq = quant_dequant_blockwise(expert.w1.weight, self.block_size, is_4_bit)
+                    scale2, pre_qweight2, w2_qdq = quant_dequant_blockwise(expert.w2.weight, self.block_size, is_4_bit)
+                else:
+                    # Use row-wise quantization
+                    scale1, pre_qweight1, w1_qdq = quant_dequant(expert.w1.weight, is_4_bit)
+                    scale2, pre_qweight2, w2_qdq = quant_dequant(expert.w2.weight, is_4_bit)
 
                 expert.w1.weight.data = w1_qdq
                 expert.w2.weight.data = w2_qdq
@@ -990,6 +1307,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
             use_quant=use_quant,
             quant_bits=self.quant_bits,
             swiglu_interleaved=self.swiglu_interleaved,
+            block_size=self.block_size,  # Add block_size for block-wise quantization
         )
 
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph) if self.moe_onnx_graph else None
@@ -1001,9 +1319,9 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         hidden_states = hidden_states.view(-1, hidden_dim)
         router_logits = self.gate(hidden_states)
 
-        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        # Match CPU implementation: select top-k experts by logits, then softmax over those logits
+        routing_weights_vals, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)
+        routing_weights = F.softmax(routing_weights_vals, dim=1, dtype=torch.float)
         routing_weights = routing_weights.to(hidden_states.dtype)
 
         final_hidden_states = torch.zeros(
@@ -1038,15 +1356,30 @@ phi3_test_cases = [
     (2, 16, 8),
 ]
 
+# Define test cases for block-wise quantization
+phi3_blockwise_test_cases = [
+    (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
+    (1, 32, 8, 64),
+    (2, 16, 4, 32),
+    (2, 16, 8, 64),
+]
+
 
 @unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestPhiQMoECPU(unittest.TestCase):
     @parameterized.expand(phi3_test_cases)
     def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits):
-        torch.manual_seed(42)
-        numpy.random.seed(42)
+        # Create unique seed based on test parameters to ensure different inputs for each test
+        base_seed = 2000  # Different base seed from other tests
+        param_hash = hash((batch_size, sequence_length, quant_bits))
+        unique_seed = base_seed + abs(param_hash) % 1000
 
-        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}"
+        torch.manual_seed(unique_seed)
+        numpy.random.seed(unique_seed)
+
+        test_config = (
+            f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, seed={unique_seed}"
+        )
         print(f"Running Phi3 QMoE test: {test_config}")
 
         config = PhiMoEConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_tok=2)
@@ -1071,6 +1404,37 @@ class TestPhiQMoECPU(unittest.TestCase):
 
         phi3_moe.parity_check()
 
+    @parameterized.expand(phi3_blockwise_test_cases)
+    def test_phi3_qmoe_blockwise_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+        torch.manual_seed(42)
+        numpy.random.seed(42)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running Phi3 QMoE block-wise test: {test_config}")
+
+        config = PhiMoEConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_tok=2)
+
+        phi3_moe = PhiMoESparseMoeBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT,
+            block_size=block_size,  # Enable block-wise quantization
+        )
+
+        hidden_states = torch.randn(batch_size, sequence_length, config.hidden_size).to(torch.float32)
+
+        torch_result = phi3_moe.forward(hidden_states)
+
+        # Verify output shape and basic properties
+        expected_shape = (batch_size, sequence_length, config.hidden_size)
+        self.assertEqual(torch_result.shape, expected_shape)
+        self.assertFalse(torch.isnan(torch_result).any())
+        self.assertFalse(torch.isinf(torch_result).any())
+
+        phi3_moe.parity_check()
+
 
 disable_cpu_qmoe_tests = False
 
@@ -1081,15 +1445,30 @@ swiglu_test_cases = [
     (2, 16, 8),
 ]
 
+# Define test cases for block-wise quantization
+swiglu_blockwise_test_cases = [
+    (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
+    (1, 32, 8, 64),
+    (2, 16, 4, 32),
+    (2, 16, 8, 64),
+]
+
 
 @unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestSwigluQMoECPU(unittest.TestCase):
     @parameterized.expand(swiglu_test_cases)
     def test_swiglu_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits):
-        torch.manual_seed(42)
-        numpy.random.seed(42)
+        # Create unique seed based on test parameters to ensure different inputs for each test
+        base_seed = 1000  # Different base seed from regular MoE tests
+        param_hash = hash((batch_size, sequence_length, quant_bits))
+        unique_seed = base_seed + abs(param_hash) % 1000
 
-        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}"
+        torch.manual_seed(unique_seed)
+        numpy.random.seed(unique_seed)
+
+        test_config = (
+            f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, seed={unique_seed}"
+        )
         print(f"Running SwiGLU test: {test_config}")
 
         config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
@@ -1112,6 +1491,204 @@ class TestSwigluQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isinf(torch_result).any())
 
         swiglu_moe.parity_check()
+
+    @parameterized.expand(swiglu_blockwise_test_cases)
+    def test_swiglu_qmoe_blockwise_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+        torch.manual_seed(42)
+        numpy.random.seed(42)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running SwiGLU block-wise test: {test_config}")
+
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT,
+            block_size=block_size,  # Enable block-wise quantization
+        )
+
+        hidden_states = torch.randn(batch_size, sequence_length, config.hidden_size).to(torch.float32)
+
+        torch_result = swiglu_moe.forward(hidden_states)
+
+        expected_shape = (batch_size, sequence_length, config.hidden_size)
+        self.assertEqual(torch_result.shape, expected_shape)
+        self.assertFalse(torch.isnan(torch_result).any())
+        self.assertFalse(torch.isinf(torch_result).any())
+
+        swiglu_moe.parity_check()
+
+
+@unittest.skipIf(True, "Skipping QMoE CPU benchmark tests")
+class TestQMoESwiGLUBenchmark(unittest.TestCase):
+    """Benchmark tests for QMoE SwiGLU performance measurement."""
+
+    def test_qmoe_swiglu_throughput_benchmark(self):
+        """Comprehensive throughput benchmark for QMoE SwiGLU across different configurations."""
+        if disable_cpu_qmoe_tests:
+            self.skipTest("QMoE CPU tests disabled")
+
+        print("\n=== QMoE SwiGLU Throughput Benchmark ===")
+
+        # Test configurations: (name, hidden_size, intermediate_size, num_experts, top_k, quant_bits)
+        configs = [
+            ("Medium-4bit", 2880, 2880, 32, 4, 4),
+            ("Medium-8bit", 2880, 2880, 32, 4, 8),
+        ]
+
+        batch_size = 1
+        sequence_length = 512
+        num_runs = 30
+
+        results = []
+
+        for config_name, hidden_size, intermediate_size, num_experts, top_k, quant_bits in configs:
+            torch.manual_seed(42)
+            numpy.random.seed(42)
+
+            print(f"\nTesting {config_name}:")
+            print(f"  Hidden: {hidden_size}, Intermediate: {intermediate_size}")
+            print(f"  Experts: {num_experts}, Top-K: {top_k}, Quant: {quant_bits}-bit")
+
+            try:
+                # Create config and model
+                config = PhiMoEConfig(
+                    hidden_size=hidden_size,
+                    intermediate_size=intermediate_size,
+                    num_local_experts=num_experts,
+                    num_experts_per_tok=top_k,
+                )
+
+                qmoe_swiglu = PhiMoESparseMoeBlock(
+                    config,
+                    batch_size=batch_size,
+                    sequence_length=sequence_length,
+                    quant_bits=quant_bits,
+                    onnx_dtype=TensorProto.FLOAT,
+                )
+
+                # Create test input with fixed sequence length to match ONNX model
+                full_hidden_states = torch.randn(batch_size, sequence_length, hidden_size).to(torch.float32)
+
+                # For TTFT simulation, we'll measure single forward pass time
+                # This represents the time to process one token in autoregressive generation
+
+                # Initialize variables
+                torch_output = None
+                ort_output = None
+
+                # Warm up with full context
+                for _ in range(3):
+                    _ = qmoe_swiglu.forward(full_hidden_states)
+
+                # Benchmark PyTorch TTFT (Time to First Token)
+                # Measure time for a single forward pass (represents token generation time)
+                torch.manual_seed(42)
+
+                start_time = time.time()
+                for _ in range(num_runs):
+                    torch_output = qmoe_swiglu.forward(full_hidden_states)
+                end_time = time.time()
+                torch_ttft_ms = (end_time - start_time) / num_runs * 1000
+
+                # Calculate tokens per second (throughput)
+                # For sequence generation, this represents the rate at which we can generate tokens
+                torch_tokens_per_sec = 1000.0 / torch_ttft_ms  # 1 token / (time_ms / 1000)
+
+                print(f"  PyTorch TTFT: {torch_ttft_ms:.3f} ms (per token generation time)")
+                print(f"  PyTorch Throughput: {torch_tokens_per_sec:.1f} tokens/sec")
+
+                # Benchmark ONNX Runtime
+                ort_ttft_ms = 0
+                ort_tokens_per_sec = 0
+                speedup = 0
+                throughput_ratio = 0
+                max_diff = 0
+
+                model_updated = qmoe_swiglu.recreate_onnx_model()
+                if model_updated and qmoe_swiglu.ort_sess is not None:
+                    # Warm up ORT with full context
+                    for _ in range(3):
+                        _ = qmoe_swiglu.ort_forward(full_hidden_states)
+
+                    torch.manual_seed(42)
+
+                    # Measure ONNX Runtime TTFT (Time to First Token)
+                    start_time = time.time()
+                    for _ in range(num_runs):
+                        ort_output = qmoe_swiglu.ort_forward(full_hidden_states)
+                    end_time = time.time()
+                    ort_ttft_ms = (end_time - start_time) / num_runs * 1000
+
+                    # Calculate tokens per second for ONNX Runtime
+                    ort_tokens_per_sec = 1000.0 / ort_ttft_ms  # 1 token / (time_ms / 1000)
+
+                    speedup = torch_ttft_ms / ort_ttft_ms if ort_ttft_ms > 0 else 0
+                    throughput_ratio = ort_tokens_per_sec / torch_tokens_per_sec if torch_tokens_per_sec > 0 else 0
+
+                    print(f"  ONNX RT TTFT: {ort_ttft_ms:.3f} ms (per token generation time)")
+                    print(f"  ONNX RT Throughput: {ort_tokens_per_sec:.1f} tokens/sec")
+                    print(f"  TTFT Speedup: {speedup:.2f}x")
+                    print(f"  Throughput Gain: {throughput_ratio:.2f}x")
+                else:
+                    print("  ONNX RT: Not available")
+
+                # Calculate max difference if both outputs available
+                if torch_output is not None and ort_output is not None:
+                    max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max().item()
+                    print(f"  Max diff: {max_diff:.6f}")
+
+                results.append(
+                    {
+                        "config": config_name,
+                        "torch_ttft_ms": torch_ttft_ms,
+                        "torch_tokens_per_sec": torch_tokens_per_sec,
+                        "ort_ttft_ms": ort_ttft_ms,
+                        "ort_tokens_per_sec": ort_tokens_per_sec,
+                        "speedup": speedup,
+                        "throughput_ratio": throughput_ratio,
+                        "max_diff": max_diff,
+                    }
+                )
+
+            except Exception as e:
+                print(f"  Error: {e}")
+                continue
+
+        # Summary
+        print("\n=== Token Generation Time & Throughput Summary ===")
+        print(
+            f"{'Config':<15} {'PT Time':<10} {'PT tok/s':<10} {'ORT Time':<11} {'ORT tok/s':<11} {'Time Gain':<10} {'Throughput':<11} {'Max Diff':<10}"
+        )
+        print("-" * 105)
+        for result in results:
+            config = result["config"]
+            torch_ttft = result["torch_ttft_ms"]
+            torch_tps = result["torch_tokens_per_sec"]
+            ort_ttft = result["ort_ttft_ms"]
+            ort_tps = result["ort_tokens_per_sec"]
+            speedup = result["speedup"]
+            throughput_ratio = result["throughput_ratio"]
+            max_diff = result["max_diff"]
+
+            ort_ttft_str = f"{ort_ttft:.3f}" if ort_ttft > 0 else "N/A"
+            ort_tps_str = f"{ort_tps:.1f}" if ort_tps > 0 else "N/A"
+            speedup_str = f"{speedup:.2f}x" if speedup > 0 else "N/A"
+            throughput_str = f"{throughput_ratio:.2f}x" if throughput_ratio > 0 else "N/A"
+
+            print(
+                f"{config:<15} {torch_ttft:<10.3f} {torch_tps:<10.1f} {ort_ttft_str:<11} {ort_tps_str:<11} {speedup_str:<10} {throughput_str:<11} {max_diff:<10.6f}"
+            )
+
+        print("\nNotes:")
+        print("- Time: Token generation time in ms (lower is better)")
+        print("- tok/s: Tokens per second throughput (higher is better)")
+        print("- Time Gain: ORT speedup for latency (higher is better)")
+        print("- Throughput: ORT throughput improvement (higher is better)")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,75 @@
+parameters:
+- name: arch
+  type: string
+
+- name: python_version
+  type: string
+  
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+  - Debug
+  - Release
+  - RelWithDebInfo
+  - MinSizeRel
+
+- name: extra_build_arg
+  type: string
+  default: ''
+
+jobs:
+- job: Mac_${{ parameters.arch }}_${{ replace(parameters.python_version,'.','_') }}
+  timeoutInMinutes: 240
+  workspace:
+    clean: all
+  pool:
+    name: "Azure Pipelines"
+    image: "macOS-15"
+    os: macOS
+  templateContext:
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.SourcesDirectory)/build/Release/dist/fixed_wheels
+      artifactName: onnxruntime-macos-${{ parameters.arch }}_${{ replace(parameters.python_version,'.','_') }}
+
+  variables:
+  - name: MACOSX_DEPLOYMENT_TARGET
+    value: '14.0'
+        
+  steps:
+  - checkout: self
+    clean: true
+    submodules: none
+
+  - template: use-xcode-version.yml
+    parameters:
+      xcodeVersion: '16.4.0'
+
+
+  - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: ${{ parameters.arch }}
+      python_version: ${{ parameters.python_version }}
+
+  - script: |
+      set -e -x
+      export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-${{ parameters.arch }}
+      python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+        --build_dir $(Build.SourcesDirectory)/build \
+        --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+        --use_binskim_compliant_compile_flags \
+        --config Release \
+        --build_wheel \
+        --use_coreml ${{ parameters.extra_build_arg }} \
+        --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=${{ parameters.arch }} \
+        --update --skip_submodule_sync --build --parallel
+      python -m pip install --upgrade delocate
+      cd '$(Build.SourcesDirectory)/build/Release/dist'
+      ls
+      for file in *.whl
+      do
+        delocate-listdeps "$file"
+        delocate-wheel --require-archs=${{ parameters.arch }} -w fixed_wheels -v "$file"
+      done

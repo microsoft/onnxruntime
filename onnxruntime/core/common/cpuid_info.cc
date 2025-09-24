@@ -29,6 +29,10 @@
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
+#ifndef HWCAP_SVE
+#define HWCAP_SVE (1 << 22)
+#endif
+
 #ifndef HWCAP2_I8MM
 #define HWCAP2_I8MM (1 << 13)
 #endif
@@ -189,9 +193,12 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    // SVE is enabled only on Linux-based ARM CPUs for now, where it has been tested.
+    has_arm_sve_ = cpuinfo_has_arm_sve();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
     has_arm_sme_ = cpuinfo_has_arm_sme();
+    has_arm_sme2_ = cpuinfo_has_arm_sme2();
 
     const uint32_t core_cnt = cpuinfo_get_cores_count();
     core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
@@ -220,6 +227,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_fp16_ |= has_arm_neon_dot_;
 
     has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_ = ((getauxval(AT_HWCAP) & HWCAP_SVE) != 0);
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
@@ -332,6 +340,7 @@ void CPUIDInfo::ArmAppleInit() {
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
     has_arm_sme_ = cpuinfo_has_arm_sme();
+    has_arm_sme2_ = cpuinfo_has_arm_sme2();
 
     // Note: We leave is_armv8_narrow_ld_ unset because it only applies to a limited set of uarchs that we don't expect
     // to encounter on Apple platforms.

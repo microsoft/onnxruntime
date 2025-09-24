@@ -150,6 +150,45 @@ namespace Microsoft.ML.OnnxRuntime
             else
                 return StringToZeroTerminatedUtf8(str);
         }
+
+        /// <summary>
+        /// Converts a null-terminated path string that is pointed to by the given IntPtr handle into
+        /// a C# UTF-16 string.
+        /// </summary>
+        /// <remarks>A path string on Windows is utf-16, but utf-8 on other operating systems.</remarks>
+        /// <param name="strPtr"></param>
+        /// <returns></returns>
+        internal static string StringFromNativePathString(IntPtr strPtr)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (strPtr == IntPtr.Zero)
+                {
+                    return string.Empty;
+                }
+
+                // Get length of utf16 string by checking for two 0 bytes in a row.
+                int length = 0;
+                while (Marshal.ReadInt16(strPtr, length * 2) != 0)
+                {
+                    length += 1;
+                }
+
+                if (length == 0)
+                {
+                    return string.Empty;
+                }
+
+                unsafe
+                {
+                    return System.Text.Encoding.Unicode.GetString((byte*)strPtr, length * 2);
+                }
+            }
+            else
+            {
+                return StringFromNativeUtf8(strPtr);
+            }
+        }
     }
 
     // Guards an array of disposable objects on stack and disposes them in reverse order
