@@ -328,7 +328,7 @@ TEST(ConvBF16Test, Conv2D_1) {
   }
 
   test.AddInput<BFloat16>("X", X_shape, X);
-  test.AddInput<BFloat16>("W", W_shape, W, weight_is_initializer);
+  test.AddInput<BFloat16>("W", W_shape, W, false /*weight_is_initializer*/);
   test.AddOutput<BFloat16>("Y", Y_shape, expected_vals, /*no sort*/ false, 0.002f, 0.0f);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
