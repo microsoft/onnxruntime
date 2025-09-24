@@ -1095,7 +1095,46 @@ float* MlasSgemmKernelLoop(
     size_t ldc,
     float alpha,
     bool ZeroMode
-)
+    )
+/*++
+
+Routine Description:
+
+    This routine steps through the rows of the input and output matrices calling
+    the kernel until all rows have been processed.
+
+Arguments:
+
+    A - Supplies the address of matrix A.
+
+    B - Supplies the address of matrix B. The matrix data has been packed using
+        MlasSgemmCopyPackB or MlasSgemmTransposePackB.
+
+    C - Supplies the address of matrix C.
+
+    CountK - Supplies the number of columns from matrix A and the number of rows
+        from matrix B to iterate over.
+
+    CountM - Supplies the number of rows from matrix A and matrix C to iterate
+        over.
+
+    CountN - Supplies the number of columns from matrix B and matrix C to
+        iterate over.
+
+    lda - Supplies the first dimension of matrix A.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
+
+    ZeroMode - Supplies true if the output matrix must be zero initialized,
+        else false if the output matrix is accumulated into.
+
+Return Value:
+
+    Returns the next address of matrix C.
+
+--*/
 {
     while (CountM > 0) {
 
