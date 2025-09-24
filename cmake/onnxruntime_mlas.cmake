@@ -266,6 +266,12 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
 
+    if(NOT onnxruntime_DISABLE_SSE4)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_sse41}
+      )
+    endif()
+
     if(NOT onnxruntime_DISABLE_AVX)
       target_sources(onnxruntime_mlas PRIVATE
         ${mlas_platform_srcs_avx}
@@ -474,7 +480,7 @@ else()
           ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
           ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
         )
-        
+
         # Conditionally add the SVE implementation if compiler supports it
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
@@ -489,7 +495,7 @@ else()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+                                   PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
 
         if (NOT APPLE)
           set(mlas_platform_srcs
@@ -634,12 +640,6 @@ else()
           )
         endif()
 
-        if (NOT onnxruntime_DISABLE_AMX)
-          set(mlas_platform_srcs
-            ${mlas_platform_srcs_amx}
-          )
-        endif()
-
         # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
         # implementation to avoid external dependency.
         if(ANDROID)
@@ -759,14 +759,6 @@ endif()
         )
         set_source_files_properties(${mlas_platform_srcs_avx512vnni} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 
-        set(mlas_platform_srcs_amx
-          ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
-          ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
-          ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
-        )
-        set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-        set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/activate_fp16.cpp
           ${MLAS_SRC_DIR}/dwconv.cpp
@@ -816,8 +808,12 @@ endif()
         if(NOT APPLE AND NOT onnxruntime_DISABLE_AMX)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
-            ${mlas_platform_srcs_amx}
-          )
+            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
+            ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
+            )
+          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
         endif()
 
         if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
