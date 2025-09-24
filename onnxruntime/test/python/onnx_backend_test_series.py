@@ -49,7 +49,7 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
             else:
                 np.testing.assert_allclose(output, ref_output, rtol=rtol, atol=atol)
 
-        np.testing.assert_equal(len(ref_outputs), len(outputs))
+        np.testing.assert_equal(len(outputs), len(ref_outputs))
         for i in range(len(outputs)):  # pylint: disable=consider-using-enumerate
             if isinstance(outputs[i], list):
                 for j in range(len(outputs[i])):
