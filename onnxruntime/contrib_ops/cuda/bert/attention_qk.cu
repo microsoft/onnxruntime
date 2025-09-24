@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/bert/attention_qk.h"
 
 using namespace onnxruntime::cuda;
@@ -48,32 +49,24 @@ __global__ void ConvertAndCopyQK(const int count, const nv_bfloat16* input, floa
 
 template <typename T, typename QK>
 Status CopyQK(cudaStream_t stream, int qk_size, const T* input, QK* output) {
-  if constexpr (std::is_same_v<T, QK>) {
+  using CudaT = typename OrtToCudaType<T>::type;
+  using CudaQK = typename OrtToCudaType<QK>::type;
+
+  if constexpr (std::is_same_v<CudaT, CudaQK>) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         output, input, size_t(qk_size) * sizeof(T),
         cudaMemcpyDeviceToDevice, stream));
     return Status::OK();
   } else {
-    constexpr bool h2f = std::is_same_v<T, half> && std::is_same_v<QK, float>;
-    constexpr bool f2h = std::is_same_v<T, float> && std::is_same_v<QK, half>;
-    constexpr bool b2f = std::is_same_v<T, BFloat16> && std::is_same_v<QK, float>;
-    constexpr bool f2b = std::is_same_v<T, float> && std::is_same_v<QK, BFloat16>;
-
-    static_assert(h2f || f2h || b2f || f2b, "CopyQK supports only (float<->half) and (float<->bfloat16).");
-
     constexpr int block = 256;
     const int grid = (qk_size + block - 1) / block;
 
-    if constexpr (h2f || f2h) {
-      ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, input, output);
-      return CUDA_CALL(cudaGetLastError());
-    } else if constexpr (b2f) {
-      ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, reinterpret_cast<const __nv_bfloat16*>(input), output);
-      return CUDA_CALL(cudaGetLastError());
-    } else if constexpr (f2b) {
-      ConvertAndCopyQK<<<grid, block, 0, stream>>>(qk_size, input, reinterpret_cast<__nv_bfloat16*>(output));
-      return CUDA_CALL(cudaGetLastError());
-    }
+    ConvertAndCopyQK<<<grid, block, 0, stream>>>(
+        qk_size,
+        reinterpret_cast<const CudaT*>(input),
+        reinterpret_cast<CudaQK*>(output));
+
+    return CUDA_CALL(cudaGetLastError());
   }
 }
 
