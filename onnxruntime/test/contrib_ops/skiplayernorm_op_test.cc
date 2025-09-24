@@ -131,8 +131,8 @@ static void RunOneTest(
       test.AddOptionalOutputEdge<BFloat16>();
 
       test.AddOutput<BFloat16>("skip_input_bias_add_output",
-                                output_dims,
-                                ToBFloat16(sum_output_data));
+                               output_dims,
+                               ToBFloat16(sum_output_data));
     }
 
     if (strict) {
@@ -858,7 +858,7 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
   bool use_float16 = true;
   bool use_bfloat16 = true;
   bool no_beta = true;
-  bool simplified = true; 
+  bool simplified = true;
 
   RunTest(input_data,
           skip_data,

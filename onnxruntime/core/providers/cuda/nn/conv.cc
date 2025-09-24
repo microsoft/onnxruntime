@@ -56,7 +56,6 @@ REGISTER_KERNEL_TYPED(BFloat16, kOnnxDomain, false)
 #ifdef ENABLE_CUDA_NHWC_OPS
 REGISTER_KERNEL_TYPED(float, kMSInternalNHWCDomain, true)
 REGISTER_KERNEL_TYPED(MLFloat16, kMSInternalNHWCDomain, true)
-REGISTER_KERNEL_TYPED(BFloat16, kMSInternalNHWCDomain, true)
 #endif
 
 // First input (in this case X) is in case NHWC == true also in NHWC format, the other inputs in NCHW
@@ -593,7 +592,6 @@ Status CudnnConvolutionDescriptor::Set(
 // template instantiation for NhwcConv
 template class Conv<float, true>;
 template class Conv<MLFloat16, true>;
-template class Conv<BFloat16, true>;
 #endif
 
 }  // namespace cuda

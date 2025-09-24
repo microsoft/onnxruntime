@@ -60,7 +60,7 @@ namespace test {
 template <typename T>
 class CudaNhwcTypedTest : public ::testing::Test {};
 
-using CudaNhwcTestTypes = ::testing::Types<float, MLFloat16, BFloat16>;  // double,
+using CudaNhwcTestTypes = ::testing::Types<float, MLFloat16>;  // double,
 TYPED_TEST_SUITE(CudaNhwcTypedTest, CudaNhwcTestTypes);
 
 }  // namespace test

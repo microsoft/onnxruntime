@@ -111,7 +111,6 @@ POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 19, 21, kMSInternalNHW
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 19, 21, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(AveragePool, float, AveragePool, 22, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(AveragePool, BFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kMSInternalNHWCDomain, true)
 POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kMSInternalNHWCDomain, true)
 #endif
