@@ -191,6 +191,21 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
     endif()
 
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+      if (UNIX)
+        # Suppress -Wattributes warning from protobuf headers with nvcc on Linux
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-attributes>")
+
+        # Suppress deprecation errors from new CUDA versions (e.g., long4 in CUDA 13).
+        # This is not working, and we have to add -Wno-deprecated-declarations in CMakeLists.txt. Keep it for reference.
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=deprecated-declarations>")
+      endif()
+
+      if (MSVC)
+          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+      endif()
+    endif()
+
     if (UNIX)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -237,7 +252,7 @@
           message( WARNING "To compile with NHWC ops enabled please compile against cuDNN 9 or newer." )
         endif()
       endif()
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart # CUDA::nvrtc CUDA::cuda_driver
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 

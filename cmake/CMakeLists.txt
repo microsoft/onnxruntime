@@ -1441,6 +1441,12 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
+
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+    # Suppress deprecation errors (e.g., long4 in CUDA 13)
+    add_compile_options(-Wno-deprecated-declarations)
+  endif()
+
   if (NOT WIN32)
     list(APPEND CUDA_NVCC_FLAGS --compiler-options -fPIC)
   endif()
