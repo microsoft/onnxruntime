@@ -53,6 +53,26 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/saturation_check.cpp
 )
 
+if (onnxruntime_DISABLE_SSE4)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_SSE4)
+endif()
+
+if (onnxruntime_DISABLE_AVX)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX)
+endif()
+
+if (onnxruntime_DISABLE_AVX2)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX2)
+endif()
+
+if (onnxruntime_DISABLE_AVX512)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX512)
+endif()
+
+if (onnxruntime_DISABLE_AMX)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AMX)
+endif()
+
 target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_float16.h
   ${MLAS_INC_DIR}/mlas_gemm_postprocessor.h
@@ -196,6 +216,11 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    set(mlas_platform_srcs_sse41
+      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+    )
+    set_source_files_properties(${mlas_platform_srcs_sse41} PROPERTIES COMPILE_FLAGS "-msse4.1")
+
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
@@ -246,12 +271,6 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
 
-    if (NOT onnxruntime_DISABLE_SSE4)
-      target_sources(onnxruntime_mlas PRIVATE
-        ${mlas_platform_srcs_sse41}
-      )
-    endif()
-
     if(NOT onnxruntime_DISABLE_AVX)
       target_sources(onnxruntime_mlas PRIVATE
         ${mlas_platform_srcs_avx}
@@ -287,7 +306,7 @@ function(setup_mlas_source_for_windows)
     )
     if (NOT onnxruntime_DISABLE_SSE4)
       target_sources(onnxruntime_mlas PRIVATE
-        ${mlas_platform_srcs_sse41}
+        ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       )
     endif()
   endif()
@@ -679,11 +698,6 @@ else()
           )
         endif()
         set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
-
-        set(mlas_platform_srcs_sse41
-          ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
-        )
-        set_source_files_properties(${mlas_platform_srcs_sse41} PROPERTIES COMPILE_FLAGS "-msse4.1")
 
         set(mlas_platform_srcs_avx
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx.S

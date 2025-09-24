@@ -1016,26 +1016,6 @@ if (onnxruntime_FORCE_GENERIC_ALGORITHMS)
     add_compile_definitions(FORCE_GENERIC_ALGORITHMS)
 endif()
 
-if (onnxruntime_DISABLE_SSE4)
-  add_compile_definitions(ORT_DISABLE_SSE4)
-endif()
-
-if (onnxruntime_DISABLE_AVX)
-  add_compile_definitions(ORT_DISABLE_AVX)
-endif()
-
-if (onnxruntime_DISABLE_AVX2)
-  add_compile_definitions(ORT_DISABLE_AVX2)
-endif()
-
-if (onnxruntime_DISABLE_AVX512)
-  add_compile_definitions(ORT_DISABLE_AVX512)
-endif()
-
-if (onnxruntime_DISABLE_AMX)
-  add_compile_definitions(ORT_DISABLE_AMX)
-endif()
-
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   # To support LazyTensor, ORT needs to call Python function from C/C++.
   # so onnxruntime_ENABLE_PYTHON is required.
