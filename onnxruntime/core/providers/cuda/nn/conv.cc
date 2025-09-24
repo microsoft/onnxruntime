@@ -31,10 +31,10 @@ namespace cuda {
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Conv<T, NHWC>);                                                                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
       DOMAIN,                                                                              \
-      11,                                                                                  \
+      11, 21,                                                                              \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
