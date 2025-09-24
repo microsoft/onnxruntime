@@ -13,3 +13,5 @@ onnx-ir
 jinja2
 markupsafe
 semver
+packaging
+coloredlogs

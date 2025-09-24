@@ -362,7 +362,12 @@ def generate_triplet_for_posix_platform(
             cflags_release = ["-DNDEBUG", "-O3"]
 
             if enable_binskim:
-                cflags_release += ["-Wp,-D_FORTIFY_SOURCE=2", "-Wp,-D_GLIBCXX_ASSERTIONS", "-fstack-protector-strong"]
+                cflags_release += [
+                    "-U_FORTIFY_SOURCE",
+                    "-D_FORTIFY_SOURCE=2",
+                    "-Wp,-D_GLIBCXX_ASSERTIONS",
+                    "-fstack-protector-strong",
+                ]
                 if target_abi == "x64":
                     cflags_release += ["-fstack-clash-protection", "-fcf-protection"]
 

@@ -211,6 +211,14 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateThresholdedReluOpBuilder("ThresholdedRelu", *this);
   }
+
+  {
+    CreateSTFTOpBuilder("STFT", *this);
+  }
+
+  {
+    CreateInverseOpBuilder("Inverse", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {

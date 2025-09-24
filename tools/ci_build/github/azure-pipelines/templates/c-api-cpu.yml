@@ -126,6 +126,8 @@ stages:
         xcodeVersion: 16.4
 
     - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
 
     - script: |
         set -e -x
@@ -192,7 +194,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
     templateContext:
       inputs:
@@ -239,7 +241,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
     templateContext:
       sdl:
@@ -403,7 +405,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
       os: windows
     templateContext:
       sdl:
