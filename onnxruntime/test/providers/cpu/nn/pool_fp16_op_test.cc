@@ -322,6 +322,97 @@ TEST(PoolTest, MaxPool_DilationPadding_3d) {
            {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
+TEST(PoolBF16Test, AveragePool) {
+#ifdef USE_CUDA
+  if (!CudaHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#else
+  return;
+#endif
+
+  OpTester test("AveragePool", 22);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
+
+  std::vector<BFloat16> x_vals = {
+      BFloat16(0x1.55cp-2f), BFloat16(0x1.c24p-1f), BFloat16(0x1.598p-2f),
+      BFloat16(0x1.554p-1f), BFloat16(0x1.c54p-2f), BFloat16(0x1.4b8p-1f),
+      BFloat16(0x1.89p-1f), BFloat16(0x1.c3cp-1f), BFloat16(0x1.c54p-1f),
+      BFloat16(0x1.7dcp-1f), BFloat16(0x1.208p-2f), BFloat16(0x1.bdcp-1f),
+      BFloat16(0x1.14cp-1f), BFloat16(0x1.4a4p-6f), BFloat16(0x1.9cp-1f),
+      BFloat16(0x1.35p-1f), BFloat16(0x1.3f8p-1f), BFloat16(0x1.418p-3f),
+      BFloat16(0x1.91p-3f), BFloat16(0x1.6ccp-1f), BFloat16(0x1.1bp-4f),
+      BFloat16(0x1.0cp-1f), BFloat16(0x1.d18p-1f), BFloat16(0x1.ba4p-2f),
+      BFloat16(0x1.9ecp-1f), BFloat16(0x1.a8cp-4f), BFloat16(0x1.8e4p-2f),
+      BFloat16(0x1.19cp-2f), BFloat16(0x1.118p-2f), BFloat16(0x1.60cp-5f),
+      BFloat16(0x1.7ap-2f), BFloat16(0x1.bccp-1f), BFloat16(0x1.43p-1f),
+      BFloat16(0x1.6c4p-1f), BFloat16(0x1.03p-2f), BFloat16(0x1.06cp-1f),
+      BFloat16(0x1.c34p-4f), BFloat16(0x1.9ccp-3f), BFloat16(0x1.c04p-2f),
+      BFloat16(0x1.838p-1f), BFloat16(0x1.a08p-4f), BFloat16(0x1.72cp-1f),
+      BFloat16(0x1.fcp-2f), BFloat16(0x1.d5cp-1f), BFloat16(0x1.36p-1f),
+      BFloat16(0x1.008p-2f), BFloat16(0x1.e7p-2f), BFloat16(0x1.cfp-1f),
+      BFloat16(0x1.e3cp-2f), BFloat16(0x1.b38p-1f), BFloat16(0x1.1d8p-3f),
+      BFloat16(0x1.f84p-1f), BFloat16(0x1.57cp-1f), BFloat16(0x1.cap-1f),
+      BFloat16(0x1.9a4p-2f), BFloat16(0x1.68cp-4f), BFloat16(0x1.c98p-1f),
+      BFloat16(0x1.61cp-2f), BFloat16(0x1.9e4p-1f), BFloat16(0x1.8acp-3f),
+      BFloat16(0x1.43cp-5f), BFloat16(0x1.bep-6f), BFloat16(0x1.9f8p-1f),
+      BFloat16(0x1.8acp-1f), BFloat16(0x1.b8p-1f), BFloat16(0x1.a1p-3f),
+      BFloat16(0x1.918p-1f), BFloat16(0x1.2bp-2f), BFloat16(0x1.034p-1f),
+      BFloat16(0x1.7bcp-1f), BFloat16(0x1.b6p-4f), BFloat16(0x1.2dcp-1f),
+      BFloat16(0x1.b7p-3f), BFloat16(0x1.404p-3f), BFloat16(0x1.59p-3f),
+      BFloat16(0x1.818p-1f), BFloat16(0x1.2b4p-1f), BFloat16(0x1.d38p-1f),
+      BFloat16(0x1.5b4p-1f), BFloat16(0x1.b1p-3f), BFloat16(0x1.d8cp-5f),
+      BFloat16(0x1.p-1f), BFloat16(0x1.d9p-3f), BFloat16(0x1.a8p-5f),
+      BFloat16(0x1.64cp-1f), BFloat16(0x1.e3cp-2f), BFloat16(0x1.cf4p-4f),
+      BFloat16(0x1.3ccp-1f), BFloat16(0x1.cb4p-1f), BFloat16(0x1.374p-1f),
+      BFloat16(0x1.3acp-2f), BFloat16(0x1.43cp-4f), BFloat16(0x1.908p-5f),
+      BFloat16(0x1.fc8p-3f), BFloat16(0x1.f8p-1f), BFloat16(0x1.cfp-2f),
+      BFloat16(0x1.128p-2f), BFloat16(0x1.84cp-1f), BFloat16(0x1.834p-2f),
+      BFloat16(0x1.3dp-2f), BFloat16(0x1.c48p-1f), BFloat16(0x1.7ecp-4f),
+      BFloat16(0x1.84cp-2f), BFloat16(0x1.93p-4f), BFloat16(0x1.334p-1f),
+      BFloat16(0x1.97p-1f), BFloat16(0x1.d68p-2f), BFloat16(0x1.1b8p-1f),
+      BFloat16(0x1.8ep-2f), BFloat16(0x1.a14p-2f), BFloat16(0x1.8b8p-2f),
+      BFloat16(0x1.c88p-1f), BFloat16(0x1.bdp-3f), BFloat16(0x1.57cp-1f),
+      BFloat16(0x1.278p-1f), BFloat16(0x1.f9p-1f), BFloat16(0x1.3acp-5f),
+      BFloat16(0x1.424p-3f), BFloat16(0x1.7e8p-4f), BFloat16(0x1.db8p-1f),
+      BFloat16(0x1.49p-3f), BFloat16(0x1.a64p-1f), BFloat16(0x1.b1p-2f),
+      BFloat16(0x1.f98p-1f), BFloat16(0x1.e54p-1f), BFloat16(0x1.d94p-1f),
+      BFloat16(0x1.ff4p-1f), BFloat16(0x1.50cp-2f), BFloat16(0x1.85p-7f),
+      BFloat16(0x1.f7cp-1f), BFloat16(0x1.7f8p-4f), BFloat16(0x1.56cp-2f),
+      BFloat16(0x1.47p-1f), BFloat16(0x1.f8cp-1f), BFloat16(0x1.de8p-2f),
+      BFloat16(0x1.e8p-1f), BFloat16(0x1.458p-3f), BFloat16(0x1.6f4p-1f),
+      BFloat16(0x1.91cp-6f), BFloat16(0x1.a4cp-1f), BFloat16(0x1.274p-3f),
+      BFloat16(0x1.cfp-2f), BFloat16(0x1.c58p-2f), BFloat16(0x1.fc8p-1f),
+      BFloat16(0x1.b38p-1f), BFloat16(0x1.0b4p-3f), BFloat16(0x1.4p-4f),
+      BFloat16(0x1.e3p-1f), BFloat16(0x1.fb8p-6f), BFloat16(0x1.bb4p-3f),
+      BFloat16(0x1.e6p-1f), BFloat16(0x1.258p-1f), BFloat16(0x1.2f8p-1f),
+      BFloat16(0x1.88p-1f), BFloat16(0x1.2p-1f), BFloat16(0x1.68cp-7f),
+      BFloat16(0x1.75cp-1f), BFloat16(0x1.8f4p-2f), BFloat16(0x1.5d8p-4f),
+      BFloat16(0x1.bbp-2f), BFloat16(0x1.afcp-1f), BFloat16(0x1.0f8p-1f),
+      BFloat16(0x1.4a4p-1f), BFloat16(0x1.518p-3f), BFloat16(0x1.6fcp-2f),
+      BFloat16(0x1.2d4p-5f), BFloat16(0x1.23cp-1f), BFloat16(0x1.2b4p-1f),
+      BFloat16(0x1.ee4p-1f), BFloat16(0x1.cf8p-1f), BFloat16(0x1.2c4p-2f),
+      BFloat16(0x1.0bcp-2f), BFloat16(0x1.ee8p-2f), BFloat16(0x1.21p-1f),
+      BFloat16(0x1.ad4p-3f), BFloat16(0x1.7f4p-2f), BFloat16(0x1.f8p-2f),
+      BFloat16(0x1.90cp-1f), BFloat16(0x1.24p-2f), BFloat16(0x1.dd8p-2f),
+      BFloat16(0x1.974p-3f), BFloat16(0x1.9dcp-3f), BFloat16(0x1.46p-2f),
+      BFloat16(0x1.cfcp-2f), BFloat16(0x1.204p-2f), BFloat16(0x1.a4p-1f),
+      BFloat16(0x1.fc4p-2f), BFloat16(0x1.dep-2f), BFloat16(0x1.7b4p-1f),
+      BFloat16(0x1.9b8p-2f), BFloat16(0x1.b3p-3f), BFloat16(0x1.e08p-2f)};
+  std::vector<int64_t> x_dims = {1, 3, 8, 8};
+  std::vector<int64_t> expected_dims = {1, 3, 1, 1};
+  std::vector<BFloat16> expected_vals = {BFloat16(0.514681101f), BFloat16(0.485104561f), BFloat16(0.475683808f)};
+
+  test.AddInput<BFloat16>("X", x_dims, x_vals);
+  test.AddOutput<BFloat16>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+}
+
 TEST(PoolFp16Test, AveragePool) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
