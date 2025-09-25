@@ -9,7 +9,6 @@
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
-#include "core/framework/library_handles.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
@@ -31,6 +30,7 @@ struct CapturedCommandInfo {
   WGPUBindGroup bind_group;
   WGPUBindGroupLayout bind_group_layout;
   std::array<uint32_t, 3> dispatch_group;
+  WGPUBuffer indirect_buffer;  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
 };
 
 struct WebGpuContextConfig {
@@ -183,7 +183,8 @@ class WebGpuContext final {
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,
                              const ProgramArtifact& program_artifact,
-                             uint32_t x, uint32_t y, uint32_t z);
+                             uint32_t x, uint32_t y, uint32_t z,
+                             const Tensor* indirect_dispatch_tensor = nullptr);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
@@ -226,8 +227,6 @@ class WebGpuContext final {
   friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
-
-  LibraryHandles modules_;
 
   wgpu::Instance instance_;
   wgpu::Device device_;

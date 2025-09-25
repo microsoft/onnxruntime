@@ -19,7 +19,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/framework/error_code_helper.h"
 #include "dummy_provider.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
 

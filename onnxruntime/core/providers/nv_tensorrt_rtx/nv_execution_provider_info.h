@@ -37,7 +37,7 @@ struct NvExecutionProviderInfo {
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
-  std::string timing_cache_path{""};
+  std::string runtime_cache_path{""};
   bool detailed_build_log{false};
   bool sparsity_enable{false};
   int auxiliary_streams{-1};

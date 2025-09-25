@@ -18,7 +18,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -433,7 +433,7 @@ Ort::IoBinding generate_io_binding(
   }
   const OrtMemoryInfo* info;
   Ort::ThrowOnError(Ort::GetApi().AllocatorGetInfo(allocator, &info));
-  Ort::MemoryInfo mem_info(info->name, info->alloc_type, info->device.Id(), info->mem_type);
+  Ort::MemoryInfo mem_info(info->name.c_str(), info->alloc_type, static_cast<int>(info->device.Id()), info->mem_type);
 
   for (int input_idx = 0; input_idx < int(session.GetInputCount()); ++input_idx) {
     auto input_name = session.GetInputNameAllocated(input_idx, Ort::AllocatorWithDefaultOptions());

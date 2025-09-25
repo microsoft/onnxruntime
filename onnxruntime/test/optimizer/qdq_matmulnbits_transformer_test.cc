@@ -13,12 +13,12 @@
 
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
