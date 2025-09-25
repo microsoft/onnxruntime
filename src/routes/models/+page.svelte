@@ -1,6 +1,16 @@
 <script>
 	let modelhubs = [
 		{
+			title: 'Azure AI Foundry Local Models',
+			description:
+				'Discover AI models optimized for local deployment on NPUs, GPUs, and other specialized hardware devices.',
+			url: '/models/foundry',
+			image:
+				'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiByeD0iMTAiIGZpbGw9IiMwMDc4ZDQiLz4KPHN2ZyB4PSIyMCIgeT0iMjAiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPgo8cGF0aCBkPSJtOSAxMiAyIDIgNC00Ii8+CjxwYXRoIGQ9Ik0yMSAxMmMuNTUyIDAgMS0uNDQ4IDEtMXMtLjQ0OC0xLTEtMWMtLjU1MiAwLTEgLjQ0OC0xIDFzLjQ0OCAxIDEgMSIvPgo8cGF0aCBkPSJNMyAxMmMuNTUyIDAgMS0uNDQ4IDEtMXMtLjQ0OC0xLTEtMWMtLjU1MiAwLTEgLjQ0OC0xIDFzLjQ0OCAxIDEgMSIvPgo8cGF0aCBkPSJNMTIgM2MuNTUyIDAgMS0uNDQ4IDEtMXMtLjQ0OC0xLTEtMWMtLjU1MiAwLTEgLjQ0OC0xIDFzLjQ0OCAxIDEgMSIvPgo8cGF0aCBkPSJNMTIgMjFjLjU1MiAwIDEtLjQ0OCAxLTFzLS40NDgtMS0xLTFjLS41NTIgMC0xIC40NDgtMSAxcy40NDggMSAxIDEiLz4KPHA+PC9zdmc+Cjwvc3ZnPgo=',
+			imagealt: 'Azure AI Foundry Logo',
+			isInternal: true
+		},
+		{
 			title: 'ONNX Community (hosted on Hugging Face)',
 			description:
 				'Access, share, and discuss ONNX models published to Hugging Face by members of the ONNX Community.',
@@ -69,17 +79,31 @@
 	<div class="my-8 grid grid-cols-1 md:grid-cols-2 gap-8">
 		{#each modelhubs as modelhub}
 			<div class="card bg-success image-full transition hover:scale-105">
-				<a rel="noopener noreferrer" target="_blank" href={modelhub.url} class="card-body">
-					<div class="grid grid-cols-5">
-						<div class="h-full">
-							<img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
+				{#if modelhub.isInternal}
+					<a href={modelhub.url} class="card-body">
+						<div class="grid grid-cols-5">
+							<div class="h-full">
+								<img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
+							</div>
+							<div class="col-span-4">
+								<h2 class="card-title text-white">{modelhub.title}</h2>
+								<p class="text-white">{modelhub.description}</p>
+							</div>
 						</div>
-						<div class="col-span-4">
-							<h2 class="card-title text-white">{modelhub.title}</h2>
-							<p class="text-white">{modelhub.description}</p>
+					</a>
+				{:else}
+					<a rel="noopener noreferrer" target="_blank" href={modelhub.url} class="card-body">
+						<div class="grid grid-cols-5">
+							<div class="h-full">
+								<img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
+							</div>
+							<div class="col-span-4">
+								<h2 class="card-title text-white">{modelhub.title}</h2>
+								<p class="text-white">{modelhub.description}</p>
+							</div>
 						</div>
-					</div>
-				</a>
+					</a>
+				{/if}
 			</div>
 		{/each}
 	</div>
