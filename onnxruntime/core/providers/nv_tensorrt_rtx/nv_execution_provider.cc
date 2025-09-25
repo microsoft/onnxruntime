@@ -86,7 +86,7 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-common::Status NvExecutionProvider::InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
+Status NvExecutionProvider::InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
   // By calling GetPerThreadContext(), we ensure that the cuda context
   // for the current thread is created if it doesn't already exist.
   // The constructor of PerThreadContext handles the context creation.
@@ -97,65 +97,35 @@ common::Status NvExecutionProvider::InitializeGpuResources(HANDLE sharedFenceHan
   semHandleDesc.handle.win32.handle = sharedFenceHandle;
   cuImportExternalSemaphore(&cSemFence, &semHandleDesc);
   *extSemFence = cSemFence;
-  return common::Status::OK();
+  return Status::OK();
 }
 
-common::Status NvExecutionProvider::SetupInteropEpWait(bool use_cig, void* extSemFence, void* stream, ID3D12Device* pDevice, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
-  // This is the empty function to be called from the C API.
-  // You can add your specific interop logic here in the future.
+Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpWait() called.";
 
-  if(use_cig)
-  {
-    // make CUDA wait for the upload by DX to finish
-    pCommandQueue->Signal(pFence, 1);
-    CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS waitParams = {};
-    waitParams.params.fence.value = 1;
-    CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
-    cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
-    cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
-  }
-  else
-  {
-    // FlushAndWait(pDevice, pCommandQueue);
-    // Event and D3D12 Fence to manage CPU<->GPU sync (we want to keep 2 iterations in "flight")
-    HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    ID3D12Fence* fencePtr = nullptr;
-    pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fencePtr));
+  // make CUDA wait for the upload by DX to finish
+  pCommandQueue->Signal(pFence, 1);
+  CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS waitParams = {};
+  waitParams.params.fence.value = 1;
+  CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
+  cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
+  cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
 
-    pCommandQueue->Signal(fencePtr, 1);
-    fencePtr->SetEventOnCompletion(1, hEvent);
-    DWORD retVal = WaitForSingleObject(hEvent, INFINITE);
-
-    fencePtr->Release();
-    CloseHandle(hEvent);
-    retVal = 0;
-  }
-
-  ORT_UNUSED_PARAMETER(stream);
-  // ORT_UNUSED_PARAMETER(pCommandQueue);
-
-  return common::Status::OK();
+  return Status::OK();
 }
-common::Status NvExecutionProvider::SetupInteropEpSignal(bool use_cig, void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
+Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpSignal() called.";
 
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
-  if (use_cig) {
-    // make D3D12 wait for the CUDA kernel to finish
-    CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signalParams = {};
-    signalParams.params.fence.value = 2;
-    CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
-    cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
-    pCommandQueue->Wait(pFence, 2);
-  }
-  else
-  {
-    cudaStreamSynchronize(cudaStream);
-  }
 
-  ORT_UNUSED_PARAMETER(stream);
-  return common::Status::OK();
+  // make D3D12 wait for the CUDA kernel to finish
+  CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signalParams = {};
+  signalParams.params.fence.value = 2;
+  CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
+  cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
+  pCommandQueue->Wait(pFence, 2);
+
+  return Status::OK();
 }
 
 // Helper function to check if a data type is supported by NvTensorRTRTX EP

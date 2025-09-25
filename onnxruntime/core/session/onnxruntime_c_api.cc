@@ -3439,7 +3439,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProviders, _In_ OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
   API_IMPL_BEGIN
   if(pCommandQueue == nullptr || extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
@@ -3474,19 +3474,18 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ b
       // We get a const pointer, so use const_cast as the method is non-const.
       // This is safe here as we are just triggering a setup function.
       auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
-      auto status = execution_provider->SetupInteropEpWait(use_cig, extSemFence, OrtApis::SyncStream_GetHandle(stream), pDevice, pFence, pCommandQueue);
+      auto status = execution_provider->SetupInteropEpWait(extSemFence, OrtApis::SyncStream_GetHandle(stream), pFence, pCommandQueue);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
     }
   }
-  use_cig = false;
 
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
   API_IMPL_BEGIN
   if(pCommandQueue == nullptr || extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
@@ -3521,13 +3520,12 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_
       // We get a const pointer, so use const_cast as the method is non-const.
       // This is safe here as we are just triggering a setup function.
       auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
-      auto status = execution_provider->SetupInteropEpSignal(use_cig, extSemFence, OrtApis::SyncStream_GetHandle(stream), pFence, pCommandQueue);
+      auto status = execution_provider->SetupInteropEpSignal(extSemFence, OrtApis::SyncStream_GetHandle(stream), pFence, pCommandQueue);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
     }
   }
-  use_cig = false;
 
   return nullptr;
   API_IMPL_END
@@ -3740,7 +3738,7 @@ ORT_API_STATUS_IMPL(SessionInitializeGpuProviders, _In_ OrtSession* session, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
   API_IMPL_BEGIN
   if(pCommandQueue == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");
@@ -3749,7 +3747,7 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ bool 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue) {
   API_IMPL_BEGIN
   if(pCommandQueue == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "pCommandQueue is null.");

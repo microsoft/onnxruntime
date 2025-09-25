@@ -742,8 +742,8 @@ ORT_API_STATUS_IMPL(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_devi
                     _Outptr_ OrtSyncStream** stream);
 
 ORT_API_STATUS_IMPL(SessionInitializeGpuProviders, _In_ OrtSession* session, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence);
-ORT_API_STATUS_IMPL(InteropEpWait, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Device* pDevice, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
-ORT_API_STATUS_IMPL(InteropEpSignal, _In_ OrtSession* session, _In_ bool use_cig, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
+ORT_API_STATUS_IMPL(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
+ORT_API_STATUS_IMPL(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
 
 ORT_API(void*, SyncStream_GetHandle, _In_ OrtSyncStream* stream);
 

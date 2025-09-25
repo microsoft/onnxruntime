@@ -92,28 +92,25 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual common::Status InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
+  virtual Status InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
     ORT_UNUSED_PARAMETER(sharedFenceHandle);
     ORT_UNUSED_PARAMETER(extSemFence);
-    return common::Status::OK();
+    return Status::OK();
   }
 
-  virtual common::Status SetupInteropEpWait(bool use_cig, void* extSemFence, void* stream, ID3D12Device* pDevice, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
-    ORT_UNUSED_PARAMETER(use_cig);
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
-    ORT_UNUSED_PARAMETER(pDevice);
     ORT_UNUSED_PARAMETER(pFence);
     ORT_UNUSED_PARAMETER(pCommandQueue);
-    return common::Status::OK();
+    return Status::OK();
   }
-  virtual common::Status SetupInteropEpSignal(bool use_cig, void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
-    ORT_UNUSED_PARAMETER(use_cig);
+  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
     ORT_UNUSED_PARAMETER(pFence);
     ORT_UNUSED_PARAMETER(pCommandQueue);
-    return common::Status::OK();
+    return Status::OK();
   }
 
   /**

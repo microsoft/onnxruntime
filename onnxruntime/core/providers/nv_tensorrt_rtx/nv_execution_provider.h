@@ -289,9 +289,9 @@ class NvExecutionProvider : public IExecutionProvider {
   //  explicit NvExecutionProvider(const ProviderOptions& provider_options_map, const ConfigOptions* config_options);
   virtual ~NvExecutionProvider();
 
-  virtual common::Status InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) override;
-  virtual common::Status SetupInteropEpWait(bool use_cig, void* extSemFence, void* stream, ID3D12Device* pDevice, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) override;
-  virtual common::Status SetupInteropEpSignal(bool use_cig, void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) override;
+  virtual Status InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) override;
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) override;
+  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) override;
 
   cublasHandle_t PerThreadDefaultCublasHandle() {
     return GetPerThreadContext().CublasHandle();
