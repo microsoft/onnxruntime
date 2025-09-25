@@ -443,8 +443,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
 
-      for (int64_t j = 0; j < num_experts; ++j) {
-        sorted_logits[static_cast<size_t>(j)] = {logits[j], j};
+      for (size_t j = 0; j < narrow<size_t>(num_experts); ++j) {
+        sorted_logits[j] = {logits[j], j};
       }
       std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_),
                         sorted_logits.end(), std::greater<>());
@@ -452,17 +452,17 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       float max_logit = sorted_logits[0].first;
 
       float sum_exp = 0.0f;
-      for (int64_t j = 0; j < k_; ++j) {
-        top_k_exp[static_cast<size_t>(j)] = std::exp(sorted_logits[static_cast<size_t>(j)].first - max_logit);
-        sum_exp += top_k_exp[static_cast<size_t>(j)];
+      for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+        top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
+        sum_exp += top_k_exp[j];
       }
 
       const float inv_sum = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
-      for (int64_t j = 0; j < k_; ++j) {
-        int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
-        int64_t route_idx = i * k_ + j;
+      for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+        int64_t expert_idx = sorted_logits[j].second;
+        int64_t route_idx = i * k_ + narrow<int64_t>(j);
         route_expert[route_idx] = narrow<int>(expert_idx);
-        route_scale[route_idx] = top_k_exp[static_cast<size_t>(j)] * inv_sum;
+        route_scale[route_idx] = top_k_exp[j] * inv_sum;
         if (route_scale[route_idx] > 1e-8f) {  // Use small threshold to avoid zero weights
           local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
         }
@@ -635,14 +635,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           if (ShouldUseMemcpy(hidden_size)) {
             std::memcpy(dst, src, static_cast<size_t>(hidden_size) * sizeof(float));
           } else {
-            const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-            int64_t j = 0;
-            for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-              for (int64_t k = 0; k < unroll_factor; ++k) {
+            const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+            size_t j = 0;
+            for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+              for (size_t k = 0; k < unroll_factor; ++k) {
                 dst[j + k] = src[j + k];
               }
             }
-            for (; j < hidden_size; ++j) {
+            for (; j < narrow<size_t>(hidden_size); ++j) {
               dst[j] = src[j];
             }
           }
@@ -909,14 +909,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           if (ShouldUseMemcpy(hidden_size)) {
             std::memcpy(thread_bias2_buffer, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
           } else {
-            const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-            int64_t j = 0;
-            for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-              for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+            const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+            size_t j = 0;
+            for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+              for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
                 thread_bias2_buffer[j + loop_k] = static_cast<float>(B2_bias[j + loop_k]);
               }
             }
-            for (; j < hidden_size; ++j) {
+            for (; j < narrow<size_t>(hidden_size); ++j) {
               thread_bias2_buffer[j] = static_cast<float>(B2_bias[j]);
             }
           }
@@ -937,25 +937,25 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         const float* src = C2 + i * hidden_size;
 
         if (has_fc2_bias && !fc2_bias_handled_by_q4_gemm) {
-          const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-          int64_t j = 0;
-          for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+          const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+          size_t j = 0;
+          for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
               dest[j + loop_k] += weight * (src[j + loop_k] + thread_bias2_buffer[j + loop_k]);
             }
           }
-          for (; j < hidden_size; ++j) {
+          for (; j < narrow<size_t>(hidden_size); ++j) {
             dest[j] += weight * (src[j] + thread_bias2_buffer[j]);
           }
         } else {
-          const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-          int64_t j = 0;
-          for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-            for (int64_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+          const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+          size_t j = 0;
+          for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
               dest[j + loop_k] += weight * src[j + loop_k];
             }
           }
-          for (; j < hidden_size; ++j) {
+          for (; j < narrow<size_t>(hidden_size); ++j) {
             dest[j] += weight * src[j];
           }
         }
