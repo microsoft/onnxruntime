@@ -2306,7 +2306,7 @@ MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FL
 {
 #if defined(MLAS_NEON_INTRINSICS)
 #if defined(MLAS_TARGET_ARM)
-    // ARMv7 NEON doesn’t have vfmaq_f32()
+    // ARMv7 NEON doesn't have vfmaq_f32()
     return vmlaq_f32(Vector3, Vector1, Vector2);
 #else
     return vfmaq_f32(Vector3, Vector1, Vector2);
