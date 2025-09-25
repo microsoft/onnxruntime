@@ -21,7 +21,7 @@ inline T negative_infinity() {
 
 template <>
 inline MLFloat16 negative_infinity() {
-  return MLFloat16(std::numeric_limits<float>::lowest());
+  return MLFloat16(negative_infinity<float>());
 }
 
 template <typename T>
