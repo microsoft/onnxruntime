@@ -25,14 +25,56 @@ stages:
 - stage: Packages_Somking_Test
   dependsOn: []
   jobs:
-    - template: templates/py-package-smoking-test.yml
+    - template: templates/py-package-smoking-test-macos.yml
       parameters:
-        job_name: Test_MAC_Wheels
-        machine_pool:
-          vmImage: 'macOS-14'
-        itemPattern: '*/*mac*x86_64.whl'
-        arch: 'x86_64'
-    - template: templates/py-package-smoking-test.yml
+        python_version: 3.10
+        os_version: 14
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.11
+        os_version: 14
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.12
+        os_version: 14
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.13
+        os_version: 14
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.10
+        os_version: 13
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.11
+        os_version: 13
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.12
+        os_version: 13
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.13
+        os_version: 13
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.10
+        os_version: 15
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.11
+        os_version: 15
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.12
+        os_version: 15
+    - template: templates/py-package-smoking-test-macos.yml
+      parameters:
+        python_version: 3.13
+        os_version: 15
+
+    - template: templates/py-package-smoking-test-linux.yml
       parameters:
         job_name: Test_LINUX_x86_64_Wheels
         itemPattern: '*/*manylinux*x86_64.whl'
