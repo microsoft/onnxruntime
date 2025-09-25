@@ -451,7 +451,7 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   run_test(nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
-  // Load a model and forcibly assign the first two nodes to the another Ep name 'OtherEp'.
+  // Load a model and forcibly assign the first two nodes to another EP named 'OtherEp'.
   // The last Add node should be taken by the test plugin EP.
   nodes_for_other_ep = std::unordered_set<std::string>{"add_0", "mul_0"};
   nodes_for_this_ep = std::unordered_set<std::string>{"add_1"};

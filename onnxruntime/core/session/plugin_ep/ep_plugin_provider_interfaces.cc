@@ -213,6 +213,14 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
     if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
+      if (node_grouping.nodes.empty()) {
+        // The EpGraphSupportInfo_AddSingleNode() C API should already return an error if the EP tries to provide
+        // an invalid node. However, we check here too just in case this changes.
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " did not specify a valid node "
+                            << "when specifying a supported node.";
+        return {};
+      }
+
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
       indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
