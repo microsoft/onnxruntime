@@ -665,7 +665,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16TopK) {
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
       TransformerLevel::Level1));
 
-  // assign all nodes to CUDA. constant folding will attempt CPU but fail, leaving nodes on CUDA.
+  // assign all nodes to CUDA. constant folding will be attempted on CPU but fail, leaving nodes on CUDA.
   for (auto& node : graph.Nodes()) {
     node.SetExecutionProviderType(kCudaExecutionProvider);
   }
