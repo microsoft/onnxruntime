@@ -381,9 +381,10 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
 
   // Helper function that loads a model (Add -> Mul -> Add) and assigns some or all of the nodes to another EP.
   // Then, IExecutionProvider::GetCapability() is called to test the expected behavior.
-  auto run_test = [&](std::unordered_set<std::string> nodes_for_other_ep,
-                      std::unordered_set<std::string> nodes_for_this_ep,
-                      const char* expected_log_string) {
+  auto run_test = [](IExecutionProvider& ep,
+                     const std::unordered_set<std::string>& nodes_for_other_ep,
+                     const std::unordered_set<std::string>& nodes_for_this_ep,
+                     const char* expected_log_string) {
     std::shared_ptr<Model> model;
     LoadModelAndAssignNodesToEp(ORT_TSTR("testdata/add_mul_add.onnx"), "OtherEp", nodes_for_other_ep, model);
 
@@ -396,13 +397,13 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
                                           logging::Severity::kWARNING, false,
                                           logging::LoggingManager::InstanceType::Temporal};
       auto file_logger = log_manager.CreateLogger("FileLogger");
-      ep->SetLogger(file_logger.get());  // Make EP log to a file.
+      ep.SetLogger(file_logger.get());  // Make EP log to a file.
 
       GraphViewer graph_viewer(model->MainGraph());
-      auto compute_capabilities = ep->GetCapability(graph_viewer,
-                                                    test_plugin_ep::MockKernelLookup{},
-                                                    GraphOptimizerRegistry(nullptr, nullptr, file_logger.get()),
-                                                    nullptr);
+      auto compute_capabilities = ep.GetCapability(graph_viewer,
+                                                   test_plugin_ep::MockKernelLookup{},
+                                                   GraphOptimizerRegistry(nullptr, nullptr, file_logger.get()),
+                                                   nullptr);
 
       ASSERT_EQ(compute_capabilities.size(), nodes_for_this_ep.empty() ? 0 : 1);
 
@@ -426,14 +427,14 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   // IExecutionProvider::GetCapability() should return an empty result and log a warning.
   std::unordered_set<std::string> nodes_for_other_ep = {"add_0", "mul_0", "add_1"};
   std::unordered_set<std::string> nodes_for_this_ep;
-  run_test(nodes_for_other_ep, nodes_for_this_ep,
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
   // Load a model and forcibly assign only the first Add node to another EP named 'OtherEp'.
   // The other 2 nodes should be taken by the test plugin EP in a single compute capability.
   nodes_for_other_ep = std::unordered_set<std::string>{"add_0"};
   nodes_for_this_ep = std::unordered_set<std::string>{"mul_0", "add_1"};
-  run_test(nodes_for_other_ep, nodes_for_this_ep,
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
   // Load a model and forcibly assign only the middle Mul node to another EP named 'OtherEp'.
@@ -442,20 +443,20 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   // because there is an unsupported node (Mul) between two supported nodes.
   nodes_for_other_ep = std::unordered_set<std::string>{"mul_0"};
   nodes_for_this_ep = std::unordered_set<std::string>{};
-  run_test(nodes_for_other_ep, nodes_for_this_ep, "set nodes that cannot be fused together");
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep, "set nodes that cannot be fused together");
 
   // Load a model and forcibly assign only the last Add node to another EP named 'OtherEp'.
   // The other 2 nodes should be taken by the test plugin EP in a single compute capability.
   nodes_for_other_ep = std::unordered_set<std::string>{"add_1"};
   nodes_for_this_ep = std::unordered_set<std::string>{"add_0", "mul_0"};
-  run_test(nodes_for_other_ep, nodes_for_this_ep,
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
   // Load a model and forcibly assign the first two nodes to another EP named 'OtherEp'.
   // The last Add node should be taken by the test plugin EP.
   nodes_for_other_ep = std::unordered_set<std::string>{"add_0", "mul_0"};
   nodes_for_this_ep = std::unordered_set<std::string>{"add_1"};
-  run_test(nodes_for_other_ep, nodes_for_this_ep,
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 }
 
