@@ -3,6 +3,8 @@
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
+#include <gsl/gsl>
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <sstream>
@@ -170,8 +172,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
   const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
-
-  auto log_unsupported_node_info = [ep_type = Type(), &logger](gsl::span<const EpNode* const> ep_nodes) {
+  auto log_unsupported_node_info = [&ep_type = Type(), &logger](gsl::span<const EpNode* const> ep_nodes) {
     std::ostringstream oss;
     oss << "OrtEp::GetCapability() specified nodes that cannot be assigned to " << ep_type << ". ";
 

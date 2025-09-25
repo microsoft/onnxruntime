@@ -3,9 +3,14 @@
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
+#include <filesystem>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
+#include "core/common/logging/sinks/file_sink.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
@@ -22,6 +27,14 @@ struct ApiPtrs {
   const gsl::not_null<const ::OrtApi*> ort_api;
   const gsl::not_null<const ::OrtEpApi*> ep_api;
 };
+
+static void CheckStringInFile(const PathString& filename, const std::string& look_for) {
+  std::ifstream ifs{filename};
+  std::string content(std::istreambuf_iterator<char>{ifs},
+                      std::istreambuf_iterator<char>{});
+
+  EXPECT_NE(content.find(look_for), std::string::npos);
+}
 
 // Normally, a plugin EP would be implemented in a separate library.
 // The `test_plugin_ep` namespace contains a local implementation intended for unit testing.
@@ -113,6 +126,10 @@ MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};
   return result;
 }
+
+class MockKernelLookup : public IExecutionProvider::IKernelLookup {
+  const KernelCreateInfo* LookUpKernel(const Node& /*node*/) const override { return nullptr; }
+};
 
 }  // namespace test_plugin_ep
 
@@ -317,4 +334,121 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
+static OrtStatus* GetCapabilityTakeAllNodes(OrtEp* this_ptr, const OrtGraph* graph,
+                                            OrtEpGraphSupportInfo* graph_support_info) noexcept {
+  auto* this_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+
+  size_t num_nodes = 0;
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNumNodes(graph, &num_nodes); st != nullptr) {
+    return st;
+  }
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNodes(graph, nodes.data(), nodes.size()); st != nullptr) {
+    return st;
+  }
+
+  if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                         nodes.data(), nodes.size(), nullptr);
+      st != nullptr) {
+    return st;
+  }
+
+  return nullptr;
+}
+
+// Tests that GetCapability() doesn't crash if a plugin EP tries to claim only nodes that are
+// already assigned to another EP.
+TEST(PluginExecutionProviderTest, GetCapability_ClaimOnlyNodesAssignedToOtherEP) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+  ort_ep->GetCapability = GetCapabilityTakeAllNodes;
+
+  // Load a model and forcibly assign the only Mul node to another EP named 'OtherEp'.
+  std::shared_ptr<Model> model;
+  Status status = Model::Load(ORT_TSTR("testdata/mul_1.onnx"), model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK());
+
+  Graph& graph = model->MainGraph();
+  for (Node& node : graph.Nodes()) {
+    node.SetExecutionProviderType("OtherEp");
+  }
+
+  std::filesystem::path log_file = ORT_TSTR("log_get_capability.txt");
+  if (std::filesystem::exists(log_file)) {
+    std::filesystem::remove(log_file);
+  }
+
+  // Call IExecutionProvider::GetCapability. The underlying OrtEp will try to take all nodes.
+  // Should not crash and should return an empty result.
+  {
+    logging::LoggingManager log_manager{std::make_unique<logging::FileSink>(log_file, false, false),
+                                        logging::Severity::kWARNING, false,
+                                        logging::LoggingManager::InstanceType::Temporal};
+    auto file_logger = log_manager.CreateLogger("FileLogger");
+    ep->SetLogger(file_logger.get());  // Make EP log to a file.
+
+    auto compute_capabilities = ep->GetCapability(GraphViewer(graph),
+                                                  test_plugin_ep::MockKernelLookup{},
+                                                  GraphOptimizerRegistry(nullptr, nullptr, file_logger.get()),
+                                                  nullptr);
+    EXPECT_TRUE(compute_capabilities.empty());  // No compute capabilities returned.
+  }
+
+  ASSERT_TRUE(std::filesystem::exists(log_file));
+  CheckStringInFile(log_file, "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  if (std::filesystem::exists(log_file)) {
+    std::filesystem::remove(log_file);
+  }
+}
+
+// Tests that GetCapability() doesn't crash if a plugin EP tries to claim a mix of unassigned nodes and
+// nodes that are already assigned to another EP.
+TEST(PluginExecutionProviderTest, GetCapability_ClaimSomeNodesAssignedToOtherEP) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+  ort_ep->GetCapability = GetCapabilityTakeAllNodes;
+
+  // Load a model and forcibly assign only the first Add node to another EP named 'OtherEp'.
+  // Other nodes are unassigned and should be taken by the test plugin EP.
+  std::shared_ptr<Model> model;
+  Status status = Model::Load(ORT_TSTR("testdata/add_mul_add.onnx"), model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK());
+
+  Graph& graph = model->MainGraph();
+  for (Node& node : graph.Nodes()) {
+    if (node.Name() == "add_0") {
+      node.SetExecutionProviderType("OtherEp");
+    }
+  }
+
+  std::filesystem::path log_file = ORT_TSTR("log_get_capability.txt");
+  if (std::filesystem::exists(log_file)) {
+    std::filesystem::remove(log_file);
+  }
+
+  // Call IExecutionProvider::GetCapability. The underlying OrtEp will try to take all nodes.
+  // Should not crash and should return an empty result.
+  {
+    logging::LoggingManager log_manager{std::make_unique<logging::FileSink>(log_file, false, false),
+                                        logging::Severity::kWARNING, false,
+                                        logging::LoggingManager::InstanceType::Temporal};
+    auto file_logger = log_manager.CreateLogger("FileLogger");
+    ep->SetLogger(file_logger.get());  // Make EP log to a file.
+
+    auto compute_capabilities = ep->GetCapability(GraphViewer(graph),
+                                                  test_plugin_ep::MockKernelLookup{},
+                                                  GraphOptimizerRegistry(nullptr, nullptr, file_logger.get()),
+                                                  nullptr);
+
+    EXPECT_EQ(compute_capabilities.size(), 1);
+    EXPECT_EQ(compute_capabilities[0]->sub_graph->nodes.size(), 2);
+  }
+
+  ASSERT_TRUE(std::filesystem::exists(log_file));
+  CheckStringInFile(log_file, "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  if (std::filesystem::exists(log_file)) {
+    std::filesystem::remove(log_file);
+  }
+}
 }  // namespace onnxruntime::test
