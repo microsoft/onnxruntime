@@ -2923,6 +2923,27 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
+
+  // The if this is a Loop subgraph and if the number of perspective
+  // candidates is small as compared to the overall number of nodes in this subgraph.
+  // We then can stop assigning any further and let CPU to take over.
+  if (resource_accountant == nullptr) {
+    constexpr float kMinCudaNodesRatio = 0.1f;
+    const bool is_loop_subgraph = graph.IsSubgraph() && graph.ParentNode()->OpType() == "Loop";
+    if (is_loop_subgraph) {
+      const size_t max_assigned_to_cuda = candidates.size() - cpu_nodes.size();
+      const float max_assigned_ratio =
+          static_cast<float>(max_assigned_to_cuda) / static_cast<float>(graph.NumberOfNodes());
+      // if less than 10% of nodes could be assigned to CUDA, we stop assigning
+      if (max_assigned_ratio < kMinCudaNodesRatio) {
+        LOGS(logger, WARNING)
+            << "CUDA_EP returning due to Loop subgraph with insufficient candidates. Candidates ratio: "
+            << max_assigned_ratio;
+        return result;
+      }
+    }
+  }
+
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
       continue;
