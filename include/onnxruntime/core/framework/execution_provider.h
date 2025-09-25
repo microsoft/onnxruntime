@@ -98,18 +98,16 @@ class IExecutionProvider {
     return Status::OK();
   }
 
-  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, const int fenceState) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
-    ORT_UNUSED_PARAMETER(pFence);
-    ORT_UNUSED_PARAMETER(pCommandQueue);
+    ORT_UNUSED_PARAMETER(fenceState);
     return Status::OK();
   }
-  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
+  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, const int fenceState) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
-    ORT_UNUSED_PARAMETER(pFence);
-    ORT_UNUSED_PARAMETER(pCommandQueue);
+    ORT_UNUSED_PARAMETER(fenceState);
     return Status::OK();
   }
 

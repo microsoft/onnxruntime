@@ -290,8 +290,8 @@ class NvExecutionProvider : public IExecutionProvider {
   virtual ~NvExecutionProvider();
 
   virtual Status InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) override;
-  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) override;
-  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) override;
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, const int fenceState) override;
+  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, const int fenceState) override;
 
   cublasHandle_t PerThreadDefaultCublasHandle() {
     return GetPerThreadContext().CublasHandle();

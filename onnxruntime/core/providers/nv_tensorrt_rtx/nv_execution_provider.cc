@@ -100,30 +100,28 @@ Status NvExecutionProvider::InitializeGpuResources(HANDLE sharedFenceHandle, voi
   return Status::OK();
 }
 
-Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
+Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, const int fenceState) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpWait() called.";
 
   // make CUDA wait for the upload by DX to finish
-  pCommandQueue->Signal(pFence, 1);
   CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS waitParams = {};
-  waitParams.params.fence.value = 1;
+  waitParams.params.fence.value = fenceState;
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
   cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
 
   return Status::OK();
 }
-Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, ID3D12Fence* pFence, ID3D12CommandQueue* pCommandQueue) {
+Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, const int fenceState) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpSignal() called.";
 
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
 
   // make D3D12 wait for the CUDA kernel to finish
   CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signalParams = {};
-  signalParams.params.fence.value = 2;
+  signalParams.params.fence.value = fenceState;
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
-  pCommandQueue->Wait(pFence, 2);
 
   return Status::OK();
 }

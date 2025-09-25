@@ -6488,8 +6488,8 @@ struct OrtApi {
                   _Outptr_ OrtSyncStream** stream);
 
   ORT_API2_STATUS(SessionInitializeGpuProviders, _In_ OrtSession* session, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence);
-  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
-  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ ID3D12Fence* pFence, _In_ ID3D12CommandQueue* pCommandQueue);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ const int fenceState);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ const int fenceState);
 
   /** \brief Get the native handle of the sync stream.
    *
