@@ -604,15 +604,16 @@ static void CheckTypeInfo(const OrtTypeInfo* api_type_info, const OrtTypeInfo* t
 
     size_t api_num_dims = 0;
     ASSERT_ORTSTATUS_OK(ort_api.GetDimensionsCount(api_type_shape, &api_num_dims));
-    ASSERT_EQ(api_num_dims, type_info->tensor_type_info->shape.NumDimensions());
+    ASSERT_EQ(api_num_dims, (type_info->tensor_type_info->HasShape()) 
+        ? type_info->tensor_type_info->GetShape()->NumDimensions() : 0);
 
     std::vector<int64_t> api_dims(api_num_dims, 0);
     ASSERT_ORTSTATUS_OK(ort_api.GetDimensions(api_type_shape, api_dims.data(), api_dims.size()));
-    ASSERT_EQ(gsl::span<const int64_t>(api_dims), type_info->tensor_type_info->shape.GetDims());
+    ASSERT_EQ(gsl::span<const int64_t>(api_dims), type_info->tensor_type_info->GetShape()->GetDims());
 
     std::vector<const char*> api_dim_syms(api_num_dims, nullptr);
     ASSERT_ORTSTATUS_OK(ort_api.GetSymbolicDimensions(api_type_shape, api_dim_syms.data(), api_dim_syms.size()));
-    const std::vector<std::string>& dim_syms = type_info->tensor_type_info->dim_params;
+    const std::vector<std::string>& dim_syms = type_info->tensor_type_info->shape_info->dim_params;
     for (size_t dim_idx = 0; dim_idx < api_num_dims; dim_idx++) {
       ASSERT_EQ(std::string(api_dim_syms[dim_idx]), dim_syms[dim_idx]);
     }

@@ -6193,18 +6193,22 @@ ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInf
   const OrtTensorTypeAndShapeInfo& tensor_info = *vi.type_info->tensor_type_info.get();
   tensor->set_elem_type(tensor_info.type);
 
-  auto& shape = *tensor->mutable_shape();
+  if (tensor_info.shape_info.has_value()) {
+    auto& shape = *tensor->mutable_shape();
 
-  size_t idx = 0;
-  for (auto dim : tensor_info.shape.GetDims()) {
-    auto& dim_proto = *shape.add_dim();
-    if (dim >= 0) {
-      dim_proto.set_dim_value(dim);
-    } else {
-      const std::string& dim_param = tensor_info.dim_params[idx];
-      // if empty leave the new dim_proto with neither dim_value nor dim_param set. this represents an 'unknown' dim
-      if (!dim_param.empty()) {
-        dim_proto.set_dim_param(dim_param);
+    size_t idx = 0;
+    const auto dims = tensor_info.shape_info->shape.GetDims();
+    const auto& dim_params = tensor_info.shape_info->dim_params;
+    for (auto dim : dims) {
+      auto& dim_proto = *shape.add_dim();
+      if (dim >= 0) {
+        dim_proto.set_dim_value(dim);
+      } else {
+        const std::string& dim_param = dim_params[idx];
+        // if empty leave the new dim_proto with neither dim_value nor dim_param set. this represents an 'unknown' dim
+        if (!dim_param.empty()) {
+          dim_proto.set_dim_param(dim_param);
+        }
       }
     }
   }

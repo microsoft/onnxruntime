@@ -80,7 +80,7 @@ struct OrtShapeInferContext {
       auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
       auto symbolic_dims = GetSymbolicDims(shape_proto);
       input_type_shapes_.emplace_back(
-          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
+          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, &tensor_shape, &symbolic_dims));
     }
   }
 
@@ -94,15 +94,17 @@ struct OrtShapeInferContext {
   onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
     ORT_RETURN_IF_NOT(info, "Invalid shape info");
     ONNX_NAMESPACE::TensorShapeProto shape_proto;
-    const auto& symbolic_dims = info->dim_params;
-    const auto& integer_dims = info->shape.GetDims();
-    ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
-    for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
-      auto* dim_proto = shape_proto.add_dim();
-      if (symbolic_dims[ith].size() > 0) {
-        dim_proto->set_dim_param(symbolic_dims[ith]);
-      } else {
-        dim_proto->set_dim_value(integer_dims[ith]);
+    if (info->shape_info.has_value()) {
+      const auto& symbolic_dims = info->shape_info->dim_params;
+      const auto& integer_dims = info->shape_info->shape.GetDims();
+      ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
+      for (size_t ith = 0, end = symbolic_dims.size(); ith < end; ith++) {
+        auto* dim_proto = shape_proto.add_dim();
+        if (symbolic_dims[ith].size() > 0) {
+          dim_proto->set_dim_param(symbolic_dims[ith]);
+        } else {
+          dim_proto->set_dim_value(integer_dims[ith]);
+        }
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);

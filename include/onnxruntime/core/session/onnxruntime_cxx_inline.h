@@ -1982,7 +1982,12 @@ template <typename T>
 inline size_t TensorTypeAndShapeInfoImpl<T>::GetElementCount() const {
   size_t out;
   ThrowOnError(GetApi().GetTensorShapeElementCount(this->p_, &out));
-  return static_cast<size_t>(out);
+  return out;
+}
+
+template <typename T>
+inline bool TensorTypeAndShapeInfoImpl<T>::HasShape() const {
+  return GetApi().TensorTypeAndShape_HasShape(this->p_);
 }
 
 template <typename T>
