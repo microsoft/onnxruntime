@@ -9,12 +9,7 @@ steps:
     scriptSource: inline
     script: |
       version = "$(PythonVersion)"
-
-      if version == "3.10":
-        variables = {
-          "PythonManylinuxDir": "/opt/python/cp310-cp310"
-        }
-      elif version == "3.11":
+      if version == "3.11":
         variables = {
           "PythonManylinuxDir": "/opt/python/cp311-cp311"
         }

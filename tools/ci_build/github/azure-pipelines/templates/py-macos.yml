@@ -35,7 +35,7 @@ jobs:
 
   variables:
   - name: MACOSX_DEPLOYMENT_TARGET
-    value: '13.4'
+    value: '14.0'
         
   steps:
   - checkout: self

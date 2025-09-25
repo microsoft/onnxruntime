@@ -88,8 +88,6 @@ stages:
           artifactName: onnxruntime-win-$(PythonVersion)
       strategy:
         matrix:
-          Python310_x64:
-            PythonVersion: '3.10'
           Python311_x64:
             PythonVersion: '3.11'
           Python312_x64:
@@ -198,13 +196,6 @@ stages:
           arch: 'arm64'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.10'
-          
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.11'
 
       - template: ../templates/py-macos.yml
@@ -217,34 +208,6 @@ stages:
       - template: ../templates/py-macos.yml
         parameters:
           arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.13'
-
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.10'
-          
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.11'
-
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.12'
-          
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.13'
