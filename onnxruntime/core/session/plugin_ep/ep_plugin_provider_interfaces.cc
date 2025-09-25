@@ -4,7 +4,6 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <gsl/gsl>
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <sstream>
@@ -227,7 +226,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // Check that single node was not already assigned to another EP.
       if (!node_ep.empty() && node_ep != Type()) {
         log_unsupported_node_info(node_grouping.nodes);
-        return {};
+        continue;
       }
 
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
@@ -238,8 +237,8 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       if (node_grouping.nodes.empty()) {
         // The EpGraphSupportInfo_AddNodesToFuse() C API should already return an error if the EP tries to provide
         // an empty array of nodes from OrtEp::GetCapability(). However, we check here too just in case this changes.
-        LOGS(logger, WARNING) << "OrtEp::GetCapability() for " << Type() << " set an empty array of nodes "
-                              << "when specifying supported nodes.";
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set an empty array of nodes "
+                            << "when specifying supported nodes.";
         return {};
       }
 
@@ -266,7 +265,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // Happens if nodes have already been assigned to another EP.
       if (capabilities.empty()) {
         log_unsupported_node_info(node_grouping.nodes);
-        return {};
+        continue;
       }
 
       if (capabilities.size() > 1) {
