@@ -953,15 +953,6 @@ extern "C" {
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
-#if defined(MLAS_TARGET_ARM64)
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
-#endif
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
 #endif
@@ -1347,12 +1338,6 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
-    MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
-    MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
-    uint32_t NchwcBlockSize;
 #endif
     const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 
@@ -1416,7 +1401,6 @@ struct MLAS_PLATFORM {
     int32_t MaximumThreadCount;
 #elif defined(MLAS_TARGET_ARM64)
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
-    static constexpr size_t MLAS_NEON_NCHWC_BLOCK_SIZE = 16;
 #else
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif

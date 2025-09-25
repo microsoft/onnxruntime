@@ -109,8 +109,6 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-        ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-        ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -433,8 +431,6 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-          ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-          ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
         )
         
         # Conditionally add the SVE implementation if compiler supports it
