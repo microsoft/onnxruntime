@@ -124,7 +124,8 @@ static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
                                                   gsl::span<const EpNode* const> ep_nodes) {
   auto node_iter = std::find_if(ep_nodes.begin(), ep_nodes.end(),
                                 [&ep_type](const EpNode* node) -> bool {
-                                  return node->GetInternalNode().GetExecutionProviderType() != ep_type;
+                                  const auto& node_ep_type = node->GetInternalNode().GetExecutionProviderType();
+                                  return !node_ep_type.empty() && node_ep_type != ep_type;
                                 });
 
   return node_iter != ep_nodes.end() ? &(*node_iter)->GetInternalNode() : nullptr;
