@@ -373,22 +373,44 @@ static OrtStatus* ORT_API_CALL GetCapabilityTakeAllNodes(OrtEp* this_ptr, const 
   return nullptr;
 }
 
+static OrtStatus* ORT_API_CALL GetCapabilityTakeSingleNode(OrtEp* this_ptr, const OrtGraph* graph,
+                                                           OrtEpGraphSupportInfo* graph_support_info) noexcept {
+  auto* this_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+
+  size_t num_nodes = 0;
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNumNodes(graph, &num_nodes); st != nullptr) {
+    return st;
+  }
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNodes(graph, nodes.data(), nodes.size()); st != nullptr) {
+    return st;
+  }
+
+  // Take only the first node using EpGraphSupportInfo_AddSingleNode().
+  if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddSingleNode(graph_support_info, nodes[0]);
+      st != nullptr) {
+    return st;
+  }
+
+  return nullptr;
+}
+
 // Tests that GetCapability() doesn't crash if a plugin EP tries to claim a mix of unassigned nodes and
 // nodes that are already assigned to another EP.
 TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
-  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
-  ort_ep->GetCapability = GetCapabilityTakeAllNodes;
+  std::filesystem::path log_file = ORT_TSTR("log_get_capability.txt");
 
   // Helper function that loads a model (Add -> Mul -> Add) and assigns some or all of the nodes to another EP.
   // Then, IExecutionProvider::GetCapability() is called to test the expected behavior.
-  auto run_test = [](IExecutionProvider& ep,
-                     const std::unordered_set<std::string>& nodes_for_other_ep,
-                     const std::unordered_set<std::string>& nodes_for_this_ep,
-                     const char* expected_log_string) {
+  auto run_test = [&log_file](IExecutionProvider& ep,
+                              const std::unordered_set<std::string>& nodes_for_other_ep,
+                              const std::unordered_set<std::string>& nodes_for_this_ep,
+                              const char* expected_log_string) {
     std::shared_ptr<Model> model;
-    LoadModelAndAssignNodesToEp(ORT_TSTR("testdata/add_mul_add.onnx"), "OtherEp", nodes_for_other_ep, model);
+    ASSERT_NO_FATAL_FAILURE(LoadModelAndAssignNodesToEp(ORT_TSTR("testdata/add_mul_add.onnx"),
+                                                        "OtherEp", nodes_for_other_ep, model));
 
-    std::filesystem::path log_file = ORT_TSTR("log_get_capability.txt");
     std::filesystem::remove(log_file);
 
     // Call IExecutionProvider::GetCapability. The underlying OrtEp will try to take all nodes in a single group.
@@ -413,15 +435,17 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
         for (NodeIndex node_index : compute_capabilities[0]->sub_graph->nodes) {
           const Node* node = graph_viewer.GetNode(node_index);
           ASSERT_NE(node, nullptr);
-          ASSERT_EQ(nodes_for_this_ep.count(node->Name()), 1);
+          EXPECT_EQ(nodes_for_this_ep.count(node->Name()), 1);
         }
       }
     }
 
     ASSERT_TRUE(std::filesystem::exists(log_file));
-    CheckStringInFile(log_file, expected_log_string);
-    std::filesystem::remove(log_file);
+    EXPECT_NO_FATAL_FAILURE(CheckStringInFile(log_file, expected_log_string));
   };
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+  ort_ep->GetCapability = GetCapabilityTakeAllNodes;
 
   // Load a model and assign all of its nodes to another EP named 'OtherEp'.
   // IExecutionProvider::GetCapability() should return an empty result and log a warning.
@@ -430,14 +454,14 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
-  // Load a model and forcibly assign only the first Add node to another EP named 'OtherEp'.
+  // Load a model and assign only the first Add node to another EP named 'OtherEp'.
   // The other 2 nodes should be taken by the test plugin EP in a single compute capability.
   nodes_for_other_ep = std::unordered_set<std::string>{"add_0"};
   nodes_for_this_ep = std::unordered_set<std::string>{"mul_0", "add_1"};
   run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
-  // Load a model and forcibly assign only the middle Mul node to another EP named 'OtherEp'.
+  // Load a model and assign only the middle Mul node to another EP named 'OtherEp'.
   // The plugin EP will try to take all nodes with a single call to EpGraphSupportInfo_AddNodesToFuse.
   // IExecutionProvider::GetCapability() will return an empty result and log an error
   // because there is an unsupported node (Mul) between two supported nodes.
@@ -445,19 +469,30 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   nodes_for_this_ep = std::unordered_set<std::string>{};
   run_test(*ep, nodes_for_other_ep, nodes_for_this_ep, "set nodes that cannot be fused together");
 
-  // Load a model and forcibly assign only the last Add node to another EP named 'OtherEp'.
+  // Load a model and assign only the last Add node to another EP named 'OtherEp'.
   // The other 2 nodes should be taken by the test plugin EP in a single compute capability.
   nodes_for_other_ep = std::unordered_set<std::string>{"add_1"};
   nodes_for_this_ep = std::unordered_set<std::string>{"add_0", "mul_0"};
   run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
-  // Load a model and forcibly assign the first two nodes to another EP named 'OtherEp'.
+  // Load a model and assign the first two nodes to another EP named 'OtherEp'.
   // The last Add node should be taken by the test plugin EP.
   nodes_for_other_ep = std::unordered_set<std::string>{"add_0", "mul_0"};
   nodes_for_this_ep = std::unordered_set<std::string>{"add_1"};
   run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  // Load a model and assign the first Add node to another EP named 'OtherEp'.
+  // The plugin EP will try to take only the first Add node with a single call to EpGraphSupportInfo_AddSingleNode.
+  // IExecutionProvider::GetCapability() will return an empty result and log a warning.
+  ort_ep->GetCapability = GetCapabilityTakeSingleNode;
+  nodes_for_other_ep = std::unordered_set<std::string>{"add_0"};
+  nodes_for_this_ep = std::unordered_set<std::string>{};
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
+           "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  std::filesystem::remove(log_file);
 }
 
 }  // namespace onnxruntime::test

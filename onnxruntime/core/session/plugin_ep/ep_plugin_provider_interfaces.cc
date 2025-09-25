@@ -213,17 +213,26 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
     if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
-      if (node_grouping.nodes.empty()) {
+      if (node_grouping.nodes.size() != 1) {
         // The EpGraphSupportInfo_AddSingleNode() C API should already return an error if the EP tries to provide
         // an invalid node. However, we check here too just in case this changes.
-        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " did not specify a valid node "
-                            << "when specifying a supported node.";
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " did not specify exactly one valid node "
+                            << "when calling EpGraphSupportInfo_AddSingleNode().";
+        return {};
+      }
+
+      const Node& node = node_grouping.nodes[0]->GetInternalNode();
+      const std::string& node_ep = node.GetExecutionProviderType();
+
+      // Check that single node was not already assigned to another EP.
+      if (!node_ep.empty() && node_ep != Type()) {
+        log_unsupported_node_info(node_grouping.nodes);
         return {};
       }
 
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
-      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
+      indexed_sub_graph->nodes.push_back(node.Index());
       result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       if (node_grouping.nodes.empty()) {
