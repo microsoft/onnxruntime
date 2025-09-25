@@ -2077,7 +2077,7 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
     EXPECT_STREQ("Unsupported EP Dynamic Option", e.what());
   }
 
-  const char* const htp_perf_mode_type[] = {"ep.dynamic.htp_performance_mode"};
+  const char* const htp_perf_mode_type[] = {"ep.dynamic.qnn_htp_performance_mode"};
   const char* const eps_type[] = {"extreme_power_saver"};
   const char* const shp_type[] = {"sustained_high_performance"};
   session.SetEpDynamicOptions(htp_perf_mode_type, shp_type, 1);
