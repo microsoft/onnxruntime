@@ -118,6 +118,16 @@ static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_
   return device_memory_info != nullptr ? device_memory_info->device : OrtDevice();
 }
 
+static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
+                                                  gsl::span<const EpNode* const> ep_nodes) {
+  auto node_iter = std::find_if(ep_nodes.begin(), ep_nodes.end(),
+                                [&ep_type](const EpNode* node) -> bool {
+                                  return node->GetInternalNode().GetExecutionProviderType() != ep_type;
+                                });
+
+  return node_iter != ep_nodes.end() ? &(*node_iter)->GetInternalNode() : nullptr;
+}
+
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
@@ -160,6 +170,21 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
   const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+
+  auto log_unsupported_node_info = [ep_type = Type(), &logger](gsl::span<const EpNode* const> ep_nodes) {
+    std::ostringstream oss;
+    oss << "OrtEp::GetCapability() specified nodes that cannot be assigned to " << ep_type << ". ";
+
+    if (const Node* node_for_other_ep = FindFirstNodeAssignedToOtherEP(ep_type, ep_nodes);
+        node_for_other_ep != nullptr) {
+      oss << "Found one or more nodes that were already assigned to a different EP named '"
+          << node_for_other_ep->GetExecutionProviderType() << "'. Ex: "
+          << node_for_other_ep->OpType() << " node with name '"
+          << node_for_other_ep->Name() << "'.";
+    }
+
+    LOGS(logger, WARNING) << oss.str();
+  };
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   if (Status status = EpGraph::Create(graph_viewer, ep_graph); !status.IsOK()) {
@@ -221,24 +246,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // Check if utils::CreateSupportedPartitions returned zero results.
       // Happens if nodes have already been assigned to another EP.
       if (capabilities.empty()) {
-        const std::string& ep_type = Type();
-        std::ostringstream oss;
-
-        oss << "OrtEp::GetCapability() specified nodes that cannot be assigned to " << ep_type << ". ";
-        auto node_iter = std::find_if(node_grouping.nodes.begin(), node_grouping.nodes.end(),
-                                      [&ep_type](const EpNode* node) -> bool {
-                                        return node->GetInternalNode().GetExecutionProviderType() != ep_type;
-                                      });
-
-        if (node_iter != node_grouping.nodes.end()) {
-          const Node& node_assigned_to_other_ep = (*node_iter)->GetInternalNode();
-          oss << "Found one or more nodes that were already assigned to a different EP named '"
-              << node_assigned_to_other_ep.GetExecutionProviderType() << "'. Ex: "
-              << node_assigned_to_other_ep.OpType() << " node with name '"
-              << node_assigned_to_other_ep.Name() << "'.";
-        }
-
-        LOGS(logger, WARNING) << oss.str();
+        log_unsupported_node_info(node_grouping.nodes);
         return {};
       }
 
@@ -249,16 +257,16 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return {};
       }
 
-      // Enforce that the nodes in node_set match the nodes in capabilities[0]
+      // Log if the nodes in node_set do not match the nodes in capabilities[0], which occurs when EP selects nodes
+      // assigned to a different EP.
       // TODO(adrianlizarraga): This check can be removed when we stop using utils::CreateSupportedPartitions() above.
       std::vector<NodeIndex>& capability_node_indices = capabilities[0]->sub_graph->nodes;
       std::unordered_set<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
                                                                 capability_node_indices.end());
 
-      ORT_ENFORCE(node_set.size() == capability_node_indices_set.size());
-      ORT_ENFORCE(std::all_of(node_set.begin(), node_set.end(), [&capability_node_indices_set](const Node* node) {
-        return capability_node_indices_set.count(node->Index()) != 0;
-      }));
+      if (node_set.size() != capability_node_indices_set.size()) {
+        log_unsupported_node_info(node_grouping.nodes);
+      }
 
       result.push_back(std::move(capabilities[0]));
     } else {
