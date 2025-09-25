@@ -6190,15 +6190,15 @@ ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInf
   value_info_proto.set_name(vi.name);
 
   auto* tensor = value_info_proto.mutable_type()->mutable_tensor_type();
-  const OrtTensorTypeAndShapeInfo& tensor_info = *vi.type_info->tensor_type_info.get();
-  tensor->set_elem_type(tensor_info.type);
+  const OrtTensorTypeAndShapeInfo& tensor_info = *vi.type_info->tensor_type_info;
+  tensor->set_elem_type(tensor_info.GetElementType());
 
-  if (tensor_info.shape_info.has_value()) {
+  if (tensor_info.HasShape()) {
     auto& shape = *tensor->mutable_shape();
 
     size_t idx = 0;
-    const auto dims = tensor_info.shape_info->shape.GetDims();
-    const auto& dim_params = tensor_info.shape_info->dim_params;
+    const auto dims = tensor_info.GetShape()->GetDims();
+    const auto& dim_params = *tensor_info.GetDimParams();
     for (auto dim : dims) {
       auto& dim_proto = *shape.add_dim();
       if (dim >= 0) {

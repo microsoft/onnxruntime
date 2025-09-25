@@ -94,9 +94,9 @@ struct OrtShapeInferContext {
   onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
     ORT_RETURN_IF_NOT(info, "Invalid shape info");
     ONNX_NAMESPACE::TensorShapeProto shape_proto;
-    if (info->shape_info.has_value()) {
-      const auto& symbolic_dims = info->shape_info->dim_params;
-      const auto& integer_dims = info->shape_info->shape.GetDims();
+    if (info->HasShape()) {
+      const auto& symbolic_dims = *info->GetDimParams();
+      const auto integer_dims = info->GetShape()->GetDims();
       ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
       for (size_t ith = 0, end = symbolic_dims.size(); ith < end; ith++) {
         auto* dim_proto = shape_proto.add_dim();
@@ -108,7 +108,7 @@ struct OrtShapeInferContext {
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
-    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->type);
+    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->GetElementType());
     return onnxruntime::Status::OK();
   }
 

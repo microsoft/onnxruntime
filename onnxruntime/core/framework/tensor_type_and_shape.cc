@@ -44,7 +44,7 @@ ORT_API(void, OrtApis::ReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorT
 ORT_API_STATUS_IMPL(OrtApis::SetTensorElementType, _Inout_ OrtTensorTypeAndShapeInfo* this_ptr,
                     enum ONNXTensorElementDataType type) {
   API_IMPL_BEGIN
-  this_ptr->type = type;
+  this_ptr->SetElementType(type);
   return nullptr;
   API_IMPL_END
 }
@@ -56,14 +56,18 @@ ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* info,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "dim_values must be -1 (symbolic dimension) or larger.");
   }
 
-  auto num_dims = std::max(dim_count, info->shape_info.has_value() ? info->shape_info->dim_params.size() : 0);
+  size_t num_dims = dim_count;
+  if (info->HasShape()) {
+    num_dims = std::max(num_dims, info->GetDimParams()->size());
+  }
 
   OrtTensorTypeAndShapeInfo::ShapeInfo shape_info;
   if (info->HasShape()) {
-    shape_info.dim_params = info->shape_info->dim_params;
+    shape_info.dim_params = *info->GetDimParams();
   }
 
   // make shape and dim_values consistent
+  // and preserve existing symbolic dimension names if any
   shape_info.dim_params.resize(num_dims);
 
   onnxruntime::TensorShapeVector dims;
@@ -75,7 +79,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* info,
 
   shape_info.shape = onnxruntime::TensorShape(dims);
 
-  info->shape_info = std::move(shape_info);
+  info->SetShape(std::move(shape_info));
 
   return nullptr;
   API_IMPL_END
@@ -83,7 +87,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* info,
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorElementType, _In_ const struct OrtTensorTypeAndShapeInfo* info,
                     _Out_ ONNXTensorElementDataType* out) {
-  *out = info->type;
+  *out = info->GetElementType();
   return nullptr;
 }
 
@@ -108,7 +112,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions,
   if (info->HasShape()) {
     size_t end = info->GetShape()->NumDimensions();
     end = std::min(end, dim_params_length);
-    const auto& symbolic_dims = info->shape_info->dim_params;
+    const auto& symbolic_dims = *info->GetDimParams();
     for (size_t idx = 0; idx < end; ++idx) {
       names[idx] = symbolic_dims[idx].c_str();
     }
@@ -124,31 +128,28 @@ ORT_API(bool, OrtApis::TensorTypeAndShape_HasShape, _In_ const struct OrtTensorT
 ORT_API_STATUS_IMPL(OrtApis::SetSymbolicDimensions,
                     _In_ struct OrtTensorTypeAndShapeInfo* info,
                     _In_ const char** names, _In_ size_t dim_params_length) {
-
-  auto num_dims = std::max(info->shape_info.has_value() ? info->shape_info->shape.NumDimensions() : 0,
-      dim_params_length);
-
-  OrtTensorTypeAndShapeInfo::ShapeInfo shape_info;
+  size_t num_dims = dim_params_length;
   onnxruntime::TensorShapeVector shape_vec;
   if (info->HasShape()) {
+    num_dims = std::max(num_dims, info->GetShape()->NumDimensions());
     if (num_dims > 0) {
-      shape_vec = info->shape_info->shape.AsShapeVector();
+      shape_vec = info->GetShape()->AsShapeVector();
     }
   }
+
+  OrtTensorTypeAndShapeInfo::ShapeInfo shape_info;
   shape_vec.resize(num_dims, -1);
   shape_info.shape = onnxruntime::TensorShape(shape_vec);
 
-  std::vector<std::string> dim_params;
+  std::vector<std::string> dim_params(num_dims);
   for (size_t idx = 0; idx < dim_params_length; ++idx) {
     if (names[idx] != nullptr) {
-      dim_params.emplace_back(names[idx]);
-    } else {
-      dim_params.emplace_back();
+      dim_params[idx] = names[idx];
     }
   }
 
   shape_info.dim_params = std::move(dim_params);
-  info->shape_info = std::move(shape_info);
+  info->SetShape(std::move(shape_info));
 
   return nullptr;
 }
@@ -253,7 +254,7 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
     const std::vector<std::string>* dim_params) {
   auto type_and_shape = std::make_unique<OrtTensorTypeAndShapeInfo>();
 
-  type_and_shape->type = type;
+  type_and_shape->SetElementType(type);
 
   if (shape != nullptr) {
     ShapeInfo shape_info;
@@ -262,7 +263,7 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
       shape_info.dim_params = *dim_params;
     }
     shape_info.dim_params.resize(shape_info.shape.NumDimensions());
-    type_and_shape->shape_info = std::move(shape_info);
+    type_and_shape->SetShape(std::move(shape_info));
   }
   return type_and_shape;
 }

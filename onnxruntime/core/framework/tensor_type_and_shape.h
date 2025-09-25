@@ -20,7 +20,13 @@ class DataTypeImpl;
 
 struct OrtTensorTypeAndShapeInfo {
  public:
-  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  void SetElementType(ONNXTensorElementDataType element_type) noexcept {
+    this->type = element_type;
+  }
+
+  ONNXTensorElementDataType GetElementType() const noexcept {
+    return type;
+  }
 
   struct ShapeInfo {
     onnxruntime::TensorShape shape;
@@ -29,14 +35,20 @@ struct OrtTensorTypeAndShapeInfo {
     std::vector<std::string> dim_params;
   };
 
-  std::optional<ShapeInfo> shape_info;
-
   bool HasShape() const noexcept {
     return shape_info.has_value();
   }
 
   const onnxruntime::TensorShape* GetShape() const noexcept {
     return shape_info ? &shape_info->shape : nullptr;
+  }
+
+  const std::vector<std::string>* GetDimParams() const noexcept {
+    return shape_info ? &shape_info->dim_params : nullptr;
+  }
+
+  void SetShape(ShapeInfo shape) {
+    this->shape_info = std::move(shape);
   }
 
   OrtTensorTypeAndShapeInfo();
@@ -68,6 +80,10 @@ struct OrtTensorTypeAndShapeInfo {
   // Copy ops are public because std::make_unique above requires them to be accessible
   OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other);
   OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other);
+
+ private:
+  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  std::optional<ShapeInfo> shape_info;
 };
 
 constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(int32_t dtype);
