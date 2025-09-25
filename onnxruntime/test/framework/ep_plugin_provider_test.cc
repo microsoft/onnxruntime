@@ -427,7 +427,7 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimSomeNodesAssignedToOtherEP)
   }
 
   // Call IExecutionProvider::GetCapability. The underlying OrtEp will try to take all nodes.
-  // Should not crash and should return an empty result.
+  // Should not crash and should return a single compute capability with 2 out of the 3 nodes.
   {
     logging::LoggingManager log_manager{std::make_unique<logging::FileSink>(log_file, false, false),
                                         logging::Severity::kWARNING, false,
