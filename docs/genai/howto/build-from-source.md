@@ -51,7 +51,7 @@ python build.py --use_dml --config Release
 #### Windows NvTensorRtRtx build
 
 ```bash
-python build.py --use_trt_rtx --config Release
+python build.py --use_trt_rtx --config Release --cuda_home <cuda_path>
 ```
 
 #### Linux build
