@@ -61,8 +61,56 @@ bool CanUseMlasQ4Dequant(int64_t num_bits) {
 
 bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
                       int64_t rows, int64_t cols, MLAS_BLK_QUANT_TYPE& out_qtype) {
-  // TEMPORARY: Disable direct Q4 GEMM
-  return false;
+  if (expert_weight_bits != 4) {
+    return false;
+  }
+
+  if (rows <= 0 || cols <= 0) {
+    return false;
+  }
+
+  MLAS_BLK_QUANT_TYPE qtype;
+  switch (block_size) {
+    case 0:
+    case 32:
+      qtype = BlkQ4Sym;
+      break;
+    case 64:
+      qtype = BlkQ4Sym64;
+      break;
+    case 128:
+      qtype = BlkQ4Sym128;
+      break;
+    default:
+      return false;
+  }
+
+  const size_t pack_size =
+      MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols));
+
+  if (pack_size == 0) {
+    return false;
+  }
+
+  out_qtype = qtype;
+  return true;
+}
+
+void TransposeFp32RowMajorToColumnMajor(const float* src,
+                                        float* dst,
+                                        int64_t rows,
+                                        int64_t cols) {
+  if (rows <= 0 || cols <= 0) {
+    return;
+  }
+
+  for (int64_t r = 0; r < rows; ++r) {
+    const size_t row_offset = static_cast<size_t>(r) * static_cast<size_t>(cols);
+    for (int64_t c = 0; c < cols; ++c) {
+      dst[static_cast<size_t>(c) * static_cast<size_t>(rows) + static_cast<size_t>(r)] =
+          src[row_offset + static_cast<size_t>(c)];
+    }
+  }
 }
 
 }  // namespace
@@ -99,13 +147,19 @@ Status ConvertToMlasQ4Format(const uint8_t* quantized_data,
 
   DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, temp_float, nullptr);
 
-  size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(cols), static_cast<size_t>(rows));
+  IAllocatorUniquePtr<float> temp_float_col_major_buffer =
+      IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(rows * cols));
+  float* temp_float_col_major = temp_float_col_major_buffer.get();
+
+  TransposeFp32RowMajorToColumnMajor(temp_float, temp_float_col_major, rows, cols);
+
+  size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols));
   if (packed_size == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLAS Q4 packing not supported for this configuration");
   }
 
   mlas_packed_buffer = IAllocator::MakeUniquePtr<uint8_t>(allocator, packed_size);
-  MlasQ4GemmPackB(qtype, mlas_packed_buffer.get(), temp_float, static_cast<size_t>(cols), static_cast<size_t>(rows), static_cast<size_t>(cols));
+  MlasQ4GemmPackB(qtype, mlas_packed_buffer.get(), temp_float_col_major, static_cast<size_t>(rows), static_cast<size_t>(cols), static_cast<size_t>(rows));
 
   return Status::OK();
 }
