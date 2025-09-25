@@ -4,6 +4,7 @@
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
 
 #include "core/common/common.h"
+#include "core/providers/common.h"
 #include "core/util/qmath.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -127,7 +128,9 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
 
       int64_t axis = 1;
       if (auto axis_iter = dq_attrs.find("axis"); axis_iter != dq_attrs.end()) {
-        axis = axis_iter->second.i();
+        const ONNX_NAMESPACE::TensorShapeProto* weight_shape = weight_arg->Shape();
+        int64_t weight_rank = narrow<int64_t>(weight_shape->dim_size());
+        axis = HandleNegativeAxis(axis_iter->second.i(), weight_rank);
       }
 
       int64_t expected_axis = 0;
@@ -138,7 +141,6 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           transB = trans_b_iter->second.i();
         }
         expected_axis = transB == 0 ? 1 : 0;
-        axis = (axis == -1) ? 1 : axis;  // normalize for comparison
       }
 
       if (axis != expected_axis) {
