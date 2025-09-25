@@ -1089,6 +1089,16 @@ template Status QkvToContext<half, float>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
 
+template onnxruntime::common::Status
+QkvToContext<float, BFloat16>(
+    const cudaDeviceProp&, cublasHandle_t&, cudnnHandle_t&,
+    Stream*, contrib::AttentionParameters&, AttentionData<float>&);
+
+template onnxruntime::common::Status
+QkvToContext<BFloat16, float>(
+    const cudaDeviceProp&, cublasHandle_t&, cudnnHandle_t&,
+    Stream*, contrib::AttentionParameters&, AttentionData<BFloat16>&);
+
 template Status LaunchDecoderMaskedMultiHeadAttention<float, float>(
     const DecoderMaskedMultiHeadAttentionParameters& parameters,
     cudaStream_t stream,
