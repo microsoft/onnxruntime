@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -105,8 +106,8 @@ std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
 
   // Currently, we only assume that all Nvidia GPUs are discrete.
 
-  constexpr auto nvidia_pci_id = 0x10de;
-  if (vendor_id == nvidia_pci_id) {
+  constexpr auto kNvidiaPciId = 0x10de;
+  if (vendor_id == kNvidiaPciId) {
     return true;
   }
 
