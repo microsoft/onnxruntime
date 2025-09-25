@@ -226,7 +226,9 @@ bool AreDataTypesSame(const std::string_view op_type,
   return true;
 }
 
-bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types) {
+bool IsSupportedDataType(const int32_t onnx_data_type,
+                         const emscripten::val& webnn_supported_data_types,
+                         const emscripten::val& wnn_limits) {
   auto it = onnx_to_webnn_data_type_map.find(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(onnx_data_type));
   if (it == onnx_to_webnn_data_type_map.end())
     return false;
@@ -240,7 +242,8 @@ bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& we
 
   if (webnn_data_type == "int64" &&
       !is_supported &&
-      webnn_supported_data_types.call<emscripten::val>("includes", emscripten::val("int32")).as<bool>()) {
+      webnn_supported_data_types.call<emscripten::val>("includes", emscripten::val("int32")).as<bool>() &&
+      !wnn_limits["constant"]["dataTypes"].call<emscripten::val>("includes", emscripten::val("int64")).as<bool>()) {
     // Current context doesn't support int64, but int32 is supported.
     // We can use int32 as a workaround.
     is_supported = true;
@@ -280,8 +283,9 @@ bool IsDataTypeSupportedByWebNNOp(const std::string_view onnx_op_type,
                           << webnn_input_output_name << "]";
     return false;
   }
-  if (!IsSupportedDataType(
-          onnx_data_type, wnn_limits[std::string(webnn_op_type)][std::string(webnn_input_output_name)]["dataTypes"])) {
+  if (!IsSupportedDataType(onnx_data_type,
+                           wnn_limits[std::string(webnn_op_type)][std::string(webnn_input_output_name)]["dataTypes"],
+                           wnn_limits)) {
     LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] " << onnx_input_output_name << "'s data type: ["
                           << onnx_data_type << "] is not supported by WebNN op [" << webnn_op_type << "] for now";
     return false;
