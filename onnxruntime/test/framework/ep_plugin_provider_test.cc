@@ -334,8 +334,8 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
-static OrtStatus* GetCapabilityTakeAllNodes(OrtEp* this_ptr, const OrtGraph* graph,
-                                            OrtEpGraphSupportInfo* graph_support_info) noexcept {
+static OrtStatus* ORT_API_CALL GetCapabilityTakeAllNodes(OrtEp* this_ptr, const OrtGraph* graph,
+                                                         OrtEpGraphSupportInfo* graph_support_info) noexcept {
   auto* this_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
 
   size_t num_nodes = 0;
