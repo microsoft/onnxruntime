@@ -1183,7 +1183,8 @@ def generate_build_tree(
                 if config == "Release":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
@@ -1194,7 +1195,8 @@ def generate_build_tree(
                 elif config == "RelWithDebInfo":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
@@ -1209,7 +1211,8 @@ def generate_build_tree(
                 elif config == "MinSizeRel":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-Os",

@@ -61,7 +61,12 @@ OrtStatus* ORT_API_CALL NotificationImpl::ActivateImpl(_In_ OrtSyncNotificationI
 /*static*/
 OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ OrtSyncNotificationImpl* this_ptr,
                                                            _In_ OrtSyncStream* stream) noexcept {
+  if (stream == nullptr) {
+    return nullptr;
+  }
+
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
+
   void* handle = impl.ort_api.SyncStream_GetHandle(stream);
   static_cast<void>(handle);
 
