@@ -1,9 +1,11 @@
 // API service for Azure AI Foundry models
-// Uses local server proxy to avoid CORS issues
+// Uses CORS proxy for static deployment
 import type { FoundryModel, GroupedFoundryModel } from './types';
 
-// Local API proxy endpoint
-const FOUNDRY_API_ENDPOINT = '/api/foundry-models';
+// Azure AI Foundry API endpoint with CORS proxy for static deployment
+const AZURE_API_BASE = 'https://ai.azure.com/api/eastus/ux/v1.0/entities/crossRegion';
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const FOUNDRY_API_ENDPOINT = `${CORS_PROXY}${encodeURIComponent(AZURE_API_BASE)}`;
 
 export interface ApiFilters {
 	device?: string;
@@ -66,8 +68,8 @@ export class FoundryModelService {
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(`HTTP error! status: ${response.status}, error: ${errorData.error}`);
+				console.warn(`API request failed with status: ${response.status}`);
+				return [];
 			}
 
 			const apiData = await response.json();
@@ -77,6 +79,7 @@ export class FoundryModelService {
 			return this.applyClientSideProcessing(models, filters, sortOptions);
 			
 		} catch (error) {
+			console.warn('Failed to fetch foundry models:', error);
 			return [];
 		}
 	}
