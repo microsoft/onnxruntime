@@ -19,43 +19,78 @@ export interface ApiSortOptions {
 
 export class FoundryModelService {
 	async fetchModels(filters: ApiFilters = {}, sortOptions: ApiSortOptions = { sortBy: 'name', sortOrder: 'asc' }): Promise<FoundryModel[]> {
+		console.log('=== FOUNDRY SERVICE FETCH MODELS START ===');
+		console.log('Input filters:', filters);
+		console.log('Input sort options:', sortOptions);
+		
 		// If no device filter is specified, try to get models for all common devices
 		if (!filters.device) {
+			console.log('No device filter specified, fetching for multiple devices...');
 			const allModels = await this.fetchModelsForMultipleDevices(['npu', 'gpu', 'cpu'], filters, sortOptions);
+			console.log(`Final result: ${allModels.length} models`);
 			return allModels;
 		} else {
-			return this.fetchModelsForDevice(filters, sortOptions);
+			console.log(`Device filter specified: ${filters.device}, fetching for single device...`);
+			const models = await this.fetchModelsForDevice(filters, sortOptions);
+			console.log(`Final result: ${models.length} models`);
+			return models;
 		}
 	}
 	
 	private async fetchModelsForMultipleDevices(devices: string[], filters: ApiFilters, sortOptions: ApiSortOptions): Promise<FoundryModel[]> {
+		console.log('=== FETCHING FOR MULTIPLE DEVICES ===');
+		console.log('Devices to fetch:', devices);
+		console.log('Base filters:', filters);
+		
 		const allModels: FoundryModel[] = [];
 		const seenModelIds = new Set<string>();
 		
 		for (const device of devices) {
 			try {
+				console.log(`Fetching models for device: ${device}`);
 				const deviceFilters = { ...filters, device };
+				console.log('Device-specific filters:', deviceFilters);
+				
 				const deviceModels = await this.fetchModelsForDevice(deviceFilters, sortOptions);
+				console.log(`Got ${deviceModels.length} models for device ${device}`);
 				
 				// Add models that we haven't seen before (avoid duplicates)
+				let newModelsCount = 0;
 				for (const model of deviceModels) {
 					if (!seenModelIds.has(model.id)) {
 						seenModelIds.add(model.id);
 						allModels.push(model);
+						newModelsCount++;
 					}
 				}
+				console.log(`Added ${newModelsCount} new unique models from device ${device}`);
 			} catch (error) {
+				console.error(`Failed to fetch models for device ${device}:`, error);
 				// Continue with other devices if one fails
 			}
 		}
 		
-		return this.applyClientSideProcessing(allModels, filters, sortOptions);
+		console.log(`Total unique models collected: ${allModels.length}`);
+		const finalModels = this.applyClientSideProcessing(allModels, filters, sortOptions);
+		console.log(`Final processed models: ${finalModels.length}`);
+		
+		return finalModels;
 	}
 	
 	private async fetchModelsForDevice(filters: ApiFilters, sortOptions: ApiSortOptions): Promise<FoundryModel[]> {
 		const requestBody = this.buildRequestBody(filters);
 		
+		// Debug logging - client side
+		console.log('=== FOUNDRY CLIENT DEBUG ===');
+		console.log('Filters received:', filters);
+		console.log('Sort options:', sortOptions);
+		console.log('Request body built:', JSON.stringify(requestBody, null, 2));
+		console.log('API endpoint:', FOUNDRY_API_ENDPOINT);
+		
 		try {
+			console.log('Making fetch request...');
+			const startTime = performance.now();
+			
 			const response = await fetch(FOUNDRY_API_ENDPOINT, {
 				method: 'POST',
 				headers: {
@@ -65,24 +100,65 @@ export class FoundryModelService {
 				body: JSON.stringify(requestBody)
 			});
 
+			const endTime = performance.now();
+			console.log(`Request completed in ${endTime - startTime}ms`);
+			console.log('Response status:', response.status);
+			console.log('Response status text:', response.statusText);
+			console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
 			if (!response.ok) {
-				console.warn(`API request failed with status: ${response.status}`);
+				console.error('=== API REQUEST FAILED ===');
+				console.error(`API request failed with status: ${response.status} ${response.statusText}`);
+				
+				// Try to get error details from response body
+				try {
+					const errorText = await response.text();
+					console.error('Error response body:', errorText);
+					
+					// Try to parse as JSON for better error details
+					try {
+						const errorJson = JSON.parse(errorText);
+						console.error('Parsed error JSON:', errorJson);
+					} catch (e) {
+						console.error('Could not parse error response as JSON');
+					}
+				} catch (e) {
+					console.error('Could not read error response body:', e);
+				}
+				
 				return [];
 			}
 
+			console.log('Response successful, parsing JSON...');
 			const apiData = await response.json();
+			console.log('Raw API response:', JSON.stringify(apiData, null, 2));
+			console.log('API response keys:', apiData ? Object.keys(apiData) : 'null/undefined');
+			
 			const models = this.transformApiResponse(apiData);
+			console.log(`Transformed ${models.length} models from API response`);
+			console.log('Sample transformed model:', models.length > 0 ? models[0] : 'none');
 			
 			// Apply client-side filtering and sorting if needed
-			return this.applyClientSideProcessing(models, filters, sortOptions);
+			const processedModels = this.applyClientSideProcessing(models, filters, sortOptions);
+			console.log(`After client-side processing: ${processedModels.length} models`);
+			
+			return processedModels;
 			
 		} catch (error) {
-			console.warn('Failed to fetch foundry models:', error);
+			console.error('=== FETCH ERROR ===');
+			console.error('Failed to fetch foundry models:', error);
+			console.error('Error name:', error instanceof Error ? error.name : 'unknown');
+			console.error('Error message:', error instanceof Error ? error.message : error);
+			console.error('Error stack:', error instanceof Error ? error.stack : 'no stack');
+			console.error('Request that caused error:', JSON.stringify(requestBody, null, 2));
 			return [];
 		}
 	}
 
 	private buildRequestBody(filters: ApiFilters) {
+		console.log('=== BUILDING REQUEST BODY ===');
+		console.log('Input filters for request body:', filters);
+		
 		const baseFilters = [
 			{
 				field: "type",
@@ -96,17 +172,22 @@ export class FoundryModelService {
 			}
 		];
 
+		console.log('Base filters:', baseFilters);
+
 		// Add device filter if specified
 		if (filters.device) {
+			console.log(`Adding device filter for: ${filters.device}`);
 			baseFilters.push({
 				field: "properties/variantInfo/variantMetadata/device",
 				operator: "eq",
 				values: [filters.device]
 			});
+		} else {
+			console.log('No device filter specified in buildRequestBody');
 		}
 		// Note: If no device filter is specified, we'll get models for all devices
 
-		return {
+		const requestBody = {
 			resourceIds: [
 				{
 					resourceId: "azureml",
@@ -117,6 +198,9 @@ export class FoundryModelService {
 				filters: baseFilters
 			}
 		};
+
+		console.log('Final request body:', JSON.stringify(requestBody, null, 2));
+		return requestBody;
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -381,14 +465,22 @@ export class FoundryModelService {
 
 	// Group models by alias and return grouped models
 	async fetchGroupedModels(filters: ApiFilters = {}, sortOptions: ApiSortOptions = { sortBy: 'name', sortOrder: 'asc' }): Promise<GroupedFoundryModel[]> {
+		console.log('=== FETCH GROUPED MODELS START ===');
+		console.log('Filters received:', filters);
+		console.log('Sort options received:', sortOptions);
+		
 		// First get all individual models
+		console.log('Calling fetchModels...');
 		const allModels = await this.fetchModels(filters, sortOptions);
+		console.log(`fetchModels returned ${allModels.length} individual models`);
 		
 		// Group models by alias
+		console.log('Grouping models by alias...');
 		const modelGroups = new Map<string, FoundryModel[]>();
 		
 		for (const model of allModels) {
 			const alias = this.extractAlias(model.name);
+			console.log(`Model ${model.name} -> alias: ${alias}`);
 			if (!modelGroups.has(alias)) {
 				modelGroups.set(alias, []);
 			}
@@ -397,11 +489,15 @@ export class FoundryModelService {
 				group.push(model);
 			}
 		}
+		
+		console.log(`Created ${modelGroups.size} model groups`);
 
 		// Convert groups to GroupedFoundryModel objects
 		const groupedModels: GroupedFoundryModel[] = [];
 		
 		for (const [alias, variants] of modelGroups) {
+			console.log(`Processing group ${alias} with ${variants.length} variants`);
+			
 			// Sort variants to get the primary one (usually the first alphabetically)
 			variants.sort((a, b) => a.name.localeCompare(b.name));
 			const primaryModel = variants[0];
@@ -464,7 +560,10 @@ export class FoundryModelService {
 			};
 
 			groupedModels.push(groupedModel);
+			console.log(`Added grouped model: ${alias} with ${variants.length} variants`);
 		}
+		
+		console.log(`Created ${groupedModels.length} grouped models before sorting`);
 
 		// Apply sorting to grouped models
 		groupedModels.sort((a, b) => {
@@ -515,6 +614,14 @@ export class FoundryModelService {
 				return sortOptions.sortOrder === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
 			}
 		});
+
+		console.log(`Final result: ${groupedModels.length} grouped models after sorting`);
+		console.log('Sample grouped model:', groupedModels.length > 0 ? {
+			alias: groupedModels[0].alias,
+			displayName: groupedModels[0].displayName,
+			variantCount: groupedModels[0].variants.length,
+			deviceSupport: groupedModels[0].deviceSupport
+		} : 'none');
 
 		return groupedModels;
 	}

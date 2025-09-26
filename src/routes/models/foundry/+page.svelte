@@ -38,6 +38,15 @@
 	);
 
 	async function fetchFoundryModels() {
+		console.log('=== SVELTE COMPONENT FETCH START ===');
+		console.log('Current filter state:', {
+			selectedDevice,
+			selectedFamily,
+			selectedPublisher,
+			searchTerm,
+			debouncedSearchTerm
+		});
+
 		loading = true;
 		error = '';
 
@@ -49,12 +58,25 @@
 				searchTerm: debouncedSearchTerm
 			};
 
+			console.log('Filters being passed to service:', filters);
 			const sortOptions = { sortBy, sortOrder };
+			console.log('Sort options being passed to service:', sortOptions);
+
+			console.log('Calling foundryModelService.fetchGroupedModels...');
 			const fetchedModels = await foundryModelService.fetchGroupedModels(filters, sortOptions);
+			console.log('Service returned models:', fetchedModels.length);
+			console.log('Sample model:', fetchedModels.length > 0 ? fetchedModels[0] : 'none');
 
 			models = fetchedModels;
 			updateFilterOptions();
+			console.log('Filter options updated, available devices:', availableDevices);
+			console.log('Available publishers:', availablePublishers);
 		} catch (err: any) {
+			console.error('=== SVELTE COMPONENT FETCH ERROR ===');
+			console.error('Error caught:', err);
+			console.error('Error name:', err?.name);
+			console.error('Error message:', err?.message);
+			console.error('Error stack:', err?.stack);
 			error = `Failed to fetch models: ${err.message}`;
 		} finally {
 			loading = false;
