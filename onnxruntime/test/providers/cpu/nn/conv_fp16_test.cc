@@ -282,6 +282,7 @@ TEST(ConvBF16Test, Conv2D_1) {
   return;
 #endif
 
+#ifdef USE_CUDA
   OpTester test("Conv", 22);
 
   ConvOpAndTestAttributes attributes = {
@@ -332,6 +333,7 @@ TEST(ConvBF16Test, Conv2D_1) {
   test.AddOutput<BFloat16>("Y", Y_shape, expected_vals, /*no sort*/ false, 0.002f, 0.0f);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+#endif
 }
 
 TEST(ConvFp16Test, Conv2D_1) {
