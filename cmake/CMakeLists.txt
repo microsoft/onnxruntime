@@ -90,11 +90,6 @@ option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" 
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
-# iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
-if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
-    message(WARNING "Disabling KleidiAI: not supported on Apple x86_64 platforms")
-  set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
-endif()
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -678,25 +673,44 @@ if(onnxruntime_USE_SVE)
   endif()
 endif()
 
-if (onnxruntime_USE_KLEIDIAI AND (
-      (onnxruntime_target_platform STREQUAL "aarch64") OR
-      (onnxruntime_target_platform STREQUAL "ARM64") OR
-      (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+if(onnxruntime_USE_KLEIDIAI)
+  function(is_kleidiai_supported is_supported_var)
+    # check for supported target platforms
+    if(NOT (onnxruntime_target_platform STREQUAL "aarch64" OR
+            onnxruntime_target_platform STREQUAL "ARM64" OR
+            (APPLE AND CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")))
+      message(WARNING "KleidiAI is not supported on this platform.")
 
-  # TODO Add checks for MSVC Compilation
-  if(NOT MSVC)
-    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-    if (NOT HAS_ARM64_DOTPROD)
-      message(FATAL_ERROR "The compiler doesn't support dotprod")
+      set(${is_supported_var} FALSE PARENT_SCOPE)
+      return()
     endif()
-    if (NOT HAS_ARM64_I8MM)
-      message(FATAL_ERROR "The compiler doesn't support i8mm")
+
+    # check for compiler support
+    if(MSVC)
+      # TODO detect on MSVC
+    else()
+      check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+      check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+      if(NOT HAS_ARM64_DOTPROD)
+        message(WARNING "The compiler doesn't support dotprod instructions.")
+      endif()
+      if(NOT HAS_ARM64_I8MM)
+        message(WARNING "The compiler doesn't support i8mm instructions.")
+      endif()
+      if(NOT HAS_ARM64_DOTPROD OR NOT HAS_ARM64_I8MM)
+        set(${is_supported_var} FALSE PARENT_SCOPE)
+        return()
+      endif()
     endif()
-  else()
-    message(STATUS "Skipping -march= checks on MSVC (not supported), assuming dotprod/i8mm support manually.")
-    set(HAS_ARM64_DOTPROD TRUE)
-    set(HAS_ARM64_I8MM TRUE)
+
+    set(${is_supported_var} TRUE PARENT_SCOPE)
+  endfunction()
+
+  is_kleidiai_supported(is_kleidiai_supported_result)
+
+  if(NOT is_kleidiai_supported_result)
+    message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
+    set(onnxruntime_USE_KLEIDIAI OFF)
   endif()
 endif()
 
