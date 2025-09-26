@@ -896,7 +896,7 @@ def generate_build_tree(
         ):
             cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
 
-    if not args.enable_arm_nchwc:
+    if args.enable_arm_nchwc:
         cmake_args += ["-Donnxruntime_ARM_USE_NCHWC=ON"]
 
     if not args.no_sve:
