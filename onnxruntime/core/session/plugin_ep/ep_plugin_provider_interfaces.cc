@@ -211,6 +211,17 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
+    // Skip this node grouping if any node has already been assigned to another EP.
+    if (const Node* node_for_other_ep = FindFirstNodeAssignedToOtherEP(Type(), node_grouping.nodes);
+        node_for_other_ep != nullptr) {
+      LOGS(logger, WARNING) << "OrtEp::GetCapability() specified nodes that cannot be assigned to " << Type() << ". "
+                            << "Found one or more nodes that were already assigned to a different EP named '"
+                            << node_for_other_ep->GetExecutionProviderType() << "'. Ex: "
+                            << node_for_other_ep->OpType() << " node with name '"
+                            << node_for_other_ep->Name() << "'.";
+      continue;
+    }
+
     if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
       if (node_grouping.nodes.size() != 1) {
         // The EpGraphSupportInfo_AddSingleNode() C API should already return an error if the EP tries to provide
@@ -220,18 +231,9 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return {};
       }
 
-      const Node& node = node_grouping.nodes[0]->GetInternalNode();
-      const std::string& node_ep = node.GetExecutionProviderType();
-
-      // Check that single node was not already assigned to another EP.
-      if (!node_ep.empty() && node_ep != Type()) {
-        log_unsupported_node_info(node_grouping.nodes);
-        continue;
-      }
-
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
-      indexed_sub_graph->nodes.push_back(node.Index());
+      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
       result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       if (node_grouping.nodes.empty()) {
@@ -261,29 +263,24 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           this->Type(), this->Type(), /*node_unit_map*/ nullptr,
           node_grouping.fusion_options.drop_constant_initializers);
 
-      // Check if utils::CreateSupportedPartitions returned zero results.
-      // Happens if nodes have already been assigned to another EP.
-      if (capabilities.empty()) {
-        log_unsupported_node_info(node_grouping.nodes);
-        continue;
-      }
-
-      if (capabilities.size() > 1) {
+      if (capabilities.size() != 1) {
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set nodes that cannot be fused together. "
                             << "Please ensure that the nodes provided to EpGraphSupportInfo_AddNodesToFuse() do not "
                             << "have an unsupported node in any path between two of the supported nodes.";
         return {};
       }
 
-      // Log if the nodes in node_set do not match the nodes in capabilities[0], which occurs when EP selects nodes
-      // assigned to a different EP.
+      // Log an error if the nodes in node_set do not match the nodes in capabilities[0]. We expect this to always
+      // be true because we've already checked that the EP did not try to claim nodes already assigned to another EP.
       // TODO(adrianlizarraga): This check can be removed when we stop using utils::CreateSupportedPartitions() above.
       std::vector<NodeIndex>& capability_node_indices = capabilities[0]->sub_graph->nodes;
       std::unordered_set<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
                                                                 capability_node_indices.end());
 
       if (node_set.size() != capability_node_indices_set.size()) {
-        log_unsupported_node_info(node_grouping.nodes);
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type()
+                            << " set nodes that cannot all be fused together.";
+        return {};
       }
 
       result.push_back(std::move(capabilities[0]));
