@@ -329,10 +329,9 @@ TEST(PoolBF16Test, AveragePool) {
     return;
   }
 #else
-  return;
+  GTEST_SKIP() << "BFloat16 tests are only enabled on CUDA builds";
 #endif
 
-#ifdef USE_CUDA
   OpTester test("AveragePool", 22);
 
   test.AddAttribute("auto_pad", "");
@@ -412,7 +411,6 @@ TEST(PoolBF16Test, AveragePool) {
   test.AddInput<BFloat16>("X", x_dims, x_vals);
   test.AddOutput<BFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
-#endif
 }
 
 TEST(PoolFp16Test, AveragePool) {
