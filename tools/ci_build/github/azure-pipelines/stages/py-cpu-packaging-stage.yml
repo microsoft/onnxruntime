@@ -68,7 +68,7 @@ stages:
     jobs:
     - job: Windows_py_Wheels
       pool:
-        name: 'onnxruntime-Win-CPU-2022'
+        name: 'onnxruntime-Win-CPU-VS2022-Latest'
         os: windows
       templateContext:
         sdl:
@@ -88,22 +88,12 @@ stages:
           artifactName: onnxruntime-win-$(PythonVersion)
       strategy:
         matrix:
-          Python310_x64:
-            PythonVersion: '3.10'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python311_x64:
             PythonVersion: '3.11'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python312_x64:
             PythonVersion: '3.12'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python313_x64:
             PythonVersion: '3.13'
-            MsbuildPlatform: x64
-            buildArch: x64
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         ExtraParam: ${{ parameters.build_py_parameters }}
@@ -117,6 +107,9 @@ stages:
         submodules: recursive
 
       - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: $(PythonVersion)
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -203,13 +196,6 @@ stages:
           arch: 'arm64'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.10'
-          
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.11'
 
       - template: ../templates/py-macos.yml
@@ -222,34 +208,6 @@ stages:
       - template: ../templates/py-macos.yml
         parameters:
           arch: 'arm64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.13'
-
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.10'
-          
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.11'
-
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          python_version: '3.12'
-          
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'x86_64'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.13'

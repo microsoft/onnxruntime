@@ -11,7 +11,7 @@ variables:
 stages:
 - template: templates/final-jar-testing-win.yml
   parameters:
-    PoolName: 'onnxruntime-Win-CPU-2022'
+    PoolName: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/final-jar-testing-linux.yml
   parameters:

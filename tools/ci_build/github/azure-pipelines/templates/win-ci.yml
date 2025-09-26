@@ -61,7 +61,7 @@ parameters:
 
 - name: ort_build_pool_name
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
@@ -153,6 +153,8 @@ stages:
         submodules: none
 
       - template: setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0

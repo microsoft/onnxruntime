@@ -10,6 +10,7 @@
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/activation/activations.h"
 #include "core/common/safeint.h"
+#include "core/common/narrow.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/util/math.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
@@ -50,7 +51,7 @@ inline int64_t GetDequantBlockSize(int64_t features, int64_t total_work) {
   return std::min(target_block_size, work_based_size);
 }
 
-bool CanUseMlasQ4Dequant(int64_t num_bits, int64_t block_size) {
+bool CanUseMlasQ4Dequant(int64_t num_bits) {
   if (num_bits != 4) {
     return false;
   }
@@ -154,10 +155,11 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              int64_t cols,
                              float* dequantized_data,
                              MLAS_THREADPOOL* thread_pool) {
+  ORT_UNUSED_PARAMETER(thread_pool);
   const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
   const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
 
-  if (CanUseMlasQ4Dequant(num_bits, block_size)) {
+  if (CanUseMlasQ4Dequant(num_bits)) {
     const int64_t packed_cols = (cols + 1) / 2;
 
     if (block_size == 0) {
@@ -420,7 +422,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int max_threads = tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1;
   const int64_t thread_divisor = std::max(1, max_threads * 4);
   const int64_t min_work_per_thread = std::max(int64_t{32}, static_cast<int64_t>(num_tokens / thread_divisor));
-  const int optimal_routing_threads = (tp == nullptr || num_tokens < min_work_per_thread) ? 1 : std::min(static_cast<int>(num_tokens / std::max(int64_t{1}, min_work_per_thread)), max_threads);
+  const int optimal_routing_threads = (tp == nullptr || num_tokens < min_work_per_thread) ? 1 : std::min(narrow<int>(num_tokens / std::max(int64_t{1}, min_work_per_thread)), max_threads);
   const int num_routing_threads = std::max(1, optimal_routing_threads);
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
@@ -432,7 +434,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_routing_threads, [&](std::ptrdiff_t thread_id) {
-    auto work = concurrency::ThreadPool::PartitionWork(static_cast<int>(thread_id), num_routing_threads, static_cast<std::ptrdiff_t>(num_tokens));
+    auto work = concurrency::ThreadPool::PartitionWork(narrow<int>(thread_id), num_routing_threads, static_cast<std::ptrdiff_t>(num_tokens));
     auto& local_expert_token_map = thread_local_expert_token_maps[thread_id];
 
     std::vector<std::pair<float, int64_t>> sorted_logits(static_cast<size_t>(num_experts));
@@ -441,8 +443,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     for (int64_t i = work.start; i < work.end; ++i) {
       const float* logits = router_logits_float + i * num_experts;
 
-      for (int64_t j = 0; j < num_experts; ++j) {
-        sorted_logits[static_cast<size_t>(j)] = {logits[j], j};
+      for (size_t j = 0; j < narrow<size_t>(num_experts); ++j) {
+        sorted_logits[j] = {logits[j], j};
       }
       std::partial_sort(sorted_logits.begin(), sorted_logits.begin() + static_cast<std::ptrdiff_t>(k_),
                         sorted_logits.end(), std::greater<>());
@@ -450,17 +452,17 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       float max_logit = sorted_logits[0].first;
 
       float sum_exp = 0.0f;
-      for (int64_t j = 0; j < k_; ++j) {
-        top_k_exp[static_cast<size_t>(j)] = std::exp(sorted_logits[static_cast<size_t>(j)].first - max_logit);
-        sum_exp += top_k_exp[static_cast<size_t>(j)];
+      for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+        top_k_exp[j] = std::exp(sorted_logits[j].first - max_logit);
+        sum_exp += top_k_exp[j];
       }
 
       const float inv_sum = (sum_exp == 0.0f) ? 0.0f : (1.0f / sum_exp);
-      for (int64_t j = 0; j < k_; ++j) {
-        int64_t expert_idx = sorted_logits[static_cast<size_t>(j)].second;
-        int64_t route_idx = i * k_ + j;
-        route_expert[route_idx] = static_cast<int>(expert_idx);
-        route_scale[route_idx] = top_k_exp[static_cast<size_t>(j)] * inv_sum;
+      for (size_t j = 0; j < narrow<size_t>(k_); ++j) {
+        int64_t expert_idx = sorted_logits[j].second;
+        int64_t route_idx = i * k_ + narrow<int64_t>(j);
+        route_expert[route_idx] = narrow<int>(expert_idx);
+        route_scale[route_idx] = top_k_exp[j] * inv_sum;
         if (route_scale[route_idx] > 1e-8f) {  // Use small threshold to avoid zero weights
           local_expert_token_map[static_cast<size_t>(expert_idx)].push_back(route_idx);
         }
@@ -504,7 +506,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const int64_t expert_thread_divisor = std::max(1, max_expert_threads * 8);
   const int64_t min_expert_work_per_thread = std::max(int64_t{16}, total_expert_work / expert_thread_divisor);
 
-  int num_expert_threads = (tp == nullptr || total_expert_work < min_expert_work_per_thread) ? 1 : std::min(static_cast<int>(total_expert_work / std::max(int64_t{1}, min_expert_work_per_thread)), std::min(static_cast<int>(num_experts), max_expert_threads));
+  int num_expert_threads = (tp == nullptr || total_expert_work < min_expert_work_per_thread) ? 1 : std::min(narrow<int>(total_expert_work / std::max(int64_t{1}, min_expert_work_per_thread)), std::min(narrow<int>(num_experts), max_expert_threads));
   if (num_expert_threads == 0) num_expert_threads = 1;
 
   auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * output_buffer_size);
@@ -585,7 +587,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
-    const int thread_id = static_cast<int>(thread_id_pd);
+    const int thread_id = narrow<int>(thread_id_pd);
     const auto& expert_batch = expert_batches[static_cast<size_t>(thread_id)];
 
     float* thread_workspace = workspace + static_cast<size_t>(thread_id) * workspace_elements_per_thread;
@@ -612,7 +614,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const int64_t num_blocks = (num_expert_tokens + dynamic_block_size - 1) / dynamic_block_size;
 
       if (num_expert_tokens >= 8 && num_blocks > 1 && tp != nullptr) {
-        concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_blocks), [&](std::ptrdiff_t block_idx) {
+        concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_idx = block_idx * dynamic_block_size;
           const int64_t end_idx = std::min(start_idx + dynamic_block_size, num_expert_tokens);
 
@@ -633,14 +635,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           if (ShouldUseMemcpy(hidden_size)) {
             std::memcpy(dst, src, static_cast<size_t>(hidden_size) * sizeof(float));
           } else {
-            const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-            int64_t j = 0;
-            for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-              for (int64_t k = 0; k < unroll_factor; ++k) {
+            const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+            size_t j = 0;
+            for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+              for (size_t k = 0; k < unroll_factor; ++k) {
                 dst[j + k] = src[j + k];
               }
             }
-            for (; j < hidden_size; ++j) {
+            for (; j < narrow<size_t>(hidden_size); ++j) {
               dst[j] = src[j];
             }
           }
@@ -705,10 +707,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           if (gemm_status.IsOK()) {
             fc1_used_direct_q4 = true;
-#ifdef ONNXRUNTIME_ENABLE_VERBOSE_LOGGING
-            LOGS_DEFAULT(VERBOSE) << "QMoE: Using direct MLAS Q4 GEMM for FC1 expert " << expert_idx
-                                  << " (M=" << num_expert_tokens << ", N=" << fc1_out_features << ", K=" << hidden_size << ")";
-#endif
             goto fc1_gemm_done;
           }
         }
@@ -717,7 +715,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       // Traditional approach: dequantize + regular GEMM
       if (num_dequant_blocks > 1 && fc1_out_features >= 32) {
-        concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
+        concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * dequant_block_size;
           const int64_t end_row = std::min(start_row + dequant_block_size, fc1_out_features);
           const auto offset = expert_idx * fc1_out_features * fc1_packed_cols + start_row * fc1_packed_cols;
@@ -749,14 +747,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           if (ShouldUseMemcpy(fc1_out_features)) {
             std::memcpy(thread_bias1_buffer, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
           } else {
-            const int64_t unroll_factor = GetUnrollFactor(fc1_out_features);
-            int64_t j = 0;
-            for (; j + unroll_factor <= fc1_out_features; j += unroll_factor) {
-              for (int64_t k = 0; k < unroll_factor; ++k) {
-                thread_bias1_buffer[j + k] = static_cast<float>(B1_bias[j + k]);
+            const size_t unroll_factor = static_cast<size_t>(GetUnrollFactor(fc1_out_features));
+            size_t j = 0;
+            for (; j + unroll_factor <= static_cast<size_t>(fc1_out_features); j += unroll_factor) {
+              for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+                thread_bias1_buffer[j + loop_k] = static_cast<float>(B1_bias[j + loop_k]);
               }
             }
-            for (; j < fc1_out_features; ++j) {
+            for (; j < static_cast<size_t>(fc1_out_features); ++j) {
               thread_bias1_buffer[j] = static_cast<float>(B1_bias[j]);
             }
           }
@@ -764,15 +762,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
         for (int64_t i = 0; i < num_expert_tokens; ++i) {
           float* C1_row = C1 + i * fc1_out_features;
-          const int64_t unroll_factor = GetUnrollFactor(fc1_out_features);
+          const size_t unroll_factor = static_cast<size_t>(GetUnrollFactor(fc1_out_features));
 
-          int64_t j = 0;
-          for (; j + unroll_factor <= fc1_out_features; j += unroll_factor) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              C1_row[j + k] += thread_bias1_buffer[j + k];
+          size_t j = 0;
+          for (; j + unroll_factor <= static_cast<size_t>(fc1_out_features); j += unroll_factor) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              C1_row[j + loop_k] += thread_bias1_buffer[j + loop_k];
             }
           }
-          for (; j < fc1_out_features; ++j) {
+          for (; j < static_cast<size_t>(fc1_out_features); ++j) {
             C1_row[j] += thread_bias1_buffer[j];
           }
         }
@@ -786,7 +784,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
 
         if (num_activation_blocks > 1) {
-          concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
+          concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
             const int64_t start_token = block_idx * activation_block_size;
             const int64_t end_token = std::min(start_token + activation_block_size, num_expert_tokens);
 
@@ -868,10 +866,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           if (gemm_status.IsOK()) {
             fc2_used_direct_q4 = true;
-#ifdef ONNXRUNTIME_ENABLE_VERBOSE_LOGGING
-            LOGS_DEFAULT(VERBOSE) << "QMoE: Using direct MLAS Q4 GEMM for FC2 expert " << expert_idx
-                                  << " (M=" << num_expert_tokens << ", N=" << hidden_size << ", K=" << inter_size << ")";
-#endif
             goto fc2_gemm_done;
           }
         }
@@ -881,7 +875,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       // Traditional approach: dequantize + regular GEMM
       if (num_fc2_dequant_blocks > 1 && hidden_size >= 32) {
-        concurrency::ThreadPool::TrySimpleParallelFor(tp, static_cast<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
+        concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * fc2_dequant_block_size;
           const int64_t end_row = std::min(start_row + fc2_dequant_block_size, hidden_size);
           const auto offset = expert_idx * hidden_size * fc2_packed_cols + start_row * fc2_packed_cols;
@@ -915,14 +909,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           if (ShouldUseMemcpy(hidden_size)) {
             std::memcpy(thread_bias2_buffer, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
           } else {
-            const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-            int64_t j = 0;
-            for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-              for (int64_t k = 0; k < unroll_factor; ++k) {
-                thread_bias2_buffer[j + k] = static_cast<float>(B2_bias[j + k]);
+            const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+            size_t j = 0;
+            for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+              for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+                thread_bias2_buffer[j + loop_k] = static_cast<float>(B2_bias[j + loop_k]);
               }
             }
-            for (; j < hidden_size; ++j) {
+            for (; j < narrow<size_t>(hidden_size); ++j) {
               thread_bias2_buffer[j] = static_cast<float>(B2_bias[j]);
             }
           }
@@ -943,25 +937,25 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         const float* src = C2 + i * hidden_size;
 
         if (has_fc2_bias && !fc2_bias_handled_by_q4_gemm) {
-          const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-          int64_t j = 0;
-          for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              dest[j + k] += weight * (src[j + k] + thread_bias2_buffer[j + k]);
+          const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+          size_t j = 0;
+          for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              dest[j + loop_k] += weight * (src[j + loop_k] + thread_bias2_buffer[j + loop_k]);
             }
           }
-          for (; j < hidden_size; ++j) {
+          for (; j < narrow<size_t>(hidden_size); ++j) {
             dest[j] += weight * (src[j] + thread_bias2_buffer[j]);
           }
         } else {
-          const int64_t unroll_factor = GetUnrollFactor(hidden_size);
-          int64_t j = 0;
-          for (; j + unroll_factor <= hidden_size; j += unroll_factor) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              dest[j + k] += weight * src[j + k];
+          const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
+          size_t j = 0;
+          for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              dest[j + loop_k] += weight * src[j + loop_k];
             }
           }
-          for (; j < hidden_size; ++j) {
+          for (; j < narrow<size_t>(hidden_size); ++j) {
             dest[j] += weight * src[j];
           }
         }
@@ -975,7 +969,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     const int max_acc_threads = tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1;
     const size_t acc_thread_divisor = std::max(size_t{1}, static_cast<size_t>(max_acc_threads) * 8);
     const size_t min_elements_per_thread = std::max(size_t{32}, output_buffer_size / acc_thread_divisor);
-    const int optimal_acc_threads = (tp == nullptr || output_buffer_size < min_elements_per_thread) ? 1 : std::min(static_cast<int>(output_buffer_size / std::max(size_t{1}, min_elements_per_thread)), max_acc_threads);
+    const int optimal_acc_threads = (tp == nullptr || output_buffer_size < min_elements_per_thread) ? 1 : std::min(narrow<int>(output_buffer_size / std::max(size_t{1}, min_elements_per_thread)), max_acc_threads);
     const int num_acc_threads = std::max(1, optimal_acc_threads);
 
     if (num_acc_threads > 1) {
@@ -991,10 +985,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
           size_t j = 0;
           const size_t chunk_size = end_idx - start_idx;
-          const int64_t unroll_factor = GetUnrollFactor(static_cast<int64_t>(chunk_size));
-          for (; j + static_cast<size_t>(unroll_factor) <= chunk_size; j += static_cast<size_t>(unroll_factor)) {
-            for (int64_t k = 0; k < unroll_factor; ++k) {
-              dst[j + static_cast<size_t>(k)] += src[j + static_cast<size_t>(k)];
+          const size_t unroll_factor = static_cast<size_t>(GetUnrollFactor(static_cast<int64_t>(chunk_size)));
+          for (; j + unroll_factor <= chunk_size; j += unroll_factor) {
+            for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+              dst[j + loop_k] += src[j + loop_k];
             }
           }
           for (; j < chunk_size; ++j) {
@@ -1008,10 +1002,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         const float* src = thread_local_outputs + thread_offset;
 
         size_t j = 0;
-        const int64_t unroll_factor = GetUnrollFactor(static_cast<int64_t>(output_buffer_size));
-        for (; j + static_cast<size_t>(unroll_factor) <= output_buffer_size; j += static_cast<size_t>(unroll_factor)) {
-          for (int64_t k = 0; k < unroll_factor; ++k) {
-            buffer[j + static_cast<size_t>(k)] += src[j + static_cast<size_t>(k)];
+        const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(narrow<int64_t>(output_buffer_size)));
+        for (; j + unroll_factor <= output_buffer_size; j += unroll_factor) {
+          for (size_t loop_k = 0; loop_k < unroll_factor; ++loop_k) {
+            buffer[j + loop_k] += src[j + loop_k];
           }
         }
         for (; j < output_buffer_size; ++j) {

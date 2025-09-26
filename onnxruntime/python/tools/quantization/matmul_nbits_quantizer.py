@@ -11,9 +11,11 @@ import copy
 import logging
 import os
 
+import ml_dtypes
 import numpy as np
 import numpy.typing as npt
 import onnx
+import onnx_ir as ir
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
 from onnxruntime.capi._pybind_state import (
@@ -866,21 +868,27 @@ class DefaultWeightOnlyQuantizer:
             logger.info("MatMul doesn't have const weight. Skip to quantize")
             return [node]  # only care about constant weight
 
-        b_ndarray = onnx.numpy_helper.to_array(b_tensor)
+        b_ndarray = ir.from_proto(b_tensor).numpy()
         if len(b_ndarray.shape) != 2:
             logger.info("MatMul weight is not 2D. Skip to quantize")
             return [node]  # can only process 2-D matrix
 
+        bfloat16 = b_ndarray.dtype == "bfloat16"
+        if bfloat16:
+            b_ndarray = b_ndarray.astype(np.float32)
+
         packed, scales, zero_points = self.qbits_block_quant(b_ndarray)
+        if bfloat16:
+            scales = scales.astype(ml_dtypes.bfloat16)
 
         if self.config.quant_format == QuantFormat.QOperator:
-            b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + f"_Q{bits}")
-            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_scales")
+            b_quant = ir.serde.serialize_tensor(ir.Tensor(packed, name=b_tensor.name + f"_Q{bits}"))
+            scales_tensor = ir.serde.serialize_tensor(ir.Tensor(scales, name=b_tensor.name + "_scales"))
         else:
             b_quant = onnx.helper.make_tensor(
                 b_tensor.name + f"_DQ_Q{bits}", qtype, b_ndarray.shape, packed.tobytes(), True
             )
-            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
+            scales_tensor = ir.serde.serialize_tensor(ir.Tensor(scales, name=b_tensor.name + "_DQ_scales"))
 
         # if QDQ, CW and SYM enabled, optimize for Intel NPU, tranpose the weight to NHWC format will increase performance
         qdq_opt_for_intel_npu_enabled = (
@@ -895,7 +903,7 @@ class DefaultWeightOnlyQuantizer:
             b_quant = onnx.helper.make_tensor(
                 b_tensor.name + f"_DQ_Q{bits}", qtype, [cols, rows], packed.tobytes(), True
             )
-            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
+            scales_tensor = ir.serde.serialize_tensor(ir.Tensor(scales, name=b_tensor.name + "_DQ_scales"))
 
         for input in b_graph.input:
             if input.name == input_b:

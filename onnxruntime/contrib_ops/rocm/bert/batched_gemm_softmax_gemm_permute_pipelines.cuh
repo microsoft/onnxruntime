@@ -143,7 +143,7 @@ struct Strides {
                             int seqlen_dim,
                             int head_size_dim) {
     ORT_UNUSED_PARAMETER(batch_dim);
-    return Strides{longlong4{
+    return Strides{LongLong4{
         static_cast<int64_t>(num_head_dim) * seqlen_dim * head_size_dim,
         static_cast<int64_t>(seqlen_dim) * head_size_dim,
         static_cast<int64_t>(head_size_dim),
@@ -157,7 +157,7 @@ struct Strides {
                             int num_head_dim,
                             int head_size_dim) {
     ORT_UNUSED_PARAMETER(batch_dim);
-    return Strides{longlong4{
+    return Strides{LongLong4{
         static_cast<int64_t>(seqlen_dim) * num_head_dim * head_size_dim,
         static_cast<int64_t>(head_size_dim),
         static_cast<int64_t>(num_head_dim) * head_size_dim,
@@ -165,7 +165,7 @@ struct Strides {
     }};
   }
 
-  template <typename T = longlong4>
+  template <typename T = LongLong4>
   T ForBNSHCoord() const {
     using E = typename T::value_type;
     return T{static_cast<E>(strides_for_bnsh_coord.x),
@@ -174,7 +174,7 @@ struct Strides {
              static_cast<E>(strides_for_bnsh_coord.w)};
   }
 
-  template <typename T = longlong4>
+  template <typename T = LongLong4>
   T ForBSNHCoord() const {
     using E = typename T::value_type;
     return T{static_cast<E>(strides_for_bnsh_coord.x),
@@ -183,7 +183,7 @@ struct Strides {
              static_cast<E>(strides_for_bnsh_coord.w)};
   }
 
-  template <typename T = longlong4>
+  template <typename T = LongLong4>
   T ForBNHSCoord() const {
     using E = typename T::value_type;
     return T{static_cast<E>(strides_for_bnsh_coord.x),
@@ -198,7 +198,7 @@ struct Strides {
   }
 
   // store intermediate strides in the canonical (b,n,s,h) coordinate order
-  longlong4 strides_for_bnsh_coord;
+  LongLong4 strides_for_bnsh_coord;
 };
 
 template <typename HipT, typename T>
