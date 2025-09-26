@@ -4,26 +4,24 @@ Example usage:
 python abs_0d_lostdim.py out_model_path.onnx
 """
 
-from onnx import helper, numpy_helper, TensorProto
+import sys
 
 import onnx
-import numpy as np
-import sys
+from onnx import TensorProto, helper
+
 
 def order_repeated_field(repeated_proto, key_name, order):
     order = list(order)
     repeated_proto.sort(key=lambda x: order.index(getattr(x, key_name)))
 
-def make_node(
-    op_type, inputs, outputs, name=None, doc_string=None, domain=None, **kwargs
-):
-    node = helper.make_node(
-        op_type, inputs, outputs, name, doc_string, domain, **kwargs
-    )
+
+def make_node(op_type, inputs, outputs, name=None, doc_string=None, domain=None, **kwargs):
+    node = helper.make_node(op_type, inputs, outputs, name, doc_string, domain, **kwargs)
     if doc_string == "":
         node.doc_string = ""
     order_repeated_field(node.attribute, "name", kwargs.keys())
     return node
+
 
 def make_graph(*args, doc_string=None, **kwargs):
     graph = helper.make_graph(*args, doc_string=doc_string, **kwargs)
@@ -31,20 +29,26 @@ def make_graph(*args, doc_string=None, **kwargs):
         graph.doc_string = ""
     return graph
 
+
 model = helper.make_model(
-    opset_imports=[helper.make_operatorsetid('', 21), helper.make_operatorsetid('com.microsoft', 1), helper.make_operatorsetid('com.microsoft.nchwc', 1), helper.make_operatorsetid('com.ms.internal.nhwc', 21)],
+    opset_imports=[
+        helper.make_operatorsetid("", 21),
+        helper.make_operatorsetid("com.microsoft", 1),
+        helper.make_operatorsetid("com.microsoft.nchwc", 1),
+        helper.make_operatorsetid("com.ms.internal.nhwc", 21),
+    ],
     ir_version=11,
-    producer_name='ort_ep_utils::OrtGraphToProto',
-    doc_string='Serialized from OrtGraph',
+    producer_name="ort_ep_utils::OrtGraphToProto",
+    doc_string="Serialized from OrtGraph",
     graph=make_graph(
-        name='OpenVINOExecutionProvider_11295571201636618024_0',
-        inputs=[helper.make_tensor_value_info('absInput_1', TensorProto.FLOAT, shape=None)],
-        outputs=[helper.make_tensor_value_info('absOutput_0', TensorProto.FLOAT, shape=None)],
-        doc_string='Serialized from OrtGraph',
-        nodes=[make_node('Abs', inputs=['absInput_1'], outputs=['absOutput_0'], name='_0', domain='')],
+        name="OpenVINOExecutionProvider_11295571201636618024_0",
+        inputs=[helper.make_tensor_value_info("absInput_1", TensorProto.FLOAT, shape=None)],
+        outputs=[helper.make_tensor_value_info("absOutput_0", TensorProto.FLOAT, shape=None)],
+        doc_string="Serialized from OrtGraph",
+        nodes=[make_node("Abs", inputs=["absInput_1"], outputs=["absOutput_0"], name="_0", domain="")],
     ),
 )
 
-if __name__ == '__main__' and len(sys.argv) == 2:
+if __name__ == "__main__" and len(sys.argv) == 2:
     _, out_path = sys.argv
     onnx.save(model, out_path)

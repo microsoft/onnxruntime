@@ -502,15 +502,15 @@ static std::pair<bool, bool> LoadAndGetInputShapePresent(const ORTCHAR_T* const 
 }
 
 TEST(CApiTest, OptionalShape) {
-   const ORTCHAR_T* const input_shape_model = TSTR("testdata/abs_0d_input.onnx");
-   auto result = LoadAndGetInputShapePresent(input_shape_model);
-   ASSERT_TRUE(result.first);
-   ASSERT_TRUE(result.second);
+  const ORTCHAR_T* const input_shape_model = TSTR("testdata/abs_0d_input.onnx");
+  auto result = LoadAndGetInputShapePresent(input_shape_model);
+  ASSERT_TRUE(result.first);
+  ASSERT_TRUE(result.second);
 
-   const ORTCHAR_T* const no_shape_model = TSTR("testdata/abs_0d_lostdim.onnx");
-   result = LoadAndGetInputShapePresent(no_shape_model);
-   ASSERT_FALSE(result.first);
-   ASSERT_FALSE(result.second);
+  const ORTCHAR_T* const no_shape_model = TSTR("testdata/abs_0d_lostdim.onnx");
+  result = LoadAndGetInputShapePresent(no_shape_model);
+  ASSERT_FALSE(result.first);
+  ASSERT_FALSE(result.second);
 }
 
 INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
