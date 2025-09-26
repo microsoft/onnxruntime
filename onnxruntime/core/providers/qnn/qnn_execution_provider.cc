@@ -1576,6 +1576,17 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
         LOGS_DEFAULT(ERROR) << "Invalid EP Workload Type: " << value;
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid EP Workload Type.");
       }
+    } else if (key == kOrtEpDynamicOptionsQnnHtpPerformanceMode) {
+      auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+      if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+        return Status::OK();
+      }
+      qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+      ParseHtpPerformanceMode(value, htp_performance_mode);
+      if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    htp_performance_mode));
+      }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported EP Dynamic Option");
