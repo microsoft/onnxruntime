@@ -178,6 +178,13 @@
 		} else {
 			filteredModels = [];
 		}
+		// Watch all filter dependencies
+		selectedDevice;
+		selectedFamily;
+		selectedPublisher;
+		debouncedSearchTerm;
+		sortBy;
+		sortOrder;
 	}
 
 	onMount(() => {
@@ -211,13 +218,16 @@
 		<h1 class="text-4xl font-bold mb-4">Foundry Local Models</h1>
 		<p class="text-lg text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
 			Explore a curated collection of AI models optimized for local deployment across various
-			hardware platforms. Find models specifically designed for your NPUs, GPUs, and CPUs to
-			maximize performance for your use case.
+			hardware platforms. Use the search and filters below to find models specifically designed for your NPUs, GPUs, and CPUs.
 		</p>
 	</div>
 
 	<!-- Search and Filters Section -->
 	<div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
+		<div class="mb-4">
+			<h2 class="text-lg font-semibold mb-2">Filter & Search Models</h2>
+			<p class="text-sm text-gray-600 dark:text-gray-400">Results update automatically as you type or change filters</p>
+		</div>
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
 			<!-- Search -->
 			<div class="lg:col-span-2">
@@ -227,7 +237,7 @@
 						id="search-models"
 						type="text"
 						bind:value={searchTerm}
-						placeholder="Search by name, description, or tags... (searches as you type)"
+						placeholder="Search by name, description, or tags..."
 						class="input input-bordered w-full"
 					/>
 					{#if searchTerm !== debouncedSearchTerm}
@@ -240,7 +250,7 @@
 
 			<!-- Device Filter -->
 			<div>
-				<label class="block text-sm font-medium mb-2" for="device-filter">Device</label>
+				<label class="block text-sm font-medium mb-2" for="device-filter">Filter by Device</label>
 				<select
 					id="device-filter"
 					bind:value={selectedDevice}
@@ -255,7 +265,7 @@
 
 			<!-- Family Filter -->
 			<div>
-				<label class="block text-sm font-medium mb-2" for="family-filter">Family</label>
+				<label class="block text-sm font-medium mb-2" for="family-filter">Filter by Family</label>
 				<select
 					id="family-filter"
 					bind:value={selectedFamily}
@@ -270,7 +280,7 @@
 
 			<!-- Publisher Filter -->
 			<div>
-				<label class="block text-sm font-medium mb-2" for="publisher-filter">Publisher</label>
+				<label class="block text-sm font-medium mb-2" for="publisher-filter">Filter by Publisher</label>
 				<select
 					id="publisher-filter"
 					bind:value={selectedPublisher}
@@ -307,15 +317,27 @@
 
 			<div class="flex items-center gap-4">
 				<span class="text-sm text-gray-600 dark:text-gray-300">
-					{filteredModels.length} model{filteredModels.length !== 1 ? 's' : ''} found
 					{#if searchTerm !== debouncedSearchTerm}
-						<span class="loading loading-xs loading-spinner ml-2" title="Searching..." />
+						<span class="loading loading-xs loading-spinner mr-2" title="Applying filters..." />
+						Filtering...
+					{:else}
+						{filteredModels.length} model{filteredModels.length !== 1 ? 's' : ''} found
 					{/if}
 				</span>
-				<button on:click={clearFilters} class="btn btn-outline btn-sm"> Clear Filters </button>
-				<button on:click={fetchFoundryModels} class="btn btn-primary btn-sm" disabled={loading}>
-					{loading ? 'Loading...' : 'Reload Models'}
-				</button>
+				{#if searchTerm || selectedDevice || selectedFamily || selectedPublisher}
+					<button on:click={clearFilters} class="btn btn-outline btn-sm"> Clear Filters </button>
+				{/if}
+				<!-- Reload button is now less prominent, only for refreshing data from server -->
+				<div class="dropdown dropdown-end">
+					<div tabindex="0" role="button" class="btn btn-ghost btn-xs">⋯</div>
+					<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-44 p-2 shadow">
+						<li>
+							<button on:click={fetchFoundryModels} disabled={loading}>
+								{loading ? 'Loading...' : 'Refresh from server'}
+							</button>
+						</li>
+					</ul>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -354,8 +376,8 @@
 	<!-- Models Grid -->
 	{#if !loading && !error}
 		{#if paginatedModels.length > 0}
-			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-				{#each paginatedModels as model}
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 transition-opacity duration-300" class:opacity-75={searchTerm !== debouncedSearchTerm}>
+				{#each paginatedModels as model (model.alias)}
 					<div
 						class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow duration-200 border border-gray-200 dark:border-gray-700"
 					>

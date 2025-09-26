@@ -1,6 +1,16 @@
 <script>
 	let modelhubs = [
 		{
+			title: 'Foundry Local Models',
+			description:
+				'Discover AI models optimized for local deployment on NPUs, GPUs, and CPUs. Search and filter by device support, family, and more.',
+			url: '/models/foundry',
+			image: '🏭',
+			imagealt: 'Foundry Models',
+			isInternal: true,
+			featured: true
+		},
+		{
 			title: 'ONNX Community (hosted on Hugging Face)',
 			description:
 				'Access, share, and discuss ONNX models published to Hugging Face by members of the ONNX Community.',
@@ -43,9 +53,9 @@
 	];
 
 	let description =
-		'ONNX Models - find ONNX models for natural language processing, computer vision, and more.';
+		'ONNX Models - find ONNX models for natural language processing, computer vision, and more. Explore Foundry local models optimized for NPUs, GPUs, and CPUs.';
 	let keywords =
-		'onnx models, onnx model zoo, onnx community, onnx models huggingface, onnx models qualcomm';
+		'onnx models, foundry models, npu models, gpu models, cpu models, local ai models, onnx model zoo, onnx community, onnx models huggingface, onnx models qualcomm';
 </script>
 
 <svelte:head>
@@ -63,23 +73,54 @@
 	<p>
 		ONNX is the Open Neural Network Exchange, and we take that name to heart! Many members of the
 		community upload their ONNX models to various repositories, and we want to make it easy for you
-		to find them. Below are some of the most popular repositories where you can find ONNX models:
+		to find them. Check out our featured Foundry Local Models collection, or explore the popular repositories below:
 	</p>
 
 	<div class="my-8 grid grid-cols-1 md:grid-cols-2 gap-8">
 		{#each modelhubs as modelhub}
-			<div class="card bg-success image-full transition hover:scale-105">
-				<a rel="noopener noreferrer" target="_blank" href={modelhub.url} class="card-body">
-					<div class="grid grid-cols-5">
-						<div class="h-full">
-							<img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
+			<div class="card transition hover:scale-105" 
+				 class:bg-gradient-to-r={modelhub.featured}
+				 class:from-blue-600={modelhub.featured}
+				 class:to-purple-600={modelhub.featured}
+				 class:bg-success={!modelhub.featured}
+				 class:image-full={true}
+				 class:ring-4={modelhub.featured} 
+				 class:ring-blue-300={modelhub.featured}
+				 class:shadow-2xl={modelhub.featured}>
+				{#if modelhub.isInternal}
+					<a href={modelhub.url} class="card-body">
+						<div class="grid grid-cols-5">
+							<div class="h-full flex items-center justify-center">
+								{#if typeof modelhub.image === 'string' && modelhub.image.startsWith('http')}
+									<img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
+								{:else}
+									<span class="text-6xl">{modelhub.image}</span>
+								{/if}
+							</div>
+							<div class="col-span-4">
+								<h2 class="card-title text-white">
+									{modelhub.title}
+									{#if modelhub.featured}
+										<span class="badge badge-accent">Featured!</span>
+									{/if}
+								</h2>
+								<p class="text-white">{modelhub.description}</p>
+							</div>
 						</div>
-						<div class="col-span-4">
-							<h2 class="card-title text-white">{modelhub.title}</h2>
-							<p class="text-white">{modelhub.description}</p>
+					</a>
+				{:else}
+					<a rel="noopener noreferrer" target="_blank" href={modelhub.url} class="card-body">
+						<div class="grid grid-cols-5">
+							<div class="h-full">
+								<img src={modelhub.image} alt={modelhub.imagealt} class="w-24" />
+							</div>
+							<div class="col-span-4">
+								<h2 class="card-title text-white">{modelhub.title}</h2>
+								<p class="text-white">{modelhub.description}</p>
+							</div>
 						</div>
-					</div>
-				</a>
+					</a>
+				{/if}
 			</div>
 		{/each}
 	</div>

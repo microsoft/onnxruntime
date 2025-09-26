@@ -16,12 +16,6 @@ export interface ApiSortOptions {
 	sortOrder: 'asc' | 'desc';
 }
 
-export interface ApiResponse {
-	entities: unknown[];
-	totalCount: number;
-	hasMore: boolean;
-}
-
 export class FoundryModelService {
 	async fetchModels(filters: ApiFilters = {}, sortOptions: ApiSortOptions = { sortBy: 'name', sortOrder: 'asc' }): Promise<FoundryModel[]> {
 		// If no device filter is specified, try to get models for all common devices
@@ -149,30 +143,16 @@ export class FoundryModelService {
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	private transformApiResponse(apiData: any): FoundryModel[] {
-		console.log('Transforming API response:', apiData);
-		
-		// Handle the actual Azure AI Foundry API response structure
+		// Handle the Azure AI Foundry API response structure
 		let entities = [];
 		
-		// The actual response structure from the logs shows it's in 'value' array
+		// Check for entities in the response structure
 		if (apiData?.indexEntitiesResponse?.value && Array.isArray(apiData.indexEntitiesResponse.value)) {
 			entities = apiData.indexEntitiesResponse.value;
-			console.log('Found entities in indexEntitiesResponse.value:', entities.length);
 		}
 		// Fallback: check if entities are directly in the response
 		else if (apiData?.entities && Array.isArray(apiData.entities)) {
 			entities = apiData.entities;
-			console.log('Found entities in response.entities:', entities.length);
-		}
-		// Fallback: check other possible structures
-		else if (apiData?.indexEntitiesResponse?.entities && Array.isArray(apiData.indexEntitiesResponse.entities)) {
-			entities = apiData.indexEntitiesResponse.entities;
-		} 
-		else if (apiData?.indexEntitiesResponse?.items && Array.isArray(apiData.indexEntitiesResponse.items)) {
-			entities = apiData.indexEntitiesResponse.items;
-		}
-		else if (apiData?.indexEntitiesResponse?.results && Array.isArray(apiData.indexEntitiesResponse.results)) {
-			entities = apiData.indexEntitiesResponse.results;
 		}
 		
 		if (entities.length === 0) {
@@ -198,9 +178,6 @@ export class FoundryModelService {
 		}
 		if (entity.properties?.supportedDevices) {
 			deviceSupport.push(...entity.properties.supportedDevices);
-		}
-		if (entity.annotations?.tags?.["azureml.modelCategory"]) {
-			// Sometimes device info might be in model category or other tags
 		}
 		
 		// If no device support found, try to infer from model name or ID
