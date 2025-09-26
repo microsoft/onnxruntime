@@ -1,11 +1,9 @@
 // API service for Azure AI Foundry models
-// Uses CORS proxy for static deployment
+// Uses Azure Function as CORS proxy for static deployment
 import type { FoundryModel, GroupedFoundryModel } from './types';
 
-// Azure AI Foundry API endpoint with CORS proxy for static deployment
-const AZURE_API_BASE = 'https://ai.azure.com/api/eastus/ux/v1.0/entities/crossRegion';
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
-const FOUNDRY_API_ENDPOINT = `${CORS_PROXY}${encodeURIComponent(AZURE_API_BASE)}`;
+// Azure Function endpoint for CORS proxy
+const FOUNDRY_API_ENDPOINT = 'https://onnxruntime-foundry-proxy-hpape7gzf2haesef.eastus-01.azurewebsites.net/api/foundry-proxy';
 
 export interface ApiFilters {
 	device?: string;

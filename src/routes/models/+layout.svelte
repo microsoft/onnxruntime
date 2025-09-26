@@ -2,7 +2,6 @@
 	import Header from '../components/header.svelte';
 	import Footer from '../components/footer.svelte';
 	import { page } from '$app/stores';
-	export let data;
 </script>
 
 <div class="selection:bg-info">
