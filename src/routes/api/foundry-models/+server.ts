@@ -2,6 +2,9 @@ import { json } from '@sveltejs/kit';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
 
+// Disable prerendering for this API endpoint
+export const prerender = false;
+
 // Azure AI Foundry API endpoint
 const AZURE_AI_FOUNDRY_API_URL = 'https://ai.azure.com/api/eastus/ux/v1.0/entities/crossRegion';
 

@@ -336,7 +336,6 @@
 				<div class="dropdown dropdown-end">
 					<div tabindex="0" role="button" class="btn btn-ghost btn-xs">⋯</div>
 					<ul
-						tabindex="0"
 						class="dropdown-content menu bg-base-100 rounded-box z-[1] w-44 p-2 shadow"
 					>
 						<li>
