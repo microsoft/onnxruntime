@@ -269,8 +269,9 @@ bool AreDataTypesSame(const std::string_view op_type,
                       gsl::span<const int32_t> input_types,
                       const logging::Logger& logger);
 bool IsSupportedDataType(const int32_t onnx_data_type,
-                         const emscripten::val& webnn_supported_data_types,
-                         const emscripten::val& wnn_limits);
+                         const emscripten::val& wnn_limits,
+                         const std::string_view webnn_op_type,
+                         const std::string_view webnn_input_output_name);
 bool IsDataTypeSupportedByOp(const std::string_view onnx_op_type,
                              const int32_t onnx_data_type,
                              const emscripten::val& wnn_limits,

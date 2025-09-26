@@ -227,13 +227,25 @@ bool AreDataTypesSame(const std::string_view op_type,
 }
 
 bool IsSupportedDataType(const int32_t onnx_data_type,
-                         const emscripten::val& webnn_supported_data_types,
-                         const emscripten::val& wnn_limits) {
+                         const emscripten::val& wnn_limits,
+                         const std::string_view webnn_op_type,
+                         const std::string_view webnn_input_output_name) {
   auto it = onnx_to_webnn_data_type_map.find(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(onnx_data_type));
   if (it == onnx_to_webnn_data_type_map.end())
     return false;
 
   const std::string_view webnn_data_type = it->second;
+
+  // MLOpSupportLimits has different structure. Certain WebNN ops have input and output name,
+  // special cases like 'constant', 'input' and 'output' have no input or output name.
+  emscripten::val webnn_supported_data_types =
+      webnn_input_output_name.empty()
+          ? wnn_limits[std::string(webnn_op_type)]["dataTypes"]
+          : wnn_limits[std::string(webnn_op_type)][std::string(webnn_input_output_name)]["dataTypes"];
+
+  if (webnn_supported_data_types.isUndefined()) {
+    return false;
+  }
 
   // Check if WebNN supports the data type.
   bool is_supported = webnn_supported_data_types.call<emscripten::val>("includes",
@@ -283,9 +295,7 @@ bool IsDataTypeSupportedByWebNNOp(const std::string_view onnx_op_type,
                           << webnn_input_output_name << "]";
     return false;
   }
-  if (!IsSupportedDataType(onnx_data_type,
-                           wnn_limits[std::string(webnn_op_type)][std::string(webnn_input_output_name)]["dataTypes"],
-                           wnn_limits)) {
+  if (!IsSupportedDataType(onnx_data_type, wnn_limits, webnn_op_type, webnn_input_output_name)) {
     LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] " << onnx_input_output_name << "'s data type: ["
                           << onnx_data_type << "] is not supported by WebNN op [" << webnn_op_type << "] for now";
     return false;
