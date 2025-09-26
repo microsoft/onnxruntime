@@ -3,7 +3,7 @@
 	import FaGithub from 'svelte-icons/fa/FaGithub.svelte';
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
-	export let pathvar = '.';
+	export let pathvar = '';
 </script>
 
 <footer class="footer p-10 mt-10 text-base-content z-40 border-top border-t">
