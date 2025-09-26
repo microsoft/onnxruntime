@@ -6,7 +6,7 @@
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
 	import OnnxLight from '../../images/ONNX-Light.svelte';
-	export let pathvar = '';
+	export let pathvar = '.';
 	onMount(() => {
 		themeChange(false);
 	});
