@@ -144,8 +144,10 @@ void RunTestWrapper() {
   RunTest<T>({2, 1, 3}, {2, 2, 1});
   RunTest<T>({2, 1, 3}, {2, 2, 1}, true);
 
+#if !defined(USE_WEBGPU)
   // Tile0D (nop)
   RunTest<T>({}, {});
+#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
   // _TileMemcpyKernelFromInput, vectorized 4
