@@ -664,6 +664,10 @@ else()
   endif()
 endif()
 
+if (onnxruntime_ARM_USE_NCHWC)
+  message(STATUS "Building MLAS with ARM NCHWc kernels")
+endif()
+
 if(onnxruntime_USE_SVE)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
