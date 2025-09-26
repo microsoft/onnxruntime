@@ -2009,8 +2009,12 @@ inline void TensorTypeAndShapeInfoImpl<T>::GetSymbolicDimensions(const char** va
 
 template <typename T>
 inline std::vector<const char*> TensorTypeAndShapeInfoImpl<T>::GetSymbolicDimensions() const {
-  std::vector<const char*> out(GetDimensionsCount(), nullptr);
-  ThrowOnError(GetApi().GetSymbolicDimensions(this->p_, out.data(), out.size()));
+  std::vector<const char*> out;
+  size_t dim_count = GetDimensionsCount();
+  if (dim_count > 0) {
+    out.resize(dim_count, nullptr);
+    ThrowOnError(GetApi().GetSymbolicDimensions(this->p_, out.data(), out.size()));
+  }
   return out;
 }
 

@@ -56,14 +56,11 @@ ORT_API_STATUS_IMPL(OrtApis::SetDimensions, OrtTensorTypeAndShapeInfo* info,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "dim_values must be -1 (symbolic dimension) or larger.");
   }
 
+  OrtTensorTypeAndShapeInfo::ShapeInfo shape_info;
   size_t num_dims = dim_count;
   if (info->HasShape()) {
-    num_dims = std::max(num_dims, info->GetDimParams()->size());
-  }
-
-  OrtTensorTypeAndShapeInfo::ShapeInfo shape_info;
-  if (info->HasShape()) {
     shape_info.dim_params = *info->GetDimParams();
+    num_dims = std::max(num_dims, shape_info.dim_params.size());
   }
 
   // make shape and dim_values consistent
@@ -253,18 +250,29 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
     const onnxruntime::TensorShape* shape,
     const std::vector<std::string>* dim_params) {
   auto type_and_shape = std::make_unique<OrtTensorTypeAndShapeInfo>();
-
   type_and_shape->SetElementType(type);
 
-  if (shape != nullptr) {
-    ShapeInfo shape_info;
-    shape_info.shape = *shape;
-    if (dim_params != nullptr) {
-      shape_info.dim_params = *dim_params;
-    }
-    shape_info.dim_params.resize(shape_info.shape.NumDimensions());
-    type_and_shape->SetShape(std::move(shape_info));
+  if (shape == nullptr && dim_params == nullptr) {
+    return type_and_shape;
   }
+
+  ShapeInfo shape_info;
+  size_t num_dims = (shape != nullptr) ? shape->NumDimensions() : 0;
+  num_dims = std::max(num_dims, (dim_params != nullptr) ? dim_params->size() : 0);
+
+  onnxruntime::TensorShapeVector shape_vec;
+  if (shape != nullptr) {
+    shape_vec = shape->AsShapeVector();
+  }
+  shape_vec.resize(num_dims, -1);
+  shape_info.shape = onnxruntime::TensorShape(shape_vec);
+
+  if (dim_params != nullptr) {
+    shape_info.dim_params = *dim_params;
+  }
+  shape_info.dim_params.resize(num_dims);
+
+  type_and_shape->SetShape(std::move(shape_info));
   return type_and_shape;
 }
 

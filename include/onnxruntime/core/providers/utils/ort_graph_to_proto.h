@@ -546,8 +546,7 @@ static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info,
   onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
   type_proto_tensor->set_elem_type(ort_elem_type);
 
-  // If if there is no shape, do not set a TensorShapeProto. Otherwise, it always looks
-  // like a scalar value.
+  // If there is no shape, do not set a TensorShapeProto.
   if (has_shape) {
     onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
