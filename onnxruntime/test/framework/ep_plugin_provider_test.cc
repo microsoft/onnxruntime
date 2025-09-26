@@ -3,9 +3,14 @@
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
+#include <filesystem>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
+#include "core/common/logging/sinks/file_sink.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
@@ -22,6 +27,14 @@ struct ApiPtrs {
   const gsl::not_null<const ::OrtApi*> ort_api;
   const gsl::not_null<const ::OrtEpApi*> ep_api;
 };
+
+static void CheckStringInFile(const PathString& filename, const std::string& look_for) {
+  std::ifstream ifs{filename};
+  std::string content(std::istreambuf_iterator<char>{ifs},
+                      std::istreambuf_iterator<char>{});
+
+  EXPECT_NE(content.find(look_for), std::string::npos);
+}
 
 // Normally, a plugin EP would be implemented in a separate library.
 // The `test_plugin_ep` namespace contains a local implementation intended for unit testing.
@@ -113,6 +126,10 @@ MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};
   return result;
 }
+
+class MockKernelLookup : public IExecutionProvider::IKernelLookup {
+  const KernelCreateInfo* LookUpKernel(const Node& /*node*/) const override { return nullptr; }
+};
 
 }  // namespace test_plugin_ep
 
@@ -315,6 +332,220 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
     ASSERT_THROW(test_plugin_ep::MakeTestOrtEp(ep_devices), OnnxRuntimeException);
   }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
+}
+
+static void LoadModelAndAssignNodesToEp(const ORTCHAR_T* model_path,
+                                        const char* ep_name,
+                                        const std::unordered_set<std::string>& ep_node_names,
+                                        /*out*/ std::shared_ptr<Model>& model) {
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr,
+                               DefaultLoggingManager().DefaultLogger()));
+
+  Graph& graph = model->MainGraph();
+
+  for (Node& node : graph.Nodes()) {
+    if (ep_node_names.count(node.Name()) > 0) {
+      node.SetExecutionProviderType(ep_name);
+    }
+  }
+}
+
+static OrtStatus* ORT_API_CALL GetCapabilityTakeAllNodesOneGroup(OrtEp* this_ptr, const OrtGraph* graph,
+                                                                 OrtEpGraphSupportInfo* graph_support_info) noexcept {
+  auto* this_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+
+  size_t num_nodes = 0;
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNumNodes(graph, &num_nodes); st != nullptr) {
+    return st;
+  }
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNodes(graph, nodes.data(), nodes.size()); st != nullptr) {
+    return st;
+  }
+
+  if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                         nodes.data(), nodes.size(), nullptr);
+      st != nullptr) {
+    return st;
+  }
+
+  return nullptr;
+}
+
+static OrtStatus* ORT_API_CALL GetCapabilityTakeAllNodesTwoGroups(OrtEp* this_ptr, const OrtGraph* graph,
+                                                                  OrtEpGraphSupportInfo* graph_support_info) noexcept {
+  auto* this_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+
+  size_t num_nodes = 0;
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNumNodes(graph, &num_nodes); st != nullptr) {
+    return st;
+  }
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNodes(graph, nodes.data(), nodes.size()); st != nullptr) {
+    return st;
+  }
+
+  // Expect at least 2 nodes. If not, this is really a testing/setup error.
+  if (num_nodes < 2) {
+    return this_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL,
+                                          "Expected at least two nodes in call to GetCapability");
+  }
+
+  std::vector<const OrtNode*> node_group1;
+  std::vector<const OrtNode*> node_group2;
+
+  for (size_t i = 0; i < num_nodes; i++) {
+    if (i < num_nodes / 2) {
+      node_group1.push_back(nodes[i]);
+    } else {
+      node_group2.push_back(nodes[i]);
+    }
+  }
+
+  if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                         node_group1.data(), node_group1.size(),
+                                                                         nullptr);
+      st != nullptr) {
+    return st;
+  }
+
+  if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                         node_group2.data(), node_group2.size(),
+                                                                         nullptr);
+      st != nullptr) {
+    return st;
+  }
+
+  return nullptr;
+}
+
+static OrtStatus* ORT_API_CALL GetCapabilityTakeSingleNode(OrtEp* this_ptr, const OrtGraph* graph,
+                                                           OrtEpGraphSupportInfo* graph_support_info) noexcept {
+  auto* this_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+
+  size_t num_nodes = 0;
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNumNodes(graph, &num_nodes); st != nullptr) {
+    return st;
+  }
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  if (OrtStatus* st = this_ep->ort_api->Graph_GetNodes(graph, nodes.data(), nodes.size()); st != nullptr) {
+    return st;
+  }
+
+  // Take only the first node using EpGraphSupportInfo_AddSingleNode().
+  if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddSingleNode(graph_support_info, nodes[0]);
+      st != nullptr) {
+    return st;
+  }
+
+  return nullptr;
+}
+
+// Tests that GetCapability() doesn't crash if a plugin EP tries to claim a mix of unassigned nodes and
+// nodes that are already assigned to another EP.
+TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
+  std::filesystem::path log_file = ORT_TSTR("log_get_capability.txt");
+
+  // Helper function that loads a model (Add -> Mul -> Add) and assigns some or all of the nodes to another EP.
+  // Then, IExecutionProvider::GetCapability() is called to test the expected behavior.
+  auto run_test = [&log_file](IExecutionProvider& ep,
+                              const std::unordered_set<std::string>& nodes_for_other_ep,
+                              const std::unordered_set<std::string>& nodes_for_this_ep,
+                              const char* expected_log_string) {
+    std::shared_ptr<Model> model;
+    ASSERT_NO_FATAL_FAILURE(LoadModelAndAssignNodesToEp(ORT_TSTR("testdata/add_mul_add.onnx"),
+                                                        "OtherEp", nodes_for_other_ep, model));
+
+    std::filesystem::remove(log_file);
+
+    // Call IExecutionProvider::GetCapability and check results + logs.
+    {
+      logging::LoggingManager log_manager{std::make_unique<logging::FileSink>(log_file, false, false),
+                                          logging::Severity::kWARNING, false,
+                                          logging::LoggingManager::InstanceType::Temporal};
+      auto file_logger = log_manager.CreateLogger("FileLogger");
+      ep.SetLogger(file_logger.get());  // Make EP log to a file.
+
+      GraphViewer graph_viewer(model->MainGraph());
+      auto compute_capabilities = ep.GetCapability(graph_viewer,
+                                                   test_plugin_ep::MockKernelLookup{},
+                                                   GraphOptimizerRegistry(nullptr, nullptr, file_logger.get()),
+                                                   nullptr);
+
+      ASSERT_EQ(compute_capabilities.size(), nodes_for_this_ep.empty() ? 0 : 1);
+
+      if (compute_capabilities.size() == 1) {
+        ASSERT_EQ(compute_capabilities[0]->sub_graph->nodes.size(), nodes_for_this_ep.size());
+
+        for (NodeIndex node_index : compute_capabilities[0]->sub_graph->nodes) {
+          const Node* node = graph_viewer.GetNode(node_index);
+          ASSERT_NE(node, nullptr);
+          EXPECT_EQ(nodes_for_this_ep.count(node->Name()), 1);
+        }
+      }
+    }
+
+    ASSERT_TRUE(std::filesystem::exists(log_file));
+    EXPECT_NO_FATAL_FAILURE(CheckStringInFile(log_file, expected_log_string));
+  };
+
+  constexpr std::array<const char*, 3> node_names = {"add_0", "mul_0", "add_1"};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  // Load a model and assign all of its nodes to another EP named 'OtherEp'.
+  // The plugin EP tries to claim all nodes in a single group via EpGraphSupportInfo_AddNodesToFuse.
+  // IExecutionProvider::GetCapability() should return an empty result and log a warning.
+  ort_ep->GetCapability = GetCapabilityTakeAllNodesOneGroup;
+  std::unordered_set<std::string> nodes_for_other_ep = {"add_0", "mul_0", "add_1"};
+  std::unordered_set<std::string> nodes_for_this_ep;
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
+           "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  // Load a model and assign only one node to another EP named 'OtherEp'.
+  // The plugin EP tries to claim all nodes in a single group.
+  // IExecutionProvider::GetCapability() should return an empty result and log a warning.
+  ort_ep->GetCapability = GetCapabilityTakeAllNodesOneGroup;
+  for (const char* node_name : node_names) {
+    nodes_for_other_ep = std::unordered_set<std::string>{node_name};
+    nodes_for_this_ep = std::unordered_set<std::string>{};
+    run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
+             "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+  }
+
+  // Load a model and assign only the last Add node to another EP named 'OtherEp'.
+  // The plugin EP tries to claim all nodes in the following 2 groups: (add_0), (mul_0, add_1).
+  // IExecutionProvider::GetCapability() will only return (add_0) because the second group has a node
+  // that was assigned to 'OtherEp'.
+  ort_ep->GetCapability = GetCapabilityTakeAllNodesTwoGroups;
+  nodes_for_other_ep = std::unordered_set<std::string>{"add_1"};
+  nodes_for_this_ep = std::unordered_set<std::string>{"add_0"};
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
+           "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  // Load a model and assign only the first Add node to another EP named 'OtherEp'.
+  // The plugin EP tries to claim all nodes in the following 2 groups: (add_0), (mul_0, add_1).
+  // IExecutionProvider::GetCapability() will only return (mul_0, add_1) because the first group has a node
+  // that was assigned to 'OtherEp'.
+  ort_ep->GetCapability = GetCapabilityTakeAllNodesTwoGroups;
+  nodes_for_other_ep = std::unordered_set<std::string>{"add_0"};
+  nodes_for_this_ep = std::unordered_set<std::string>{"mul_0", "add_1"};
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
+           "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  // Load a model and assign the first Add node to another EP named 'OtherEp'.
+  // The plugin EP will try to take only the first Add node with a single call to EpGraphSupportInfo_AddSingleNode.
+  // IExecutionProvider::GetCapability() will return an empty result and log a warning.
+  ort_ep->GetCapability = GetCapabilityTakeSingleNode;
+  nodes_for_other_ep = std::unordered_set<std::string>{"add_0"};
+  nodes_for_this_ep = std::unordered_set<std::string>{};
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
+           "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+
+  std::filesystem::remove(log_file);
 }
 
 }  // namespace onnxruntime::test
