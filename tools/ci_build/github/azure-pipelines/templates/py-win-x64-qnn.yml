@@ -33,8 +33,6 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
   strategy:
     matrix:
-      Python310_x64:
-        PythonVersion: '3.10'
       Python311_x64:
         PythonVersion: '3.11'
       Python312_x64:
@@ -50,18 +48,10 @@ jobs:
         submodules: recursive
 
       - template: setup-build-tools.yml
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: $(PythonVersion)
-          addToPath: true
-          architecture: 'x64'
-
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
-
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: $(PythonVersion)
+      
       - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
       
       - template: set-nightly-build-option-variable-step.yml

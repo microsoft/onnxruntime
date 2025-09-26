@@ -31,17 +31,10 @@ extends:
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
 
     pool:
-      name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'  # Name of your hosted pool
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
 
     stages:
-    - template: stages/py-win-gpu-stage.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_dml
-        EP_NAME: directml
-        cmake_build_type: ${{ parameters.cmake_build_type }}
     - template: stages/py-win-gpu-stage.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'

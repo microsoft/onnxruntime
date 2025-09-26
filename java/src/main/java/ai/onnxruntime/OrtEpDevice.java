@@ -24,11 +24,11 @@ public final class OrtEpDevice {
    */
   OrtEpDevice(long nativeHandle) {
     this.nativeHandle = nativeHandle;
-    this.epName = getName(OnnxRuntime.ortApiHandle, nativeHandle);
-    this.epVendor = getVendor(OnnxRuntime.ortApiHandle, nativeHandle);
-    String[][] metadata = getMetadata(OnnxRuntime.ortApiHandle, nativeHandle);
+    this.epName = getEpName(OnnxRuntime.ortApiHandle, nativeHandle);
+    this.epVendor = getEpVendor(OnnxRuntime.ortApiHandle, nativeHandle);
+    String[][] metadata = getEpMetadata(OnnxRuntime.ortApiHandle, nativeHandle);
     this.epMetadata = OrtUtil.convertToMap(metadata);
-    String[][] options = getOptions(OnnxRuntime.ortApiHandle, nativeHandle);
+    String[][] options = getEpOptions(OnnxRuntime.ortApiHandle, nativeHandle);
     this.epOptions = OrtUtil.convertToMap(options);
     this.device = new OrtHardwareDevice(getDeviceHandle(OnnxRuntime.ortApiHandle, nativeHandle));
   }
@@ -43,38 +43,38 @@ public final class OrtEpDevice {
   }
 
   /**
-   * Gets the EP name.
+   * Gets the Execution Provider name.
    *
    * @return The EP name.
    */
-  public String getName() {
+  public String getEpName() {
     return epName;
   }
 
   /**
-   * Gets the vendor name.
+   * Gets the Execution Provider vendor name.
    *
-   * @return The vendor name.
+   * @return The EP vendor name.
    */
-  public String getVendor() {
+  public String getEpVendor() {
     return epVendor;
   }
 
   /**
-   * Gets an unmodifiable view on the EP metadata.
+   * Gets an unmodifiable view on the Execution Provider metadata.
    *
    * @return The EP metadata.
    */
-  public Map<String, String> getMetadata() {
+  public Map<String, String> getEpMetadata() {
     return epMetadata;
   }
 
   /**
-   * Gets an unmodifiable view on the EP options.
+   * Gets an unmodifiable view on the Execution Provider options.
    *
    * @return The EP options.
    */
-  public Map<String, String> getOptions() {
+  public Map<String, String> getEpOptions() {
     return epOptions;
   }
 
@@ -105,13 +105,13 @@ public final class OrtEpDevice {
         + '}';
   }
 
-  private static native String getName(long apiHandle, long nativeHandle);
+  private static native String getEpName(long apiHandle, long nativeHandle);
 
-  private static native String getVendor(long apiHandle, long nativeHandle);
+  private static native String getEpVendor(long apiHandle, long nativeHandle);
 
-  private static native String[][] getMetadata(long apiHandle, long nativeHandle);
+  private static native String[][] getEpMetadata(long apiHandle, long nativeHandle);
 
-  private static native String[][] getOptions(long apiHandle, long nativeHandle);
+  private static native String[][] getEpOptions(long apiHandle, long nativeHandle);
 
   private static native long getDeviceHandle(long apiHandle, long nativeHandle);
 }

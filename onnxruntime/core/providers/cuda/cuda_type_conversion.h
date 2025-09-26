@@ -9,7 +9,19 @@
 #include <cuda_fp8.h>
 #endif
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+// 'fp4_interpretation' : unreferenced parameter
+#pragma warning(disable : 4100)
+#endif
+
 #include <cuda_fp4.h>
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 #endif
 #include <type_traits>
 #include <cstdint>
@@ -95,7 +107,7 @@ struct OrtToCudaType<Float8E5M2FNUZ> {
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
 template <>
 struct OrtToCudaType<Float4E2M1x2> {
-  using type = Float4E2M1x2::PackedCudaType;
+  using type = __nv_fp4x2_e2m1;
 };
 #endif
 

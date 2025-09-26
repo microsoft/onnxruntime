@@ -10,7 +10,6 @@
 #include "gmock/gmock.h"
 
 #include "core/framework/op_node_proto_helper.h"
-#include "core/framework/utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
@@ -353,7 +352,7 @@ TEST(TransposeOptimizerTests, TestResize) {
                     // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
                     // assigned to the CPU EP first
                     TransformerLevel::Level2,
-                    /*opset_version*/ {10, 18});
+                    /*opset_version*/ {10, 18, 21, 23});
 }
 
 TEST(TransposeOptimizerTests, TestResizeOpset11) {
@@ -593,7 +592,7 @@ TEST(TransposeOptimizerTests, TestShape) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 18});
+                    /*opset_version*/ {7, 18, 21, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShapeOpset15) {
@@ -4518,7 +4517,7 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   // changes during the layout transformation process.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
 
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
 
   // set the test EP to support all ops in the model so that the layout transform applies to all nodes
   const std::unordered_set<std::string> empty_set;
@@ -4544,7 +4543,7 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
                                             "with the exception of the initial node prior to the Conv";
 
   // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
-  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  std::string expected_ep(internal_testing_ep::kInternalTestingExecutionProvider);
   for (const auto& node : graph.Nodes()) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
@@ -4564,7 +4563,7 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
 
   SessionOptions so;
 
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
 
   // set the test EP to support all ops in the model so that the layout transform applies to all nodes
   const std::unordered_set<std::string> empty_set;
@@ -4590,7 +4589,7 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
                                             "with the exception of the initial node prior to the Conv";
 
   // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
-  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  std::string expected_ep(internal_testing_ep::kInternalTestingExecutionProvider);
   for (const auto& node : graph.Nodes()) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
@@ -4606,7 +4605,7 @@ TEST(TransposeOptimizerTests, QnnResizeOpset11) {
   // Uncomment to debug
   // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
 
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
 
   // set the test EP to support all ops in the model so that the layout transform applies to all nodes
   const std::unordered_set<std::string> empty_set;
@@ -4620,7 +4619,7 @@ TEST(TransposeOptimizerTests, QnnResizeOpset11) {
 
   const auto& graph = session.GetGraph();
   // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
-  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  std::string expected_ep(internal_testing_ep::kInternalTestingExecutionProvider);
   for (const auto& node : graph.Nodes()) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
@@ -4648,7 +4647,7 @@ TEST(TransposeOptimizerTests, QnnTransposeNonConstBroadcastInput) {
 
   // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
 
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
 
   // set the test EP to support all ops in the model so that the layout transform applies to all nodes
   const std::unordered_set<std::string> empty_set;
@@ -4666,7 +4665,7 @@ TEST(TransposeOptimizerTests, QnnTransposeNonConstBroadcastInput) {
   ASSERT_EQ(op_to_count["Transpose"], 3) << "Should have Transpose on 2 inputs and one on output.";
 
   // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
-  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  std::string expected_ep(internal_testing_ep::kInternalTestingExecutionProvider);
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
                                                             << "' was not assigned to the internal testing EP.";
@@ -4699,7 +4698,7 @@ TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
 
   // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
 
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
 
   // Set the test EP to support all ops in the model so that the layout transform applies to all nodes
   const std::unordered_set<std::string> empty_set;
@@ -4716,7 +4715,7 @@ TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
 
   ASSERT_EQ(op_to_count["Transpose"], 2) << "Should have 2 transposes remaining.";
 
-  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  std::string expected_ep(internal_testing_ep::kInternalTestingExecutionProvider);
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
                                                             << "' was not assigned to the internal testing EP.";
@@ -4756,7 +4755,7 @@ TEST(TransposeOptimizerTests, LayoutTransformConstantFoldTransposeAndSqueeze) {
 
   // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
 
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
 
   // Set the test EP to support all ops in the model so that the layout transform applies to all nodes
   const std::unordered_set<std::string> empty_set;
@@ -4777,7 +4776,7 @@ TEST(TransposeOptimizerTests, LayoutTransformConstantFoldTransposeAndSqueeze) {
   // 1 transpose is constant-folded, 1 is canceled, and 1 remains.
   ASSERT_EQ(op_to_count["Transpose"], 1) << "Should have 1 transpose remaining.";
 
-  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  std::string expected_ep(internal_testing_ep::kInternalTestingExecutionProvider);
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
                                                             << "' was not assigned to the internal testing EP.";
