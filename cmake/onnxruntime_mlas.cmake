@@ -109,8 +109,6 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-        ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-        ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -134,7 +132,11 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
       )
 
-      if (onnxruntime_USE_KLEIDIAI)
+      if (onnxruntime_ARM_USE_NCHWC)
+		setup_arm_nchwc()	
+	  endif()
+      
+	  if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
       endif()
     else()
@@ -289,6 +291,14 @@ function(setup_kleidiai)
   endif()
 endfunction()
 
+function (setup_arm_nchwc)
+  target_sources(onnxruntime_mlas PRIVATE
+   ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+   ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
+  )
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_ARM_NCHWC)
+endfunction ()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     file(GLOB_RECURSE mlas_platform_srcs
@@ -433,8 +443,6 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-          ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-          ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
         )
         
         # Conditionally add the SVE implementation if compiler supports it
@@ -445,7 +453,11 @@ else()
           target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_SVE)
         endif()
 
-        if (onnxruntime_USE_KLEIDIAI)
+        if (onnxruntime_ARM_USE_NCHWC)
+		  setup_arm_nchwc()	
+		endif()
+        
+		if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp

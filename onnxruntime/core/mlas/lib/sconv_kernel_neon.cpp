@@ -14,6 +14,8 @@ Abstract:
 
 --*/
 
+#if defined(MLAS_USE_ARM_NCHWC)
+
 #include "mlasi.h"
 #include "sconv.h"
 
@@ -518,3 +520,5 @@ void
         }
     }
 }
+
+#endif
