@@ -130,7 +130,7 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       if (auto axis_iter = dq_attrs.find("axis"); axis_iter != dq_attrs.end()) {
         axis = axis_iter->second.i();
         const ONNX_NAMESPACE::TensorShapeProto* weight_shape = weight_arg->Shape();
-        if (!weight_shape && dq_1 && dq_1->InputDefs()[0]) {
+        if (!weight_shape && dq_1->InputDefs()[0]) {
           weight_shape = dq_1->InputDefs()[0]->Shape();
         }
         if (axis < 0 && !weight_shape) {

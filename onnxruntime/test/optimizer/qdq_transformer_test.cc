@@ -5669,6 +5669,52 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight) {
   test_case(true);
 }
 
+TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_HandleNegativeDqAxis) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg =
+          builder.MakeInput<uint8_t>({2, 16}, std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<uint8_t>({16, 16}, std::numeric_limits<uint8_t>::min(),
+                                                             std::numeric_limits<uint8_t>::max());
+      NodeArg* bias_arg = builder.MakeInitializer<float>({16}, -0.1f, 0.1f);
+
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* weight_dq_arg = builder.MakeIntermediate();
+      NodeArg* gemm_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(0), input_dq_arg, use_contrib_qdq);
+
+      // Per-channel quantized weight with negative axis as DQ attribute
+      std::vector<float> scales = std::vector<float>(16, 0.05f);
+      std::vector<uint8_t> zp = std::vector<uint8_t>(16, static_cast<uint8_t>(0));
+      auto& dq_node = builder.AddDequantizeLinearNode<uint8_t>(weight_arg, scales, zp, weight_dq_arg, nullptr, use_contrib_qdq);
+      dq_node.AddAttribute("axis", static_cast<int64_t>(-1));
+
+      builder.AddNode("Gemm", {input_dq_arg, weight_dq_arg, bias_arg}, {gemm_dq_arg});
+      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.144f, static_cast<uint8_t>(69), output_arg, use_contrib_qdq);
+    };
+
+    auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"] + op_to_count["com.microsoft.QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 2 + 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      /*opset_version=*/20,
+                      /*per_sample_tolerance=*/0.01,
+                      /*relative_per_sample_tolerance=*/0.01,
+                      /*transformer=*/std::make_unique<WeightBiasQuantization>());
+  };
+
+  test_case(false);
+  test_case(true);
+}
+
 TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight_Bias) {
   auto test_case = [](bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
