@@ -231,6 +231,7 @@ struct CUDA_Provider : Provider {
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
     info.use_tf32 = params->use_tf32 != 0;
     info.sdpa_kernel = params->sdpa_kernel;
+    info.loop_subgraph_min_cuda_kernel_ratio = params->loop_subgraph_min_cuda_kernel_ratio;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }

@@ -82,6 +82,8 @@ struct CUDAExecutionProviderInfo {
 
   int sdpa_kernel{0};
 
+  float loop_subgraph_min_cuda_kernel_ratio{0.5f};
+
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);

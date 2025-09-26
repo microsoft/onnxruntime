@@ -2926,19 +2926,20 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // The if this is a Loop subgraph and if the number of perspective
   // candidates is small as compared to the overall number of nodes in this subgraph.
-  // We then can stop assigning any further and let CPU to take over.
-  if (resource_accountant == nullptr) {
-    constexpr float kMinCudaNodesRatio = 0.1f;
-    const bool is_loop_subgraph = graph.IsSubgraph() && graph.ParentNode()->OpType() == "Loop";
+  // We then can stop assigning any further and let CPU (or other lower priority EP) to take over.
+  if (resource_accountant == nullptr && graph.IsSubgraph()) {
+    const std::string& parent_op_type = graph.ParentNode()->OpType();
+    const bool is_loop_subgraph = (parent_op_type == "Loop") || (parent_op_type == "SequenceMap");
     if (is_loop_subgraph) {
+      const float min_cuda_nodes_ratio = info_.loop_subgraph_min_cuda_kernel_ratio;
       const size_t max_assigned_to_cuda = candidates.size() - cpu_nodes.size();
       const float max_assigned_ratio =
           static_cast<float>(max_assigned_to_cuda) / static_cast<float>(graph.NumberOfNodes());
-      // if less than 10% of nodes could be assigned to CUDA, we stop assigning
-      if (max_assigned_ratio < kMinCudaNodesRatio) {
+
+      if (max_assigned_ratio < min_cuda_nodes_ratio) {
         LOGS(logger, WARNING)
-            << "CUDA_EP returning due to Loop subgraph with insufficient candidates. Candidates ratio: "
-            << max_assigned_ratio;
+            << "CUDA_EP is falling back to a lower-priority EP due to an insufficient number of candidates in the Loop subgraph."
+            << " Candidates ratio: " << max_assigned_ratio;
         return result;
       }
     }
