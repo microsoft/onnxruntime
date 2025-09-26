@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/kit/vite';
 import { mdsvex } from 'mdsvex';
 import relativeImages from 'mdsvex-relative-images';
@@ -20,15 +20,24 @@ const config = {
 	],
 
 	kit: {
-		// adapter-auto supports multiple environments and can handle both static and dynamic routes
-		adapter: adapter(),
+		// Use adapter-static for GitHub Pages deployment
+		adapter: adapter({
+			// Output to build directory for GitHub Pages
+			pages: 'build',
+			assets: 'build',
+			fallback: '404.html', // GitHub Pages SPA fallback
+			precompress: false,
+			strict: false // Allow dynamic routes to be skipped
+		}),
 		paths: {
 			base: process.env.NODE_ENV === 'production' ? '' : ''
 		},
 		prerender: {
-			// Enable prerendering for most of the site
+			// Handle missing IDs gracefully for dynamic routes
 			handleMissingId: 'warn',
-			handleHttpError: 'warn'
+			handleHttpError: 'warn',
+			// Crawl all static pages but handle dynamic routes client-side
+			crawl: true
 		}
 	}
 };

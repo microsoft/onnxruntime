@@ -1,8 +1,9 @@
 // API service for Azure AI Foundry models
-// Uses a SvelteKit API proxy to bypass CORS restrictions
+// Makes direct API calls to Azure AI Foundry API
 import type { FoundryModel, GroupedFoundryModel } from './types';
 
-const PROXY_API_URL = '/api/foundry-models';
+// Direct API URL to Azure AI Foundry
+const AZURE_AI_FOUNDRY_API_URL = 'https://ai.azure.com/api/eastus/ux/v1.0/entities/crossRegion';
 
 export interface ApiFilters {
 	device?: string;
@@ -55,10 +56,12 @@ export class FoundryModelService {
 		const requestBody = this.buildRequestBody(filters);
 		
 		try {
-			const response = await fetch(PROXY_API_URL, {
+			const response = await fetch(AZURE_AI_FOUNDRY_API_URL, {
 				method: 'POST',
 				headers: {
-					'Content-Type': 'application/json'
+					'Content-Type': 'application/json',
+					'Accept': 'application/json',
+					'User-Agent': 'AzureAiStudio'
 				},
 				body: JSON.stringify(requestBody)
 			});
@@ -81,11 +84,31 @@ export class FoundryModelService {
 
 	async fetchModelById(id: string): Promise<FoundryModel | null> {
 		try {
-			const response = await fetch(`${PROXY_API_URL}?id=${encodeURIComponent(id)}`, {
-				method: 'GET',
+			// For individual model fetching, we'll need to make a search request
+			// and filter by the specific model ID
+			const requestBody = {
+				"searchQuery": id,
+				"entityTypes": ["Model"],
+				"facets": [],
+				"skip": 0,
+				"top": 1,
+				"orderBy": [],
+				"computeStatistics": true,
+				"includeTotalResultCountBreakdown": false,
+				"searchMode": "any",
+				"queryType": "full",
+				"searchFields": ["Name", "DisplayName", "Description"],
+				"select": ["Name", "DisplayName", "Description", "Id", "EntityId", "Tags", "Properties", "CreatedDateTime", "ModifiedDateTime"]
+			};
+
+			const response = await fetch(AZURE_AI_FOUNDRY_API_URL, {
+				method: 'POST',
 				headers: {
-					'Content-Type': 'application/json'
-				}
+					'Content-Type': 'application/json',
+					'Accept': 'application/json',
+					'User-Agent': 'AzureAiStudio'
+				},
+				body: JSON.stringify(requestBody)
 			});
 
 			if (!response.ok) {

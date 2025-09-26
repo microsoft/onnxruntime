@@ -335,9 +335,7 @@
 				<!-- Reload button is now less prominent, only for refreshing data from server -->
 				<div class="dropdown dropdown-end">
 					<div tabindex="0" role="button" class="btn btn-ghost btn-xs">⋯</div>
-					<ul
-						class="dropdown-content menu bg-base-100 rounded-box z-[1] w-44 p-2 shadow"
-					>
+					<ul class="dropdown-content menu bg-base-100 rounded-box z-[1] w-44 p-2 shadow">
 						<li>
 							<button on:click={fetchFoundryModels} disabled={loading}>
 								{loading ? 'Loading...' : 'Refresh from server'}
