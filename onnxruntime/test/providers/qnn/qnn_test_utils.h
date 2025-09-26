@@ -1176,6 +1176,23 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
                      bool verify_outputs = true,
                      std::function<void(const Graph&)>* ep_graph_checker = nullptr);
 
+/**
+ * Runs a test model on the QNN HTP backend and verifies node assignment to QNN EP without comparing outputs to ORT CPU.
+ * This is useful for operations like RandomUniformLike where outputs are expected to be different between runs.
+ *
+ * \param build_test_case Function that builds a test model.
+ * \param provider_options Provider options for QNN EP.
+ * \param opset_version The opset version.
+ * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
+ * \param log_severity The logger's minimum severity level.
+ * \param ep_graph_checker Function called on the Graph generated for the EP's session. Used to check node
+ *                         EP assignment.
+ */
+void RunQnnModelTestHTPNoVerify(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
+                                int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
+                                logging::Severity log_severity = logging::Severity::kERROR,
+                                std::function<void(const Graph&)>* ep_graph_checker = nullptr);
+
 enum class BackendSupport {
   SUPPORT_UNKNOWN,
   UNSUPPORTED,

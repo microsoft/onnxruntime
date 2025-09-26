@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/curand_wrapper.h"
 #include "core/providers/cuda/generator/random_impl.h"
 
-#include <curand_kernel.h>
 #include <algorithm>
 #include "core/providers/cuda/cu_inc/common.cuh"
 
