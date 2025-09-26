@@ -25,18 +25,18 @@ const config = {
 			// Output to build directory for GitHub Pages
 			pages: 'build',
 			assets: 'build',
-			fallback: '404.html', // GitHub Pages SPA fallback
+			fallback: undefined, // No SPA fallback needed - fully static
 			precompress: false,
-			strict: false // Allow dynamic routes to be skipped
+			strict: true // All routes must be prerenderable
 		}),
 		paths: {
 			base: process.env.NODE_ENV === 'production' ? '' : ''
 		},
 		prerender: {
-			// Handle missing IDs gracefully for dynamic routes
+			// Handle missing IDs gracefully for static routes
 			handleMissingId: 'warn',
 			handleHttpError: 'warn',
-			// Crawl all static pages but handle dynamic routes client-side
+			// Crawl all static pages
 			crawl: true
 		}
 	}

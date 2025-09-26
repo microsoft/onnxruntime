@@ -1,4 +1,4 @@
-export const prerender = 'auto'; // Allow some pages to be dynamic
+export const prerender = true; // Fully static site
 export const load = ({ url }) => {
 	const { pathname } = url;
 

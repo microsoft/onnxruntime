@@ -82,51 +82,6 @@ export class FoundryModelService {
 		}
 	}
 
-	async fetchModelById(id: string): Promise<FoundryModel | null> {
-		try {
-			// For individual model fetching, we'll need to make a search request
-			// and filter by the specific model ID
-			const requestBody = {
-				"searchQuery": id,
-				"entityTypes": ["Model"],
-				"facets": [],
-				"skip": 0,
-				"top": 1,
-				"orderBy": [],
-				"computeStatistics": true,
-				"includeTotalResultCountBreakdown": false,
-				"searchMode": "any",
-				"queryType": "full",
-				"searchFields": ["Name", "DisplayName", "Description"],
-				"select": ["Name", "DisplayName", "Description", "Id", "EntityId", "Tags", "Properties", "CreatedDateTime", "ModifiedDateTime"]
-			};
-
-			const response = await fetch(AZURE_AI_FOUNDRY_API_URL, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Accept': 'application/json',
-					'User-Agent': 'AzureAiStudio'
-				},
-				body: JSON.stringify(requestBody)
-			});
-
-			if (!response.ok) {
-				if (response.status === 404) {
-					return null;
-				}
-				const errorData = await response.json();
-				throw new Error(`HTTP error! status: ${response.status}, error: ${errorData.error}`);
-			}
-
-			const apiData = await response.json();
-			return this.transformSingleModel(apiData);
-			
-		} catch (error) {
-			return null;
-		}
-	}
-
 	private buildRequestBody(filters: ApiFilters) {
 		const baseFilters = [
 			{
