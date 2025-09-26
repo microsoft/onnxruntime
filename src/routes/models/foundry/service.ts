@@ -3,7 +3,7 @@
 import type { FoundryModel, GroupedFoundryModel } from './types';
 
 // Azure Function endpoint for CORS proxy
-const FOUNDRY_API_ENDPOINT = 'https://onnxruntime-foundry-proxy-hpape7gzf2haesef.eastus-01.azurewebsites.net/api/foundry-proxy';
+const FOUNDRY_API_ENDPOINT = 'https://onnxruntime-foundry-proxy-hpape7gzf2haesef.eastus-01.azurewebsites.net/api/foundryproxy';
 
 export interface ApiFilters {
 	device?: string;
