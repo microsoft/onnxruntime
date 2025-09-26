@@ -73,20 +73,23 @@
 	<p>
 		ONNX is the Open Neural Network Exchange, and we take that name to heart! Many members of the
 		community upload their ONNX models to various repositories, and we want to make it easy for you
-		to find them. Check out our featured Foundry Local Models collection, or explore the popular repositories below:
+		to find them. Check out our featured Foundry Local Models collection, or explore the popular
+		repositories below:
 	</p>
 
 	<div class="my-8 grid grid-cols-1 md:grid-cols-2 gap-8">
 		{#each modelhubs as modelhub}
-			<div class="card transition hover:scale-105" 
-				 class:bg-gradient-to-r={modelhub.featured}
-				 class:from-blue-600={modelhub.featured}
-				 class:to-purple-600={modelhub.featured}
-				 class:bg-success={!modelhub.featured}
-				 class:image-full={true}
-				 class:ring-4={modelhub.featured} 
-				 class:ring-blue-300={modelhub.featured}
-				 class:shadow-2xl={modelhub.featured}>
+			<div
+				class="card transition hover:scale-105"
+				class:bg-gradient-to-r={modelhub.featured}
+				class:from-blue-600={modelhub.featured}
+				class:to-purple-600={modelhub.featured}
+				class:bg-success={!modelhub.featured}
+				class:image-full={true}
+				class:ring-4={modelhub.featured}
+				class:ring-blue-300={modelhub.featured}
+				class:shadow-2xl={modelhub.featured}
+			>
 				{#if modelhub.isInternal}
 					<a href={modelhub.url} class="card-body">
 						<div class="grid grid-cols-5">

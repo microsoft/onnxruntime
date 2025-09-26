@@ -218,7 +218,8 @@
 		<h1 class="text-4xl font-bold mb-4">Foundry Local Models</h1>
 		<p class="text-lg text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
 			Explore a curated collection of AI models optimized for local deployment across various
-			hardware platforms. Use the search and filters below to find models specifically designed for your NPUs, GPUs, and CPUs.
+			hardware platforms. Use the search and filters below to find models specifically designed for
+			your NPUs, GPUs, and CPUs.
 		</p>
 	</div>
 
@@ -226,7 +227,9 @@
 	<div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
 		<div class="mb-4">
 			<h2 class="text-lg font-semibold mb-2">Filter & Search Models</h2>
-			<p class="text-sm text-gray-600 dark:text-gray-400">Results update automatically as you type or change filters</p>
+			<p class="text-sm text-gray-600 dark:text-gray-400">
+				Results update automatically as you type or change filters
+			</p>
 		</div>
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
 			<!-- Search -->
@@ -280,7 +283,9 @@
 
 			<!-- Publisher Filter -->
 			<div>
-				<label class="block text-sm font-medium mb-2" for="publisher-filter">Filter by Publisher</label>
+				<label class="block text-sm font-medium mb-2" for="publisher-filter"
+					>Filter by Publisher</label
+				>
 				<select
 					id="publisher-filter"
 					bind:value={selectedPublisher}
@@ -330,7 +335,10 @@
 				<!-- Reload button is now less prominent, only for refreshing data from server -->
 				<div class="dropdown dropdown-end">
 					<div tabindex="0" role="button" class="btn btn-ghost btn-xs">⋯</div>
-					<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-44 p-2 shadow">
+					<ul
+						tabindex="0"
+						class="dropdown-content menu bg-base-100 rounded-box z-[1] w-44 p-2 shadow"
+					>
 						<li>
 							<button on:click={fetchFoundryModels} disabled={loading}>
 								{loading ? 'Loading...' : 'Refresh from server'}
@@ -376,7 +384,10 @@
 	<!-- Models Grid -->
 	{#if !loading && !error}
 		{#if paginatedModels.length > 0}
-			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 transition-opacity duration-300" class:opacity-75={searchTerm !== debouncedSearchTerm}>
+			<div
+				class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 transition-opacity duration-300"
+				class:opacity-75={searchTerm !== debouncedSearchTerm}
+			>
 				{#each paginatedModels as model (model.alias)}
 					<div
 						class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow duration-200 border border-gray-200 dark:border-gray-700"
