@@ -6,7 +6,6 @@
 #include <gsl/gsl>
 #include <memory>
 #include <string>
-#include <sstream>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -172,20 +171,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
   const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
-  auto log_unsupported_node_info = [&ep_type = Type(), &logger](gsl::span<const EpNode* const> ep_nodes) {
-    std::ostringstream oss;
-    oss << "OrtEp::GetCapability() specified nodes that cannot be assigned to " << ep_type << ". ";
-
-    if (const Node* node_for_other_ep = FindFirstNodeAssignedToOtherEP(ep_type, ep_nodes);
-        node_for_other_ep != nullptr) {
-      oss << "Found one or more nodes that were already assigned to a different EP named '"
-          << node_for_other_ep->GetExecutionProviderType() << "'. Ex: "
-          << node_for_other_ep->OpType() << " node with name '"
-          << node_for_other_ep->Name() << "'.";
-    }
-
-    LOGS(logger, WARNING) << oss.str();
-  };
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   if (Status status = EpGraph::Create(graph_viewer, ep_graph); !status.IsOK()) {
