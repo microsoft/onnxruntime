@@ -1,9 +1,9 @@
 // API service for Azure AI Foundry models
-// Makes direct API calls to Azure AI Foundry API
+// Uses local server proxy to avoid CORS issues
 import type { FoundryModel, GroupedFoundryModel } from './types';
 
-// Direct API URL to Azure AI Foundry
-const AZURE_AI_FOUNDRY_API_URL = 'https://ai.azure.com/api/eastus/ux/v1.0/entities/crossRegion';
+// Local API proxy endpoint
+const FOUNDRY_API_ENDPOINT = '/api/foundry-models';
 
 export interface ApiFilters {
 	device?: string;
@@ -56,12 +56,11 @@ export class FoundryModelService {
 		const requestBody = this.buildRequestBody(filters);
 		
 		try {
-			const response = await fetch(AZURE_AI_FOUNDRY_API_URL, {
+			const response = await fetch(FOUNDRY_API_ENDPOINT, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					'Accept': 'application/json',
-					'User-Agent': 'AzureAiStudio'
+					'Accept': 'application/json'
 				},
 				body: JSON.stringify(requestBody)
 			});
@@ -517,6 +516,25 @@ export class FoundryModelService {
 		});
 
 		return groupedModels;
+	}
+
+	async fetchModelById(modelId: string): Promise<FoundryModel | null> {
+		try {
+			const response = await fetch(`${FOUNDRY_API_ENDPOINT}?id=${encodeURIComponent(modelId)}`);
+			
+			if (!response.ok) {
+				console.error(`Failed to fetch model ${modelId}: ${response.status}`);
+				return null;
+			}
+
+			const apiData = await response.json();
+			const models = this.transformApiResponse(apiData);
+			
+			return models.length > 0 ? models[0] : null;
+		} catch (error) {
+			console.error(`Error fetching model ${modelId}:`, error);
+			return null;
+		}
 	}
 }
 
