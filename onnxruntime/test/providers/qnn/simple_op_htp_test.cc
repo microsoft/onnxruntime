@@ -10,8 +10,8 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -1837,6 +1837,38 @@ TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
                         provider_options,
                         18,  // opset
                         ExpectedEPNodeAssignment::All);
+}
+
+// Test RandomUniformLike + Add operation on HTP backend
+TEST_F(QnnHTPBackendTests, RandomUniformLikeAddTest) {
+  // Create a function that builds the test model: input -> RandomUniformLike -> Add -> output
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    // Create input tensor with shape [1, 4, 3] and float32 data
+    std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+                                     7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+    auto* input = builder.MakeInput<float>({1, 4, 3}, input_data);
+
+    // RandomUniformLike node
+    auto* random_output = builder.MakeIntermediate();
+    Node& random_node = builder.AddNode("RandomUniformLike", {input}, {random_output});
+    random_node.AddAttribute("low", 0.0f);
+    random_node.AddAttribute("high", 10.0f);
+    random_node.AddAttribute("seed", 42.0f);
+
+    // Add node: input + random_output
+    auto* final_output = builder.MakeOutput();
+    builder.AddNode("Add", {input, random_output}, {final_output});
+  };
+
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+
+  // Run the test - we expect both RandomUniformLike and Add to be assigned to QNN EP
+  // Using the NoVerify version since RandomUniformLike randomness algo differs from ORT CPU
+  RunQnnModelTestHTPNoVerify(build_test_case,
+                             provider_options,
+                             14,
+                             ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

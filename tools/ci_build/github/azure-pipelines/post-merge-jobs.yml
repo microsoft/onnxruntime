@@ -47,7 +47,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -61,7 +61,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -75,7 +75,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -89,7 +89,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -104,7 +104,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -119,7 +119,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -134,7 +134,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -149,7 +149,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -164,7 +164,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -179,7 +179,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 #- template: templates/win-ci.yml
 #  parameters:
@@ -194,7 +194,7 @@ stages:
 #    runTests: false
 #    buildJava: false
 #    buildNodejs: false
-#    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+#    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -209,7 +209,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 
 # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
@@ -271,7 +271,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - stage: MemoryProfiling
   dependsOn: [ ]
@@ -290,7 +290,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
@@ -309,7 +309,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
@@ -328,7 +328,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 #Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage
@@ -357,9 +357,9 @@ stages:
           #Merge the multiple prof data into a single indexed profile data file
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
-          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_provider_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
 
-          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
+          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_provider_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
 
     - task: AzureCLI@2

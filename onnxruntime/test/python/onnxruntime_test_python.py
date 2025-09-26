@@ -689,15 +689,30 @@ class TestInferenceSession(unittest.TestCase):
     def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        input_name = sess.get_inputs()[0].name
-        self.assertEqual(input_name, "X")
-        input_shape = sess.get_inputs()[0].shape
-        self.assertEqual(input_shape, [3, 2])
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Y")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [3, 2])
-        res = sess.run([output_name], {input_name: x})
+
+        inputs = sess.get_inputs()
+        self.assertEqual(len(inputs), 1)
+        self.assertEqual(inputs[0].name, "X")
+        self.assertEqual(inputs[0].shape, [3, 2])
+
+        input_meminfos = sess.get_input_memory_infos()
+        self.assertEqual(len(input_meminfos), 1)
+        self.assertIsNotNone(input_meminfos[0])
+
+        input_epdevices = sess.get_input_epdevices()
+        # The entry my be None (null) but it should be present
+        self.assertEqual(len(input_epdevices), 1)
+
+        outputs = sess.get_outputs()
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(outputs[0].name, "Y")
+        self.assertEqual(outputs[0].shape, [3, 2])
+
+        output_meminfos = sess.get_output_memory_infos()
+        self.assertEqual(len(output_meminfos), 1)
+        self.assertIsNotNone(output_meminfos[0])
+
+        res = sess.run([outputs[0].name], {inputs[0].name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
@@ -1305,6 +1320,25 @@ class TestInferenceSession(unittest.TestCase):
             providers=["CPUExecutionProvider"],
         )
 
+    def test_session_options_add_external_initializers_from_files_in_memory(self):
+        # Provide external initializer file content directly from memory
+        # The model references an external file named "Pads_not_on_disk.bin" for the initializer
+        pads_bytes = np.array([0, 0, 1, 1], dtype=np.int64).tobytes()
+
+        so = onnxrt.SessionOptions()
+        so.add_external_initializers_from_files_in_memory(
+            ["Pads_not_on_disk.bin"],
+            [pads_bytes],
+            [len(pads_bytes)],
+        )
+
+        # This should not throw
+        onnxrt.InferenceSession(
+            get_name("model_with_external_initializer_come_from_user.onnx"),
+            sess_options=so,
+            providers=["CPUExecutionProvider"],
+        )
+
     def test_register_custom_ops_library(self):
         if sys.platform.startswith("win"):
             shared_library = os.path.abspath("custom_op_library.dll")
@@ -1583,6 +1617,44 @@ class TestInferenceSession(unittest.TestCase):
             shape = np.array([2, 2], dtype=np.int64)
             for _iteration in range(100000):
                 session.run(output_names=["output"], input_feed={"shape": shape})
+
+    def test_ort_device(self):
+        cpu_device = onnxrt.OrtDevice.make("cpu", 0)
+        self.assertEqual(cpu_device.device_id(), 0)
+        self.assertEqual(cpu_device.device_type(), 0)
+        self.assertEqual(cpu_device.device_vendor_id(), 0)
+        self.assertEqual(cpu_device.device_mem_type(), 0)
+
+    def test_ort_memory_info(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo(
+            "Cpu",
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+            0,
+            onnxrt.OrtMemType.DEFAULT,
+        )
+        self.assertEqual(cpu_memory_info.name, "Cpu")
+        self.assertEqual(cpu_memory_info.device_id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
+
+    def test_ort_memory_info_create_v2(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo.create_v2(
+            "Test",
+            onnxrt.OrtMemoryInfoDeviceType.CPU,
+            0,  # vendor_id
+            0,  # device_id
+            onnxrt.OrtDeviceMemoryType.DEFAULT,
+            128,  # alignment
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+        )
+        self.assertEqual(cpu_memory_info.name, "Test")
+        self.assertEqual(cpu_memory_info.device_id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
 
     def test_shared_allocator_using_create_and_register_allocator(self):
         # Create and register an arena based allocator

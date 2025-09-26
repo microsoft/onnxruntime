@@ -233,7 +233,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
     for (const auto& node : nodes) {
       auto op_type = node.GetOperatorType();
 
-      if (op_type != "Mul") {
+      if (op_type == "Mul") {
         // Check that Mul has inputs/output of type float
         std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
         std::vector<Ort::ConstValueInfo> outputs = node.GetOutputs();
@@ -248,9 +248,34 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
           continue;  // Input or output is not of type float
         }
 
+        {
+          const auto input_0_shape = GetTensorShape(inputs[0]),
+                     input_1_shape = GetTensorShape(inputs[1]);
+
+          if (!input_0_shape.has_value() || !input_1_shape.has_value()) {
+            continue;  // unable to get input shape
+          }
+
+          const auto is_static_shape = [](gsl::span<const int64_t> shape) -> bool {
+            return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim >= 0; });
+          };
+
+          if (!is_static_shape(*input_0_shape) || !is_static_shape(*input_1_shape)) {
+            continue;  // input shape has dynamic dimensions
+          }
+
+          if (*input_0_shape != *input_1_shape) {
+            continue;  // input shapes do not match (no broadcasting support for now)
+          }
+        }
+
         supported_nodes.push_back(node);  // Only support a single Mul for now.
         break;
       }
+    }
+
+    if (supported_nodes.empty()) {
+      return nullptr;
     }
 
     // Create (optional) fusion options for the supported nodes to fuse.
@@ -317,7 +342,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
     Ort::ConstNode fused_node{fused_nodes[0]};
     auto ep_name = fused_node.GetEpName();
-    if (ep_name != "example_ep") {
+    if (ep_name != ep->name_) {
       Ort::Status status("The fused node is expected to assigned to this EP to run on", ORT_EP_FAIL);
       return status.release();
     }
