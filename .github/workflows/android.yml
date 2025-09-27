@@ -71,8 +71,8 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1722565"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1722565"
+        echo "Binary size threshold in bytes: 1436672"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1436672"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then

@@ -14,6 +14,8 @@ Abstract:
 
 --*/
 
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
+
 #include "mlasi.h"
 
 constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
@@ -287,3 +289,5 @@ void
         false  // ExcludePad = false
     );
 }
+
+#endif

@@ -62,6 +62,7 @@ jobs:
         --build_objc
         --build_java
         --build_wheel
+        ${{ matrix.target == 'arm64' && '--enable_arm_neon_nchwc' || '' }}
         ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
         ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
         ${{ inputs.use_coreml && '--use_coreml --skip_onnx_tests' || '' }}
