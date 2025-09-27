@@ -582,7 +582,7 @@ def construct_local_mask(seqlen_q, seqlen_k, window_size, query_padding_mask, ke
         sk = torch.full_like(col_idx, seqlen_k) if key_padding_mask is None else sk
         return torch.logical_or(
             col_idx > torch.minimum(row_idx + sk - sq + window_size[1], sk),
-            col_idx < row_idx + sk - sq - window_size[0],
+            col_idx <= row_idx + sk - sq - window_size[0],
         )
 
 
