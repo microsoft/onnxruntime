@@ -632,7 +632,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- CPU ---
     cpu_group = parser.add_argument_group("CPU Execution Provider")
     cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
-    
     # The following enables building ORT with NCHWc ARM kernels.
     # At the time of writing, it is turned OFF by default because its performance relative to "regular" NCHW kernels
     # is not good at smaller thread counts. But its speed-up is non-negligible with higher thread counts on supporting
