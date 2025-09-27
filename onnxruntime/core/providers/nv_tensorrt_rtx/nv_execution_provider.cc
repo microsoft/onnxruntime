@@ -33,6 +33,7 @@
 #include <filesystem>
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
+#include "core/providers/cuda/cuda_common.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -84,6 +85,46 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
+
+Status NvExecutionProvider::InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
+  // By calling GetPerThreadContext(), we ensure that the cuda context
+  // for the current thread is created if it doesn't already exist.
+  // The constructor of PerThreadContext handles the context creation.
+  (void)GetPerThreadContext();
+  CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
+  CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC semHandleDesc = {};
+  semHandleDesc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+  semHandleDesc.handle.win32.handle = sharedFenceHandle;
+  cuImportExternalSemaphore(&cSemFence, &semHandleDesc);
+  *extSemFence = cSemFence;
+  return Status::OK();
+}
+
+Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, const int fenceState) {
+  LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpWait() called.";
+
+  // make CUDA wait for the upload by DX to finish
+  CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS waitParams = {};
+  waitParams.params.fence.value = fenceState;
+  CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
+  cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
+  cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
+
+  return Status::OK();
+}
+Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, const int fenceState) {
+  LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpSignal() called.";
+
+  cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
+
+  // make D3D12 wait for the CUDA kernel to finish
+  CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signalParams = {};
+  signalParams.params.fence.value = fenceState;
+  CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
+  cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
+
+  return Status::OK();
+}
 
 // Helper function to check if a data type is supported by NvTensorRTRTX EP
 static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {

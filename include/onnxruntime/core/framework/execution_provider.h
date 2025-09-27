@@ -92,6 +92,25 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
+  virtual Status InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
+    ORT_UNUSED_PARAMETER(sharedFenceHandle);
+    ORT_UNUSED_PARAMETER(extSemFence);
+    return Status::OK();
+  }
+
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, const int fenceState) {
+    ORT_UNUSED_PARAMETER(extSemFence);
+    ORT_UNUSED_PARAMETER(stream);
+    ORT_UNUSED_PARAMETER(fenceState);
+    return Status::OK();
+  }
+  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, const int fenceState) {
+    ORT_UNUSED_PARAMETER(extSemFence);
+    ORT_UNUSED_PARAMETER(stream);
+    ORT_UNUSED_PARAMETER(fenceState);
+    return Status::OK();
+  }
+
   /**
    * Returns a data transfer object that implements methods to copy to and
    * from this device.
