@@ -40,4 +40,23 @@ ORT_API(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* 
 ORT_API(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream);
 ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* producer_stream,
         _In_ const OrtSyncStream* consumer_stream);
+
+ORT_API_STATUS_IMPL(CreateKernelCreationInfo, _In_ const OrtKernelDef* kernel_def,
+                    _In_ OrtKernelCreateFunc kernel_create_func,
+                    _In_ void* ep_state,
+                    _Outptr_ OrtKernelCreateInfo** kernel_create_info_out);
+ORT_API(void, ReleaseKernelCreateInfo, _Frees_ptr_opt_ OrtKernelCreateInfo* kernel_create_info);
+
+ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out);
+ORT_API(void, ReleaseKernelDefBuilder, _Frees_ptr_opt_ OrtKernelDefBuilder* kernel_def_builder);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* op_type);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* domain);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    int since_version_start, int since_version_end);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    const char* ep_name);
+ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder, _Outptr_ OrtKernelDef** kernel_def_out);
+
+ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def);
+
 }  // namespace OrtExecutionProviderApi

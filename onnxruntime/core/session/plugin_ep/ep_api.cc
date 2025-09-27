@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/common/semver.h"
+#include "core/framework/abi_kernel.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
 #include "core/framework/ort_value.h"
@@ -205,6 +206,80 @@ ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* pr
   return id;
 }
 
+ORT_API_STATUS_IMPL(CreateKernelCreationInfo, _In_ const OrtKernelDef* kernel_def,
+                    _In_ OrtKernelCreateFunc kernel_create_func,
+                    _In_ void* ep_state,
+                    _Outptr_ OrtKernelCreateInfo** kernel_create_info_out) {
+  API_IMPL_BEGIN
+  auto ort_kernel_create_info = std::make_unique<OrtKernelCreateInfo>();
+  ort_kernel_create_info->kernel_def = *kernel_def;
+  ort_kernel_create_info->kernel_create_func = kernel_create_func;
+  ort_kernel_create_info->kernel_create_func_state = ep_state;
+
+  *kernel_create_info_out = ort_kernel_create_info.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseKernelCreateInfo, _Frees_ptr_opt_ OrtKernelCreateInfo* kernel_create_info) {
+  delete kernel_create_info;
+}
+
+ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out) {
+  API_IMPL_BEGIN
+  auto builder = KernelDefBuilder::Create();
+  *kernel_def_builder_out = static_cast<OrtKernelDefBuilder*>(builder.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseKernelDefBuilder, _Frees_ptr_opt_ OrtKernelDefBuilder* kernel_def_builder) {
+  delete kernel_def_builder;
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    const char* op_type) {
+  API_IMPL_BEGIN
+  kernel_def_builder->SetName(op_type);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* domain) {
+  API_IMPL_BEGIN
+  kernel_def_builder->SetDomain(domain);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    int since_version_start, int since_version_end) {
+  API_IMPL_BEGIN
+  kernel_def_builder->SinceVersion(since_version_start, since_version_end);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    const char* ep_name) {
+  API_IMPL_BEGIN
+  kernel_def_builder->Provider(ep_name);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _Outptr_ OrtKernelDef** kernel_def_out) {
+  API_IMPL_BEGIN
+  *kernel_def_out = static_cast<OrtKernelDef*>(kernel_def_builder->Build().release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def) {
+  delete kernel_def;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -230,6 +305,16 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::SyncStream_GetImpl,
     &OrtExecutionProviderApi::SyncStream_GetSyncId,
     &OrtExecutionProviderApi::GetSyncIdForLastWaitOnSyncStream,
+    &OrtExecutionProviderApi::CreateKernelCreationInfo,
+    &OrtExecutionProviderApi::ReleaseKernelCreateInfo,
+    &OrtExecutionProviderApi::CreateKernelDefBuilder,
+    &OrtExecutionProviderApi::ReleaseKernelDefBuilder,
+    &OrtExecutionProviderApi::KernelDefBuilder_SetOperatorType,
+    &OrtExecutionProviderApi::KernelDefBuilder_SetDomain,
+    &OrtExecutionProviderApi::KernelDefBuilder_SetSinceVersion,
+    &OrtExecutionProviderApi::KernelDefBuilder_SetExecutionProvider,
+    &OrtExecutionProviderApi::KernelDefBuilder_Build,
+    &OrtExecutionProviderApi::ReleaseKernelDef,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
