@@ -6587,7 +6587,6 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
-  /// @}
 };
 
 /*
