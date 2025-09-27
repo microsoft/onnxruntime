@@ -17,6 +17,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(MLAS_USE_SVE)
+#include "sve/mlasi_sve.h"
+#endif
+
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -252,16 +256,58 @@ Return Value:
     // time.
     //
 
-    while (CountX >= 16) {
+#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve())
+    {
+            
+        while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
+
+            const float* b = B;
+            size_t y = CountY;
+
+            do {
+
+                    SVE_LOAD_STORE(D,b);
+
+                    D += 16;
+                    b += ldb;
+                    y--;
+                } while(y>0);
+        
+                B += 16;
+                CountX -= 16;
+            }
+    } 
+    else{ 
+        
+        #if defined(MLAS_NEON_INTRINSICS)
+        while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
+
+        const float* b = B;
+        size_t y = CountY;
+        
+        do{
+                vst4q_f32(D, vld4q_f32(b));
+                    
+                D += 16;
+                b += ldb;
+                y--;
+            } while(y>0);
+                
+            B += 16;
+            CountX -= 16; }
+        #endif
+        }
+
+#else
+
+    while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
 
         const float* b = B;
         size_t y = CountY;
 
-        do {
+    do {  
 
-#if defined(MLAS_NEON_INTRINSICS)
-            vst4q_f32(D, vld4q_f32(b));
-#else
             MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
             MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[4]);
             MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&b[8]);
@@ -271,7 +317,7 @@ Return Value:
             MlasStoreAlignedFloat32x4(&D[4], t1);
             MlasStoreAlignedFloat32x4(&D[8], t2);
             MlasStoreAlignedFloat32x4(&D[12], t3);
-#endif
+
 
             D += 16;
             b += ldb;
@@ -283,6 +329,7 @@ Return Value:
         CountX -= 16;
     }
 
+#endif
     //
     // Special case the handling of the remaining columns less than 16 elements
     // wide.
@@ -290,11 +337,11 @@ Return Value:
 
     if (CountX > 0) {
 
-        MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
-
 #if defined(MLAS_NEON_INTRINSICS)
+        MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
         float32x4x4_t ZeroFloat32x4x4 = { ZeroFloat32x4, ZeroFloat32x4, ZeroFloat32x4, ZeroFloat32x4 };
 #endif
+
 
         size_t y = CountY;
 
@@ -302,10 +349,18 @@ Return Value:
 
             float* d = D;
             const float* b = B;
-
-#if defined(MLAS_NEON_INTRINSICS)
-            vst4q_f32(d, ZeroFloat32x4x4);
+#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            SVE_ZERO_INITIALIZE(d);
+            }
+            else {
+            #if defined(MLAS_NEON_INTRINSICS)
+                vst4q_f32(d, ZeroFloat32x4x4);
+            #endif
+            }
+            
 #else
+            MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 4, ZeroFloat32x4);
             MlasStoreAlignedFloat32x4(d + 8, ZeroFloat32x4);
@@ -486,8 +541,12 @@ Return Value:
             x -= 4;
         }
 
-#else
-
+#elif defined(MLAS_USE_SVE)
+        if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {          
+            SVE_TRANSPOSE(D,b,ldb,x);            
+        }
+        else
+        {
         while (x >= 4) {
 
             MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
@@ -496,7 +555,7 @@ Return Value:
             b += 4;
             x -= 4;
         }
-
+        }
 #endif
 
         while (x > 0) {
@@ -564,8 +623,15 @@ Return Value:
             const float* b = B;
 
             if ((CountY & 8) != 0) {
-
-                MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
+                #if defined(MLAS_USE_SVE) || defined(NEON)
+                    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()){
+                    MlasSveTransposePackBNx4<8>(&d[0], &b[0], ldb);}
+                    else{
+                        MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
+                    }
+                #else
+                    MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
+                #endif
 
                 d += 8;
                 b += ldb * 8;
@@ -584,7 +650,15 @@ Return Value:
 
             if ((CountY & 4) != 0) {
 
+                #if defined(MLAS_USE_SVE)
+                if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()){
+                MlasSveTransposePackBNx4<4>(&d[0], &b[0], ldb);}
+                else{
+                    MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
+                }
+                #else
                 MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
+                #endif
 
                 d += 4;
                 b += ldb * 4;
@@ -631,13 +705,19 @@ Return Value:
 
             if ((CountY & 1) != 0) {
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+
+            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve())
+            {
+                SCATTER_STORE(&d[0],&b[0]);
+            }
+            else{
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
 
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
                 MlasStoreLaneFloat32x4<1>(&d[16], t0);
                 MlasStoreLaneFloat32x4<2>(&d[32], t0);
-                MlasStoreLaneFloat32x4<3>(&d[48], t0);
+                MlasStoreLaneFloat32x4<3>(&d[48], t0);}
 #else
                 d[0] = b[0];
                 d[16] = b[1];
@@ -1004,8 +1084,7 @@ Return Value:
 #endif
 
 MLAS_FORCEINLINE
-float*
-MlasSgemmKernelLoop(
+float* MlasSgemmKernelLoop(
     const float* A,
     const float* B,
     float* C,
@@ -1059,17 +1138,41 @@ Return Value:
 {
     while (CountM > 0) {
 
-        size_t RowsHandled;
+        size_t RowsHandled = 0;
 
 #if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
+
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+
 #else
+
         if (ZeroMode) {
+
+#if defined(MLAS_USE_SVE)
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+                RowsHandled = MlasSgemmKernelZero_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            } else {
+                RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            }
+#else
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-        } else {
-            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-        }
 #endif
+
+        } else {
+
+#if defined(MLAS_USE_SVE)
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+                RowsHandled = MlasSgemmKernelAdd_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            } else {
+                RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+            }
+#else
+            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+#endif
+
+        }
+
+#endif // platform check
 
         C += ldc * RowsHandled;
         A += lda * RowsHandled;
@@ -1078,6 +1181,7 @@ Return Value:
 
     return C;
 }
+
 
 void
 MlasSgemmOperation(
