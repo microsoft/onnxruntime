@@ -318,7 +318,7 @@ jobs:
             --build_wheel
             --use_binskim_compliant_compile_flags
             --disable_ml_ops
-            --disable_types sparsetensor float4 float8 optional
+            --disable_types sparsetensor float8 optional
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -333,7 +333,7 @@ jobs:
             --build_wheel
             --use_binskim_compliant_compile_flags
             --disable_ml_ops
-            --disable_types sparsetensor float4 float8 optional
+            --disable_types sparsetensor float8 optional
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -349,7 +349,7 @@ jobs:
             --build_wheel
             --use_binskim_compliant_compile_flags
             --disable_ml_ops
-            --disable_types sparsetensor float4 float8 optional
+            --disable_types sparsetensor float8 optional
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -398,7 +398,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float4 float8
+            --disable_types sparsetensor optional float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -416,7 +416,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float4 float8
+            --disable_types sparsetensor optional float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -471,7 +471,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float4 float8
+            --disable_types sparsetensor optional float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
@@ -489,7 +489,7 @@ jobs:
             --disable_ml_ops
             --skip_tests
             --enable_reduced_operator_type_support
-            --disable_types sparsetensor optional float4 float8
+            --disable_types sparsetensor optional float8
             --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
