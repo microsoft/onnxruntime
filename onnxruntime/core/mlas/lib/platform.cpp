@@ -315,7 +315,7 @@ Return Value:
     __cpuid(1, Cpuid1[0], Cpuid1[1], Cpuid1[2], Cpuid1[3]);
 #endif
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(ORT_DISABLE_SSE4)
 
     //
     // Check if the processor supports SSE 4.1 instructions.
@@ -328,7 +328,7 @@ Return Value:
         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
     }
 
-#endif
+#endif // defined(_MSC_VER) && !defined(ORT_DISABLE_SSE4)
 
     //
     // Check if the processor supports the AVX and OSXSAVE features.
@@ -348,10 +348,13 @@ Return Value:
 
         if ((xcr0 & 0x6) == 0x6) {
 
+#if !defined(ORT_DISABLE_AVX)
             this->GemmFloatKernel = MlasGemmFloatKernelAvx;
+#endif // !defined(ORT_DISABLE_AVX)
 
 #if defined(MLAS_TARGET_AMD64)
 
+#if !defined(ORT_DISABLE_AVX)
             this->KernelM1Routine = MlasSgemmKernelM1Avx;
             this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
             this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
@@ -368,7 +371,7 @@ Return Value:
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
             this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelAvx;
             this->GemmU8U8Kernel = nullptr;
-
+#endif // !defined(ORT_DISABLE_AVX)
             //
             // Check if the processor supports AVX2/FMA3 features.
             //
@@ -381,7 +384,7 @@ Return Value:
 #endif
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
-
+#if !defined(ORT_DISABLE_AVX2)
                 this->Avx2Supported_ = true;
 
                 this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
@@ -441,9 +444,11 @@ Return Value:
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
                     this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
+#endif // !defined(ORT_DISABLE_AVX2)
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_DISABLE_AVX512)
                 //
                 // Check if the processor supports AVX512F features and the
                 // operating system supports saving AVX512F state.
@@ -499,7 +504,10 @@ Return Value:
                         }
                     }
                 }
+#endif // !defined(ORT_DISABLE_AVX512)
 
+
+#if !defined(ORT_DISABLE_AVX2)
                 //
                 // Check if the processor supports AVX-VNNI-INT8
                 //
@@ -510,18 +518,22 @@ Return Value:
                     this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchAvx2Vnni;
                     this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
                 }
+#endif // !defined(ORT_DISABLE_AVX2)
 
-#ifndef __APPLE__
+#if !defined(__APPLE__)
 #if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+#if !defined(ORT_DISABLE_AVX)
                 //
                 // Check if the processor supports AVX NE CONVERT.
                 //
                 if ((Cpuid7_1[3] & (0b1 << 5)) != 0) {
                     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx;
                 }
+#endif // !defined(ORT_DISABLE_AVX)
 #endif  // (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
 
 
+#if !defined(ORT_DISABLE_AMX)
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -534,13 +546,15 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // __APPLE__
+#endif // !defined(ORT_DISABLE_AMX)
+#endif // !defined(__APPLE__)
 
 #endif // ORT_MINIMAL_BUILD
 
             }
 
 #endif // MLAS_TARGET_AMD64
+
 
         }
     }
