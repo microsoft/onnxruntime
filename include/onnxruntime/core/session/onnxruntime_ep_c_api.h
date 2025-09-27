@@ -508,7 +508,7 @@ struct OrtEpApi {
 
   ORT_CLASS_RELEASE(KernelDef);
 
-  ORT_API_T(const OrtMLDataType*, GetTensorMLDataType, ONNXTensorElementDataType elem_type);
+  ORT_API2_STATUS(GetTensorMLDataType, ONNXTensorElementDataType elem_type, const OrtMLDataType** out);
 };
 
 /**

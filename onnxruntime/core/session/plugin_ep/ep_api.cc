@@ -280,6 +280,14 @@ ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def) {
   delete kernel_def;
 }
 
+ORT_API_STATUS_IMPL(GetTensorMLDataType, ONNXTensorElementDataType elem_type, const OrtMLDataType** out) {
+  API_IMPL_BEGIN
+  const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type);
+  *out = static_cast<const OrtMLDataType*>(ml_type);
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -315,6 +323,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDefBuilder_SetExecutionProvider,
     &OrtExecutionProviderApi::KernelDefBuilder_Build,
     &OrtExecutionProviderApi::ReleaseKernelDef,
+    &OrtExecutionProviderApi::GetTensorMLDataType,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
