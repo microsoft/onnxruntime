@@ -14,6 +14,16 @@
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.h"
 #include "mlasi_kleidiai.h"
 
+
+// Thread-local reusable buffers to reduce allocation overhead across tiles.
+struct KaiTlsBuffers {
+    std::vector<float> output_tile;
+    std::vector<float> bias_zero;
+    std::vector<std::byte> rhs_packed;
+    std::vector<std::byte> lhs_packed;
+};
+static thread_local KaiTlsBuffers g_kai_tls;
+
 size_t
 MLASCALL
 ArmKleidiAI::MlasGemmPackBSize(
@@ -51,7 +61,6 @@ Return Value:
     // Compute the number of bytes required to hold the packed buffer.
     //
     size_t bytes = 0;
-
     if (TransA == CblasNoTrans) {
         switch (TransB) {
             case CblasNoTrans:
@@ -125,15 +134,18 @@ Return Value:
         const size_t sr = UseSME2 ? kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
                                   : kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
 
-        // pass zeroed bias values
-        const std::vector<float> bias(N);
+        // Ensure size and zero the used span (only newly added elements are value-initialized by resize).
+        if (g_kai_tls.bias_zero.size() != N) {
+            g_kai_tls.bias_zero.resize(N);
+        }
+        std::fill_n(g_kai_tls.bias_zero.data(), N, 0.0f);
 
         switch (TransB) {
             case CblasNoTrans:
-                kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
+                kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, g_kai_tls.bias_zero.data(), nullptr, PackedB, 0, nullptr);
                 break;
             case CblasTrans:
-                kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
+                kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, g_kai_tls.bias_zero.data(), nullptr, PackedB, 0, nullptr);
                 break;
             default:
                 return false;
@@ -230,17 +242,21 @@ Return Value:
         return false;
     }
 
-    std::vector<MLAS_SGEMM_DATA_PARAMS> KaiPackedData;
-    KaiPackedData.resize(BatchSize);
-
     size_t LhsPackedStride = 0;
     std::byte* LhsPackedData = nullptr;
 
     LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr);
-    auto LhsPacked = std::make_unique<std::byte[]>(LhsPackedStride * BatchSize);
-    LhsPackedData = LhsPacked.get();
 
-    std::unique_ptr<std::byte[]> RhsPacked{nullptr};
+    if (g_kai_tls.lhs_packed.capacity() < LhsPackedStride * BatchSize) {
+
+        g_kai_tls.lhs_packed.reserve(LhsPackedStride * BatchSize);
+    }
+    g_kai_tls.lhs_packed.resize(LhsPackedStride * BatchSize);
+    LhsPackedData = g_kai_tls.lhs_packed.data();
+
+    // RHS packed buffer: use TLS reusable vector to minimize allocations
+    size_t RhsPackedStride = 0;
+    std::byte* RhsPackedData = nullptr;
 
     // It is assumed all B batches require packing or not
     if (Data[0].BIsPacked) {
@@ -248,36 +264,28 @@ Return Value:
         MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
             std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
             kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
-            KaiPackedData[batch_idx].A = reinterpret_cast<const float*>(LhsPackedPtr);
-            KaiPackedData[batch_idx].B = Data[batch_idx].B;
         });
     } else {
         // Multithread pack lhs and rhs
-        size_t RhsPackedStride = 0;
-        std::byte* RhsPackedData = nullptr;
-
         RhsPackedStride = ArmKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
-        RhsPacked = std::make_unique<std::byte[]>(RhsPackedStride * BatchSize);
-        RhsPackedData = RhsPacked.get();
+        if (g_kai_tls.rhs_packed.capacity() < RhsPackedStride * BatchSize) {
+            g_kai_tls.rhs_packed.reserve(RhsPackedStride * BatchSize);
+        }
+
+        g_kai_tls.rhs_packed.resize(RhsPackedStride * BatchSize);
+        RhsPackedData = g_kai_tls.rhs_packed.data();
 
         MlasTrySimpleParallel(ThreadPool, BatchSize * 2, [&](ptrdiff_t batch_idx) {
-            // lhs odd, rhs even
             if (batch_idx & 0x1) {
                 batch_idx >>= 1;
-
                 std::byte* LhsPackedPtr = &(LhsPackedData[LhsPackedStride * batch_idx]);
-
                 kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
-
-                KaiPackedData[batch_idx].A = reinterpret_cast<const float*>(LhsPackedPtr);
             } else {
                 batch_idx >>= 1;
-
                 std::byte* RhsPackedPtr = &(RhsPackedData[RhsPackedStride * batch_idx]);
-
-                ArmKleidiAI::MlasGemmPackB(TransA, TransB, N, K, reinterpret_cast<const float*>(Data[batch_idx].B), Data[batch_idx].ldb, RhsPackedPtr);
-
-                KaiPackedData[batch_idx].B = reinterpret_cast<const float*>(RhsPackedPtr);
+                ArmKleidiAI::MlasGemmPackB(TransA, TransB, N, K,
+                                           reinterpret_cast<const float*>(Data[batch_idx].B),
+                                           Data[batch_idx].ldb, RhsPackedPtr);
             }
         });
     }
@@ -314,18 +322,18 @@ Return Value:
             UseSME2 ? kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(NIdx * n_step, K)
                     : kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(NIdx * n_step, K);
 
-        auto BTile = reinterpret_cast<const void*>(
-            reinterpret_cast<const std::byte*>(KaiPackedData[BIdx].B) + rhs_packed_offset
-        );
+        const std::byte* B_base = Data[0].BIsPacked
+            ? reinterpret_cast<const std::byte*>(Data[BIdx].B)
+            : (RhsPackedData + RhsPackedStride * BIdx);
+        auto BTile = reinterpret_cast<const void*>(B_base + rhs_packed_offset);
 
         // Get lhs tile, A
         const size_t lhs_packed_offset =
             UseSME2 ? kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(MIdx * m_step, K)
                     : kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(MIdx * m_step, K);
 
-        auto ATile = reinterpret_cast<const float*>(
-            reinterpret_cast<const std::byte*>(KaiPackedData[BIdx].A) + lhs_packed_offset
-        );
+        const std::byte* A_base = LhsPackedData + LhsPackedStride * BIdx;
+        auto ATile = reinterpret_cast<const float*>(A_base + lhs_packed_offset);
 
         auto TileSizeM = (MIdx + 1) * m_step > M ? (M - MIdx * m_step) : m_step;
         auto TileSizeN = (NIdx + 1) * n_step > N ? (N - NIdx * n_step) : n_step;
@@ -336,9 +344,18 @@ Return Value:
             MIdx * m_step * Data[BIdx].ldc * sizeof(float) +
             NIdx * n_step * sizeof(float)
         );
-        // Allocate temporary buffer for raw A*B result
-        std::vector<float> OutputTile(TileSizeM * TileSizeN, 0.0f);
-        float* temp_tile = OutputTile.data();
+        // Allocate temporary buffer for raw A*B result (TLS reusable buffer)
+        {
+            const size_t tile_elems = TileSizeM * TileSizeN;
+            if (g_kai_tls.output_tile.capacity() < tile_elems) {
+                // reserve more memory if required
+                g_kai_tls.output_tile.reserve(tile_elems);
+            }
+            // resize the tile to the required size (doesn't effect memory)
+            g_kai_tls.output_tile.resize(tile_elems);
+        }
+        float* temp_tile = g_kai_tls.output_tile.data();
+        std::fill_n(temp_tile, TileSizeM * TileSizeN, 0.0f);
 
         if (UseSME2) {
             kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(
