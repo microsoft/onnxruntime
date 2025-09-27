@@ -99,7 +99,7 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_nv_tensorrt_rtx_ep_prefer_gpu_and_inference(self):
         """
@@ -117,7 +117,7 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_nv_tensorrt_rtx_ep_selection_delegate_and_inference(self):
         """
@@ -152,7 +152,7 @@ class TestNvTensorRTRTXAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_bind_input_only(self):
         """

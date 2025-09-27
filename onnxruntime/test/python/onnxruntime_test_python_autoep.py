@@ -66,7 +66,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -98,7 +98,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -146,7 +146,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -249,7 +249,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -282,11 +282,11 @@ class TestAutoEP(AutoEpTestCase):
         gpu_value = onnxrt.OrtValue.ortvalue_from_numpy(data, "gpu", 0, 0xBE57)
         # copy back to CPU
         cpu_data = gpu_value.numpy()
-        np.testing.assert_equal(data, cpu_data)
+        np.testing.assert_equal(cpu_data, data)
 
         gpu_value.update_inplace(data2)  # update the fake GPU data
         cpu_data_2 = gpu_value.numpy()  # copy back to CPU
-        np.testing.assert_equal(data2, cpu_data_2)
+        np.testing.assert_equal(cpu_data_2, data2)
 
         gpu_value = None  # Delete OrtValue before unregistering library as the allocator will be destroyed.
 
@@ -336,8 +336,8 @@ class TestAutoEP(AutoEpTestCase):
         del b_device
 
         # Verify the contents
-        np.testing.assert_array_equal(a, a_cpu_copy.numpy())
-        np.testing.assert_array_equal(b, b_cpu_copy.numpy())
+        np.testing.assert_array_equal(a_cpu_copy.numpy(), a)
+        np.testing.assert_array_equal(b_cpu_copy.numpy(), b)
 
         self.unregister_execution_provider_library(ep_name)
 
