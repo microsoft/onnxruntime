@@ -6,6 +6,8 @@
 #param has_zero_points
 #param is_qualcomm
 
+#use .getByOffset .setByOffset
+
 #include "quantization/dp4a_matmul_common.wgsl.template"
 
 // This shader implements co-operative matrix multiply. The key idea here is to
@@ -57,11 +59,11 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
     {
         return;
     }
-    tile_A[col][row] = input_a[a_global*uniforms.K16+kidx_v+col];
+    tile_A[col][row] = a.getByOffset(a_global*uniforms.K16+kidx_v+col);
     if (col == 0)
     {
         // kidx_v - covers 16 values of k
-        scale_A[row] = scales_a[a_global*(uniforms.K/128) + kidx_v/8];
+        scale_A[row] = scales_a.getByOffset(a_global*(uniforms.K/128) + kidx_v/8);
     }
 }
 
@@ -74,14 +76,14 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             return;
         }
 
-        let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+        let b_value = b.getByOffset(b_global*uniforms.K16+kidx_v+col);
         let block_idx = kidx_v/(block_size/16);
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value, zero);
         if (col == 0)
         {
             // kidx_v - each kidx_v covers 16 values of k
-            scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
+            scale_B[row] = scales_b.getByOffset(b_global*(uniforms.K/block_size) + block_idx);
         }
     }
 #endif
@@ -95,13 +97,13 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             return;
         }
 
-        let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+        let b_value = b.getByOffset(b_global*uniforms.K16+kidx_v+col);
         tile_B[col][row] = AlignWithZeroPoint(b_value);
         if (col == 0)
         {
             // kidx_v - each kidx_v covers 16 values of k
             let block_idx = kidx_v/(block_size/16);
-            scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
+            scale_B[row] = scales_b.getByOffset(b_global*(uniforms.K/block_size) + block_idx);
 #if has_zero_points
             zeroes[row] = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
@@ -117,10 +119,10 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             return;
         }
-        let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+        let b_value = b.getByOffset(b_global*uniforms.K16+kidx_v+col);
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
         let block_idx = kidx_v/(block_size/16);
-        scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
+        scale_B[row] = scales_b.getByOffset(b_global*(uniforms.K/block_size) + block_idx);
     }
 #endif
 
@@ -362,15 +364,15 @@ $MAIN {
     if (a_global < uniforms.M && b_global < uniforms.N)
     {
 #if is_qualcomm
-        output[output_idx] = vec4<output_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]);
-        output[output_idx+1] = vec4<output_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]);
-        output[output_idx+2] = vec4<output_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]);
-        output[output_idx+3] = vec4<output_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]);
+        output.setByOffset(output_idx, vec4<output_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]));
+        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]));
+        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]));
+        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]));
 #else
-        output[output_idx] = lane_output1;
-        output[output_idx+1] = lane_output2;
-        output[output_idx+2] = lane_output3;
-        output[output_idx+3] = lane_output4;
+        output.setByOffset(output_idx, lane_output1);
+        output.setByOffset(output_idx+1, lane_output2);
+        output.setByOffset(output_idx+2, lane_output3);
+        output.setByOffset(output_idx+3, lane_output4);
 #endif
     }
 }  // MAIN

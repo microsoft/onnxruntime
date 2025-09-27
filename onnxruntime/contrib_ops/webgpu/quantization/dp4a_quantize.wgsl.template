@@ -5,6 +5,8 @@
 // Quantizes input matrix A for DP4A computation
 // This shader quantizes float values to 8-bit signed integers using pack4x8snorm
 
+#use .getByOffset .setByOffset
+
 var<workgroup> a_values : array<array<input_a_value_t, 32>, 2>;
 var<workgroup> max_values : array<input_a_value_t, 4>;
 
@@ -13,7 +15,7 @@ fn readInput(offset: u32) -> input_a_value_t
   if (offset >= uniforms.output_size) {
     return input_a_value_t(0);
   }
-  return input_a[offset];
+  return a.getByOffset(offset);
 }
 
 $MAIN {
@@ -26,11 +28,11 @@ $MAIN {
     let max_temp = max(max_val.xy, max_val.zw);
     let scale = max(max_temp[0], max_temp[1]);
     let norm_a = local_a/scale;
-    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    output.setByOffset(global_idx, pack4x8snorm(vec4<f32>(norm_a)));
     if (local_idx % 32 == 0)
     {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales[workgroup_idx * 2 + local_idx / 32] = scale/127;
+      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, scale/127);
     }
   } else if (sg_size == 16) {
     let local_a = readInput(global_idx);
@@ -53,11 +55,11 @@ $MAIN {
     let max_temp = max(max_val.xy, max_val.zw);
     let scale = max(max_temp[0], max_temp[1]);
     let norm_a = local_a/scale;
-    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    output.setByOffset(global_idx, pack4x8snorm(vec4<f32>(norm_a)));
     if (local_idx % 32 == 0)
     {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales[workgroup_idx * 2 + local_idx / 32] = scale/127;
+      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, scale/127);
     }
   } else {
     let local_row = local_idx / 32u;
@@ -78,11 +80,11 @@ $MAIN {
     let max_temp = max(max_val.xy, max_val.zw);
     let scale = max(max_temp[0], max_temp[1]);
     let norm_a = a_values[local_row][local_col]/scale;
-    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    output.setByOffset(global_idx, pack4x8snorm(vec4<f32>(norm_a)));
     if (local_col == 0u)
     {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales[workgroup_idx * 2 + local_row] = scale/127;
+      scales.setByOffset(workgroup_idx * 2 + local_row, scale/127);
     }
   }
 }

@@ -91,7 +91,7 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims);
+  return AddVariableImpl(true, name, usage, dims, program_.Inputs()[input_index].segments);
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -101,7 +101,7 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(false, name, usage, dims);
+  return AddVariableImpl(false, name, usage, dims, program_.Outputs()[output_index].segments);
 }
 
 const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
@@ -263,12 +263,16 @@ Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderV
 
 #endif  // NDEBUG
 
-const ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
-                                                          const std::string& name,
-                                                          ShaderUsage usage,
-                                                          const TensorShape& dims) {
-  ORT_ENFORCE(input_vars_.size() + output_vars_.size() < limits_.maxStorageBuffersPerShaderStage,
-              "Too many storage buffers in shader. Max is ", limits_.maxStorageBuffersPerShaderStage);
+ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
+                                                    const std::string& name,
+                                                    ShaderUsage usage,
+                                                    const TensorShape& dims,
+                                                    uint32_t segments) {
+  // Add the segments for the new variable we're about to create
+  numbers_storage_buffers_ += segments;
+  ORT_ENFORCE(numbers_storage_buffers_ <= limits_.maxStorageBuffersPerShaderStage,
+              "Too many storage buffers in shader. Current: ", numbers_storage_buffers_,
+              ", Max is ", limits_.maxStorageBuffersPerShaderStage);
 
   ProgramVariableDataType type = ProgramVariableDataType::InvalidType;
   auto& vars = is_input ? input_vars_ : output_vars_;
@@ -276,12 +280,18 @@ const ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
   if (is_input) {
     const auto& input = program_.Inputs()[vars.size()];
     type = input.var_type;
+    if (segments > 1) {
+      usage |= ShaderUsage::UseGetByOffsetSegments;
+    }
   } else {
     const auto& output = program_.Outputs()[vars.size()];
     type = output.var_type;
+    if (segments > 1) {
+      usage |= ShaderUsage::UseSetByOffsetSegments;
+    }
   }
 
-  const auto& var = vars.emplace_back(std::make_unique<ShaderVariableHelper>(name, type, usage, dims));
+  const auto& var = vars.emplace_back(std::make_unique<ShaderVariableHelper>(name, type, usage, dims, segments, limits_.maxStorageBufferBindingSize));
   return *var;
 }
 
@@ -418,28 +428,49 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Input/output variables
   //
+  size_t binding_index = 0;  // running binding index accounting for segmented buffers
+  // inputs
   for (size_t i = 0; i < input_vars_.size(); ++i) {
     const auto& input = input_vars_[i];
-    ss << "@group(0) @binding(" << i << ") var<storage, read> " << input->name_ << ": array<" << input->StorageType() << ">;\n";
+    uint32_t segments = input->segments_;
+    for (uint32_t seg = 0; seg < segments; ++seg) {
+      ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read> ";
+      if (seg == 0) {
+        ss << input->name_;
+      } else {
+        ss << input->name_ << seg;  // naming convention matches ShaderVariableHelper::Impl usage (name + index)
+      }
+      ss << ": array<" << input->StorageType() << ">;\n";
+    }
   }
+  // outputs
   for (size_t i = 0; i < output_vars_.size(); ++i) {
     const auto& output = output_vars_[i];
     bool is_atomic = program_.Outputs()[i].is_atomic;
-    ss << "@group(0) @binding(" << input_vars_.size() + i << ") var<storage, read_write> " << output->name_ << ": array<";
-    if (is_atomic) {
-      if (output->type_ == ProgramVariableDataType::Float32) {
-        ss << "atomic<i32>";
-      } else if (output->type_ == ProgramVariableDataType::Uint32) {
-        ss << "atomic<u32>";
-      } else if (output->type_ == ProgramVariableDataType::Int32) {
-        ss << "atomic<i32>";
+    uint32_t segments = output->segments_;
+    for (uint32_t seg = 0; seg < segments; ++seg) {
+      ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read_write> ";
+      if (seg == 0) {
+        ss << output->name_;
       } else {
-        ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
+        ss << output->name_ << seg;
       }
-    } else {
-      ss << output->StorageType();
+      ss << ": array<";
+      if (is_atomic) {
+        if (output->type_ == ProgramVariableDataType::Float32) {
+          ss << "atomic<i32>";  // emulate float atomic via i32
+        } else if (output->type_ == ProgramVariableDataType::Uint32) {
+          ss << "atomic<u32>";
+        } else if (output->type_ == ProgramVariableDataType::Int32) {
+          ss << "atomic<i32>";
+        } else {
+          ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
+        }
+      } else {
+        ss << output->StorageType();
+      }
+      ss << ">;\n";
     }
-    ss << ">;\n";
   }
 
   //
@@ -559,7 +590,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 
     ss << "\n};\n"
           "@group(0) @binding("
-       << input_vars_.size() + output_vars_.size() << ") var<uniform> uniforms: Uniforms;\n";
+       << binding_index << ") var<uniform> uniforms: Uniforms;\n";
   }
 
   //

@@ -69,6 +69,8 @@ struct ShaderUsage {
     UseSetByIndices = 512,                // use implementation of fn set_{name}_by_indices
     UseGet = 1024,                        // use implementation of fn get_{name}
     UseGetByIndices = 2048,               // use implementation of fn get_{name}_by_indices
+    UseGetByOffsetSegments = 4096,        // use implementation of fn get_{name}_by_offset
+    UseSetByOffsetSegments = 8192,        // use implementation of fn set_{name}_by_offset
     UseUniform = 32768,                   // use uniform for shape and stride
   } usage;
 
@@ -157,7 +159,7 @@ class ShaderIndicesHelper {
 // A helper class to make it easier to generate shader code related to a variable setting/getting and its indices calculation.
 class ShaderVariableHelper : public ShaderIndicesHelper {
  public:
-  ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims);
+  ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims, uint32_t segments, uint64_t maxStorageBufferBindingSize);
 
   ShaderVariableHelper(ShaderVariableHelper&&) = default;
   ShaderVariableHelper& operator=(ShaderVariableHelper&&) = default;
@@ -202,6 +204,9 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   std::string_view StorageType() const;
   std::string_view ValueType() const;
   std::string_view ElementType() const;
+
+  uint32_t segments_ = 1;
+  uint64_t max_storage_buffer_binding_size_ = 0;
 
   friend class ShaderHelper;
 };

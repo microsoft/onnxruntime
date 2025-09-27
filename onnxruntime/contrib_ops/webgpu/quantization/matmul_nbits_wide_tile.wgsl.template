@@ -6,6 +6,8 @@
 #param tile_m
 #param tile_n
 
+#use .getByOffset .setByOffset
+
 // Only support Block32 at the moment.
 const KAVecSizeForBlock32 = 8u;
 
@@ -58,7 +60,7 @@ fn load_zero(row : u32, col : u32, r_dim : u32, c_dim : u32) -> output_element_t
 fn load_a(batch : u32, row : u32, col : u32) -> input_a_value_t {
   if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.K_of_a) {
     let offset = batch * uniforms.M * uniforms.K_of_a + row * uniforms.K_of_a + col;
-    return input_a[offset];
+    return a.getByOffset(offset);
   }
   return input_a_value_t();
 }
@@ -66,7 +68,7 @@ fn load_a(batch : u32, row : u32, col : u32) -> input_a_value_t {
 fn load_scale(row : u32, block_idx : u32) -> output_element_t {
   if (row < uniforms.N && block_idx < uniforms.n_blocks_per_col) {
     let offset = row * uniforms.n_blocks_per_col + block_idx;
-    return scales[offset];
+    return scales.getByOffset(offset);
   }
   return output_element_t();
 }
@@ -74,7 +76,7 @@ fn load_scale(row : u32, block_idx : u32) -> output_element_t {
 fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
   if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.N) {
     let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
-    output[offset] = value;
+    output.setByOffset(offset, value);
   }
 }
 
@@ -82,7 +84,7 @@ fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
 fn load_b(row : u32, block_idx : u32) -> vec4<input_b_element_t> {
   if (row < uniforms.N && block_idx < uniforms.K_of_b) {
     let offset = row * uniforms.K_of_b + block_idx;
-    return input_b[offset];
+    return b.getByOffset(offset);
   }
   return vec4<input_b_element_t>();
 }
@@ -112,10 +114,10 @@ fn load_b(row : u32, block_idx : u32) -> array<vec2<u32>, 4> {
   if (row < uniforms.N) {
     let offset = 2 * block_idx;
     let b_data_0 = select(input_b_value_t(),
-                          input_b[row * uniforms.K_of_b + offset],
+                          b.getByOffset(row * uniforms.K_of_b + offset),
                           offset < uniforms.K_of_b);
     let b_data_1 = select(input_b_value_t(),
-                          input_b[row * uniforms.K_of_b + offset + 1],
+                          b.getByOffset(row * uniforms.K_of_b + offset + 1),
                           offset + 1 < uniforms.K_of_b);
 
     let b_data = array<vec2<u32>, 4>(
