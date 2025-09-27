@@ -44,7 +44,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
-#include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/subgraph_memcpy_minimizer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
@@ -1520,6 +1520,19 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
     for (auto& provider_ptr : execution_providers_) {
       providers.push_back(provider_ptr.get());
+    }
+
+    if (providers.size() > 0) {
+      // Run this transfomer only if Cuda is present and resource constrained partitioning is not
+      // enabled.
+      auto cuda_ep_iter = std::find_if(providers.begin(), providers.end(),
+                                       [](const IExecutionProvider* p) {
+                                         return p->Type() == onnxruntime::kCudaExecutionProvider;
+                                       });
+      if (cuda_ep_iter != providers.end()) {
+        SubgraphMemcpyMinimizer subgraph_memcpy_minimizer{session_options_.config_options};
+        ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(subgraph_memcpy_minimizer, *session_logger_, graph));
+      }
     }
 
     MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
