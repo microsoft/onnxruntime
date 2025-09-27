@@ -560,7 +560,7 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
-#if defined(MLAS_USE_ARM_NCHWC)
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;

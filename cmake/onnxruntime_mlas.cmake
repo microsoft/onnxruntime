@@ -132,8 +132,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
       )
 
-      if (onnxruntime_ARM_USE_NCHWC)
-		setup_arm_nchwc()	
+      if (onnxruntime_USE_ARM_NEON_NCHWC)
+		setup_arm_neon_nchwc()	
 	  endif()
       
 	  if (onnxruntime_USE_KLEIDIAI)
@@ -291,12 +291,13 @@ function(setup_kleidiai)
   endif()
 endfunction()
 
-function (setup_arm_nchwc)
+function (setup_arm_neon_nchwc)
   target_sources(onnxruntime_mlas PRIVATE
+   ${MLAS_SRC_DIR}/sconv.h  
    ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
    ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
   )
-  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_ARM_NCHWC)
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_ARM_NEON_NCHWC)
 endfunction ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -453,8 +454,8 @@ else()
           target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_SVE)
         endif()
 
-        if (onnxruntime_ARM_USE_NCHWC)
-		  setup_arm_nchwc()	
+        if (onnxruntime_USE_ARM_NEON_NCHWC)
+		  setup_arm_neon_nchwc()	
 		endif()
         
 		if (onnxruntime_USE_KLEIDIAI)

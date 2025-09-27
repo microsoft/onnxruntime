@@ -14,7 +14,7 @@ Abstract:
 
 --*/
 
-#if defined(MLAS_USE_ARM_NCHWC)
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
 
 #include "mlasi.h"
 

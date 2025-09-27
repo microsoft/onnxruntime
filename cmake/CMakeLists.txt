@@ -88,7 +88,7 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
-option(onnxruntime_ARM_USE_NCHWC "Build with ARM NCHWc kernels in MLAS" OFF)
+option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 # iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
@@ -664,8 +664,8 @@ else()
   endif()
 endif()
 
-if (onnxruntime_ARM_USE_NCHWC)
-  message(STATUS "Building MLAS with ARM NCHWc kernels")
+if (onnxruntime_USE_ARM_NEON_NCHWC)
+  message(STATUS "Building MLAS with ARM Neon NCHWc kernels")
 endif()
 
 if(onnxruntime_USE_SVE)

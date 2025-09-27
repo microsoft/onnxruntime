@@ -633,12 +633,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cpu_group = parser.add_argument_group("CPU Execution Provider")
     cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
     
-    # The following enables building ORT with NCHWc ARM kernels.
+    # The following enables building ORT with NCHWc Neon ARM kernels.
     # At the time of writing, it is turned OFF by default because its performance relative to "regular" NCHW kernels
     # is not good at smaller thread counts. But its speed-up is non-negligible with higher thread counts on supporting
     # ARM platforms.
     # Once the gap is closed for smaller thread counts, it can be turned on by default.    
-    cpu_group.add_argument("--enable_arm_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels.")
+    cpu_group.add_argument("--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels.")
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")
