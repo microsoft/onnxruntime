@@ -700,6 +700,21 @@ TEST(GradientCheckerTest, CastGrad) {
   }
 }
 
+TEST(GradientCheckerTest, CastLikeGrad) {
+  // A dummy test similar to CastGrad.
+  // TODO: add more test here
+  {
+    TensorShape shape({2, 3, 4});
+    float max_error;
+    float error_tolerance = 1e-3f;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"CastLike", kOnnxDomain, 15};
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape, shape}, {shape}, &max_error));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+}
+
 TEST(GradientCheckerTest, SplitGrad) {
   TensorShape shape({9, 5});
   float max_error;
