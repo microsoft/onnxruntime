@@ -127,6 +127,97 @@ struct MulKernel {
   std::string input1_name;
 };
 
+struct Memcpy : public OrtKernelImpl {
+  static OrtStatus* Create(const OrtKernelInfo* info, /*out*/ std::unique_ptr<Memcpy>& kernel);
+
+  Memcpy(ApiPtrs api) : api{api} {
+    ort_version_supported = ORT_API_VERSION;
+    Compute = ComputeImpl;
+    Release = ReleaseImpl;
+  }
+
+  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
+  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+
+  OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) noexcept;
+
+  ApiPtrs api;
+};
+
+/*static*/
+OrtStatus* Memcpy::Create(const OrtKernelInfo* info,
+                          /*out*/ std::unique_ptr<Memcpy>& result) {
+  (void)info;  // TODO
+  ApiPtrs api = {Ort::GetApi(), Ort::GetEpApi(), Ort::GetModelEditorApi()};
+  result = std::make_unique<Memcpy>(api);
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL Memcpy::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
+  Memcpy* memcpy = static_cast<Memcpy*>(this_ptr);
+  return memcpy->DoCompute(kernel_ctx);
+}
+
+/*static*/
+void ORT_API_CALL Memcpy::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<Memcpy*>(this_ptr);
+}
+
+OrtStatus* Memcpy::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
+  (void)kernel_ctx;  // TODO
+  return nullptr;
+}
+
+template <typename T>
+OrtStatus* BuildKernelCreateInfo(const char* ep_name, /*out*/ OrtKernelCreateInfo** result);
+
+template <>
+OrtStatus* BuildKernelCreateInfo<void>(const char* ep_name, /*out*/ OrtKernelCreateInfo** result) {
+  (void)ep_name;
+  *result = nullptr;
+  return nullptr;
+}
+
+class ExampleEp_MemcpyFromHost_kOnnxDomain_ver1;
+template <>
+OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(const char* ep_name,
+                                                                            /*out*/ OrtKernelCreateInfo** result) {
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+  *result = nullptr;
+
+  // TODO: Create utilities that return these types
+  const OrtMLDataType* float_tensor = nullptr;
+  RETURN_IF_ERROR(ep_api.GetTensorMLDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &float_tensor));
+
+  OrtKernelDefBuilder* builder = nullptr;
+  RETURN_IF_ERROR(ep_api.CreateKernelDefBuilder(&builder));
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetOperatorType(builder, "MemcpyFromHost"));
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetDomain(builder, ""));
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetSinceVersion(builder, 1, -1));
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetExecutionProvider(builder, ep_name));
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetInputMemType(builder, 0, OrtMemType::OrtMemTypeCPUInput));
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_AddTypeConstraint(builder, "T", &float_tensor, 1));
+
+  OrtKernelDef* kernel_def = nullptr;
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_Build(builder, &kernel_def));
+
+  auto kernel_create_func = [](OrtKernelCreateContext* /*ctx*/, void* state, const OrtKernelInfo* info,
+                               OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {
+    (void)state;
+    *kernel_out = nullptr;
+
+    std::unique_ptr<Memcpy> kernel;
+    RETURN_IF_ERROR(Memcpy::Create(info, kernel));
+    *kernel_out = kernel.release();
+    return nullptr;
+  };
+
+  RETURN_IF_ERROR(ep_api.CreateKernelCreationInfo(kernel_def, kernel_create_func, nullptr, result));
+
+  return nullptr;
+}
+
 /// <summary>
 /// Example OrtNodeComputeInfo that represents the computation function for a compiled OrtGraph.
 /// </summary>
