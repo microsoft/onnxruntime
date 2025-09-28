@@ -701,17 +701,64 @@ TEST(GradientCheckerTest, CastGrad) {
 }
 
 TEST(GradientCheckerTest, CastLikeGrad) {
-  // A dummy test similar to CastGrad.
-  // TODO: add more test here
+  OpDef op_def{"CastLike", kOnnxDomain, 15};
+  float error_tolerance = 1e-3f;
+  // dummy test like CastGrad
   {
     TensorShape shape({2, 3, 4});
     float max_error;
-    float error_tolerance = 1e-3f;
     GradientChecker<float, float, float> gradient_checker;
-    OpDef op_def{"CastLike", kOnnxDomain, 15};
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape, shape}, {shape}, &max_error));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  // float <-> double
+  {
+    TensorInfo info_f({2, 3, 4}, true, nullptr, DataTypeImpl::GetTensorType<float>());
+    TensorInfo info_d({2, 3, 4}, true, nullptr, DataTypeImpl::GetTensorType<double>());
+    // float -> double
+    {
+      float max_error;
+      GradientChecker<float, float, float> gradient_checker;
+
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {info_f, info_d}, {info_d}, &max_error));
+      EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    }
+    // double -> float
+    {
+      float max_error;
+      GradientChecker<float, float, float> gradient_checker;
+
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {info_d, info_f}, {info_f}, &max_error));
+      EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    }
+  }
+
+  // float <-> int32_t
+  {
+    TensorInfo info_i({2, 3, 4}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>());
+    TensorInfo info_f({2, 3, 4}, true, nullptr, DataTypeImpl::GetTensorType<float>());
+    /*
+    // float -> int32_t
+    // This part causes programming error
+    {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    TensorInfo info_i_g({2, 3, 4}, true, nullptr, DataTypeImpl::GetTensorType<int32_t>());
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {info_f, info_i}, {info_i_g}, &max_error));
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    }
+    */
+    // int32_t -> float
+    {
+      float max_error;
+      GradientChecker<float, float, float> gradient_checker;
+
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {info_i, info_f}, {info_f}, &max_error));
+      EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    }
   }
 }
 
