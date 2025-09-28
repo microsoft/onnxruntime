@@ -149,9 +149,6 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
   uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
   TransposeProgram program{permutations, use_shared};
 
-  if (use_shared) {
-    program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
-  }
   program
       .CacheHint(absl::StrJoin(permutations, "-"))
       .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
@@ -162,10 +159,11 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
           {static_cast<uint32_t>(output_size)},
       });
 
-  if(use_shared) {
-    program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
-                                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)));
+  if (use_shared) {
+    program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
   } else {
+    program.SetWorkgroupSize(WORKGROUP_SIZE);
+
     uint32_t dispatch_x = ceil_div(output_size, WORKGROUP_SIZE);
     uint32_t dispatch_y = 1;
     uint32_t dispatch_z = 1;
