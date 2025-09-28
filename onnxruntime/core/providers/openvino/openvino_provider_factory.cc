@@ -171,7 +171,7 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     if (!device_mode.empty()) {
       selected_device = device_mode + ":" + ov_luid_devices;
       for (const auto& dev_str : devices_to_check) {
-        const auto default_dev = split(dev_str, '.')[0];
+        const std::string default_dev = split(dev_str, '.')[0];
 
         if (ov_luid_devices.find(default_dev) == std::string::npos)
           selected_device = selected_device + "," + dev_str;
@@ -228,6 +228,10 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 
   if (provider_options.contains("reshape_input")) {
     pi.reshape = OpenVINOParserUtils::ParseInputShape(provider_options.at("reshape_input"));
+  }
+
+  if (provider_options.contains("layout")) {
+    pi.layout = OpenVINOParserUtils::ParseLayout(provider_options.at("layout"));
   }
 
   if (provider_options.contains("load_config")) {
@@ -526,7 +530,7 @@ struct OpenVINO_Provider : Provider {
     std::string ov_device_string;
     if (is_meta_device_factory) {
       // Build up a meta device string based on the devices that are passed in. E.g. AUTO:NPU,GPU.0,CPU
-      ov_device_string = ov_meta_device_type;
+      ov_device_string = std::move(ov_meta_device_type);
       ov_device_string += ":";
     }
 
@@ -539,7 +543,7 @@ struct OpenVINO_Provider : Provider {
       prepend_comma = true;
     }
 
-    provider_options["device_type"] = ov_device_string;
+    provider_options["device_type"] = std::move(ov_device_string);
 
     // Parse provider info with the device type
     ProviderInfo pi;

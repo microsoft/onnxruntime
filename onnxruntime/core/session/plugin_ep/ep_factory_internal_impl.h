@@ -62,8 +62,13 @@ class EpFactoryInternalImpl {
     return false;
   }
 
-  virtual OrtStatus* ValidateCompiledModelCompatibilityInfo(_In_ const char* compatibility_info,
-                                                            _Out_ OrtCompiledModelCompatibility* model_compatibility) noexcept {
+  virtual OrtStatus* ValidateCompiledModelCompatibilityInfo(
+      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+      _In_ size_t num_devices,
+      _In_ const char* compatibility_info,
+      _Out_ OrtCompiledModelCompatibility* model_compatibility) noexcept {
+    ORT_UNUSED_PARAMETER(devices);
+    ORT_UNUSED_PARAMETER(num_devices);
     ORT_UNUSED_PARAMETER(compatibility_info);
     // Default implementation: mark as not applicable
     *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;

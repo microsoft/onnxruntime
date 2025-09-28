@@ -79,6 +79,8 @@ int GetFirstAvailableDevice(SessionContext& session_context);
 
 void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedValue& out_tensor);
 
+std::shared_ptr<OVNetwork> Set_Layout(std::shared_ptr<OVNetwork> ov_model, const layout_t& layout);
+
 template <typename T>
 void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node);
 

@@ -33,13 +33,6 @@ using json = nlohmann::json;
 #include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
 
-// Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
-// GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
-// GCC 4.x.
-// (This static var is referenced in some tests below)
-const OrtDevice::DeviceType OrtDevice::GPU;
-const OrtDevice::DeviceType OrtDevice::CPU;
-
 namespace onnxruntime {
 #ifdef USE_CUDA
 ProviderInfo_CUDA& GetProviderInfo_CUDA();

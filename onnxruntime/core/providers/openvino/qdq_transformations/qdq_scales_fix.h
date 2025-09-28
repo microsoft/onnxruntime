@@ -15,5 +15,10 @@ Status Transform(const GraphViewer& src_graph,
                  const logging::Logger& logger,
                  /*out*/ std::unique_ptr<onnxruntime::Model>& model);
 }
+namespace bfloat16_fix {
+Status Transform(const GraphViewer& src_graph,
+                 const logging::Logger& logger,
+                 /*out*/ std::unique_ptr<onnxruntime::Model>& model);
+}
 }  // namespace openvino_ep
 }  // namespace onnxruntime

@@ -70,6 +70,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
 
 using config_t = std::map<std::string, ov::AnyMap>;
 using reshape_t = std::map<std::string, ov::PartialShape>;
+using layout_t = std::map<std::string, ov::Layout>;
 
 struct ProviderInfo {
   std::string device_type{""};             // [device_type]: Overrides the accelerator hardware type and
@@ -88,6 +89,7 @@ struct ProviderInfo {
                                            // (GPU) feature. If blob files are already present,
                                            // it will be directly loaded.
   reshape_t reshape{};                     // Used for reshaping the ov input tensor shape at runtime.
+  layout_t layout{};                       // Used for specifying the ov input/output tensor layout at runtime.
   std::string model_priority{"DEFAULT"};   // High-level OpenVINO model priority hint
                                            // Defines what model should be provided with more performant
                                            // bounded resource first
@@ -110,7 +112,7 @@ struct ProviderInfo {
   const ConfigOptions* config_options{NULL};
   const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
-                                                               "enable_causallm", "disable_dynamic_shapes", "reshape_input"};
+                                                               "enable_causallm", "disable_dynamic_shapes", "reshape_input", "layout"};
 };
 
 // Holds context applicable to the entire EP instance.

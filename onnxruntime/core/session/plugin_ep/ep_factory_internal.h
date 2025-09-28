@@ -80,9 +80,11 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
-  OrtStatus* ValidateCompiledModelCompatibilityInfo(_In_ const char* compatibility_info,
+  OrtStatus* ValidateCompiledModelCompatibilityInfo(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                                    _In_ size_t num_devices,
+                                                    _In_ const char* compatibility_info,
                                                     _Out_ OrtCompiledModelCompatibility* model_compatibility) noexcept {
-    return impl_->ValidateCompiledModelCompatibilityInfo(compatibility_info, model_compatibility);
+    return impl_->ValidateCompiledModelCompatibilityInfo(devices, num_devices, compatibility_info, model_compatibility);
   }
 
   // Function ORT calls to release an EP instance.

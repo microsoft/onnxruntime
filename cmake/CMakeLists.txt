@@ -87,6 +87,8 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
+
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 # iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
 if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
@@ -159,6 +161,7 @@ option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
+option(onnxruntime_DISABLE_FLOAT4_TYPES "Disable float 4 types" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_CLIENT_PACKAGE_BUILD "Enables default settings that are more appropriate for client/on-device workloads." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON;NOT onnxruntime_USE_CUDA" OFF)
@@ -611,6 +614,7 @@ else()
      message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
    endif()
   endif()
+
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
@@ -656,6 +660,21 @@ else()
   # enable warning(s) that may not be on by default
   if (HAS_SHORTEN_64_TO_32)
     list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
+  endif()
+endif()
+
+if(onnxruntime_USE_SVE)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
+    if(HAS_ARM64_SVE)
+      message(STATUS "Compiler supports SVE!")
+    else()
+      message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
+      set(onnxruntime_USE_SVE OFF)
+    endif()
+  else()
+    message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
+    set(onnxruntime_USE_SVE OFF)
   endif()
 endif()
 
@@ -1035,6 +1054,10 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
     endif()
 
+    if (onnxruntime_DISABLE_FLOAT4_TYPES)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT4_TYPES)
+    endif()
+
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
@@ -1169,7 +1192,7 @@ function(onnxruntime_configure_target target_name)
 
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
-    target_link_options(${target_name} PRIVATE "/CETCOMPAT")
+    target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>" "$<$<LINK_LANGUAGE:CUDA>:-Xlinker=/CETCOMPAT>")
   endif()
 
 endfunction()
@@ -1398,7 +1421,6 @@ configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_c
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
 if (onnxruntime_USE_CUDA)
-  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   set(CMAKE_CUDA_STANDARD 17)
   if(onnxruntime_CUDA_HOME)
     file(TO_CMAKE_PATH CUDAToolkit_ROOT ${onnxruntime_CUDA_HOME})
@@ -1418,6 +1440,14 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
+
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+    if (UNIX)
+      # Suppress deprecation errors (e.g., long4 in CUDA 13)
+      add_compile_options(-Wno-deprecated-declarations)
+    endif()
+  endif()
+
   if (NOT WIN32)
     list(APPEND CUDA_NVCC_FLAGS --compiler-options -fPIC)
   endif()
@@ -1607,7 +1637,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   endif()
 endif()
 
-
 #Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will be included in the next.
 #The order of the following targets matters. Right depends on left. If target A appears before target B. Then A.cmake can not use variables defined in B.cmake.
 set(ONNXRUNTIME_CMAKE_FILES onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME})
@@ -1623,9 +1652,6 @@ if (onnxruntime_USE_WINML)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
-if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
-  message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
-endif()
 list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
 if (onnxruntime_BUILD_JAVA)
@@ -1690,8 +1716,8 @@ if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
   endif()
 endif()
 
-foreach(target_name ${ONNXRUNTIME_CMAKE_FILES})
-  include(${target_name}.cmake)
+foreach(onnxruntime_cmake_file ${ONNXRUNTIME_CMAKE_FILES})
+  include(${onnxruntime_cmake_file}.cmake)
 endforeach()
 if (UNIX)
   option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)

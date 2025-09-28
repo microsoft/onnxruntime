@@ -694,12 +694,6 @@ public class InferenceTest {
   }
 
   @Test
-  @EnabledIfSystemProperty(named = "USE_ROCM", matches = "1")
-  public void testROCM() throws OrtException {
-    runProvider(OrtProvider.ROCM);
-  }
-
-  @Test
   @EnabledIfSystemProperty(named = "USE_TENSORRT", matches = "1")
   public void testTensorRT() throws OrtException {
     runProvider(OrtProvider.TENSOR_RT);
@@ -723,6 +717,18 @@ public class InferenceTest {
   @DisabledOnOs(value = OS.WINDOWS)
   public void testDNNL() throws OrtException {
     runProvider(OrtProvider.DNNL);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_MIGRAPHX", matches = "1")
+  public void testMIGRAPHX() throws OrtException {
+    runProvider(OrtProvider.MI_GRAPH_X);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_NNAPI", matches = "1")
+  public void testNNAPI() throws OrtException {
+    runProvider(OrtProvider.NNAPI);
   }
 
   @Test

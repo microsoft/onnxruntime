@@ -144,6 +144,12 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
   // Test CPU execution provider (always available)
   // Skip CPU test if FC3 weights are provided since CPU doesn't support FC3
   if (fc3_experts_weights.empty()) {
+    // Ensure CPU EP is available before running CPU tests
+    auto cpu_ep = DefaultCpuExecutionProvider();
+    if (!cpu_ep) {
+      return;  // Skip CPU test if CPU EP is not available
+    }
+
     OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
     cpu_tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
     cpu_tester.AddAttribute<std::string>("activation_type", activation_type);
@@ -1323,6 +1329,13 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 
 // CPU-specific QMoE tests
 TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
+#ifdef USE_MLAS
+  // Skip this test if we're not testing CPU execution provider
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
+
   int num_rows = 2;
   int num_experts = 2;
   int hidden_size = 32;
@@ -1387,9 +1400,19 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
 }
 
 TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
+#ifdef USE_MLAS
+  // Skip this test if we're not testing CPU execution provider
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
+
   // Test CPU implementation with 8-bit quantization - CPU ONLY
   int num_rows = 1;
   int num_experts = 2;
@@ -1446,9 +1469,19 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
 }
 
 TEST(MoETest, QMoETest_CPU_FC3_Error) {
+#ifdef USE_MLAS
+  // Skip this test if we're not testing CPU execution provider
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
+
   // Test that CPU throws error when FC3 gating is provided - CPU ONLY
   int num_rows = 1;
   int num_experts = 2;
@@ -1506,9 +1539,19 @@ TEST(MoETest, QMoETest_CPU_FC3_Error) {
 
   // Expect this to fail with FC3 not implemented error
   cpu_tester.Run(OpTester::ExpectResult::kExpectFailure, "FC3 gating is not yet implemented", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
 }
 
 TEST(MoETest, QMoETest_CPU_SwiGLU_Int4) {
+#ifdef USE_MLAS
+  // Skip this test if we're not testing CPU execution provider
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
+
   // Test CPU implementation with 4-bit quantization and SwiGLU activation
   int num_rows = 2;
   int num_experts = 2;
@@ -1573,9 +1616,18 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int4) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
 }
 
 TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
+#ifdef USE_MLAS
+  // Skip this test if we're not testing CPU execution provider
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
   // Test CPU implementation with 8-bit quantization and SwiGLU activation
   int num_rows = 1;
   int num_experts = 2;
@@ -1633,8 +1685,102 @@ TEST(MoETest, QMoETest_CPU_SwiGLU_Int8) {
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
   cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
 }
 
+// Test for CPU MoE implementation
+static void RunMoECpuTest(const std::vector<float>& input, const std::vector<float>& router_probs,
+                          const std::vector<float>& fc1_experts_weights, const std::vector<float>& fc2_experts_weights,
+                          const std::vector<float>& fc3_experts_weights, const std::vector<float>& fc1_experts_bias,
+                          const std::vector<float>& fc2_experts_bias, const std::vector<float>& output_data, int num_rows,
+                          int num_experts, int hidden_size, int inter_size, std::string activation_type,
+                          int normalize_routing_weights = 1, int top_k = 1) {
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
+  tester.AddAttribute<std::string>("activation_type", activation_type);
+  tester.AddAttribute<int64_t>("normalize_routing_weights", static_cast<int64_t>(normalize_routing_weights));
+
+  bool is_swiglu = (activation_type == "swiglu");
+
+  if (is_swiglu) {
+    tester.AddAttribute<int64_t>("swiglu_fusion", static_cast<int64_t>(1));
+    tester.AddAttribute<float>("activation_beta", 1.0f);
+  }
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+
+  int64_t fc1_output_size = is_swiglu ? (2 * inter_size) : inter_size;
+
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, hidden_size, fc1_output_size};
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, inter_size, hidden_size};
+  std::vector<int64_t> fc3_experts_weights_dims = fc1_experts_weights_dims;
+  std::vector<int64_t> fc1_experts_bias_dims = {num_experts, fc1_output_size};
+  std::vector<int64_t> fc2_experts_bias_dims = {num_experts, hidden_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  tester.AddInput<float>("input", input_dims, input);
+  tester.AddInput<float>("router_probs", router_probs_dims, router_probs);
+  tester.AddInput<float>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  if (!fc1_experts_bias.empty()) {
+    tester.AddInput<float>("fc1_experts_bias", fc1_experts_bias_dims, fc1_experts_bias);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  tester.AddInput<float>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  if (!fc2_experts_bias.empty()) {
+    tester.AddInput<float>("fc2_experts_bias", fc2_experts_bias_dims, fc2_experts_bias);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  if (!fc3_experts_weights.empty()) {
+    tester.AddInput<float>("fc3_experts_weights", fc3_experts_weights_dims, fc3_experts_weights);
+  } else {
+    tester.AddOptionalInputEdge<float>();
+  }
+  tester.AddOptionalInputEdge<float>();  // fc3_experts_bias
+
+  tester.AddOutput<float>("output", output_dims, output_data);
+  tester.SetOutputTolerance(0.05f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, MoECpuTest_BasicSwiGLU) {
+  int num_rows = 2;
+  int num_experts = 2;
+  int hidden_size = 4;
+  int inter_size = 8;
+
+  // Simple test data
+  const std::vector<float> input = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  const std::vector<float> router_probs = {
+      0.8f, 0.2f,
+      0.3f, 0.7f};
+
+  const std::vector<float> fc1_experts_weights(num_experts * hidden_size * (2 * inter_size), 0.1f);
+
+  const std::vector<float> fc2_experts_weights(num_experts * inter_size * hidden_size, 0.1f);
+
+  const std::vector<float> fc3_experts_weights = {};  // No FC3
+  const std::vector<float> fc1_experts_bias = {};     // No bias
+  const std::vector<float> fc2_experts_bias = {};     // No bias
+
+  const std::vector<float> output_data = {
+      1.169694f, 1.169694f, 1.169694f, 1.169694f,
+      6.970291f, 6.970291f, 6.970291f, 6.970291f};
+
+  RunMoECpuTest(input, router_probs, fc1_experts_weights, fc2_experts_weights,
+                fc3_experts_weights, fc1_experts_bias, fc2_experts_bias, output_data,
+                num_rows, num_experts, hidden_size, inter_size, "swiglu");
+}
 #endif
 
 }  // namespace test

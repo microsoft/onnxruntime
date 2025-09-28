@@ -83,17 +83,17 @@ stages:
       artifactName: 'onnxruntime-android-qnn-aar'
       packageName: 'onnxruntime-android-qnn'
       #TODO: get this information from the setup stage
-      QnnSDKVersion: '2.37.1.250807'
+      QnnSDKVersion: '2.38.0.250901'
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
+    AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_android.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
+    AgentPool : 'onnxruntime-Win-CPU-VS2022-Latest'
     ArtifactSuffix: 'CPU'
 
 - template: nuget/templates/test_linux.yml
@@ -109,7 +109,7 @@ stages:
 
 - template: nodejs/templates/test_win.yml
   parameters:
-    AgentPool: 'onnxruntime-Win-CPU-2022'
+    AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
     StageSuffix: 'Win_CPU_x64'
 
 - template: nodejs/templates/test_linux.yml
@@ -175,6 +175,10 @@ stages:
           artifact: 'Windows_Packaging_cuda_build_artifacts'
           displayName: 'Download Windows GPU Packages Build'
 
+        - template: templates/setup-build-tools.yml
+          parameters:
+            host_cpu_arch: 'x64'
+
         - task: CmdLine@2
           inputs:
             script: |
@@ -188,17 +192,6 @@ stages:
             jdkArchitectureOption: x64
             jdkSourceOption: 'PreInstalled'
 
-        - task: UsePythonVersion@0
-          inputs:
-            versionSpec: '3.12'
-            addToPath: true
-            architecture: x64
-
-        - task: PipAuthenticate@1
-          displayName: 'Pip Authenticate'
-          inputs:
-            artifactFeeds: 'Lotus'
-
         - task: PythonScript@0
           displayName: 'Update CTest Path References'
           inputs:
@@ -206,10 +199,6 @@ stages:
             arguments: >
               "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
               "$(Build.BinariesDirectory)/RelWithDebInfo"
-
-        - task: NodeTool@0
-          inputs:
-            versionSpec: '22.x'
 
         - template: templates/jobs/download_win_gpu_library.yml
           parameters:
@@ -223,12 +212,6 @@ stages:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
             workingDirectory: '$(Build.BinariesDirectory)'
-        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
-        - template: templates/make_java_win_binaries.yml
-          parameters:
-            msbuildPlatform: x64
-            java_artifact_id: onnxruntime_gpu
-            buildOnly: false
 
 - stage: Windows_Packaging_Tensorrt_Testing
   dependsOn: Setup
@@ -242,11 +225,14 @@ stages:
         - checkout: self
           clean: true
           submodules: none
-
-
+        
         - download: build
           artifact: 'Windows_Packaging_tensorrt_build_artifacts'
           displayName: 'Download Windows GPU Packages Build'
+
+        - template: templates/setup-build-tools.yml
+          parameters:
+            host_cpu_arch: 'x64'
 
         - task: CmdLine@2
           inputs:
@@ -260,18 +246,7 @@ stages:
             versionSpec: "17"
             jdkArchitectureOption: x64
             jdkSourceOption: 'PreInstalled'
-
-        - task: UsePythonVersion@0
-          inputs:
-            versionSpec: '3.12'
-            addToPath: true
-            architecture: x64
-
-        - task: PipAuthenticate@1
-          displayName: 'Pip Authenticate'
-          inputs:
-            artifactFeeds: 'Lotus'
-
+       
         - task: PythonScript@0
           displayName: 'Update CTest Path References'
           inputs:
@@ -279,10 +254,6 @@ stages:
             arguments: >
               "$(Build.BinariesDirectory)/RelWithDebInfo/CTestTestfile.cmake"
               "$(Build.BinariesDirectory)/RelWithDebInfo"
-
-        - task: NodeTool@0
-          inputs:
-            versionSpec: '22.x'
 
         - template: templates/jobs/download_win_gpu_library.yml
           parameters:
@@ -296,9 +267,3 @@ stages:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests'
             workingDirectory: '$(Build.BinariesDirectory)'
-        # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
-        - template: templates/make_java_win_binaries.yml
-          parameters:
-            msbuildPlatform: x64
-            java_artifact_id: onnxruntime_gpu
-            buildOnly: false
