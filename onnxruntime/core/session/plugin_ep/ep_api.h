@@ -49,15 +49,23 @@ ORT_API(void, ReleaseKernelCreateInfo, _Frees_ptr_opt_ OrtKernelCreateInfo* kern
 
 ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out);
 ORT_API(void, ReleaseKernelDefBuilder, _Frees_ptr_opt_ OrtKernelDefBuilder* kernel_def_builder);
-ORT_API_STATUS_IMPL(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* op_type);
-ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* domain);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ const char* op_type);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ const char* domain);
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                    int since_version_start, int since_version_end);
+                    _In_ int since_version_start, _In_ int since_version_end);
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                    const char* ep_name);
-ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder, _Outptr_ OrtKernelDef** kernel_def_out);
+                    _In_ const char* ep_name);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ size_t input_index, _In_ OrtMemType mem_type);
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ size_t output_index, _In_ OrtMemType mem_type);
+ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _Outptr_ OrtKernelDef** kernel_def_out);
 
 ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def);
-ORT_API_STATUS_IMPL(GetTensorMLDataType, ONNXTensorElementDataType elem_type, const OrtMLDataType** out);
+ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
+                    _Outptr_ const OrtMLDataType** out);
 
 }  // namespace OrtExecutionProviderApi

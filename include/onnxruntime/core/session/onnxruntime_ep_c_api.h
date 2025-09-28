@@ -495,20 +495,24 @@ struct OrtEpApi {
 
   ORT_API2_STATUS(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out);
   ORT_CLASS_RELEASE(KernelDefBuilder);
-  ORT_API2_STATUS(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* op_type);
-  ORT_API2_STATUS(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* domain);
+  ORT_API2_STATUS(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ const char* op_type);
+  ORT_API2_STATUS(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder, _In_ const char* domain);
   ORT_API2_STATUS(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                  int since_version_start, int since_version_end);
+                  _In_ int since_version_start, _In_ int since_version_end);
   ORT_API2_STATUS(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                  const char* ep_name);
-  // ORT_API2_STATUS(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDef* kernel_def, size_t input_index, OrtMemType mem_type);
-  // ORT_API2_STATUS(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDef* kernel_def, size_t output_index, OrtMemType mem_type);
+                  _In_ const char* ep_name);
+  ORT_API2_STATUS(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ size_t input_index, _In_ OrtMemType mem_type);
+  ORT_API2_STATUS(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ size_t output_index, _In_ OrtMemType mem_type);
   ORT_API2_STATUS(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder,
                   _Outptr_ OrtKernelDef** kernel_def_out);
 
   ORT_CLASS_RELEASE(KernelDef);
 
-  ORT_API2_STATUS(GetTensorMLDataType, ONNXTensorElementDataType elem_type, const OrtMLDataType** out);
+  ORT_API2_STATUS(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
+                  _Outptr_ const OrtMLDataType** out);
 };
 
 /**

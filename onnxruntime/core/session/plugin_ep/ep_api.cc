@@ -238,14 +238,15 @@ ORT_API(void, ReleaseKernelDefBuilder, _Frees_ptr_opt_ OrtKernelDefBuilder* kern
 }
 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                    const char* op_type) {
+                    _In_ const char* op_type) {
   API_IMPL_BEGIN
   kernel_def_builder->SetName(op_type);
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder, const char* domain) {
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ const char* domain) {
   API_IMPL_BEGIN
   kernel_def_builder->SetDomain(domain);
   return nullptr;
@@ -253,7 +254,7 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel
 }
 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                    int since_version_start, int since_version_end) {
+                    _In_ int since_version_start, _In_ int since_version_end) {
   API_IMPL_BEGIN
   kernel_def_builder->SinceVersion(since_version_start, since_version_end);
   return nullptr;
@@ -261,9 +262,25 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* 
 }
 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                    const char* ep_name) {
+                    _In_ const char* ep_name) {
   API_IMPL_BEGIN
   kernel_def_builder->Provider(ep_name);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ size_t input_index, _In_ OrtMemType mem_type) {
+  API_IMPL_BEGIN
+  kernel_def_builder->InputMemoryType(mem_type, static_cast<int>(input_index));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ size_t output_index, _In_ OrtMemType mem_type) {
+  API_IMPL_BEGIN
+  kernel_def_builder->InputMemoryType(mem_type, static_cast<int>(output_index));
   return nullptr;
   API_IMPL_END
 }
@@ -280,7 +297,8 @@ ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def) {
   delete kernel_def;
 }
 
-ORT_API_STATUS_IMPL(GetTensorMLDataType, ONNXTensorElementDataType elem_type, const OrtMLDataType** out) {
+ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
+                    _Outptr_ const OrtMLDataType** out) {
   API_IMPL_BEGIN
   const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type);
   *out = static_cast<const OrtMLDataType*>(ml_type);
@@ -321,6 +339,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDefBuilder_SetDomain,
     &OrtExecutionProviderApi::KernelDefBuilder_SetSinceVersion,
     &OrtExecutionProviderApi::KernelDefBuilder_SetExecutionProvider,
+    &OrtExecutionProviderApi::KernelDefBuilder_SetInputMemType,
+    &OrtExecutionProviderApi::KernelDefBuilder_SetOutputMemType,
     &OrtExecutionProviderApi::KernelDefBuilder_Build,
     &OrtExecutionProviderApi::ReleaseKernelDef,
     &OrtExecutionProviderApi::GetTensorMLDataType,
