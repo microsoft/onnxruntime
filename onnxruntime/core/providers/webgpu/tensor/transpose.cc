@@ -8,6 +8,14 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
+namespace {
+
+inline uint32_t ceil_div(int64_t numerator, int32_t denominator) {
+  return static_cast<uint32_t>((numerator + denominator - 1) / denominator);
+}
+
+}  // namespace
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -111,7 +119,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
 
   if (output_shape_ptr) {
     auto dims = output_shape_ptr->GetDims();
-    for (size_t i = 0; i < rank; ++i) {
+    for (int32_t i = 0; i < rank; ++i) {
       output_dims[i] = dims[i];
     }
   } else {
@@ -154,9 +162,28 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
           {static_cast<uint32_t>(output_size)},
       });
 
-  use_shared ? program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
-                                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
-             : program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  if(use_shared) {
+    program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
+                                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)));
+  } else {
+    uint32_t dispatch_x = ceil_div(output_size, WORKGROUP_SIZE);
+    uint32_t dispatch_y = 1;
+    uint32_t dispatch_z = 1;
+
+    // This temporary workaround addresses a significant performance bottleneck
+    // (~12x slower) for the shape (3, 3, 2560, 1280) due to an issue with Intel's
+    // GPU drivers. We manually normalize the dispatch group size to restore
+    // performance.
+    //
+    // TODO: Revert this change once the driver issue is fixed.
+    if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+      ORT_ENFORCE(rank == static_cast<size_t>(4), "Input tensor must have rank 4.");
+      dispatch_x = ceil_div(input_shape[0] * input_shape[1], 2);
+      dispatch_y = ceil_div(input_shape[2], 4);
+      dispatch_z = ceil_div(input_shape[3], 8);
+    }
+    program.SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z);
+  }
   return context.RunProgram(program);
 }
 
