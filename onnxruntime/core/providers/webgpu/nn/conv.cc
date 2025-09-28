@@ -9,14 +9,6 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul.h"
 
-namespace {
-
-inline uint32_t ceil_div(int64_t numerator, int32_t denominator) {
-  return static_cast<uint32_t>((numerator + denominator - 1) / denominator);
-}
-
-}  // namespace
-
 namespace onnxruntime {
 namespace webgpu {
 
