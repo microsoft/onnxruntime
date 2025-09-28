@@ -778,7 +778,7 @@ struct OrtEp {
   ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
             _In_ const OrtGraph* graph);
 
-  ORT_API_T(size_t, GetNumKernelCreateInfos, _In_ const OrtEp* this_ptr);
+  ORT_API_T(size_t, GetNumKernelCreateInfos, _In_ OrtEp* this_ptr);
 
   ORT_API2_STATUS(GetKernelCreateInfos, _In_ OrtEp* this_ptr,
                   _Inout_ OrtKernelCreateInfo** kernel_create_infos,

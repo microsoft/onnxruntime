@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <functional>
 #include <optional>
 #include <string>
@@ -113,3 +114,7 @@ void IsFloatTensor(Ort::ConstValueInfo value_info, bool& result);
 
 // Gets the tensor shape from `value_info`. Returns std::nullopt if `value_info` is not a tensor.
 std::optional<std::vector<int64_t>> GetTensorShape(Ort::ConstValueInfo value_info);
+
+void GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                                /*out*/ gsl::span<const float>& data,
+                                /*out*/ std::vector<int64_t>& shape);

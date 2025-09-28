@@ -3,6 +3,7 @@
 
 #include "example_plugin_ep_utils.h"
 
+#include <gsl/gsl>
 #include <string>
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& /* ort_api */, const OrtSessionOptions& session_options,
@@ -45,4 +46,20 @@ std::optional<std::vector<int64_t>> GetTensorShape(Ort::ConstValueInfo value_inf
 
   const auto type_shape = type_info.GetTensorTypeAndShapeInfo();
   return type_shape.GetShape();
+}
+
+void GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                                /*out*/ gsl::span<const float>& data,
+                                /*out*/ std::vector<int64_t>& shape) {
+  Ort::ConstValue input = kernel_context.GetInput(index);
+  auto type_shape = input.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+  if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
+    throw Ort::Exception("EP Expected float32 inputs", ORT_EP_FAIL);
+
+  const float* float_data = input.GetTensorData<float>();
+  size_t num_elems = type_shape.GetElementCount();
+  data = gsl::span<const float>(float_data, num_elems);
+  shape = type_shape.GetShape();
 }

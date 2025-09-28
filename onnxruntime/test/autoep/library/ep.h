@@ -51,6 +51,12 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos) noexcept;
 
+  static size_t ORT_API_CALL GetNumKernelCreateInfosImpl(_In_ OrtEp* this_ptr) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetKernelCreateInfosImpl(_In_ OrtEp* this_ptr,
+                                                          _Inout_ OrtKernelCreateInfo** kernel_create_infos,
+                                                          _In_ size_t num_kernel_create_infos) noexcept;
+
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 

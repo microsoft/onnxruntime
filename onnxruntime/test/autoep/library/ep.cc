@@ -33,22 +33,6 @@ struct MulKernel {
     return iter != float_initializers.end() ? &iter->second : nullptr;
   }
 
-  void GetInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
-                            /*out*/ gsl::span<const float>& data,
-                            /*out*/ std::vector<int64_t>& shape) const {
-    Ort::ConstValue input = kernel_context.GetInput(index);
-    auto type_shape = input.GetTensorTypeAndShapeInfo();
-
-    ONNXTensorElementDataType elem_type = type_shape.GetElementType();
-    if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-      throw Ort::Exception("EP Expected float32 inputs", ORT_EP_FAIL);
-
-    const float* float_data = input.GetTensorData<float>();
-    size_t num_elems = type_shape.GetElementCount();
-    data = gsl::span<const float>(float_data, num_elems);
-    shape = type_shape.GetShape();
-  }
-
   OrtStatus* Compute(OrtKernelContext* kernel_ctx) {
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
                                               OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -64,19 +48,19 @@ struct MulKernel {
 
       if (num_inputs == 2) {
         // Both inputs are non-constant. Get them from ORT's KernelContext.
-        GetInputDataAndShape(kernel_context, 0, input0, shape0);
-        GetInputDataAndShape(kernel_context, 1, input1, shape1);
+        GetKernelInputDataAndShape(kernel_context, 0, input0, shape0);
+        GetKernelInputDataAndShape(kernel_context, 1, input1, shape1);
       } else if (num_inputs == 1) {
         // ORT is only providing one non-constant input because this EP chose not to request constant initializer inputs.
         // Get the constant input from the initializers saved by the EP.
         // Refer to "NodeFusionOptions_DropConstantInitializers()".
 
         if (const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name); const_input0 != nullptr) {
-          GetInputDataAndShape(kernel_context, 0, input1, shape1);
+          GetKernelInputDataAndShape(kernel_context, 0, input1, shape1);
           input0 = gsl::span<const float>(const_input0->data);
           shape0 = const_input0->shape;
         } else if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name); const_input1 != nullptr) {
-          GetInputDataAndShape(kernel_context, 0, input0, shape0);
+          GetKernelInputDataAndShape(kernel_context, 0, input0, shape0);
           input1 = gsl::span<const float>(const_input1->data);
           shape1 = const_input1->shape;
         }
@@ -165,9 +149,38 @@ void ORT_API_CALL Memcpy::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 }
 
 OrtStatus* Memcpy::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
-  (void)kernel_ctx;  // TODO
+  // TODO: Use DataTransfer
+  const OrtApi& ort_api = api.ort_api;
+  Ort::KernelContext kernel_context(kernel_ctx);
+  try {
+    size_t num_inputs = kernel_context.GetInputCount();
+    RETURN_IF(num_inputs != 1, ort_api, "Expected only 1 input for MemcpyFromHost kernel");
+
+    gsl::span<const float> input0;
+    std::vector<int64_t> shape0;
+    GetKernelInputDataAndShape(kernel_context, 0, input0, shape0);
+
+    size_t num_outputs = kernel_context.GetOutputCount();
+    RETURN_IF(num_outputs != 1, ort_api, "Expected only 1 output for MemcpyFromHost kernel");
+
+    auto output = kernel_context.GetOutput(0, shape0);
+    float* output_data = output.GetTensorMutableData<float>();
+
+    for (size_t i = 0; i < input0.size(); ++i) {
+      output_data[i] = input0[i];  // straight copy
+    }
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
+  }
+
   return nullptr;
 }
+
+using BuildKernelCreateInfoFn = OrtStatus* (*)(const char*, OrtKernelCreateInfo**);
 
 template <typename T>
 OrtStatus* BuildKernelCreateInfo(const char* ep_name, /*out*/ OrtKernelCreateInfo** result);
@@ -191,6 +204,8 @@ OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(cons
   RETURN_IF_ERROR(ep_api.GetTensorMLDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &float_tensor));
 
   OrtKernelDefBuilder* builder = nullptr;
+  DeferOrtRelease<OrtKernelDefBuilder> release_builder(&builder, ep_api.ReleaseKernelDefBuilder);
+
   RETURN_IF_ERROR(ep_api.CreateKernelDefBuilder(&builder));
   RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetOperatorType(builder, "MemcpyFromHost"));
   RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetDomain(builder, ""));
@@ -201,6 +216,7 @@ OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(cons
 
   OrtKernelDef* kernel_def = nullptr;
   RETURN_IF_ERROR(ep_api.KernelDefBuilder_Build(builder, &kernel_def));
+  DeferOrtRelease<OrtKernelDef> release_kernel_def(&kernel_def, ep_api.ReleaseKernelDef);
 
   auto kernel_create_func = [](OrtKernelCreateContext* /*ctx*/, void* state, const OrtKernelInfo* info,
                                OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {
@@ -215,6 +231,28 @@ OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(cons
 
   RETURN_IF_ERROR(ep_api.CreateKernelCreationInfo(kernel_def, kernel_create_func, nullptr, result));
 
+  return nullptr;
+}
+
+static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
+    BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>,
+};
+
+constexpr size_t num_kernels = sizeof(build_kernel_create_info_funcs) /
+                               sizeof(build_kernel_create_info_funcs[0]);
+
+static OrtStatus* CreateKernelCreateInfos(const char* ep_name, std::vector<OrtKernelCreateInfo*>& result) {
+  std::vector<OrtKernelCreateInfo*> kernel_create_infos;
+  kernel_create_infos.reserve(num_kernels);
+
+  for (auto& build_func : build_kernel_create_info_funcs) {
+    OrtKernelCreateInfo* kernel_create_info = nullptr;
+    RETURN_IF_ERROR(build_func(ep_name, &kernel_create_info));
+
+    kernel_create_infos.push_back(kernel_create_info);
+  }
+
+  result = std::move(kernel_create_infos);
   return nullptr;
 }
 
@@ -250,6 +288,8 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
+  GetNumKernelCreateInfos = GetNumKernelCreateInfosImpl;      // optional. can be nullptr
+  GetKernelCreateInfos = GetKernelCreateInfosImpl;            // optional. can be nullptr
 
   auto status = ort_api.Logger_LogMessage(&logger_,
                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -474,6 +514,33 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
   for (size_t i = 0; i < num_node_compute_infos; i++) {
     delete node_compute_infos[i];
   }
+}
+
+/*static*/
+size_t ORT_API_CALL ExampleEp::GetNumKernelCreateInfosImpl(_In_ OrtEp* this_ptr) noexcept {
+  (void)this_ptr;
+  return num_kernels;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetKernelCreateInfosImpl(_In_ OrtEp* this_ptr,
+                                                            _Inout_ OrtKernelCreateInfo** kernel_create_infos,
+                                                            _In_ size_t num_kernel_create_infos) noexcept {
+  if (num_kernel_create_infos != num_kernels) {
+    Ort::Status status("Unexpected number of OrtKernelCreateInfo elements", ORT_EP_FAIL);
+    return status.release();
+  }
+
+  ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+
+  std::vector<OrtKernelCreateInfo*> infos;
+  RETURN_IF_ERROR(CreateKernelCreateInfos(ep->name_.c_str(), infos));
+
+  for (size_t i = 0; i < num_kernel_create_infos; i++) {
+    kernel_create_infos[i] = infos[i];
+  }
+
+  return nullptr;
 }
 
 // Creates EPContext nodes from the given fused nodes.
