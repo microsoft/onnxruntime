@@ -61,6 +61,9 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* 
                     _In_ size_t input_index, _In_ OrtMemType mem_type);
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ size_t output_index, _In_ OrtMemType mem_type);
+ORT_API_STATUS_IMPL(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ const char* arg_name, _In_reads_(num_types) const OrtMLDataType* const* types,
+                    _In_ size_t num_types);
 ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _Outptr_ OrtKernelDef** kernel_def_out);
 

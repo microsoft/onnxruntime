@@ -227,7 +227,7 @@ ORT_API(void, ReleaseKernelCreateInfo, _Frees_ptr_opt_ OrtKernelCreateInfo* kern
 
 ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out) {
   API_IMPL_BEGIN
-  auto builder = KernelDefBuilder::Create();
+  auto builder = onnxruntime::KernelDefBuilder::Create();
   *kernel_def_builder_out = static_cast<OrtKernelDefBuilder*>(builder.release());
   return nullptr;
   API_IMPL_END
@@ -281,6 +281,35 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder*
                     _In_ size_t output_index, _In_ OrtMemType mem_type) {
   API_IMPL_BEGIN
   kernel_def_builder->InputMemoryType(mem_type, static_cast<int>(output_index));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_ const char* arg_name, _In_reads_(num_types) const OrtMLDataType* const* types,
+                    _In_ size_t num_types) {
+  API_IMPL_BEGIN
+  if (num_types == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one OrtMLDataType instance");
+  }
+
+  if (types == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of OrtMLDataType instances");
+  }
+
+  if (arg_name == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a valid name for a kernel definition's type constraint");
+  }
+
+  std::vector<onnxruntime::MLDataType> ml_types;
+  ml_types.reserve(num_types);
+
+  for (size_t i = 0; i < num_types; i++) {
+    ml_types.push_back(static_cast<const onnxruntime::DataTypeImpl*>(types[i]));
+  }
+
+  kernel_def_builder->TypeConstraint(arg_name, std::move(ml_types));
   return nullptr;
   API_IMPL_END
 }
@@ -341,6 +370,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDefBuilder_SetExecutionProvider,
     &OrtExecutionProviderApi::KernelDefBuilder_SetInputMemType,
     &OrtExecutionProviderApi::KernelDefBuilder_SetOutputMemType,
+    &OrtExecutionProviderApi::KernelDefBuilder_AddTypeConstraint,
     &OrtExecutionProviderApi::KernelDefBuilder_Build,
     &OrtExecutionProviderApi::ReleaseKernelDef,
     &OrtExecutionProviderApi::GetTensorMLDataType,
