@@ -121,6 +121,7 @@ MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {
                                                       *static_cast<const OrtSessionOptions*>(ort_session_options),
                                                       g_test_ort_ep_factory,
                                                       ep_devices,
+                                                      /*kernel_registry*/ nullptr,
                                                       logging_manager.DefaultLogger());
 
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};

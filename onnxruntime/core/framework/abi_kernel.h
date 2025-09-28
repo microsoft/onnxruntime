@@ -42,15 +42,22 @@ class PluginEpOpKernel final : public OpKernel {
 
 class PluginEpKernelCreateFunctor {
  public:
+  PluginEpKernelCreateFunctor() : kernel_create_func_(nullptr), kernel_create_func_state_(nullptr) {}
   PluginEpKernelCreateFunctor(OrtKernelCreateFunc create_func, void* state)
       : kernel_create_func_{create_func}, kernel_create_func_state_{state} {}
 
   Status operator()(FuncManager& fn_manager, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+    if (kernel_create_func_ == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "PluginEpKernelCreateFunctor does not wrap a valid OrtKernelCreateFunc");
+    }
+
     OrtKernelCreateContext* create_ctx = reinterpret_cast<OrtKernelCreateContext*>(&fn_manager);
     const OrtKernelInfo* kernel_info = reinterpret_cast<const OrtKernelInfo*>(&info);
     OrtKernelImpl* kernel_impl = nullptr;
 
-    ToStatusAndRelease(kernel_create_func_(create_ctx, kernel_create_func_state_, kernel_info, &kernel_impl));
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        kernel_create_func_(create_ctx, kernel_create_func_state_, kernel_info, &kernel_impl)));
 
     out = std::make_unique<PluginEpOpKernel>(info, kernel_impl);
     return Status::OK();

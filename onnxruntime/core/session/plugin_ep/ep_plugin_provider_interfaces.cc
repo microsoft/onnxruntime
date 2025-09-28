@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "core/framework/abi_kernel.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
@@ -21,6 +22,7 @@
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/plugin_ep/ep_api.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/partitioning_utils.h"
 
@@ -46,18 +48,15 @@ PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_
 std::unique_ptr<IExecutionProvider>
 PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
                                                const OrtLogger& session_logger) {
-  OrtEp* ort_ep = nullptr;
-  Status status = ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(), ep_metadata_.data(),
-                                                          hardware_devices_.size(), &session_options, &session_logger,
-                                                          &ort_ep));
-
+  std::unique_ptr<PluginExecutionProvider> plugin_ep;
+  Status status = PluginExecutionProvider::Create(ep_factory_, devices_, hardware_devices_,
+                                                  ep_metadata_, session_options, session_logger, plugin_ep);
   if (!status.IsOK()) {
-    ORT_THROW("Error creating execution provider: ", status.ToString());
+    LOGS(*session_logger.ToInternal(), ERROR) << "Error creating execution provider: " << status.ToString();
+    return nullptr;
   }
 
-  return std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
-                                                   session_options, ep_factory_, devices_,
-                                                   *session_logger.ToInternal());
+  return plugin_ep;
 }
 
 /// <summary>
@@ -129,14 +128,88 @@ static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
   return node_iter != ep_nodes.end() ? &(*node_iter)->GetInternalNode() : nullptr;
 }
 
+static Status InitKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry) {
+  kernel_registry = nullptr;
+
+  if (ort_ep.GetNumKernelCreateInfos == nullptr || ort_ep.GetKernelCreateInfos == nullptr) {
+    return Status::OK();
+  }
+
+  size_t num_kernels = ort_ep.GetNumKernelCreateInfos(&ort_ep);
+  if (num_kernels == 0) {
+    return Status::OK();
+  }
+
+  std::vector<OrtKernelCreateInfo*> kernel_create_infos(num_kernels);
+  Status status = ToStatusAndRelease(ort_ep.GetKernelCreateInfos(&ort_ep, kernel_create_infos.data(), num_kernels));
+
+  // Store OrtKernelCreateInfo provided by the plugin EP in std::unique_ptr so that they are always properly released.
+  std::vector<std::unique_ptr<OrtKernelCreateInfo, decltype(&OrtExecutionProviderApi::ReleaseKernelCreateInfo)>>
+      kernel_create_infos_holder;
+
+  kernel_create_infos_holder.reserve(num_kernels);
+  for (OrtKernelCreateInfo* kernel_create_info : kernel_create_infos) {
+    auto holder = std::unique_ptr<OrtKernelCreateInfo, decltype(&OrtExecutionProviderApi::ReleaseKernelCreateInfo)>(
+        kernel_create_info, OrtExecutionProviderApi::ReleaseKernelCreateInfo);
+    kernel_create_infos_holder.push_back(std::move(holder));
+  }
+
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  // Add all KernelCreateInfo instances to the KernelRegistry
+  kernel_registry = std::make_shared<KernelRegistry>();
+
+  for (size_t i = 0; i < num_kernels; i++) {
+    OrtKernelCreateInfo* ort_kernel_create_info = kernel_create_infos[i];
+    PluginEpKernelCreateFunctor kernel_create_functor(ort_kernel_create_info->kernel_create_func,
+                                                      ort_kernel_create_info->kernel_create_func_state);
+    KernelCreateInfo kernel_create_info(std::make_unique<KernelDef>(ort_kernel_create_info->kernel_def),  // copy
+                                        kernel_create_functor);
+
+    ORT_RETURN_IF_ERROR(kernel_registry->Register(std::move(kernel_create_info)));
+  }
+
+  return Status::OK();
+}
+
+/*static*/
+Status PluginExecutionProvider::Create(OrtEpFactory& ep_factory,
+                                       gsl::span<const OrtEpDevice* const> ep_devices,
+                                       gsl::span<const OrtHardwareDevice* const> hw_devices,
+                                       gsl::span<const OrtKeyValuePairs* const> ep_metadata,
+                                       const OrtSessionOptions& session_options,
+                                       const OrtLogger& logger,
+                                       /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
+  plugin_ep = nullptr;
+  OrtEp* ort_ep = nullptr;
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory.CreateEp(&ep_factory, hw_devices.data(), ep_metadata.data(),
+                                                             hw_devices.size(), &session_options, &logger,
+                                                             &ort_ep)));
+  ORT_RETURN_IF(ort_ep == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory.GetName(&ep_factory),
+                "' returned a NULL OrtEp instance");
+
+  std::shared_ptr<KernelRegistry> kernel_registry;
+  ORT_RETURN_IF_ERROR(InitKernelRegistry(*ort_ep, kernel_registry));
+
+  plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory)),
+                                                        session_options, ep_factory, ep_devices,
+                                                        kernel_registry,
+                                                        *logger.ToInternal());
+  return Status::OK();
+}
+
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
+                                                 std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
     : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
-      ep_devices_(ep_devices.begin(), ep_devices.end()) {
+      ep_devices_(ep_devices.begin(), ep_devices.end()),
+      kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
   for (const auto* ep_device : ep_devices_) {
@@ -159,6 +232,10 @@ PluginExecutionProvider::~PluginExecutionProvider() {
     ort_ep_->ReleaseNodeComputeInfos(ort_ep_.get(), api_node_compute_infos_.data(),
                                      api_node_compute_infos_.size());
   }
+}
+
+std::shared_ptr<KernelRegistry> PluginExecutionProvider::GetKernelRegistry() const {
+  return kernel_registry_;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

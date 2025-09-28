@@ -357,12 +357,10 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
                                                    info.hardware_devices.size(), &options, &logger,
                                                    &ep)));
   } else {
-    OrtEp* api_ep = nullptr;
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-        info.ep_factory->CreateEp(info.ep_factory, info.hardware_devices.data(), info.ep_metadata.data(),
-                                  info.hardware_devices.size(), &options, &logger, &api_ep)));
-    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)), options,
-                                                   *info.ep_factory, info.devices, *logger.ToInternal());
+    std::unique_ptr<PluginExecutionProvider> plugin_ep;
+    ORT_RETURN_IF_ERROR(PluginExecutionProvider::Create(*info.ep_factory, info.devices, info.hardware_devices,
+                                                        info.ep_metadata, options, logger, plugin_ep));
+    ep = std::move(plugin_ep);
   }
 
   return Status::OK();
