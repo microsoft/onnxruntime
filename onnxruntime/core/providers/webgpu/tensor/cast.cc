@@ -10,11 +10,10 @@
 namespace onnxruntime {
 namespace webgpu {
 
-namespace {
+// Type constraint functions
 const std::vector<MLDataType>& CastOpTypeConstraints() {
   // currently support boolean, integer and float types that explicitly allowed in WGSL:
   // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
-  //
   static std::vector<MLDataType> types{
       DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
@@ -24,62 +23,17 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<int64_t>()};
   return types;
 }
-}  // namespace
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Cast,
-    kOnnxDomain,
-    6, 8,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", CastOpTypeConstraints())
-        .TypeConstraint("T2", CastOpTypeConstraints()),
-    Cast);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Cast,
-    kOnnxDomain,
-    9, 12,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", CastOpTypeConstraints())
-        .TypeConstraint("T2", CastOpTypeConstraints()),
-    Cast);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Cast,
-    kOnnxDomain,
-    13, 18,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", CastOpTypeConstraints())
-        .TypeConstraint("T2", CastOpTypeConstraints()),
-    Cast);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Cast,
-    kOnnxDomain,
-    19, 20,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", CastOpTypeConstraints())
-        .TypeConstraint("T2", CastOpTypeConstraints()),
-    Cast);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Cast,
-    kOnnxDomain,
-    21, 22,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", CastOpTypeConstraints())
-        .TypeConstraint("T2", CastOpTypeConstraints()),
-    Cast);
-ONNX_OPERATOR_KERNEL_EX(
-    Cast,
-    kOnnxDomain,
-    23,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", CastOpTypeConstraints())
-        .TypeConstraint("T2", CastOpTypeConstraints()),
-    Cast);
+const std::vector<MLDataType>& CastOpTypeConstraintsWithoutInt64() {
+  // Type constraints without int64_t support when graph capture is disabled
+  static std::vector<MLDataType> types{
+      DataTypeImpl::GetTensorType<MLFloat16>(),
+      DataTypeImpl::GetTensorType<float>(),
+      DataTypeImpl::GetTensorType<int32_t>(),
+      DataTypeImpl::GetTensorType<uint32_t>(),
+      DataTypeImpl::GetTensorType<bool>()};
+  return types;
+}
 
 Status Cast::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
