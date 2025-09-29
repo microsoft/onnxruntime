@@ -10,7 +10,19 @@
 #endif
 
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+// 'fp4_interpretation' : unreferenced parameter
+#pragma warning(disable : 4100)
+#endif
+
 #include <cuda_fp4.h>
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 #endif
 
 #include "core/providers/shared_library/provider_api.h"

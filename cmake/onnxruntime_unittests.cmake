@@ -1523,7 +1523,7 @@ endif()
       list(APPEND onnxruntime_shared_lib_test_LIBS cpuinfo)
     endif()
     if (onnxruntime_USE_CUDA)
-      list(APPEND onnxruntime_shared_lib_test_LIBS)
+      list(APPEND onnxruntime_shared_lib_test_LIBS CUDA::cudart)
     endif()
 
     if (onnxruntime_USE_TENSORRT)
@@ -1751,6 +1751,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (HAS_QSPECTRE)
       list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /Qspectre>")
     endif()
+    set(custom_op_lib_link ${custom_op_lib_link} CUDA::cudart)
   endif()
 
   file(GLOB custom_op_src ${custom_op_src_patterns})
@@ -1973,6 +1974,7 @@ endif()
 if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
+  # example_plugin_ep
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/*.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
@@ -1994,6 +1996,9 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
 
   set_property(TARGET example_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
+
+  set_target_properties(example_plugin_ep PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_library_src})
 
   # test library
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
