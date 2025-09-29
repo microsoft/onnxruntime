@@ -153,14 +153,14 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
       .CacheHint(absl::StrJoin(permutations, "-"))
       .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
       .AddOutputs({{&output, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
-      .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
-                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
       .AddUniformVariables({
           {static_cast<uint32_t>(output_size)},
       });
 
   if (use_shared) {
     program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
+    program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
+                                  static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)));
   } else {
     program.SetWorkgroupSize(WORKGROUP_SIZE);
 
