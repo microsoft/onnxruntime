@@ -74,7 +74,7 @@ endif()
 if(DEFINED onnxruntime_target_platform)
   message(STATUS "onnxruntime_target_platform = ${onnxruntime_target_platform}")
 else()
-  message(STATUS "onnxruntime_target_platform is not set")
+  message(WARNING "onnxruntime_target_platform is not set")
 endif()
 
 endblock()

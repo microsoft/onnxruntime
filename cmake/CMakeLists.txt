@@ -255,14 +255,6 @@ endif()
 
 include(detect_onnxruntime_target_platform.cmake)
 
-if (APPLE)
-  if (NOT CMAKE_OSX_ARCHITECTURES)
-    message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR} CPU ARCH")
-  endif()
-elseif (NOT WIN32 AND NOT APPLE)
-  message("Building ONNX Runtime for ${onnxruntime_target_platform} CPU ARCH")
-endif()
-
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
 # 1. ORTModule
