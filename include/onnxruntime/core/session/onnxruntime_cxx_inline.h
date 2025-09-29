@@ -3544,4 +3544,52 @@ inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
 }
 #endif
 
+inline KernelDefBuilder::KernelDefBuilder() {
+  ThrowOnError(GetEpApi().CreateKernelDefBuilder(&p_));
+}
+
+inline KernelDefBuilder::KernelDefBuilder(OrtKernelDefBuilder* p) : detail::Base<OrtKernelDefBuilder>{p} {
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetOperatorType(const char* op_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetOperatorType(p_, op_type));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetDomain(const char* domain) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetDomain(p_, domain));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetSinceVersion(int since_version_start, int since_version_end) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetSinceVersion(p_, since_version_start, since_version_end));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetExecutionProvider(const char* ep_name) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetExecutionProvider(p_, ep_name));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetInputMemType(size_t input_index, OrtMemType mem_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetInputMemType(p_, input_index, mem_type));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetOutputMemType(size_t output_index, OrtMemType mem_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetOutputMemType(p_, output_index, mem_type));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
+                                                             const OrtMLDataType* const* data_types,
+                                                             size_t num_data_types) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, data_types, num_data_types));
+  return *this;
+}
+
+inline Status KernelDefBuilder::Build(OrtKernelDef*& kernel_def) {
+  return Status{GetEpApi().KernelDefBuilder_Build(p_, &kernel_def)};
+}
+
 }  // namespace Ort

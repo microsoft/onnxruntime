@@ -644,6 +644,7 @@ ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
@@ -3282,6 +3283,27 @@ struct Model : detail::ModelImpl<OrtModel> {
   //< Wraps GetModelEditorApi().CreateModel()
   explicit Model(const std::vector<DomainOpsetPair>& opsets);
 #endif
+};
+
+/** \brief Builder for OrtKernelDef.
+ *
+ * Used by plugin EPs to build a kernel definition.
+ */
+struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
+  KernelDefBuilder();                           ///< Wraps OrtEpApi::CreateKernelDefBuilder
+  explicit KernelDefBuilder(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used
+  explicit KernelDefBuilder(OrtKernelDefBuilder* ort_kernel_def_builder);
+
+  KernelDefBuilder& SetOperatorType(const char* op_type);
+  KernelDefBuilder& SetDomain(const char* domain);
+  KernelDefBuilder& SetSinceVersion(int since_version_start, int since_version_end = -1);
+  KernelDefBuilder& SetExecutionProvider(const char* ep_name);
+  KernelDefBuilder& SetInputMemType(size_t input_index, OrtMemType mem_type);
+  KernelDefBuilder& SetOutputMemType(size_t output_index, OrtMemType mem_type);
+  KernelDefBuilder& AddTypeConstraint(const char* arg_name, const OrtMLDataType* const* data_types,
+                                      size_t num_data_types);
+
+  Status Build(OrtKernelDef*& kernel_def_out);
 };
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

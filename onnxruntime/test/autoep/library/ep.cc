@@ -393,7 +393,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetKernelCreateInfosImpl(_In_ OrtEp* this_ptr
   RETURN_IF_ERROR(CreateKernelCreateInfos(ep->name_.c_str(), infos));
 
   for (size_t i = 0; i < num_kernel_create_infos; i++) {
-    kernel_create_infos[i] = infos[i];
+    kernel_create_infos[i] = infos[i];  // transfer ownership to ORT.
   }
 
   return nullptr;

@@ -91,39 +91,49 @@ class ExampleEp_MemcpyFromHost_kOnnxDomain_ver1;
 template <>
 OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(const char* ep_name,
                                                                             /*out*/ OrtKernelCreateInfo** result) {
-  const OrtEpApi& ep_api = Ort::GetEpApi();
-  *result = nullptr;
+  try {
+    const OrtEpApi& ep_api = Ort::GetEpApi();
+    *result = nullptr;
 
-  std::array<const OrtMLDataType*, 1> tensor_types = {};
-  RETURN_IF_ERROR(MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_types[0]));
+    std::array<const OrtMLDataType*, 1> tensor_types = {};
+    RETURN_IF_ERROR(MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_types[0]));
 
-  OrtKernelDefBuilder* builder = nullptr;
-  DeferOrtRelease<OrtKernelDefBuilder> release_builder(&builder, ep_api.ReleaseKernelDefBuilder);
+    Ort::KernelDefBuilder builder;
 
-  RETURN_IF_ERROR(ep_api.CreateKernelDefBuilder(&builder));
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetOperatorType(builder, "MemcpyFromHost"));
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetDomain(builder, ""));
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetSinceVersion(builder, 1, -1));
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetExecutionProvider(builder, ep_name));
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetInputMemType(builder, 0, OrtMemType::OrtMemTypeCPUInput));
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_AddTypeConstraint(builder, "T", tensor_types.data(), tensor_types.size()));
+    builder.SetOperatorType("MemcpyFromHost")
+        .SetDomain("")
+        .SetSinceVersion(1)
+        .SetExecutionProvider(ep_name)
+        .SetInputMemType(0, OrtMemType::OrtMemTypeCPUInput)
+        .AddTypeConstraint("T", tensor_types.data(), tensor_types.size());
 
-  OrtKernelDef* kernel_def = nullptr;
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_Build(builder, &kernel_def));
-  DeferOrtRelease<OrtKernelDef> release_kernel_def(&kernel_def, ep_api.ReleaseKernelDef);
+    OrtKernelDef* kernel_def = nullptr;
+    if (Ort::Status status = builder.Build(kernel_def); !status.IsOK()) {
+      return status.release();
+    }
 
-  auto kernel_create_func = [](OrtKernelCreateContext* /*ctx*/, void* state, const OrtKernelInfo* info,
-                               OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {
-    (void)state;
-    *kernel_out = nullptr;
+    DeferOrtRelease<OrtKernelDef> release_kernel_def(&kernel_def, ep_api.ReleaseKernelDef);
 
-    std::unique_ptr<Memcpy> kernel;
-    RETURN_IF_ERROR(Memcpy::Create(info, kernel));
-    *kernel_out = kernel.release();
-    return nullptr;
-  };
+    auto kernel_create_func = [](OrtKernelCreateContext* /*ctx*/, void* state, const OrtKernelInfo* info,
+                                 OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {
+      (void)state;
+      *kernel_out = nullptr;
 
-  RETURN_IF_ERROR(ep_api.CreateKernelCreationInfo(kernel_def, kernel_create_func, nullptr, result));
+      std::unique_ptr<Memcpy> kernel;
+      RETURN_IF_ERROR(Memcpy::Create(info, kernel));
+      *kernel_out = kernel.release();
+      return nullptr;
+    };
+
+    RETURN_IF_ERROR(ep_api.CreateKernelCreationInfo(kernel_def, kernel_create_func, nullptr, result));
+
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
+  }
 
   return nullptr;
 }
