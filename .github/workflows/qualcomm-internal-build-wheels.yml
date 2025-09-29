@@ -1,0 +1,101 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
+
+name: Qualcomm Internal Build Wheels
+on:
+  workflow_call:
+    inputs:
+      nightly_build:
+        description: "If true, include a verbose version string in wheel file names."
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      nightly_build:
+        description: "If true, include a verbose version string in wheel file names."
+        type: boolean
+        default: true
+
+jobs:
+  build-linux-x86_64:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: linux
+      target_arch: x86_64
+      # Specifying a python version here doesn't actually do anything at this point since we don't know what the Linux
+      # wheel distribution story is yet. For now, this is just so that all of the job and artifact names reflect the
+      # version of cpython that's installed on our Linux build machines.
+      target_py_vsn: "3.10"
+      run_tests: false
+      upload_test_archive: false
+
+  build-windows-arm64_311:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: windows
+      target_arch: arm64
+      target_py_vsn: "3.11"
+      build_runner_arch: ARM64
+      run_tests: false
+      upload_test_archive: false
+
+  build-windows-arm64_312:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: windows
+      target_arch: arm64
+      target_py_vsn: "3.12"
+      build_runner_arch: ARM64
+      run_tests: false
+      upload_test_archive: false
+
+  build-windows-arm64_313:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: windows
+      target_arch: arm64
+      target_py_vsn: "3.13"
+      build_runner_arch: ARM64
+      run_tests: false
+      upload_test_archive: false
+
+  build-windows-arm64x_311:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: windows
+      target_arch: arm64x
+      target_py_vsn: "3.11"
+      run_tests: false
+      upload_test_archive: false
+
+  build-windows-arm64x_312:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: windows
+      target_arch: arm64x
+      target_py_vsn: "3.12"
+      run_tests: false
+      upload_test_archive: false
+
+  build-windows-arm64x_313:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: windows
+      target_arch: arm64x
+      target_py_vsn: "3.13"
+      run_tests: false
+      upload_test_archive: false

@@ -221,7 +221,7 @@ class PackageManager:
             self.__run_installer(package_path)
         else:
             # Similar to downloads, we extract to a temporary directory and rename on
-            # success to avoid partial extrations if we get killed.
+            # success to avoid partial extractions if we get killed.
             with tempfile.TemporaryDirectory(dir=self.__package_root) as tmp_dir:
                 # Extract it to tmp-dir/{package}-{version}
                 tmp_rootdir = tmp_dir / self.get_rel_package_dir()

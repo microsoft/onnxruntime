@@ -1,0 +1,158 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
+
+name: Qualcomm Internal Single OS Build
+on:
+  workflow_call:
+    inputs:
+      target_os:
+        default: windows
+        type: string
+      target_arch:
+        default: arm64
+        type: string
+      target_py_vsn:
+        default: "3.12"
+        type: string
+      nightly_build:
+        description: "If true, include a verbose version string in wheel file names."
+        type: boolean
+        default: true
+      build_runner_arch:
+        description: "The architecture of the build machine to use. X64 Windows are faster, but ARM64 can produce ARM64 wheels."
+        default: "X64"
+        type: string
+      test_runner_arch:
+        default: "X64"
+        type: string
+      run_tests:
+        default: true
+        type: boolean
+      upload_test_archive:
+        default: true
+        type: boolean
+      upload_wheel:
+        default: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      target_os:
+        description: "The OS for which to build: windows or linux"
+        default: windows
+        type: string
+      target_arch:
+        description: |
+          The architecture for which to build.
+          [Linux] aarch64_oe_gcc11_2 or x86_64.
+          [Windows] arm64, arm64ec, arm64x, or x86_64.
+        default: arm64
+        type: string
+      target_py_vsn:
+        description: "Build a wheel for this version of Python (3.11, 3.12, 3.13, None)"
+        default: "3.12"
+        type: string
+      nightly_build:
+        description: "If true, include a verbose version string in wheel file names."
+        type: boolean
+        default: true
+      build_runner_arch:
+        description: "The architecture of the build machine to use. X64 Windows are faster, but ARM64 can produce ARM64 wheels."
+        default: "X64"
+        type: string
+      test_runner_arch:
+        description: "The architecture of the test machine to use: X64 or (Windows only) ARM64."
+        default: "X64"
+        type: string
+      run_tests:
+        description: "If true, also run unit tests"
+        default: true
+        type: boolean
+      upload_test_archive:
+        description: "If true, build a test archive and include is as an artifact."
+        default: true
+        type: boolean
+      upload_wheel:
+        description: "If true, include the wheel as a workflow artifact."
+        default: true
+        type: boolean
+
+env:
+  ORT_NIGHTLY_BUILD: "${{ inputs.nightly_build == true && '1' || '0' }}"
+
+  # Cross compilation on Windows adds a folder to the build directory.
+  BUILD_CONFIG_DIR: "${{ (inputs.target_os == 'windows' && ((inputs.build_runner_arch == 'X64' && inputs.target_arch != 'x86_64') || (inputs.build_runner_arch == 'ARM64' && inputs.target_arch != 'arm64'))) && 'Release/Release' || 'Release' }}"
+
+jobs:
+  build:
+    name: "build-${{inputs.target_os}}-${{inputs.target_arch}}-py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}"
+    runs-on: ["self-hosted", "${{inputs.target_os}}", "${{ inputs.build_runner_arch }}", "Build"]
+    defaults:
+      run:
+        shell: "${{ inputs.target_os == 'windows' && 'cmd' || 'bash' }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build ${{inputs.target_os}} ${{ inputs.target_arch }} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}
+        run: >
+          "${{ inputs.target_os == 'windows' && 'python.exe' || 'python3' }}"
+          qcom/build_and_test.py
+          --target-py-version ${{inputs.target_py_vsn}}
+          ${{inputs.upload_test_archive == true && 'archive' || 'build'}}_ort_${{inputs.target_os}}_${{ inputs.target_arch }}
+
+      - uses: actions/upload-artifact@v3
+        if: ${{ inputs.upload_test_archive }}
+        with:
+          name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}} Tests
+          path: |
+            ${{ github.workspace }}/build/onnxruntime-tests-${{inputs.target_os}}-${{ inputs.target_arch }}.*
+
+      - uses: actions/upload-artifact@v3
+        if: ${{ inputs.upload_wheel }}
+        with:
+          name: ORT ${{inputs.target_os}} ${{ inputs.target_arch }} Python ${{ inputs.target_py_vsn }} Wheel
+          path: |
+            ${{ github.workspace }}/build/${{inputs.target_os}}-${{ inputs.target_arch }}/${{ env.BUILD_CONFIG_DIR }}/dist/onnxruntime_qnn*.whl
+
+  test:
+    name: "test-${{inputs.target_os}}-${{inputs.target_arch}}-py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}"
+    if: ${{ inputs.run_tests }}
+    needs: [build]
+    runs-on: ["self-hosted", "${{inputs.target_os}}", "${{ inputs.test_runner_arch }}", "Build"]
+    defaults:
+      run:
+        shell: "${{ inputs.target_os == 'windows' && 'cmd' || 'bash' }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}} Tests
+          path: |
+            ${{ github.workspace }}/build
+
+      - name: Test ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}
+        run: >
+          "${{ inputs.target_os == 'windows' && 'python.exe' || 'python3' }}"
+          qcom/build_and_test.py
+          create_venv
+          extract_ort_${{inputs.target_os}}_${{inputs.target_arch}}
+          test_ort_${{inputs.target_os}}_${{inputs.target_arch}} --only
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4.0.4
+        if: always() # always run even if the previous step fails
+        with:
+          check_name: ${{inputs.target_os}}-${{inputs.target_arch}}-py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}-test-results
+          report_paths: |
+            ${{ github.workspace }}/build/${{inputs.target_os}}-${{inputs.target_arch}}/${{ env.BUILD_CONFIG_DIR }}/*.results.xml
+
+      - uses: actions/upload-artifact@v3
+        if: always() # always run even if the previous step fails
+        with:
+          name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}} Test Results
+          path: |
+            ${{ github.workspace }}/build/${{inputs.target_os}}-${{inputs.target_arch}}/${{ env.BUILD_CONFIG_DIR }}/*.results.xml

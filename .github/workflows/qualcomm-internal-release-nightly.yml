@@ -1,0 +1,17 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
+
+name: Scheduled Publish of ONNX Runtime Execution Provider wheel
+
+on:
+  schedule:
+    - cron: "0 9 * * *"  # Every day at 2am in San Diego/PDT (9am UTC)
+
+jobs:
+  publish-wheels:
+    name: Publish Wheels
+    uses: ./.github/workflows/qualcomm-internal-release.yml
+    secrets: inherit
+    with:
+      nightly_build: true
+      skip_publish: false

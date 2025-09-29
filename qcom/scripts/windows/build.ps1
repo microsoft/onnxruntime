@@ -31,7 +31,7 @@ param (
 
     [Parameter(Mandatory = $false,
                HelpMessage = "Build a wheel targeting this Python version.")]
-    [ValidateSet("", "3.10", "3.11", "3.12", "3.13")]
+    [ValidateSet("", "3.11", "3.12", "3.13")]
     [string]$TargetPyVersion = "",
 
     [Parameter(Mandatory = $true,

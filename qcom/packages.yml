@@ -98,17 +98,13 @@ onnx_models:
   url: http://ort-ep-win-01:8000/onnx-models/onnx-models-{version}.tar.gz
   sha256: 386539269e1af02304521ba5007cd1f5aac58a23c271e897a3f96744cfbe3520
   content_root: onnx-models-{version}
-python_310_windows_x86_64: &py_x86_64_common
-  version: 3.10.11
+python_311_windows_x86_64: &py_x86_64_common
+  version: 3.11.9
   url: https://www.python.org/ftp/python/{version}/python-{version}-amd64.exe
-  md5: a55e9c1e6421c84a4bd8b4be41492f51
-  install_args: [/quiet, InstallAllUsers=0, "TargetDir={root_dir}", Include_doc=0, Include_launcher=0, Include_tcltk=0, Include_test=0]
+  md5: e8dcd502e34932eebcaf1be056d5cbcd
+  install_args: [/quiet, InstallAllUsers=0, "TargetDir={root_dir}", Include_doc=0, Include_launcher=0, Include_tcltk=0, Include_test=0, Shortcuts=0]
   repair_args: [/quiet, /repair]
   uninstall_args: [/quiet, /uninstall]
-python_311_windows_x86_64:
-  <<: *py_x86_64_common
-  version: 3.11.9
-  md5: e8dcd502e34932eebcaf1be056d5cbcd
 python_312_windows_x86_64:
   <<: *py_x86_64_common
   version: 3.12.10

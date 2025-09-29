@@ -70,7 +70,7 @@ Add user:
 Enable Symlinks for `NA\OrtQnnEpCi`:
 
 1. Open the `Local Security Policy` app
-2. Navigate to `Security Settings` --> `Local Policies` --> `User Rights Assignment` and add `NA\OrtQnnEpCi` to
+2. Navigate to `Security Settings/Local Policies/User Rights Assignment` and add `NA\OrtQnnEpCi` to
    `Create symbolic links`. You'll probably be prompted for _your_ credentials so that `NA\OrtQnnEpCi` can be
    validated as a member of the domain.
 
@@ -102,6 +102,16 @@ Run the installer, ensuring to add the following:
   * (After files are copied): `Disable path length limit`
 * _ARM64 only_: Python 3.12.10 for ARM64
   * Same as above, except **do not `Add python.exe to PATH`**.
+* Other Python versions:
+  * Install the latest Pythons from the 3.11, and 3.13 releases.
+  * Options:
+    * No documentation
+    * No tcl/tl and IDLE
+    * No Python test suite
+    * Install for all users
+    * Do not create shortcuts for installed applications
+* _ARM64 only_: Other Python versions:
+  * Same as previous, just install the ARM64 versions as well.
 * [Git for Windows](https://git-scm.com/download/win)
   * Select "Git from the command line and also from 3rd-party software" during install.
   * Use bundled OpenSSH.

@@ -4,37 +4,37 @@
 name: Publish ONNX Runtime Execution Provider wheel
 
 on:
-  schedule:
-    - cron: "0 9 * * *"  # Every day at 2am in San Diego/PDT (9am UTC)
-  # Allow this workflow to be run manually from the Actions tab
+  workflow_call:
+    inputs:
+      nightly_build:
+        description: "If true, include a verbose version string in wheel file names."
+        type: boolean
+        default: true
+      skip_publish:
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      nightly_build:
+        description: "If true, include a verbose version string in wheel file names."
+        type: boolean
+        default: true
+      skip_publish:
+        description: "If true, do everything except publishing to the PyPI server"
+        type: boolean
+        default: true
 
 jobs:
-  build-and-test-all:
-    name: Build & Test
-    uses: ./.github/workflows/qualcomm-internal-build-and-test.yml
+  build-wheels:
+    uses: ./.github/workflows/qualcomm-internal-build-wheels.yml
     secrets: inherit
     with:
-      do_all: false
-      do_linux_x86_64: true
-      do_windows_arm64: true  # We don't build wheels with every push. Do it at least once a day.
-      nightly_build: true
-      windows_arm64_runner_arch: "ARM64"
-
-  # ARM64x builds take twice as long so we don't run them on every PR.
-  build-windows-arm64x:
-    uses: ./.github/workflows/qualcomm-internal-build-and-test-windows.yml
-    secrets: inherit
-    with:
-      nightly_build: true
-      target_arch: arm64x
-      upload_wheel: false
-      run_tests: false
+      nightly_build: ${{inputs.nightly_build}}
 
   publish-wheel-workflow:
     name: "Publish distribution to PyPI"
     runs-on: [Linux, self-hosted, Build]
-    needs: [build-and-test-all]
+    needs: [build-wheels]
     permissions:
       contents: read
       id-token: write
@@ -42,10 +42,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4.1.1
 
+      # We only publish this for AI Hub to use and they only want x86_64 Linux
       - name: Download Artifact
         uses: actions/download-artifact@v3
         with:
-          name: ORT Linux x86_64 Python Wheel
+          name: ORT linux x86_64 Python 3.10 Wheel
           path: ${{ github.workspace }}/build/dist
 
       - name: Create config file
@@ -67,5 +68,6 @@ jobs:
           source venv/bin/activate && twine check ${{ github.workspace }}/build/dist/*
 
       - name: Publish
+        if: ${{ !inputs.skip_publish }}
         run: |
           source venv/bin/activate && twine upload --config-file=build/pypirc -r local ${{ github.workspace }}/build/dist/*
