@@ -503,7 +503,7 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
 endif()
 
 if(onnxruntime_USE_SVE)
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  if(LINUX AND onnxruntime_target_platform STREQUAL "aarch64")
     check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
     if(HAS_ARM64_SVE)
       message(STATUS "Compiler supports SVE!")
