@@ -581,40 +581,39 @@ TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
 
 // Checks that the OrtTypeInfo obtained from the public C API matches another OrtTypeInfo
 // obtained from the internal ORT graph IR.
-static void CheckTypeInfo(const OrtTypeInfo* api_type_info, const OrtTypeInfo* type_info) {
-  const OrtApi& ort_api = Ort::GetApi();
+static void CheckTypeInfo(const OrtTypeInfo* ort_api_type_info, const OrtTypeInfo* ort_type_info) {
+  ASSERT_NE(ort_api_type_info, nullptr);
+  ASSERT_NE(ort_type_info, nullptr);
 
-  ASSERT_NE(api_type_info, nullptr);
-  ASSERT_NE(type_info, nullptr);
+  Ort::ConstTypeInfo api_type_info{ort_api_type_info};
+  Ort::ConstTypeInfo type_info{ort_type_info};
 
-  ONNXType api_onnx_type = ONNX_TYPE_UNKNOWN;
-  ASSERT_ORTSTATUS_OK(ort_api.GetOnnxTypeFromTypeInfo(api_type_info, &api_onnx_type));
-  ASSERT_EQ(api_onnx_type, type_info->type);
+  ASSERT_EQ(api_type_info.GetONNXType(), type_info.GetONNXType());
 
-  if (api_onnx_type == ONNX_TYPE_TENSOR) {
+  if (api_type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
     // Only validating Tensors (not checking Map, Sequence, etc.) values because these C APIs for getting
     // type/shape information existed long before the new ORT graph IR APIs and are tested elsewhere.
-    const OrtTensorTypeAndShapeInfo* api_type_shape = nullptr;
-    ASSERT_ORTSTATUS_OK(ort_api.CastTypeInfoToTensorInfo(api_type_info, &api_type_shape));
+    auto api_type_shape = api_type_info.GetTensorTypeAndShapeInfo();
+    auto type_info_shape = type_info.GetTensorTypeAndShapeInfo();
     ASSERT_NE(api_type_shape, nullptr);
 
-    ONNXTensorElementDataType api_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    ASSERT_ORTSTATUS_OK(ort_api.GetTensorElementType(api_type_shape, &api_elem_type));
-    ASSERT_EQ(api_elem_type, type_info->tensor_type_info->type);
+    ONNXTensorElementDataType api_elem_type = api_type_shape.GetElementType();
+    ASSERT_EQ(api_elem_type, type_info_shape.GetElementType());
 
-    size_t api_num_dims = 0;
-    ASSERT_ORTSTATUS_OK(ort_api.GetDimensionsCount(api_type_shape, &api_num_dims));
-    ASSERT_EQ(api_num_dims, type_info->tensor_type_info->shape.NumDimensions());
+    ASSERT_EQ(api_type_shape.HasShape(), type_info_shape.HasShape());
+    if (api_type_shape.HasShape()) {
+      const size_t api_num_dims = api_type_shape.GetDimensionsCount();
+      ASSERT_EQ(api_num_dims, type_info_shape.GetDimensionsCount());
 
-    std::vector<int64_t> api_dims(api_num_dims, 0);
-    ASSERT_ORTSTATUS_OK(ort_api.GetDimensions(api_type_shape, api_dims.data(), api_dims.size()));
-    ASSERT_EQ(gsl::span<const int64_t>(api_dims), type_info->tensor_type_info->shape.GetDims());
+      auto api_dims = api_type_shape.GetShape();
+      ASSERT_EQ(api_dims, type_info_shape.GetShape());
 
-    std::vector<const char*> api_dim_syms(api_num_dims, nullptr);
-    ASSERT_ORTSTATUS_OK(ort_api.GetSymbolicDimensions(api_type_shape, api_dim_syms.data(), api_dim_syms.size()));
-    const std::vector<std::string>& dim_syms = type_info->tensor_type_info->dim_params;
-    for (size_t dim_idx = 0; dim_idx < api_num_dims; dim_idx++) {
-      ASSERT_EQ(std::string(api_dim_syms[dim_idx]), dim_syms[dim_idx]);
+      const std::vector<const char*> api_dim_syms = api_type_shape.GetSymbolicDimensions();
+      const std::vector<const char*> dim_syms = type_info_shape.GetSymbolicDimensions();
+      ASSERT_EQ(api_dim_syms.size(), dim_syms.size());
+      for (size_t dim_idx = 0; dim_idx < api_num_dims; dim_idx++) {
+        ASSERT_EQ(std::string(api_dim_syms[dim_idx]), dim_syms[dim_idx]);
+      }
     }
   }
 }

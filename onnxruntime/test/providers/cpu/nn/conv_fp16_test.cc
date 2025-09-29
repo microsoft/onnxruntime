@@ -273,14 +273,13 @@ TEST(ConvFp16Test, Conv1D_Bias) {
 }
 
 TEST(ConvBF16Test, Conv2D_1) {
-#ifdef USE_CUDA
+#ifndef USE_CUDA
+  GTEST_SKIP() << "BFloat16 tests are only enabled on CUDA builds";
+#else
   if (!CudaHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
-#else
-  return;
-#endif
 
   OpTester test("Conv", 22);
 
@@ -332,6 +331,7 @@ TEST(ConvBF16Test, Conv2D_1) {
   test.AddOutput<BFloat16>("Y", Y_shape, expected_vals, /*no sort*/ false, 0.002f, 0.0f);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+#endif
 }
 
 TEST(ConvFp16Test, Conv2D_1) {
