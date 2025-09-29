@@ -23,7 +23,8 @@ KernelCreateInfo CreateCastKernelInfo(bool enable_graph_capture) {
   const auto& type_constraints = enable_graph_capture ? CastOpTypeConstraints() : CastOpTypeConstraintsWithoutInt64();
 
   KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Cast>(info);
+    auto cast_kernel = std::make_unique<Cast>(info);
+    out = std::unique_ptr<OpKernel>(std::move(cast_kernel));
     return Status::OK();
   };
 
