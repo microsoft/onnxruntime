@@ -93,13 +93,11 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
   const auto device = memory_info.device;
 
-#ifdef USE_MIGRAPHX
   if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD) {
-    return common::Status::OK();
+    return Status::OK();
   }
-#endif
 
-  static const auto default_cpu_device = OrtDevice();
+  static constexpr auto default_cpu_device = OrtDevice();
 
   // Get shape and type of the tensor, and allocate the empty tensor
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
@@ -389,12 +387,9 @@ common::Status SaveInitializedTensors(
 
       const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
 
-#ifdef USE_MIGRAPHX
       if (memory_info.device.Type() == OrtDevice::GPU && memory_info.device.Vendor() == OrtDevice::AMD) {
         // Intentionally left empty
-      } else
-#endif
-      {
+      } else {
         // Check if we already have an OrtValue for this initializer on CPU
         if (OrtValue ort_value_from_graph;
             graph.GetOrtValueInitializer(name, ort_value_from_graph)) {

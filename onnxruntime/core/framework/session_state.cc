@@ -470,11 +470,9 @@ Status SessionState::PrepackConstantInitializedTensors(
               if (constant_initialized_tensors.count(ort_value_idx)) {
                 bool is_packed = false;
                 const auto ort_value = constant_initialized_tensors[ort_value_idx];
-#ifdef USE_MIGRAPHX
                 if (!ort_value.IsAllocated()) {
                   break;
                 }
-#endif
                 const Tensor& const_initialized_tensor = ort_value.Get<Tensor>();
 
                 auto iter = initializers_to_share_map.find(input_name);
