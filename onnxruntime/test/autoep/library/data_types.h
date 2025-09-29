@@ -3,16 +3,19 @@
 
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 #include "example_plugin_ep_utils.h"
 
 class MLDataTypes {
  public:
   static MLDataTypes& GetInstance();
-  static OrtStatus* AllFixedSizeTensorTypesIRv9(/*out*/ std::vector<const OrtMLDataType*>& result);
+  static OrtStatus* GetTensorType(ONNXTensorElementDataType elem_type, /*out*/ const OrtMLDataType*& tensor_type);
+  static OrtStatus* GetAllFixedSizeTensorTypesIRv9(/*out*/ std::vector<const OrtMLDataType*>& tensor_types);
 
  private:
   MLDataTypes();
 
+  std::unordered_map<ONNXTensorElementDataType, const OrtMLDataType*> tensor_types_map_;
   std::vector<const OrtMLDataType*> fixed_tensor_v9_;
 };

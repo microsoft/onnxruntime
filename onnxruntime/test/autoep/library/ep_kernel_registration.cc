@@ -94,8 +94,8 @@ OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(cons
   const OrtEpApi& ep_api = Ort::GetEpApi();
   *result = nullptr;
 
-  std::vector<const OrtMLDataType*> tensor_types;
-  RETURN_IF_ERROR(MLDataTypes::AllFixedSizeTensorTypesIRv9(tensor_types));
+  std::array<const OrtMLDataType*, 1> tensor_types = {};
+  RETURN_IF_ERROR(MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_types[0]));
 
   OrtKernelDefBuilder* builder = nullptr;
   DeferOrtRelease<OrtKernelDefBuilder> release_builder(&builder, ep_api.ReleaseKernelDefBuilder);

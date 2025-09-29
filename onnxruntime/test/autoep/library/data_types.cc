@@ -12,15 +12,36 @@ MLDataTypes& MLDataTypes::GetInstance() {
 }
 
 /*static*/
-OrtStatus* MLDataTypes::AllFixedSizeTensorTypesIRv9(/*out*/ std::vector<const OrtMLDataType*>& result) {
+OrtStatus* MLDataTypes::GetTensorType(ONNXTensorElementDataType elem_type, /*out*/ const OrtMLDataType*& tensor_type) {
+  MLDataTypes& instance = GetInstance();
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+
+  auto iter = instance.tensor_types_map_.find(elem_type);
+  if (iter == instance.tensor_types_map_.end()) {
+    const OrtMLDataType* type = nullptr;
+
+    RETURN_IF_ERROR(ep_api.GetTensorMLDataType(elem_type, &type));
+    instance.tensor_types_map_.emplace(elem_type, type);
+
+    tensor_type = type;
+    return nullptr;
+  }
+
+  tensor_type = iter->second;
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* MLDataTypes::GetAllFixedSizeTensorTypesIRv9(/*out*/ std::vector<const OrtMLDataType*>& result) {
   MLDataTypes& instance = GetInstance();
   const OrtEpApi& ep_api = Ort::GetEpApi();
 
   if (instance.fixed_tensor_v9_.empty()) {
     auto add_tensor_type = [&instance, &ep_api](ONNXTensorElementDataType elem_type) -> OrtStatus* {
-      const OrtMLDataType* tensor_ml_type = nullptr;
-      RETURN_IF_ERROR(ep_api.GetTensorMLDataType(elem_type, &tensor_ml_type));
-      instance.fixed_tensor_v9_.push_back(tensor_ml_type);
+      const OrtMLDataType* type = nullptr;
+
+      RETURN_IF_ERROR(instance.GetTensorType(elem_type, type));
+      instance.fixed_tensor_v9_.push_back(type);
       return nullptr;
     };
 
