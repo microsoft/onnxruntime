@@ -1472,7 +1472,7 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
   }
 
   uint32_t rpc_polling_time = 0;
-  if (qnn::HtpPerformanceMode::kHtpBurst != htp_performance_mode) {
+  if (qnn::HtpPerformanceMode::kHtpBurst == htp_performance_mode) {
     rpc_polling_time = 9999;
   }
 
@@ -1575,6 +1575,17 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       } else {
         LOGS_DEFAULT(ERROR) << "Invalid EP Workload Type: " << value;
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid EP Workload Type.");
+      }
+    } else if (key == kOrtEpDynamicOptionsQnnHtpPerformanceMode) {
+      auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+      if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+        return Status::OK();
+      }
+      qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+      ParseHtpPerformanceMode(value, htp_performance_mode);
+      if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    htp_performance_mode));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
