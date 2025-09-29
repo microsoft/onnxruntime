@@ -10,51 +10,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-// Forward declaration
-class Cast;
-
-// Type constraint functions for Cast operator
-const std::vector<MLDataType>& CastOpTypeConstraints();
-const std::vector<MLDataType>& CastOpTypeConstraintsWithoutInt64();
-
-// Create Cast kernel info with appropriate type constraints based on graph capture support
-template <int StartVersion, int EndVersion = StartVersion>
-KernelCreateInfo CreateCastKernelInfo(bool enable_graph_capture) {
-  const auto& type_constraints = enable_graph_capture ? CastOpTypeConstraints() : CastOpTypeConstraintsWithoutInt64();
-
-  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    auto cast_kernel = std::make_unique<Cast>(info);
-    out = std::unique_ptr<OpKernel>(std::move(cast_kernel));
-    return Status::OK();
-  };
-
-  if constexpr (StartVersion == EndVersion) {
-    // Non-versioned kernel
-    return {
-        KernelDefBuilder()
-            .SetName("Cast")
-            .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion)
-            .Provider(kWebGpuExecutionProvider)
-            .TypeConstraint("T1", type_constraints)
-            .TypeConstraint("T2", type_constraints)
-            .Build(),
-        kernel_create_fn};
-  } else {
-    // Versioned kernel
-    return {
-        KernelDefBuilder()
-            .SetName("Cast")
-            .SetDomain(kOnnxDomain)
-            .SinceVersion(StartVersion, EndVersion)
-            .Provider(kWebGpuExecutionProvider)
-            .TypeConstraint("T1", type_constraints)
-            .TypeConstraint("T2", type_constraints)
-            .Build(),
-        kernel_create_fn};
-  }
-}
-
 class CastProgram final : public Program<CastProgram> {
  public:
   CastProgram(int32_t to, bool is_from_int64) : Program{"Cast"}, to_{to}, is_from_int64_{is_from_int64} {}
@@ -84,6 +39,47 @@ class Cast final : public WebGpuKernel {
  private:
   int32_t to_;
 };
+
+// Type constraint functions for Cast operator
+const std::vector<MLDataType>& CastOpTypeConstraints();
+const std::vector<MLDataType>& CastOpTypeConstraintsWithoutInt64();
+
+// Create Cast kernel info with appropriate type constraints based on graph capture support
+template <int StartVersion, int EndVersion = StartVersion>
+KernelCreateInfo CreateCastKernelInfo(bool enable_graph_capture) {
+  const auto& type_constraints = enable_graph_capture ? CastOpTypeConstraints() : CastOpTypeConstraintsWithoutInt64();
+
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::unique_ptr<OpKernel>(std::make_unique<Cast>(info));
+    return Status::OK();
+  };
+
+  if constexpr (StartVersion == EndVersion) {
+    // Non-versioned kernel
+    return {
+        KernelDefBuilder()
+            .SetName("Cast")
+            .SetDomain(kOnnxDomain)
+            .SinceVersion(StartVersion)
+            .Provider(kWebGpuExecutionProvider)
+            .TypeConstraint("T1", type_constraints)
+            .TypeConstraint("T2", type_constraints)
+            .Build(),
+        kernel_create_fn};
+  } else {
+    // Versioned kernel
+    return {
+        KernelDefBuilder()
+            .SetName("Cast")
+            .SetDomain(kOnnxDomain)
+            .SinceVersion(StartVersion, EndVersion)
+            .Provider(kWebGpuExecutionProvider)
+            .TypeConstraint("T1", type_constraints)
+            .TypeConstraint("T2", type_constraints)
+            .Build(),
+        kernel_create_fn};
+  }
+}
 
 }  // namespace webgpu
 }  // namespace onnxruntime
