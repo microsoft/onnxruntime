@@ -24,7 +24,7 @@ KernelCreateInfo CreateCastKernelInfo(bool enable_graph_capture) {
 
   KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     auto cast_kernel = std::make_unique<Cast>(info);
-    out = std::move(cast_kernel);
+    out = std::unique_ptr<OpKernel>(std::move(cast_kernel));
     return Status::OK();
   };
 
