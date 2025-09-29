@@ -530,7 +530,7 @@ if(onnxruntime_USE_KLEIDIAI)
     # check for supported target platforms
     if(NOT (onnxruntime_target_platform STREQUAL "aarch64" OR
             onnxruntime_target_platform STREQUAL "ARM64" OR
-            (APPLE AND CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")))
+            onnxruntime_target_platform STREQUAL "arm64"))
       message(WARNING "KleidiAI is not supported on this platform.")
 
       set(${is_supported_var} FALSE PARENT_SCOPE)

@@ -230,7 +230,7 @@ if (MSVC)
       set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
     endif()
   else()
-    message(FATAL_ERROR "Unknown CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
+    message(FATAL_ERROR "Unsupported onnxruntime_target_platform value: ${onnxruntime_target_platform}")
   endif()
 
   #Always enable exception handling, even for Windows ARM

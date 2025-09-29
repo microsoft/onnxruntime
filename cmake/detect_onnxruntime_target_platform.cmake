@@ -39,7 +39,7 @@ elseif(APPLE)
       set(onnxruntime_target_platform ${CMAKE_OSX_ARCHITECTURES})
     endif()
   else()
-    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})  # TODO is this correct?
+    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
   endif()
 else()
   #XXX: Sometimes the value of CMAKE_SYSTEM_PROCESSOR is set but it's wrong. For example, if you run an armv7 docker
