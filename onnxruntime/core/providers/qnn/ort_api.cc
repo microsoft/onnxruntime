@@ -10,11 +10,15 @@
 namespace onnxruntime {
 
 #if BUILD_QNN_EP_STATIC_LIB
+
+namespace {
+static std::mutex run_on_unload_mutex;
+}  // namespace
+
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 void RunOnUnload(std::function<void()> function) {
-  static std::mutex mutex;
-  std::lock_guard<std::mutex> guard(mutex);
+  std::lock_guard<std::mutex> guard(run_on_unload_mutex);
   if (!s_run_on_unload_) {
     s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
   }

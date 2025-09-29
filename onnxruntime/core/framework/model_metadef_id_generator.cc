@@ -7,11 +7,14 @@
 #include "core/framework/murmurhash3.h"
 
 namespace onnxruntime {
+namespace {
+static std::mutex mutex;
+}
+
 int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
                                         HashValue& model_hash) const {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
-  static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
   model_hash = 0;
 
