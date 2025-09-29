@@ -336,7 +336,7 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 // to minimize the number of copies between the host and non-cpu devices in loop subgraphs.
 // This setting must represent a floating point ratio in the range of (0,]. The default value is 0.5.
 // This setting is currently only effective when the Cuda execution provider is present.
-static const char* kOrtSubgraphMemcpyMinimizerNonCpuToCpuProviderRatio = "subgraph_memcpy_minimizer_min_nocpu_cpu_ratio";
+static const char* kOrtSubgraphMemcpyMinimizerNonCpuToCpuProviderRatio = "session.subgraph_memcpy_minimizer_min_nocpu_cpu_ratio";
 
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.

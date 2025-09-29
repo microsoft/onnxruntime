@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
@@ -18,11 +19,11 @@ struct ConfigOptions;
 /// </summary>
 class SubgraphMemcpyMinimizer : public GraphTransformer {
  public:
-  SubgraphMemcpyMinimizer(const ConfigOptions&,
-                          const InlinedHashSet<std::string_view>& compatible_execution_providers = {});
+  SubgraphMemcpyMinimizer(const ConfigOptions&, gsl::span<gsl::not_null<const IExecutionProvider*>> execution_providers);
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  gsl::span<gsl::not_null<const IExecutionProvider*>> execution_providers_;
   float non_cpu_to_cpu_provider_ratio_;
 };
 
