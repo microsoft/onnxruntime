@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "ep_kernel_registration.h"
+#include "data_types.h"
 
 struct Memcpy : public OrtKernelImpl {
   static OrtStatus* Create(const OrtKernelInfo* info, /*out*/ std::unique_ptr<Memcpy>& kernel);
@@ -93,9 +94,8 @@ OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(cons
   const OrtEpApi& ep_api = Ort::GetEpApi();
   *result = nullptr;
 
-  // TODO: Create utilities that return these types
-  const OrtMLDataType* float_tensor = nullptr;
-  RETURN_IF_ERROR(ep_api.GetTensorMLDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &float_tensor));
+  std::vector<const OrtMLDataType*> tensor_types;
+  RETURN_IF_ERROR(MLDataTypes::AllFixedSizeTensorTypesIRv9(tensor_types));
 
   OrtKernelDefBuilder* builder = nullptr;
   DeferOrtRelease<OrtKernelDefBuilder> release_builder(&builder, ep_api.ReleaseKernelDefBuilder);
@@ -106,7 +106,7 @@ OrtStatus* BuildKernelCreateInfo<ExampleEp_MemcpyFromHost_kOnnxDomain_ver1>(cons
   RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetSinceVersion(builder, 1, -1));
   RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetExecutionProvider(builder, ep_name));
   RETURN_IF_ERROR(ep_api.KernelDefBuilder_SetInputMemType(builder, 0, OrtMemType::OrtMemTypeCPUInput));
-  RETURN_IF_ERROR(ep_api.KernelDefBuilder_AddTypeConstraint(builder, "T", &float_tensor, 1));
+  RETURN_IF_ERROR(ep_api.KernelDefBuilder_AddTypeConstraint(builder, "T", tensor_types.data(), tensor_types.size()));
 
   OrtKernelDef* kernel_def = nullptr;
   RETURN_IF_ERROR(ep_api.KernelDefBuilder_Build(builder, &kernel_def));
