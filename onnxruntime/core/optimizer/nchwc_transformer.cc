@@ -609,6 +609,10 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
     nchwc_inputs.push_back(nchwc_input);
   }
 
+  if (nchwc_inputs.empty()) {
+    return;
+  }
+
   auto* nchwc_input_0 = nchwc_inputs[0];
   const int64_t channels = nchwc_inputs[0]->channels_;
 
