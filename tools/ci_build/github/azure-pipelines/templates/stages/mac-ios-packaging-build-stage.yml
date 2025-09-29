@@ -75,11 +75,9 @@ stages:
         removeProfile: true
       displayName: 'Install ORT Mobile Test Provisioning Profile'
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
+    - template: ../setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
 
     - template: ../use-xcode-version.yml
       parameters:

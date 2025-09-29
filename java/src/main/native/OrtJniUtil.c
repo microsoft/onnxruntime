@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -107,6 +107,42 @@ jint convertFromOrtSparseFormat(OrtSparseFormat format) {
       default:
         return 0;
     }
+}
+
+/**
+ * Must be kept in sync with convertToCompiledModelCompatibility.
+ */
+jint convertFromCompiledModelCompatibility(OrtCompiledModelCompatibility compat) {
+  switch (compat) {
+    case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+      return 0;
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+      return 1;
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+      return 2;
+    case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+      return 3;
+    default:
+      // if this value is observed the enum has changed and the code should be updated.
+      return -1;
+  }
+}
+
+/**
+ * Must be kept in sync with convertFromCompiledModelCompatibility.
+ */
+OrtCompiledModelCompatibility convertToCompiledModelCompatibility(jint compat) {
+  switch (compat) {
+    case 0:
+      return OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    case 1:
+      return OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+    case 2:
+      return OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+    case 3:
+    default:
+      return OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+  }
 }
 
 /**
@@ -1012,6 +1048,36 @@ jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
       return NULL;
     }
   }
+}
+
+jobjectArray convertOrtKeyValuePairsToArrays(JNIEnv *jniEnv, const OrtApi * api, const OrtKeyValuePairs * kvp) {
+    // extract pair arrays
+    const char* const* keys = NULL;
+    const char* const* values = NULL;
+    size_t numKeys = 0;
+    api->GetKeyValuePairs(kvp, &keys, &values, &numKeys);
+    jsize jNumKeys = safecast_size_t_to_jsize(numKeys);
+
+    // create Java String[]
+    jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
+    jobjectArray keyArray = (*jniEnv)->NewObjectArray(jniEnv, jNumKeys, stringClazz, NULL);
+    jobjectArray valueArray = (*jniEnv)->NewObjectArray(jniEnv, jNumKeys, stringClazz, NULL);
+
+    // populate Java arrays
+    for (jsize i = 0; i < jNumKeys; i++) {
+        jstring key = (*jniEnv)->NewStringUTF(jniEnv, keys[i]);
+        (*jniEnv)->SetObjectArrayElement(jniEnv, keyArray, i, key);
+        jstring value = (*jniEnv)->NewStringUTF(jniEnv, values[i]);
+        (*jniEnv)->SetObjectArrayElement(jniEnv, valueArray, i, value);
+    }
+
+    // create Java String[][]
+    jclass stringArrClazz = (*jniEnv)->GetObjectClass(jniEnv, keyArray);
+    jobjectArray pair = (*jniEnv)->NewObjectArray(jniEnv, 2, stringArrClazz, 0);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, pair, 0, keyArray);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, pair, 1, valueArray);
+
+    return pair;
 }
 
 jint throwOrtException(JNIEnv *jniEnv, int messageId, const char *message) {

@@ -927,7 +927,7 @@ namespace Dml
 
     bool IsGpuTensor(const onnxruntime::Tensor& tensor)
     {
-        return strcmp(tensor.Location().name, onnxruntime::CPU) &&
+        return strcmp(tensor.Location().name.c_str(), onnxruntime::CPU) &&
             !(tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput);
     }
 

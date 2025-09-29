@@ -28,6 +28,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(block_size, block_size_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true));
 }
@@ -51,6 +52,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
+                             WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_));
@@ -86,6 +88,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
       .AddUniformVariable({M * K / kU32Components});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
   const bool has_zero_points = zero_points != nullptr;
+  const bool single_scale_weights = (block_size == K * N);
   if (M < min_M_for_tile_optimization) {
     uint32_t tile_size_k_vec = 16;
     uint32_t tile_size_n = 32;
@@ -94,18 +97,18 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
       tile_size_k_vec = 32;
       tile_size_n = 4;
     }
-
-    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points};
+    const uint32_t b_components = (nbits == 2 ? kVec2Components : kVec4Components);
+    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size_n, nbits, has_zero_points, single_scale_weights};
     uint32_t num_N_tile = (N + tile_size_n - 1) / tile_size_n;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(M * num_N_tile);
     mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                           {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components * kU32Components)},
+                           {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(b_components * kU32Components)},
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points);
+        .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights);
     if (has_zero_points) {
       mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
     }
@@ -116,12 +119,13 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   TensorShape reshaped_y_shape{1, M, N / kVec4Components};
   uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
   uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
-  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points};
+  bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points, is_qualcomm};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
                          {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kVec2Components * kU32Components : kVec4Components * kU32Components)},
+                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>((nbits / 2) * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
@@ -131,7 +135,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {num_N_tile},
                             {zero_blocks_per_col}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points);
+      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm);
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

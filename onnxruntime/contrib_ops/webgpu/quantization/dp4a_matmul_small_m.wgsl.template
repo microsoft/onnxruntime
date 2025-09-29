@@ -3,6 +3,7 @@
 
 #param tile_size
 #param tile_size_k_vec
+#param single_scale_weights
 #param sub_tile_count
 #param n_bits
 #param has_zero_points
@@ -60,6 +61,18 @@ $MAIN {
     // Handle each workgroup threads as a block of [sub_tile_count][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
     let local_row = local_idx / tile_size_k_vec;
+
+#if n_bits == 2
+    // The workgroup size is 128, LoadDequantizationTable needs to be called twice.
+    LoadDequantizationTable(local_idx);
+    LoadDequantizationTable(local_idx+127);
+    workgroupBarrier();
+#endif
+#if single_scale_weights
+    let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
+    let own_scale_b = scales_b[0];
+#endif
+
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += tile_size_k_vec)
     {
         // Load Phase: Populate shared memory for the workgroup.
@@ -80,14 +93,16 @@ $MAIN {
             if (b_global < uniforms.N && k_offset < uniforms.K32)
             {
                 let b_offset = b_global * uniforms.K32 + k_offset;
+#if !single_scale_weights
                 let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
                 let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + block_idx];
+#endif
 #if n_bits == 4
                 let b_value = input_b[b_offset];
                 let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy, zero);
                 let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw, zero);
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
-#else
+#elif n_bits == 8
                 let own_b = AlignWithZeroPoint(input_b[b_offset * 2]);
                 let own_b1 = AlignWithZeroPoint(input_b[b_offset * 2 + 1]);
 #if has_zero_points
@@ -96,6 +111,11 @@ $MAIN {
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
 
+#elif n_bits == 2
+                let b_value = input_b[b_offset];
+                let own_b = DequantizedFrom2BitsTo8Bits(b_value.x);
+                let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y);
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
             }
         }

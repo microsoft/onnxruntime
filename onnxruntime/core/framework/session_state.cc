@@ -226,13 +226,22 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
     auto status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
-    if (!status.IsOK() && saving_ort_format) {
-      // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
-      // in that case we assigned the node to that EP but do not compile it into a fused node.
-      // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
-      // we now revert to the CPU EP kernel as a fallback.
-      // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
-      // if that's not possible for some reason we can fallback to the CPU EP implementation.
+
+    // There are two cases where we allow fallback to CPU EP kernels:
+    //
+    // 1. if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
+    // in that case we assigned the node to that EP but do not compile it into a fused node.
+    // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
+    // we now revert to the CPU EP kernel as a fallback.
+    // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
+    // if that's not possible for some reason we can fallback to the CPU EP implementation.
+    //
+    // 2. If the node is a memcpy node.
+    // EPs may provide their own memcpy kernels. The CPU EP provides a generic version to fall back to if the EP does
+    // not provide one.
+    const bool allow_cpu_ep_kernel_fallback = saving_ort_format || utils::IsMemcpyNode(node);
+
+    if (!status.IsOK() && allow_cpu_ep_kernel_fallback) {
       node.SetExecutionProviderType(kCpuExecutionProvider);
       status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
     }

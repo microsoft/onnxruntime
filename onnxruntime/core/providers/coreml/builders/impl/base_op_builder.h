@@ -46,7 +46,7 @@ class BaseOpBuilder : public IOpBuilder {
                                       const logging::Logger& logger) const;
 
   virtual int GetMinSupportedOpSet(const Node& /*node*/) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /*node*/) const { return 23; }
+  virtual int GetMaxSupportedOpSet(const Node& /*node*/) const { return 24; }
 
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
   bool HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
