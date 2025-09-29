@@ -11,3 +11,4 @@ sentencepiece
 psutil
 einops
 onnxscript==0.3.2
+onnx-ir

@@ -765,6 +765,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 // Template Instantiation
 template bool NoQkvWorkspace<float>(contrib::AttentionParameters& parameters, AttentionData<float>& data);
 template bool NoQkvWorkspace<half>(contrib::AttentionParameters& parameters, AttentionData<half>& data);
+template bool NoQkvWorkspace<BFloat16>(contrib::AttentionParameters& parameters, AttentionData<BFloat16>& data);
 
 template Status PrepareQkv<float>(
     contrib::AttentionParameters& parameters,
