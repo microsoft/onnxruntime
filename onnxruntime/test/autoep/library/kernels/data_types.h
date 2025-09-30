@@ -5,8 +5,12 @@
 
 #include <unordered_map>
 #include <vector>
-#include "example_plugin_ep_utils.h"
+#include "../example_plugin_ep_utils.h"
 
+/// <summary>
+/// Singleton that returns sets of OrtMLDataType instances using the public C API.
+/// Analogous to the internal utilities in include/onnxruntime/core/framework/data_types.h
+/// </summary>
 class MLDataTypes {
  public:
   static MLDataTypes& GetInstance();

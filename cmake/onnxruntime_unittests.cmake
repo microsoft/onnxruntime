@@ -1976,7 +1976,9 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
     NOT onnxruntime_MINIMAL_BUILD)
   # example_plugin_ep
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/*.h"
-                                                "${TEST_SRC_DIR}/autoep/library/*.cc")
+                                                "${TEST_SRC_DIR}/autoep/library/*.cc"
+                                                "${TEST_SRC_DIR}/autoep/library/kernels/*.h"
+                                                "${TEST_SRC_DIR}/autoep/library/kernels/*.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
   target_link_libraries(example_plugin_ep PRIVATE onnxruntime)

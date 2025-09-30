@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "example_plugin_ep_utils.h"
+#include "../example_plugin_ep_utils.h"
 #include "data_types.h"
 
 using BuildKernelCreateInfoFn = OrtStatus* (*)(const char*, OrtKernelCreateInfo**);
