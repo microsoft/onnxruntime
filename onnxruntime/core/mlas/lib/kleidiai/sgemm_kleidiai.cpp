@@ -325,6 +325,14 @@ Return Value:
     dim[1] = MlasDivRoundup(M, m_step);
     dim[2] = MlasDivRoundup(N, n_step);
 
+    // Pre-check maximum tile size to avoid per-iteration overflow inside the parallel loop.
+    // Any TileSizeM/TileSizeN used below will be <= m_step/n_step respectively.
+    size_t max_tile_elems = 0;
+    if (mul_overflow_size_t_builtin(m_step, n_step, &max_tile_elems)) {
+        // size_t wraparound detected for tile size, fallback to MLAS
+        return false;
+    }
+
     MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [=](ptrdiff_t tid) {
         // compute B,M,N index from iteration index
         ptrdiff_t BIdx = tid / (dim[1] * dim[2]);
@@ -359,13 +367,8 @@ Return Value:
             NIdx * n_step * sizeof(float)
         );
         // Allocate temporary buffer for raw A*B result (TLS reusable buffer)
+        size_t tile_elems = TileSizeM * TileSizeN;
 
-        size_t tile_elems = 0;
-        if (mul_overflow_size_t_builtin(TileSizeM, TileSizeN, &tile_elems))
-        {
-            // size_t wraparound detected, exit
-            return
-        }
         if (g_kai_tls.output_tile.capacity() < tile_elems) {
 
             g_kai_tls.output_tile.reserve(tile_elems);
