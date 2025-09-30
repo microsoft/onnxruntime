@@ -9,6 +9,7 @@
 #include "core/common/semver.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
+#include "core/framework/op_kernel_info.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
@@ -20,6 +21,7 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
+#include "core/session/utils.h"
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
@@ -335,6 +337,28 @@ ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_typ
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,
+                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                    _In_opt_ OrtSyncStream* stream,
+                    _In_ size_t num_tensors) {
+  API_IMPL_BEGIN
+  if (info == nullptr || src_tensors == nullptr || dst_tensors == nullptr || num_tensors == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments provided to KernelInfo_CopyTensors.");
+  }
+
+  auto op_kernel_info = reinterpret_cast<const OpKernelInfo*>(info);
+  auto& data_transfer_mgr = op_kernel_info->GetDataTransferManager();
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyTensors(data_transfer_mgr,
+                                              gsl::span<const OrtValue* const>(src_tensors, num_tensors),
+                                              gsl::span<OrtValue* const>(dst_tensors, num_tensors),
+                                              stream));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -374,6 +398,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDefBuilder_Build,
     &OrtExecutionProviderApi::ReleaseKernelDef,
     &OrtExecutionProviderApi::GetTensorMLDataType,
+    &OrtExecutionProviderApi::KernelInfo_CopyTensors,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

@@ -70,5 +70,10 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def
 ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def);
 ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtMLDataType** out);
+ORT_API_STATUS_IMPL(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,
+                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                    _In_opt_ OrtSyncStream* stream,
+                    _In_ size_t num_tensors);
 
 }  // namespace OrtExecutionProviderApi

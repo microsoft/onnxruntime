@@ -22,6 +22,7 @@ class ModelCompilationOptions;
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace onnxruntime {
+class DataTransferManager;
 class Environment;
 class EpLibrary;
 class EpFactoryInternal;
@@ -71,5 +72,9 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
                                     gsl::span<const char* const> ep_options_vals,
                                     SessionOptions& session_options);
 
+Status CopyTensors(const DataTransferManager& data_transfer_manager,
+                   gsl::span<const OrtValue* const> src_tensors,
+                   gsl::span<OrtValue* const> dst_tensors,
+                   OrtSyncStream* stream = nullptr);
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

@@ -34,6 +34,22 @@ struct MulKernel {
     return iter != float_initializers.end() ? &iter->second : nullptr;
   }
 
+  void GetInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                            /*out*/ gsl::span<const float>& data,
+                            /*out*/ std::vector<int64_t>& shape) const {
+    Ort::ConstValue input = kernel_context.GetInput(index);
+    auto type_shape = input.GetTensorTypeAndShapeInfo();
+
+    ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+    if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
+      throw Ort::Exception("EP Expected float32 inputs", ORT_EP_FAIL);
+
+    const float* float_data = input.GetTensorData<float>();
+    size_t num_elems = type_shape.GetElementCount();
+    data = gsl::span<const float>(float_data, num_elems);
+    shape = type_shape.GetShape();
+  }
+
   OrtStatus* Compute(OrtKernelContext* kernel_ctx) {
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
                                               OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -49,19 +65,19 @@ struct MulKernel {
 
       if (num_inputs == 2) {
         // Both inputs are non-constant. Get them from ORT's KernelContext.
-        GetKernelInputDataAndShape(kernel_context, 0, input0, shape0);
-        GetKernelInputDataAndShape(kernel_context, 1, input1, shape1);
+        GetInputDataAndShape(kernel_context, 0, input0, shape0);
+        GetInputDataAndShape(kernel_context, 1, input1, shape1);
       } else if (num_inputs == 1) {
         // ORT is only providing one non-constant input because this EP chose not to request constant initializer inputs.
         // Get the constant input from the initializers saved by the EP.
         // Refer to "NodeFusionOptions_DropConstantInitializers()".
 
         if (const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name); const_input0 != nullptr) {
-          GetKernelInputDataAndShape(kernel_context, 0, input1, shape1);
+          GetInputDataAndShape(kernel_context, 0, input1, shape1);
           input0 = gsl::span<const float>(const_input0->data);
           shape0 = const_input0->shape;
         } else if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name); const_input1 != nullptr) {
-          GetKernelInputDataAndShape(kernel_context, 0, input0, shape0);
+          GetInputDataAndShape(kernel_context, 0, input0, shape0);
           input1 = gsl::span<const float>(const_input1->data);
           shape1 = const_input1->shape;
         }

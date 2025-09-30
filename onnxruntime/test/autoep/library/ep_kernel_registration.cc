@@ -11,10 +11,12 @@
 
 // Forward declarations of kernel classes used as template args for BuildKernelCreateInfo
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyToHost);
 
 // Table of BuildKernelCreateInfo functions for each operator
 static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyFromHost)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyToHost)>,
 };
 
 constexpr size_t num_kernels = sizeof(build_kernel_create_info_funcs) /
