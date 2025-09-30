@@ -147,11 +147,14 @@ Users can invoke Environment and Session variables in the same run but Environme
 | ORT_MIGRAPHX_INT8_ENABLE | 1 or 0 | Enable int8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=<valid path>).|
 | ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME | <absolute path to calibration table> | Path to a set of input calibration data for int8 static model quantization. |
 | ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE | 1 or 0 | Use a calibration table from Nvidia native int8 format or json dumped format. |
-| ORT_MIGRAPHX_SAVE_COMPILED_MODEL | 1 or 0 | Enable saving a model as an MIGraphX (.mxr) format after compile. |
-| ORT_MIGRAPHX_SAVE_COMPILED_PATH | <string> - Path to write .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. Requires ORT_MIGRAPHX_SAVE_COMPILED_MODEL to be set to 1. |
-| ORT_MIGRAPHX_LOAD_COMPILED_MODEL | 1 or 0 | Enable loading a model as an MIGraphX (.mxr) format after compile. |
-| ORT_MIGRAPHX_LOAD_COMPILED_PATH | <string> - Path to read .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. Requires ORT_MIGRAPHX_LOAD_COMPILED_MODEL to be set to 1. |
 | ORT_MIGRAPHX_EXHAUSTIVE_TUNE | 1 or 0 (default 0) | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost. |
+| ORT_MIGRAPHX_MODEL_CACHE_PATH | <string> | Path to read and write model specific data such as weights or other model specific data |
+| ORT_MIGRAPHX_MODEL_PATH | <string> | Path to read and write .mxr path occurs after MIGraphX model compile complete|
+| Depricated  | ROCm Version removed | Description |
+| ORT_MIGRAPHX_SAVE_COMPILED_MODEL | ROCm 6.4 | Enable saving a model as an MIGraphX (.mxr) format after compile. ( 0 or 1) |
+| ORT_MIGRAPHX_SAVE_COMPILED_PATH  | ROCm 6.4 | Path where the MIGraphX compiled model is stored. Requires ORT_MIGRAPHX_SAVE_COMPILED_MODEL to be set to 1. |
+| ORT_MIGRAPHX_LOAD_COMPILED_MODEL | ROCm 6.4 | Enable loading a model as an MIGraphX (.mxr) format after compile. (0 or 1) |
+| ORT_MIGRAPHX_LOAD_COMPILED_PATH  | ROCm 6.4 | Path where the MIGraphX compiled model is stored. Requires ORT_MIGRAPHX_LOAD_COMPILED_MODEL to be set to 1. |
 
 
 
