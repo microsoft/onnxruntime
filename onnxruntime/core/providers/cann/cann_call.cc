@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include <string.h>
+#include <cstdio>
 #include "core/providers/shared_library/provider_api.h"
 #include "cann_call.h"
 #include "core/providers/cann/cann_utils.h"
