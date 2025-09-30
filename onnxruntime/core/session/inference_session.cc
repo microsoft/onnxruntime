@@ -1522,7 +1522,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       providers.push_back(provider_ptr.get());
     }
 
-    SubgraphMemcpyMinimizer subgraph_memcpy_minimizer{session_options_.config_options, providers};
+    SubgraphMemcpyMinimizer subgraph_memcpy_minimizer{session_options_.config_options, providers, kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(subgraph_memcpy_minimizer, *session_logger_, graph));
 
     MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};

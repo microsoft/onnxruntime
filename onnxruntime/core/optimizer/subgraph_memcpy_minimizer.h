@@ -19,12 +19,18 @@ struct ConfigOptions;
 /// </summary>
 class SubgraphMemcpyMinimizer : public GraphTransformer {
  public:
-  SubgraphMemcpyMinimizer(const ConfigOptions&, gsl::span<gsl::not_null<const IExecutionProvider*>> execution_providers);
+  using ProviderTypeToProviderMap = InlinedHashMap<std::string_view, gsl::not_null<const IExecutionProvider*>>;
+
+  SubgraphMemcpyMinimizer(const ConfigOptions&, gsl::span<gsl::not_null<const IExecutionProvider*>> execution_providers,
+                          const KernelRegistryManager& registry_manager);
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  bool IsCandidateForFallback(const Graph& graph, const Node& node, const logging::Logger& logger) const;
   gsl::span<gsl::not_null<const IExecutionProvider*>> execution_providers_;
   float non_cpu_to_cpu_provider_ratio_;
+  const KernelRegistryManager& registry_manager_;
+  ProviderTypeToProviderMap providers_by_type_;
 };
 
 }  // namespace onnxruntime
