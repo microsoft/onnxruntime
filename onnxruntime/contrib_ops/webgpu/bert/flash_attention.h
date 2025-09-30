@@ -123,8 +123,8 @@ class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDe
 
 class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionDecodeVxReduceProgram> {
  public:
-  FlashAttentionDecodeVxReduceProgram(const std::string& kernel_name, uint32_t tile_size, bool use_indirect_dispatch)
-      : Program{kernel_name}, tile_size_(tile_size), use_indirect_dispatch_(use_indirect_dispatch) {
+  FlashAttentionDecodeVxReduceProgram(const std::string& kernel_name, uint32_t tile_size, uint32_t seq_tile_size, bool use_indirect_dispatch)
+      : Program{kernel_name}, tile_size_(tile_size), seq_tile_size_(seq_tile_size), use_indirect_dispatch_(use_indirect_dispatch) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -137,6 +137,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
 
  private:
   uint32_t tile_size_;
+  uint32_t seq_tile_size_;
   bool use_indirect_dispatch_;
 };
 
