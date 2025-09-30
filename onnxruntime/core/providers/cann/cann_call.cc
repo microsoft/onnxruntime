@@ -132,7 +132,7 @@ bool CannCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
         int currentCannDevice;
         (void)aclrtGetDevice(&currentCannDevice);
         (void)aclGetRecentErrMsg();
-        static char str[1024];
+        char str[1024];
         snprintf(str, sizeof(str), "%s failure %d: %s ; NPU=%d ; hostname=%s ; expr=%s; %s",
                 libName, static_cast<int>(retCode), CannErrString(retCode), currentCannDevice,
                 hostname,
