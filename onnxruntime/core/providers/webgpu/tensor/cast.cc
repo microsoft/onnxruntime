@@ -10,30 +10,29 @@
 namespace onnxruntime {
 namespace webgpu {
 
-// Type constraint functions
-const std::vector<MLDataType>& CastOpTypeConstraints() {
-  // currently support boolean, integer and float types that explicitly allowed in WGSL:
+namespace {
+const std::vector<MLDataType>& CastOpTypeConstraints(bool enable_graph_capture) {
+  // Base types that are always supported - boolean, integer and float types that explicitly allowed in WGSL:
   // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
-  static std::vector<MLDataType> types{
-      DataTypeImpl::GetTensorType<MLFloat16>(),
-      DataTypeImpl::GetTensorType<float>(),
-      DataTypeImpl::GetTensorType<int32_t>(),
-      DataTypeImpl::GetTensorType<uint32_t>(),
-      DataTypeImpl::GetTensorType<bool>(),
-      DataTypeImpl::GetTensorType<int64_t>()};
-  return types;
-}
-
-const std::vector<MLDataType>& CastOpTypeConstraintsWithoutInt64() {
-  // Type constraints without int64_t support when graph capture is disabled
-  static std::vector<MLDataType> types{
+  static std::vector<MLDataType> base_types{
       DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
       DataTypeImpl::GetTensorType<int32_t>(),
       DataTypeImpl::GetTensorType<uint32_t>(),
       DataTypeImpl::GetTensorType<bool>()};
-  return types;
+
+  if (enable_graph_capture) {
+    static std::vector<MLDataType> types_with_int64 = []() {
+      auto types = base_types;
+      types.push_back(DataTypeImpl::GetTensorType<int64_t>());
+      return types;
+    }();
+    return types_with_int64;
+  } else {
+    return base_types;
+  }
 }
+}  // namespace
 
 Status Cast::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
@@ -109,6 +108,50 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
 
   return Status::OK();
 }
+
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateCastKernelInfo(bool enable_graph_capture) {
+  const auto& type_constraints = CastOpTypeConstraints(enable_graph_capture);
+
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Cast>(info);
+    return Status::OK();
+  };
+
+  if constexpr (StartVersion == EndVersion) {
+    // Non-versioned kernel
+    return {
+        KernelDefBuilder()
+            .SetName("Cast")
+            .SetDomain(kOnnxDomain)
+            .SinceVersion(StartVersion)
+            .Provider(kWebGpuExecutionProvider)
+            .TypeConstraint("T1", type_constraints)
+            .TypeConstraint("T2", type_constraints)
+            .Build(),
+        kernel_create_fn};
+  } else {
+    // Versioned kernel
+    return {
+        KernelDefBuilder()
+            .SetName("Cast")
+            .SetDomain(kOnnxDomain)
+            .SinceVersion(StartVersion, EndVersion)
+            .Provider(kWebGpuExecutionProvider)
+            .TypeConstraint("T1", type_constraints)
+            .TypeConstraint("T2", type_constraints)
+            .Build(),
+        kernel_create_fn};
+  }
+}
+
+// Explicit template instantiations
+template KernelCreateInfo CreateCastKernelInfo<6, 8>(bool);
+template KernelCreateInfo CreateCastKernelInfo<9, 12>(bool);
+template KernelCreateInfo CreateCastKernelInfo<13, 18>(bool);
+template KernelCreateInfo CreateCastKernelInfo<19, 20>(bool);
+template KernelCreateInfo CreateCastKernelInfo<21, 22>(bool);
+template KernelCreateInfo CreateCastKernelInfo<23>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
