@@ -24,6 +24,9 @@ ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
 ORT_RUNTIME_CLASS(MLDataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
 
+struct OrtKernelImpl;
+typedef struct OrtKernelImpl OrtKernelImpl;
+
 // struct that an EP implements for OpKernel computation.
 struct OrtKernelImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
@@ -32,7 +35,6 @@ struct OrtKernelImpl {
   ORT_API_T(void, Release, _In_ OrtKernelImpl* this_ptr);
 };
 
-typedef struct OrtKernelImpl OrtKernelImpl;
 typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ OrtKernelCreateContext* ctx,
                                                       _In_ void* ep_state,
                                                       _In_ const OrtKernelInfo* info,
