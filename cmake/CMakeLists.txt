@@ -1072,11 +1072,6 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
-    # TODO: Narrow scope for MLAS SVE compile
-    if (onnxruntime_USE_SVE)
-      target_compile_definitions(${target_name} PRIVATE MLAS_USE_SVE)
-    endif()
-
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
