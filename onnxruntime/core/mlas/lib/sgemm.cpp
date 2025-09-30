@@ -259,7 +259,7 @@ Return Value:
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve())
     {
-            
+#if defined(MLAS_USE_SVE)   
         while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
 
             const float* b = B;
@@ -277,10 +277,11 @@ Return Value:
                 B += 16;
                 CountX -= 16;
             }
+#endif
     } 
     else{ 
         
-        #if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS)
         while (CountX >= MLAS_SGEMM_STRIDEN_THREAD_ALIGN) {
 
         const float* b = B;
@@ -350,15 +351,19 @@ Return Value:
             float* d = D;
             const float* b = B;
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-            if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-            SVE_ZERO_INITIALIZE(d);
-            }
-            else {
-            #if defined(MLAS_NEON_INTRINSICS)
-                vst4q_f32(d, ZeroFloat32x4x4);
-            #endif
-            }
-            
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+#if defined(MLAS_USE_SVE)
+        SVE_ZERO_INITIALIZE(d);
+#elif defined(MLAS_NEON_INTRINSICS)
+        vst4q_f32(d, ZeroFloat32x4x4); // Fallback to NEON if SVE not compiled
+#endif
+    } else {
+#if defined(MLAS_NEON_INTRINSICS)
+        vst4q_f32(d, ZeroFloat32x4x4);
+#endif
+    }
+
+           
 #else
             MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
             MlasStoreAlignedFloat32x4(d, ZeroFloat32x4);
@@ -708,8 +713,12 @@ Return Value:
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
 
             if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve())
-            {
+            {  
+                
+#if defined(MLAS_USE_SVE)
+
                 SCATTER_STORE(&d[0],&b[0]);
+#endif
             }
             else{
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
