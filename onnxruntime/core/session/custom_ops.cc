@@ -84,7 +84,8 @@ struct OrtShapeInferContext {
             OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, &tensor_shape, &symbolic_dims));
       } else {
         input_type_shapes_.emplace_back(
-            OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, onnxruntime::TensorShape(), nullptr));
+            OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(
+                ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, nullptr, nullptr));
       }
     }
   }
