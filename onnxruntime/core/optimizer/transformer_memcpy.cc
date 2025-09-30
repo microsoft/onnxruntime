@@ -16,7 +16,7 @@ namespace onnxruntime {
 static ProviderTypeToProviderMap GetProvidersByType(
     const InlinedVector<gsl::not_null<const IExecutionProvider*>>& providers) {
   ProviderTypeToProviderMap providers_by_type{};
-  for (const auto provider : providers) {
+  for (const auto& provider : providers) {
     providers_by_type.emplace(provider->Type(), provider);
   }
   return providers_by_type;
@@ -100,7 +100,7 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
 // and mainly provides the subgraph recursion functionality
 Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                     const logging::Logger& logger) const {
-  for (const auto provider : providers_) {
+  for (const auto& provider : providers_) {
     const auto& provider_type = provider->Type();
     if (!utils::ProviderIsCpuBased(*provider)) {
       TransformerMemcpyImpl copy_impl(graph, *provider, providers_by_type_);

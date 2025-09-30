@@ -490,6 +490,29 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
+static std::pair<bool, bool> LoadAndGetInputShapePresent(const ORTCHAR_T* const model_url) {
+  Ort::Session session(*ort_env, model_url, Ort::SessionOptions{});
+  const auto input_num = session.GetInputCount();
+  EXPECT_EQ(input_num, 1U);
+  const bool input_shape_present = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().HasShape();
+  const auto output_num = session.GetOutputCount();
+  EXPECT_EQ(output_num, 1U);
+  const bool output_shape_present = session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().HasShape();
+  return {input_shape_present, output_shape_present};
+}
+
+TEST(CApiTest, OptionalShape) {
+  const ORTCHAR_T* const input_shape_model = TSTR("testdata/abs_0d_input.onnx");
+  auto result = LoadAndGetInputShapePresent(input_shape_model);
+  ASSERT_TRUE(result.first);
+  ASSERT_TRUE(result.second);
+
+  const ORTCHAR_T* const no_shape_model = TSTR("testdata/abs_0d_lostdim.onnx");
+  result = LoadAndGetInputShapePresent(no_shape_model);
+  ASSERT_FALSE(result.first);
+  ASSERT_FALSE(result.second);
+}
+
 INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                          CApiTestWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
