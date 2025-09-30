@@ -98,6 +98,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* seqlens_k_,   // batch_size
                        void* rotary_cos,   // seqlen_ro x (rotary_dim / 2)
                        void* rotary_sin,   // seqlen_ro x (rotary_dim / 2)
+                       void* head_sink,    // num_heads
                        int* block_table,   // batch_size x max_num_blocks_per_seq
                        int batch_size,
                        int num_heads,

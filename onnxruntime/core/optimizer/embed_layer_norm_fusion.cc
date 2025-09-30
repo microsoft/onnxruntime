@@ -474,7 +474,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
-  NodeArg& node_arg = graph_utils::AddInitializerWithExternalData(graph, initializer);
+  NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);
   modified = true;
   return &node_arg;
 }

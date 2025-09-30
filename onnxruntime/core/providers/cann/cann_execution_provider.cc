@@ -1266,17 +1266,16 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
   // the single operator operation mode of CANN
   if (info_.enable_cann_graph) {
     std::vector<NodeIndex>&& unsupported_nodes = SupportONNXModel(graph_viewer);
-
-    if (unsupported_nodes.empty()) {
-      auto sub_graph = GetSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-    } else {
+    if (info_.enable_cann_subgraph && !unsupported_nodes.empty()) {
       auto partitions = GetSubGraphPartition(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
       for (const auto& partition : partitions) {
         auto sub_graph = GetSubGraph(partition, graph_viewer);
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       }
+    } else {
+      auto sub_graph = GetSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
   } else {
     InlinedVector<NodeIndex> candidates;
@@ -1385,8 +1384,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       HashValue hash;
       cann::GenerateHashValue(input_shape, hash);
       std::string filename = cann_state->node_name + "_" + std::to_string(hash);
-      std::string filename_with_suffix = filename + ".om";
-
+      bool dynamic_shape = false;
       // TODO(FFFrog): Resource Management
       // It is very necessary to provide a new mechanism for memory reclamation to avoid inference failure caused by
       // device memory exhaustion
@@ -1395,8 +1393,8 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         modelID = modelIDs_[filename];
       } else {
         std::lock_guard<std::mutex> lock(g_mutex);
-
-        if (cann::FileExist(filename_with_suffix)) {
+        auto filename_with_suffix = cann::RegexMatchFile(filename);
+        if (!filename_with_suffix.empty()) {
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
         } else {
           ge::Graph graph{cann_state->node_name.c_str()};
@@ -1424,11 +1422,17 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         for (size_t i = 0; i < aclmdlGetNumOutputs(prepare.modelDesc_); i++) {
           aclmdlIODims dims;
           CANN_CALL_THROW(aclmdlGetOutputDims(prepare.modelDesc_, i, &dims));
-          std::vector<int64_t> vec{dims.dims, dims.dims + dims.dimCount};
-          auto output = ctx.GetOutput(i, vec);
-          CANN_MODEL_PREPARE_OUTPUTBUFFER(prepare,
-                                          const_cast<void*>(output.GetTensorRawData()),
-                                          aclmdlGetOutputSizeByIndex(prepare.modelDesc_, i));
+
+          if (cann::is_dynamic_shape(dims)) {
+            CANN_MODEL_PREPARE_OUTPUTBUFFER(prepare, nullptr, 0);
+            dynamic_shape = true;
+          } else {
+            std::vector<int64_t> vec{dims.dims, dims.dims + dims.dimCount};
+            auto output = ctx.GetOutput(i, vec);
+            CANN_MODEL_PREPARE_OUTPUTBUFFER(prepare,
+                                            const_cast<void*>(output.GetTensorRawData()),
+                                            aclmdlGetOutputSizeByIndex(prepare.modelDesc_, i));
+          }
         }
       }
       ORT_CATCH(const std::exception& e) {
@@ -1436,8 +1440,28 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       }
 
       aclrtStream stream = static_cast<aclrtStream>(ctx.GetGPUComputeStream());
-      CANN_RETURN_IF_ERROR(aclmdlExecuteAsync(modelID, prepare.inputSet_, prepare.outputSet_, stream));
-
+      if (dynamic_shape) {
+        aclrtSynchronizeStream(stream);
+        CANN_RETURN_IF_ERROR(aclmdlExecute(modelID, prepare.inputSet_, prepare.outputSet_));
+        for (size_t i = 0; i < aclmdlGetNumOutputs(prepare.modelDesc_); i++) {
+          std::vector<int64_t> shape;
+          aclTensorDesc* desc = aclmdlGetDatasetTensorDesc(prepare.outputSet_, i);
+          size_t num_dims = aclGetTensorDescNumDims(desc);
+          shape.reserve(num_dims);
+          for (size_t j = 0; j < num_dims; j++) {
+            int64_t dim;
+            CANN_RETURN_IF_ERROR(aclGetTensorDescDimV2(desc, j, &dim));
+            shape.push_back(dim);
+          }
+          aclDataBuffer* dataBuffer = aclmdlGetDatasetBuffer(prepare.outputSet_, i);
+          void* src_data = aclGetDataBufferAddr(dataBuffer);
+          void* dst_data = const_cast<void*>(ctx.GetOutput(i, shape).GetTensorRawData());
+          size_t count = aclGetTensorDescSize(desc);
+          CANN_CALL_THROW(aclrtMemcpyAsync(dst_data, count, src_data, count, ACL_MEMCPY_DEVICE_TO_DEVICE, stream));
+        }
+      } else {
+        CANN_RETURN_IF_ERROR(aclmdlExecuteAsync(modelID, prepare.inputSet_, prepare.outputSet_, stream));
+      }
       return Status::OK();
     };
 
@@ -1463,8 +1487,7 @@ AllocatorPtr CANNExecutionProvider::CreateCannAllocator(OrtDevice::DeviceId devi
                                               -1,
                                               -1,
                                               -1L)},
-      true,
-      false);
+      true);
 
   return CreateAllocator(default_memory_info);
 }
@@ -1474,7 +1497,7 @@ std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
       [](OrtDevice::DeviceId device_id) {
         return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
       },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+      info_.device_id);
 
   return std::vector<AllocatorPtr>{
       CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
@@ -1491,7 +1514,8 @@ OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) cons
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::HUAWEI, 0);
+    return OrtDevice(OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::HUAWEI,
+                     default_device_.Id());
   return default_device_;
 }
 

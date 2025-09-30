@@ -93,6 +93,13 @@ struct OP_ThresholdedRelu : public CtxThresholdedRelu {
   }
 };
 
+template <typename T>
+struct OP_HardSwish : public CtxHardSwish {
+  __device__ __inline__ T operator()(const T& a) const {
+    return a * (_Min(_Max(a / (T)6 + (T)0.5, (T)0), (T)1));
+  }
+};
+
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
     UnaryElementWiseImpl(stream,                                           \

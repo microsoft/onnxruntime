@@ -3,7 +3,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -571,6 +571,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params7.trt_dump_ep_context_model = 1;
   params7.trt_ep_context_embed_mode = 1;
   params7.trt_weight_stripped_engine_enable = 1;
+  params7.trt_onnx_bytestream = model_bytes.data();
+  params7.trt_onnx_bytestream_size = model_bytes.size();
   params7.trt_ep_context_file_path = ctx_model_name_str.c_str();
   execution_provider = TensorrtExecutionProviderWithOptions(&params7);
   EXPECT_TRUE(session_object7.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -683,7 +685,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_op_x = {12, 256, 256};
-  std::vector<float> values_op_x(1.0f, 786432);  // 786432=12*256*256
+  std::vector<float> values_op_x(786432, 1.0f);  // 786432=12*256*256
   OrtValue ml_value_x;
   CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
   OrtValue ml_value_y;

@@ -740,6 +740,21 @@ if (onnxruntime_USE_OPENVINO)
   )
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${MIGRAPHX_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${HIPSDK_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+  endif()
+endif()
+
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -1068,12 +1083,10 @@ if (onnxruntime_USE_QNN)
         ${QNN_LIB_FILES}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-  if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+  if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-          "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf"
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/Qualcomm_LICENSE.pdf
     )
   endif()
 endif()
@@ -1102,7 +1115,7 @@ if (onnxruntime_USE_WEBGPU)
       )
     endif()
   endif()
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy

@@ -3,6 +3,10 @@ parameters:
   type: boolean
   default: true
 
+- name: IsReleaseBuild
+  type: boolean
+  default: false
+
 stages:
 - stage: NuGet_Packaging_DML
   dependsOn:
@@ -13,76 +17,42 @@ stages:
   - job: NuGet_Packaging_DML
     workspace:
       clean: all
-    pool: 'onnxruntime-Win2022-GPU-dml-A10'
+    pool:
+      name: 'onnxruntime-Win2022-GPU-dml-A10'
+      os: windows
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: drop-nuget-dml
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      - input: pipelineArtifact
+        artifactName: drop-win-dml-arm64-zip
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
+      outputs:
+        - ${{if and(eq(parameters.IsReleaseBuild, false), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))}}:
+          - output: nuget
+            useDotNetTask: false # The default is false to use the NuGetCommand task. Set to true to use the DotNetCoreCLI task to publish packages.
+            packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
+            packageParentPath: '$(Build.ArtifactStagingDirectory)/'
+            publishVstsFeed: PublicPackages/ORT-Nightly  # Required when pushing to internal feed.
+            nuGetFeedType: internal  # Change to external when publishing to external feed
+            allowPackageConflicts: true # Optional. NuGetCommand task only.
+            publishPackageMetadata: true # Optional
+        - ${{ else }}:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)
+            artifactName: "packages"
     steps:
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet DirectML'
+    - task: PowerShell@2
       inputs:
-        artifactName: 'drop-nuget-dml'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
-      inputs:
-        artifactName: 'drop-win-dml-x86-zip'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
-      inputs:
-        artifactName: 'drop-win-dml-arm64-zip'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
-
-    - script: |
-        pushd $(Build.BinariesDirectory)\nuget-artifact-dml
-        dir
-        powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
-        powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
-        set PATH=%CD%;%PATH%
-        SETLOCAL EnableDelayedExpansion
-        FOR /R %%i IN (*.nupkg) do (
-            set filename=%%~ni
-            IF NOT "!filename:~25,7!"=="Managed" (
-                rename %%~ni.nupkg %%~ni.zip
-                unzip %%~ni.zip -d %%~ni
-                del /Q %%~ni.zip
-        
-                unzip win-dml-arm64.zip -d win-arm64
-                mkdir %%~ni\runtimes\win-arm64
-                mkdir %%~ni\runtimes\win-arm64\native
-        
-                move win-arm64\runtimes\win-arm64\native\onnxruntime.dll %%~ni\runtimes\win-arm64\native\onnxruntime.dll
-                move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
-                move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
-                move win-arm64\runtimes\win-arm64\native\onnxruntime_providers_shared.dll %%~ni\runtimes\win-arm64\native\onnxruntime_providers_shared.dll
-        
-        
-                pushd %%~ni
-                zip -r ..\%%~ni.zip .
-                popd
-                move %%~ni.zip %%~ni.nupkg
-            )
-        )
-        popd
-        copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
+        filePath: 'tools\ci_build\github\windows\bundle_dml_package.ps1'
+        arguments: '-ArtifactStagingDirectory "$(Build.ArtifactStagingDirectory)"'
+        workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact-dml'
       displayName: 'Bundle DML NuGet and other binaries'
+
 
     - template: ../templates/esrp_nuget.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
-
-    - template: ../templates/validate-package.yml
-      parameters:
-        PackageType: 'nuget'
-        PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
-        PlatformsSupported: 'win-x64,win-arm64'
-        VerifyNugetSigning: ${{ parameters.DoEsrp }}
-
-    - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline NuGet Artifact'
-      inputs:
-        artifactName: 'drop-signed-nuget-dml'
-        targetPath: '$(Build.ArtifactStagingDirectory)'

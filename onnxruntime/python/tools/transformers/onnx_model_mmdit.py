@@ -50,8 +50,8 @@ class MmditOnnxModel(BertOnnxModel):
         assert not add_dynamic_axes
 
         if is_installed("tqdm"):
-            import tqdm
-            from tqdm.contrib.logging import logging_redirect_tqdm
+            import tqdm  # noqa: PLC0415
+            from tqdm.contrib.logging import logging_redirect_tqdm  # noqa: PLC0415
 
             with logging_redirect_tqdm():
                 steps = 5

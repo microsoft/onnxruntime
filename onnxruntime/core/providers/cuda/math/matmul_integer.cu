@@ -29,9 +29,9 @@ __global__ void ReduceRowSumOnMatrixAKernel(const int8_t* matrix, int32_t* row_s
 Status ReduceRowSumOnMatrixA(cudaStream_t stream, const int8_t* matrix, int32_t* row_sum, const int8_t offset, const MatMulComputeHelper& helper) {
   for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
     ReduceRowSumOnMatrixAKernel<static_cast<int>(GridDim::maxThreadsPerBlock)><<<static_cast<int>(helper.M()), GridDim::maxThreadsPerBlock, 0, stream>>>(matrix + helper.LeftOffsets()[batch],
-                                                                                                                                                 row_sum + batch * helper.M(),
-                                                                                                                                                 offset,
-                                                                                                                                                 static_cast<int>(helper.K()));
+                                                                                                                                                         row_sum + batch * helper.M(),
+                                                                                                                                                         offset,
+                                                                                                                                                         static_cast<int>(helper.K()));
   }
 
   return CUDA_CALL(cudaGetLastError());
@@ -57,10 +57,10 @@ __global__ void ReduceColSumOnMatrixBKernel(const int8_t* matrix, int32_t* col_s
 Status ReduceColSumOnMatrixB(cudaStream_t stream, const int8_t* matrix, int32_t* col_sum, const int8_t offset, const MatMulComputeHelper& helper) {
   for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
     ReduceColSumOnMatrixBKernel<static_cast<int>(GridDim::maxThreadsPerBlock)><<<static_cast<int>(helper.N()), GridDim::maxThreadsPerBlock, 0, stream>>>(matrix + helper.RightOffsets()[batch],
-                                                                                                                                                 col_sum + batch * helper.N(),
-                                                                                                                                                 offset,
-                                                                                                                                                 static_cast<int32_t>(helper.K()),
-                                                                                                                                                 static_cast<int32_t>(helper.N()));
+                                                                                                                                                         col_sum + batch * helper.N(),
+                                                                                                                                                         offset,
+                                                                                                                                                         static_cast<int32_t>(helper.K()),
+                                                                                                                                                         static_cast<int32_t>(helper.N()));
   }
 
   return CUDA_CALL(cudaGetLastError());

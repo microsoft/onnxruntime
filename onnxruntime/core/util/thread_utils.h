@@ -19,7 +19,13 @@ struct OrtThreadPoolParams {
   bool auto_set_affinity = false;
 
   // If it is true, the thread pool will spin a while after the queue became empty.
+#if !defined(ORT_CLIENT_PACKAGE_BUILD)
   bool allow_spinning = true;
+#else
+  // default allow_spinning to false for ORT builds targeting client/on-device workloads,
+  // to reduce CPU utilization and improve power efficiency.
+  bool allow_spinning = false;
+#endif
 
   // It it is non-negative, thread pool will split a task by a decreasing block size
   // of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)

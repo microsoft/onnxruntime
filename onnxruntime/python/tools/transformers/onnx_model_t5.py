@@ -826,7 +826,7 @@ class T5OnnxModel(BertOnnxModel):
 
         # When the model has only one input (input_ids), there is no padding mask.
         if len(self.model.graph.input) == 1:
-            from fusion_options import AttentionMaskFormat
+            from fusion_options import AttentionMaskFormat  # noqa: PLC0415
 
             self.attention_mask.mask_format = AttentionMaskFormat.NoMask
 

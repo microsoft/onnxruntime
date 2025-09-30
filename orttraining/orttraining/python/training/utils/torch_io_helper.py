@@ -49,7 +49,7 @@ ORTModelInputOutputType = (
 )
 
 
-class _TensorStub:
+class _TensorStub:  # noqa: PLW1641
     """Tensor stub class used to represent model's input or output"""
 
     __slots__ = ["dtype", "name", "shape", "shape_dims", "tensor_idx"]

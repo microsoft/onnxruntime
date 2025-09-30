@@ -87,11 +87,11 @@ Status LaunchUnpackCumulative(const T* input, T* output, const int token_count, 
 }
 
 template <typename T>
-__global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
-                                   const T* input,                     // TxNxH
-                                   const T* cos_cache,                 // Mx(H/2)
-                                   const T* sin_cache,                 // Mx(H/2)
-                                   const int32_t* past_seqlens,        // B
+__global__ void RotaryEmbeddingTNH(T* output,                            // TxNxH
+                                   const T* input,                       // TxNxH
+                                   const T* cos_cache,                   // Mx(H/2)
+                                   const T* sin_cache,                   // Mx(H/2)
+                                   const int32_t* past_seqlens,          // B
                                    const int32_t* cumulative_seqlens_q,  // B+1
                                    const int head_size,
                                    const int rotary_embedding_dim,
@@ -110,7 +110,7 @@ __global__ void RotaryEmbeddingTNH(T* output,                          // TxNxH
     return;
   }
 
-  const int t = cumulative_seqlens_q[b] + s; // t is the index of the token in the unpadded input/output
+  const int t = cumulative_seqlens_q[b] + s;  // t is the index of the token in the unpadded input/output
   const T* input_data = input + t * in_strides.x + n * in_strides.y;
   T* output_data = output + t * out_strides.x + n * out_strides.y;
 
@@ -213,7 +213,7 @@ __global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__
   }
   const int token_offset = token_id - cumulative_seqlens_q[batch_id];
   const int past_length = past_seqlens[batch_id];
-  const int block_id = block_table[batch_id * max_num_blocks_per_seq +  (past_length + token_offset) / block_size];
+  const int block_id = block_table[batch_id * max_num_blocks_per_seq + (past_length + token_offset) / block_size];
   const int block_offset = (past_length + token_offset) % block_size;
 
   const int key_id = token_id * key_stride + hidden_offset;

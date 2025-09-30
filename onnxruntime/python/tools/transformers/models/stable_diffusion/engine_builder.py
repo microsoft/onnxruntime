@@ -143,7 +143,7 @@ class EngineBuilder:
 
     def load_pipeline_with_lora(self):
         """Load text encoders and UNet with diffusers pipeline"""
-        from diffusers import DiffusionPipeline
+        from diffusers import DiffusionPipeline  # noqa: PLC0415
 
         pipeline = DiffusionPipeline.from_pretrained(
             self.pipeline_info.name(),

@@ -1,8 +1,11 @@
+import numpy as np
 import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 
-def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bias=False):  # noqa: N802
+def generate_model(
+    model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bias=False, bias_initializer=False, bias_flip=False
+):
     nodes = [  # subgraph
         helper.make_node(
             "MatMulInteger",
@@ -50,15 +53,22 @@ def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bia
         )
 
     if bias:
-        nodes.extend([helper.make_node("Add", ["mul_bottom_output", "bias"], ["Y"], "add")])
+        if bias_flip:
+            nodes.extend([helper.make_node("Add", ["bias", "mul_bottom_output"], ["Y"], "add")])
+        else:
+            nodes.extend([helper.make_node("Add", ["mul_bottom_output", "bias"], ["Y"], "add")])
 
-        inputs.extend(
-            [
-                helper.make_tensor_value_info(
-                    "bias", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["N"]
-                )
-            ]
+    if bias_initializer:
+        # Use a constant initializer
+        bias_vals = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float16 if output_type_fp16 else np.float32)
+        bias_tensor = numpy_helper.from_array(bias_vals, name="bias")
+        initializers = [bias_tensor]
+    else:
+        # Use runtime input
+        inputs.append(
+            helper.make_tensor_value_info("bias", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["N"])
         )
+        initializers = []
 
     graph = helper.make_graph(
         nodes,
@@ -69,6 +79,7 @@ def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bia
                 "Y", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["M", "N"]
             ),
         ],
+        initializer=initializers,
     )
 
     model = helper.make_model(graph)
@@ -76,10 +87,10 @@ def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bia
 
 
 if __name__ == "__main__":
-    GenerateModel("matmul_integer_to_float16_int8.onnx", sign_i=False, sign_w=True, output_type_fp16=True)
-    GenerateModel("matmul_integer_to_float_int8.onnx", sign_i=False, sign_w=True, output_type_fp16=False)
-    GenerateModel("matmul_integer_to_float_uint8.onnx", sign_i=False, sign_w=False, output_type_fp16=False)
-    GenerateModel(
+    generate_model("matmul_integer_to_float16_int8.onnx", sign_i=False, sign_w=True, output_type_fp16=True)
+    generate_model("matmul_integer_to_float_int8.onnx", sign_i=False, sign_w=True, output_type_fp16=False)
+    generate_model("matmul_integer_to_float_uint8.onnx", sign_i=False, sign_w=False, output_type_fp16=False)
+    generate_model(
         "matmul_integer_to_float_int8_bias.onnx",
         sign_i=False,
         sign_w=True,
@@ -87,7 +98,7 @@ if __name__ == "__main__":
         has_zp=False,
         bias=True,
     )
-    GenerateModel(
+    generate_model(
         "matmul_integer_to_float_uint8_bias.onnx",
         sign_i=False,
         sign_w=False,
@@ -95,9 +106,27 @@ if __name__ == "__main__":
         has_zp=False,
         bias=True,
     )
-
-    GenerateModel("matmul_integer_to_float_int8_int8.onnx", sign_i=True, sign_w=True, output_type_fp16=False)
-    GenerateModel(
+    generate_model(
+        "matmul_integer_to_float_int8_bias_initializer_index1.onnx",
+        sign_i=False,
+        sign_w=True,
+        output_type_fp16=False,
+        has_zp=False,
+        bias=True,
+        bias_initializer=True,
+    )
+    generate_model(
+        "matmul_integer_to_float_int8_bias_initializer_index0.onnx",
+        sign_i=False,
+        sign_w=True,
+        output_type_fp16=False,
+        has_zp=False,
+        bias=True,
+        bias_flip=True,
+        bias_initializer=True,
+    )
+    generate_model("matmul_integer_to_float_int8_int8.onnx", sign_i=True, sign_w=True, output_type_fp16=False)
+    generate_model(
         "matmul_integer_to_float_int8_int8_bias.onnx",
         sign_i=True,
         sign_w=True,

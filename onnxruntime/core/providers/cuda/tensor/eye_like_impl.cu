@@ -35,13 +35,13 @@ void EyeLikeImpl(
   _EyeLikeKernel<<<blocksPerGrid, block_size, 0, stream>>>(offset, stripe, output_data, N);
 }
 
-#define SPECIALIZED_IMPL(T)                                          \
-  template void EyeLikeImpl<T>(                                      \
-    cudaStream_t stream,                                       \
-    size_t offset,                                                   \
-    size_t stripe,                                                   \
-    T* output_data,                                                  \
-    size_t diag_count);
+#define SPECIALIZED_IMPL(T)     \
+  template void EyeLikeImpl<T>( \
+      cudaStream_t stream,      \
+      size_t offset,            \
+      size_t stripe,            \
+      T* output_data,           \
+      size_t diag_count);
 
 SPECIALIZED_IMPL(int32_t)
 SPECIALIZED_IMPL(int64_t)

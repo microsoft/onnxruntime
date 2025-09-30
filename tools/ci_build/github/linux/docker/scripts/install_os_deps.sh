@@ -68,9 +68,8 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   GetFile https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
-  # The EOL for nodejs v18.17.1 LTS is April 2025
-  GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-x64.tar.xz /tmp/src/node-v18.17.1-linux-x64.tar.xz
-  tar -xf /tmp/src/node-v18.17.1-linux-x64.tar.xz --strip=1 -C /usr
+  GetFile https://nodejs.org/dist/v22.17.1/node-v22.17.1-linux-x64.tar.xz /tmp/src/node-v22.17.1-linux-x64.tar.xz
+  tar -xf /tmp/src/node-v22.17.1-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
   GetFile https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5.tar.gz /tmp/src/cmake-3.31.5.tar.gz

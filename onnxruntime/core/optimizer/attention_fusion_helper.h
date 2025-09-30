@@ -272,9 +272,9 @@ struct MatchUnidirMaskResult {
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
-// Return true when mask is unidirectionl (lower trigular) or all elements are 1.
+// Return true when mask is unidirectional (lower triangular) or all elements are 1.
 template <class T>
-bool ValidateUnidirMask(std::vector<T> mask_data, int64_t w, bool& is_undirectional) {
+bool ValidateUnidirMask(gsl::span<const T> mask_data, int64_t w, bool& is_undirectional) {
   // The mask data has shape 1x1xWxW
   if (mask_data.size() == static_cast<size_t>(w * w)) {
     bool is_one = true;
@@ -329,27 +329,16 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
     return false;
   }
 
-  if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    size_t bytes;
-    if (!utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &bytes).IsOK()) {
-      return false;
-    }
+  // Make sure that external data and data in memory are taken care of
+  Initializer initializer(graph, *tensor_proto, graph.ModelPath(), /*check_outer_scope=*/false);
 
-    std::vector<uint8_t> mask_data;
-    // This takes care of external data in case present
-    auto status = utils::UnpackInitializerData(*tensor_proto, graph.ModelPath(), mask_data);
-    if (!status.IsOK()) {
-      DEBUG_LOG(status.ErrorMessage());
-      return false;
-    }
-
-    if (!ValidateUnidirMask(mask_data, shape->dim(2).dim_value(), is_unidirectional)) {
+  if (initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    if (!ValidateUnidirMask<uint8_t>(initializer.DataAsSpan<uint8_t>(), shape->dim(2).dim_value(), is_unidirectional)) {
       DEBUG_LOG("Mask is neither unidirectional nor all ones");
       return false;
     }
-  } else if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    std::vector<float> float_data = ONNX_NAMESPACE::ParseData<float>(tensor_proto);
-    if (!ValidateUnidirMask(float_data, shape->dim(2).dim_value(), is_unidirectional)) {
+  } else if (initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (!ValidateUnidirMask<float>(initializer.DataAsSpan<float>(), shape->dim(2).dim_value(), is_unidirectional)) {
       DEBUG_LOG("Mask is neither unidirectional nor all ones");
       return false;
     }

@@ -33,13 +33,6 @@ using json = nlohmann::json;
 #include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
 
-// Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
-// GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
-// GCC 4.x.
-// (This static var is referenced in some tests below)
-const OrtDevice::DeviceType OrtDevice::GPU;
-const OrtDevice::DeviceType OrtDevice::CPU;
-
 namespace onnxruntime {
 #ifdef USE_CUDA
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
@@ -316,7 +309,8 @@ class PlannerTest : public ::testing::Test {
      public:
       // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
       // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-      virtual WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType /*notification_owner_ep_type*/, const OrtDevice::DeviceType /*executor_ep_type*/) const override {
+      virtual WaitNotificationFn GetWaitHandle(const OrtDevice& /*notification_owner_device*/,
+                                               const OrtDevice& /*executor_device*/) const override {
         return nullptr;
       }
 

@@ -24,21 +24,21 @@ void ClipImpl(cudaStream_t stream, const T* input_data, T* output_data, const T*
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   union ConstAliasUnion {
-    const T *t;
-    const CudaT *cudaT;
-    ConstAliasUnion(const T* _t) { t = _t;}
+    const T* t;
+    const CudaT* cudaT;
+    ConstAliasUnion(const T* _t) { t = _t; }
   };
   union AliasUnion {
-    T *t;
-    CudaT *cudaT;
-    AliasUnion(T* _t) { t = _t;}
+    T* t;
+    CudaT* cudaT;
+    AliasUnion(T* _t) { t = _t; }
   };
   _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(((union ConstAliasUnion)input_data).cudaT,
                                                                           ((union AliasUnion)output_data).cudaT,
                                                                           ((union ConstAliasUnion)min).cudaT,
                                                                           ((union ConstAliasUnion)max).cudaT,
-                                                                          *((union AliasUnion)&min_default).cudaT,
-                                                                          *((union AliasUnion)&max_default).cudaT,
+                                                                          *((union AliasUnion) & min_default).cudaT,
+                                                                          *((union AliasUnion) & max_default).cudaT,
                                                                           count);
 }
 

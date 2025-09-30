@@ -101,7 +101,7 @@ def optimize_by_onnxruntime(
         optimized_model_path (str): the path of optimized model
     """
     assert opt_level in [1, 2, 99]
-    from torch import version as torch_version
+    from torch import version as torch_version  # noqa: PLC0415
 
     if onnx_model is None:
         onnx_model = deprecated_kwargs.pop("onnx_model_path", None)
@@ -267,7 +267,7 @@ def optimize_by_fusion(
     optimizer.topological_sort()
 
     optimizer.model.producer_name = "onnxruntime.transformers"
-    from onnxruntime import __version__ as onnxruntime_version
+    from onnxruntime import __version__ as onnxruntime_version  # noqa: PLC0415
 
     optimizer.model.producer_version = onnxruntime_version
 

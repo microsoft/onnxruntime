@@ -40,8 +40,9 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
 // Helper functions
 bool GetResizeScalesAndAxes(const GraphViewer& graph_viewer,
-                            const Node& node, std::vector<float>& scales,
-                            std::vector<int64_t>& axes, const bool is_nhwc,
+                            const Node& node,
+                            std::vector<float>& scales,
+                            std::vector<int64_t>& axes,
                             const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 3)
@@ -81,33 +82,24 @@ bool GetResizeScalesAndAxes(const GraphViewer& graph_viewer,
     // Before opset 18, 'scales' should have 4 elements.
     // Make sure 'scales' is not trying to scale on N/C channels here.
     std::vector<float> onnx_scales{scales_data, scales_data + 4};
-    // 'scales' input has been transposed to NHWC layout if it is NHWC preferred layout.
-    const float scale_n = onnx_scales[0];
-    const float scale_c = is_nhwc ? onnx_scales[3] : onnx_scales[1];
-    const float scale_h = is_nhwc ? onnx_scales[1] : onnx_scales[2];
-    const float scale_w = is_nhwc ? onnx_scales[2] : onnx_scales[3];
-    if (scale_n != 1.0f || scale_c != 1.0f) {
+    if (onnx_scales[0] != 1.0f || onnx_scales[1] != 1.0f) {
       LOGS(logger, VERBOSE) << "Scales of N/C channel should be 1"
                             << "Scales of N/C channels are not supported"
-                            << ", scale_n, " << scale_n << ", scale_c, " << scale_c;
+                            << ", scale_n, " << onnx_scales[0] << ", scale_c, " << onnx_scales[1];
       return false;
     }
 
-    scales = {scale_h, scale_w};
+    scales = {onnx_scales[2], onnx_scales[3]};
     axes = {2, 3};
-  }
-
-  if (is_nhwc) {
-    // For NHWC preferred layout, we need to convert axes from NCHW to NHWC.
-    axes = convertAxesFromNCHWtoNHWC(axes);
   }
 
   return true;
 }
 
 bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
-                           const Node& node, std::vector<int64_t>& sizes,
-                           std::vector<int64_t>& axes, const bool is_nhwc,
+                           const Node& node,
+                           std::vector<int64_t>& sizes,
+                           std::vector<int64_t>& axes,
                            const gsl::span<int64_t>& input_shape,
                            const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
@@ -147,25 +139,15 @@ bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
     // Before opset 18, 'sizes' should have 4 elements.
     // Make sure 'sizes' is not trying to resize on N/C channels here.
     std::vector<int64_t> onnx_sizes{sizes_data, sizes_data + 4};
-    auto size_n = onnx_sizes[0];
-    const int c_idx = is_nhwc ? 3 : 1;
-    if (size_n != input_shape[0] || onnx_sizes[c_idx] != input_shape[c_idx]) {
+    if (onnx_sizes[0] != input_shape[0] || onnx_sizes[1] != input_shape[1]) {
       LOGS(logger, VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
                             << "Resize of N/C channels are not supported"
-                            << ", input_size_n, " << input_shape[0] << ", output_size_n, " << size_n
-                            << ". input_size_c, " << input_shape[c_idx] << ", output_size_c, " << onnx_sizes[c_idx];
+                            << ", input_size_n, " << input_shape[0] << ", output_size_n, " << onnx_sizes[0]
+                            << ". input_size_c, " << input_shape[1] << ", output_size_c, " << onnx_sizes[1];
       return false;
     }
-    // 'sizes' input has been transposed to NHWC layout if it is NHWC preferred layout.
-    const int64_t sizes_h = is_nhwc ? onnx_sizes[1] : onnx_sizes[2];
-    const int64_t sizes_w = is_nhwc ? onnx_sizes[2] : onnx_sizes[3];
-    sizes = {sizes_h, sizes_w};
+    sizes = {onnx_sizes[2], onnx_sizes[3]};
     axes = {2, 3};
-  }
-
-  if (is_nhwc) {
-    // For NHWC preferred layout, we need to convert 'axes' from NCHW to NHWC.
-    axes = convertAxesFromNCHWtoNHWC(axes);
   }
 
   return true;
@@ -213,25 +195,23 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<uint32_t> webnn_sizes;
   std::vector<int64_t> axes = GetResolvedAxes(helper, 4);  // We already checked input shape is 4D in IsOpSupportedImpl.
   std::string sizes_name = GetTensorName(input_defs, 3);
-  const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
 
   // We know we have either a 'scales' or 'sizes' input so this is safe.
   // Check for 'sizes' first.
   // This handles Resize-11 where 'scales' was a required input but 'sizes' were used if provided.
   bool using_sizes = !sizes_name.empty() && Contains(initializers, sizes_name);
   if (using_sizes) {
-    ORT_RETURN_IF_NOT(GetResizeSizesAndAxes(model_builder.GetGraphViewer(), node, sizes, axes, is_nhwc,
-                                            input_shape, logger),
+    ORT_RETURN_IF_NOT(GetResizeSizesAndAxes(model_builder.GetGraphViewer(), node, sizes, axes, input_shape, logger),
                       "Error getting Resize sizes");
-    webnn_sizes = GetNarrowedIntfromInt64<uint32_t>(sizes);
+    webnn_sizes = GetNarrowedIntFromInt64<uint32_t>(sizes);
     options.set("sizes", emscripten::val::array(webnn_sizes));
   } else {
-    ORT_RETURN_IF_NOT(GetResizeScalesAndAxes(model_builder.GetGraphViewer(), node, scales, axes, is_nhwc, logger),
+    ORT_RETURN_IF_NOT(GetResizeScalesAndAxes(model_builder.GetGraphViewer(), node, scales, axes, logger),
                       "Error getting Resize scales");
     options.set("scales", emscripten::val::array(scales));
   }
 
-  std::vector<uint32_t> webnn_axes = GetNarrowedIntfromInt64<uint32_t>(axes);
+  std::vector<uint32_t> webnn_axes = GetNarrowedIntFromInt64<uint32_t>(axes);
   options.set("axes", emscripten::val::array(webnn_axes));
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
@@ -321,15 +301,14 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
       }
     }
 
-    const bool is_nhwc = node.Domain() == kMSInternalNHWCDomain;
     if (using_sizes) {  // We are using 'sizes'.
       std::vector<int64_t> sizes;
-      if (!GetResizeSizesAndAxes(graph_viewer, node, sizes, axes, is_nhwc, input_shape, logger)) {
+      if (!GetResizeSizesAndAxes(graph_viewer, node, sizes, axes, input_shape, logger)) {
         return false;
       }
     } else {  // We are using 'scales'.
       std::vector<float> scales;
-      if (!GetResizeScalesAndAxes(graph_viewer, node, scales, axes, is_nhwc, logger)) {
+      if (!GetResizeScalesAndAxes(graph_viewer, node, scales, axes, logger)) {
         return false;
       }
     }

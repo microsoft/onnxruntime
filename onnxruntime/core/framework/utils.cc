@@ -46,22 +46,13 @@ void DestroyStrings(void* p_data, int64_t elements) {
     ptr[i].~string();
 }
 
-bool ProviderIsCpuBased(const std::string& provider_type) {
-  return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kDnnlExecutionProvider ||
-         provider_type == onnxruntime::kVitisAIExecutionProvider ||
-         provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-         provider_type == onnxruntime::kNnapiExecutionProvider ||
-         provider_type == onnxruntime::kVSINPUExecutionProvider ||
-         provider_type == onnxruntime::kAclExecutionProvider ||
-         provider_type == onnxruntime::kArmNNExecutionProvider ||
-         provider_type == onnxruntime::kRknpuExecutionProvider ||
-         provider_type == onnxruntime::kCoreMLExecutionProvider ||
-         provider_type == onnxruntime::kSnpeExecutionProvider ||
-         provider_type == onnxruntime::kQnnExecutionProvider ||
-         provider_type == onnxruntime::kXnnpackExecutionProvider ||
-         provider_type == onnxruntime::kAzureExecutionProvider ||
-         provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
+bool ProviderIsCpuBased(const IExecutionProvider& provider) {
+  return provider.GetDevice().Type() == OrtDevice::CPU;
+}
+
+bool IsMemcpyNode(const Node& node) {
+  return node.Domain() == kOnnxDomain &&
+         (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost");
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
@@ -74,28 +65,21 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    if (allocator->Info().alloc_type == OrtArenaAllocator) {
-      void* p_data = nullptr;
-#ifdef ORT_ENABLE_STREAM
-      BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-      auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_ptr);
-      if (stream_aware_alloc && target_stream) {
-        size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
-        p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+    void* p_data = nullptr;
+    if (target_stream && allocator->IsStreamAware()) {
+      size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
+      p_data = allocator->AllocOnStream(len, target_stream);
+      if (p_data == nullptr && len > 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Allocation failed.");
       }
-#else
-      ORT_UNUSED_PARAMETER(target_stream);
-#endif  // ORT_ENABLE_STREAM
-      if (p_data == nullptr) {
-        Tensor::InitOrtValue(source_tensor.DataType(),
-                             source_tensor.Shape(),
-                             allocator, target_mlvalue);
-      } else {
-        Tensor::InitOrtValue(source_tensor.DataType(),
-                             source_tensor.Shape(),
-                             p_data,
-                             allocator, target_mlvalue);
-      }
+    }
+
+    if (p_data) {
+      Tensor::InitOrtValue(source_tensor.DataType(),
+                           source_tensor.Shape(),
+                           p_data,
+                           allocator, target_mlvalue);
+
     } else {
       Tensor::InitOrtValue(source_tensor.DataType(),
                            source_tensor.Shape(),
@@ -217,7 +201,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
 
 static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_providers) {
   for (const auto& execution_provider : execution_providers) {
-    if (!ProviderIsCpuBased(execution_provider->Type())) {
+    if (!ProviderIsCpuBased(*execution_provider)) {
       return false;
     }
   }
@@ -556,7 +540,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
     size_t num_streams = device_stream_collection->NumStreams();
     for (size_t i = 0; i < num_streams; i++) {
       Stream* stream = device_stream_collection->GetStream(i);
-      if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
+      if (stream && !stream->GetDevice().UsesCpuMemory()) {
         device_stream = stream;
         break;
       }

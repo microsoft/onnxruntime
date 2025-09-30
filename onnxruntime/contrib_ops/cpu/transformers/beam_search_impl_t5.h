@@ -185,13 +185,13 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
   for (int i = 0; i < this->encoder_subgraph_.num_subgraph_inputs; i++) {
-    dumper->Print("encoder_feeds", static_cast<int>(i), true);
-    dumper->Print("", encoder_feeds[i]);
+    auto name = ::onnxruntime::MakeString("encoder_feeds[", i, "]");
+    dumper->Print(name.c_str(), encoder_feeds[i]);
   }
 
   for (int i = 0; i <= encoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
-    dumper->Print("encoder_fetches", i, true);
-    dumper->Print("", encoder_fetches[i]);
+    auto name = ::onnxruntime::MakeString("encoder_fetches[", i, "]");
+    dumper->Print(name.c_str(), encoder_fetches[i]);
   }
 #endif
 
@@ -326,23 +326,23 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                             ", start_token_id=", parameters->decoder_start_token_id));
 
     for (int i = 0; i < decoder_subgraph_.GetFirstPastInputIndex(); i++) {
-      dumper->Print("decoder_feeds", i, true);
-      dumper->Print("", decoder_feeds[i]);
+      auto name = ::onnxruntime::MakeString("decoder_feeds[", i, "]");
+      dumper->Print(name.c_str(), decoder_feeds[i]);
     }
 
     for (int i = 0; i < decoder_subgraph_.num_layers; i++) {
       int self_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * i;
       int self_value_idx = self_key_idx + 1;
-      dumper->Print("past_key_self", i, true);
-      dumper->Print("", decoder_feeds[self_key_idx]);
-      dumper->Print("past_value_self", i + 1, true);
-      dumper->Print("", decoder_feeds[self_value_idx]);
+      auto name = ::onnxruntime::MakeString("past_key_self[", i, "]");
+      dumper->Print(name.c_str(), decoder_feeds[self_key_idx]);
+      name = ::onnxruntime::MakeString("past_value_self[", i + 1, "]");
+      dumper->Print(name.c_str(), decoder_feeds[self_value_idx]);
       int cross_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * decoder_subgraph_.num_layers + 2 * i;
       int cross_value_idx = cross_key_idx + 1;
-      dumper->Print("past_key_cross", i, true);
-      dumper->Print("", decoder_feeds[cross_key_idx]);
-      dumper->Print("past_value_cross", i, true);
-      dumper->Print("", decoder_feeds[cross_value_idx]);
+      name = ::onnxruntime::MakeString("past_key_cross[", i, "]");
+      dumper->Print(name.c_str(), decoder_feeds[cross_key_idx]);
+      name = ::onnxruntime::MakeString("past_value_cross[", i, "]");
+      dumper->Print(name.c_str(), decoder_feeds[cross_value_idx]);
     }
 #endif
 
@@ -363,8 +363,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
 #ifdef DEBUG_GENERATION
     for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
-      dumper->Print("decoder_fetches", i, true);
-      dumper->Print("", decoder_fetches[i]);
+      auto name = ::onnxruntime::MakeString("decoder_fetches[", i, "]");
+      dumper->Print(name.c_str(), decoder_fetches[i]);
     }
 #endif
 

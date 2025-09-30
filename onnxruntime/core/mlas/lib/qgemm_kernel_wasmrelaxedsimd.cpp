@@ -89,7 +89,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD>(
 {
     MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const v128_t ZeroVector = wasm_i64x2_const(0, 0);
-    const v128_t OnesWordBroadcast = wasm_i16x8_splat(1);
+    const v128_t OnesByteBroadcast = wasm_i8x16_splat(1);
     uint8_t PaddedMatrixAData[8] = { 0 };
 
     //
@@ -109,19 +109,23 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD>(
         // but CountK is aligned up to a multiple of 4 to maintain 32-bit
         // alignment. All extra bytes are zero-padded.
         //
-        // Zero extend the source bytes to 16-bits and accumulate
-        // into an intermediate per-row
-        // accumulator. CountK cannot be greater than 128 to avoid overflowing
-        // these signed 16-bit accumulators.
-        //
+        // Accumulate into an intermediate per-row accumulator.
 
-        while (k >= 8) {
+        while (k >= 16) {
 
+            v128_t Bytes = wasm_v128_load(&a[0]);
+            ReductionVector = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(OnesByteBroadcast, Bytes, ReductionVector);
+
+            wasm_v128_store(&D[0], Bytes);
+
+            a += 16;
+            D += 16;
+            k -= 16;
+        }
+
+        if (k >= 8) {
             v128_t Bytes = wasm_v128_load64_zero(&a[0]);
-            v128_t Words = wasm_i8x16_unpacklo_relaxed(Bytes, ZeroVector);
-
-            ReductionVector = wasm_i16x8_add(ReductionVector, Words);
-
+            ReductionVector = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(OnesByteBroadcast, Bytes, ReductionVector);
             wasm_v128_store64_lane(&D[0], Bytes, 0);
 
             a += 8;
@@ -145,9 +149,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD>(
             } while (padded < padded_end);
 
             v128_t Bytes = wasm_v128_load64_zero(PaddedMatrixAData);
-            v128_t Words = wasm_i8x16_unpacklo_relaxed(Bytes, ZeroVector);
-
-            ReductionVector = wasm_i16x8_add(ReductionVector, Words);
+            ReductionVector = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(OnesByteBroadcast, Bytes, ReductionVector);
 
             //
             // Copy quads of 8-bit values from the vector to the packed
@@ -165,7 +167,6 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMRELAXEDSIMD>(
         // Reduce the partial accumulators.
         //
 
-        ReductionVector = wasm_i32x4_dot_i16x8(ReductionVector, OnesWordBroadcast);
         ReductionVector = wasm_i32x4_add(ReductionVector,
                                          wasm_i32x4_shuffle(ReductionVector, wasm_i32x4_splat(0), 2, 3, 2, 3));
         ReductionVector = wasm_i32x4_add(ReductionVector,

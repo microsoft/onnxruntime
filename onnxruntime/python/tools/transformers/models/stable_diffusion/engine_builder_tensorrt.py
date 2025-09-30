@@ -160,7 +160,7 @@ class TensorrtEngine:
                 self.context.execute_async_v3(stream)
                 self.graph = _cuda_assert(cudart.cudaStreamEndCapture(stream))
 
-                from cuda import nvrtc
+                from cuda import nvrtc  # noqa: PLC0415
 
                 result, major, minor = nvrtc.nvrtcVersion()
                 assert result == nvrtc.nvrtcResult(0)

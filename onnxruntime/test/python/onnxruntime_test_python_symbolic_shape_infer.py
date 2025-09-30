@@ -40,7 +40,7 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
-        from pathlib import Path
+        from pathlib import Path  # noqa: PLC0415
 
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, "..", "models")

@@ -80,7 +80,7 @@ struct OrtShapeInferContext {
       auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
       auto symbolic_dims = GetSymbolicDims(shape_proto);
       input_type_shapes_.emplace_back(
-          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
+          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, &tensor_shape, &symbolic_dims));
     }
   }
 
@@ -94,19 +94,21 @@ struct OrtShapeInferContext {
   onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
     ORT_RETURN_IF_NOT(info, "Invalid shape info");
     ONNX_NAMESPACE::TensorShapeProto shape_proto;
-    const auto& symbolic_dims = info->dim_params;
-    const auto& integer_dims = info->shape.GetDims();
-    ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
-    for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
-      auto* dim_proto = shape_proto.add_dim();
-      if (symbolic_dims[ith].size() > 0) {
-        dim_proto->set_dim_param(symbolic_dims[ith]);
-      } else {
-        dim_proto->set_dim_value(integer_dims[ith]);
+    if (info->HasShape()) {
+      const auto& symbolic_dims = *info->GetDimParams();
+      const auto integer_dims = info->GetShape()->GetDims();
+      ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
+      for (size_t ith = 0, end = symbolic_dims.size(); ith < end; ith++) {
+        auto* dim_proto = shape_proto.add_dim();
+        if (symbolic_dims[ith].size() > 0) {
+          dim_proto->set_dim_param(symbolic_dims[ith]);
+        } else {
+          dim_proto->set_dim_value(integer_dims[ith]);
+        }
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
-    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->type);
+    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->GetElementType());
     return onnxruntime::Status::OK();
   }
 
@@ -436,17 +438,14 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
       }
       case OrtOpAttrType::ORT_OP_ATTR_STRING: {
         const auto& s = attr->s();
-        if (len < s.size() + 1) {
+        if (len < s.size()) {
           ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
                                       "Size of data not large enough to hold the string.");
         } else {
           char* output_c = reinterpret_cast<char*>(data);
-          for (char c : s) {
-            *output_c++ = c;
-          }
-          *output_c = '\0';
+          memcpy(output_c, s.data(), s.size());
         }
-        *out = s.size() + 1;
+        *out = s.size();
         break;
       }
       case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {
@@ -760,7 +759,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKerne
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
   onnxruntime::Stream* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
-  *out = AllocateBufferWithOptions(*allocator, count_or_bytes, false, stream, stream->GetWaitNotificationFn());
+  *out = AllocateBufferWithOptions(*allocator, count_or_bytes, false, stream);
   return nullptr;
 };
 

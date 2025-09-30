@@ -9,7 +9,7 @@ import collections.abc
 import os
 import typing
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from onnxruntime.capi import _pybind_state as C
@@ -21,7 +21,7 @@ if typing.TYPE_CHECKING:
     import onnxruntime
 
 
-def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
+def get_ort_device_type(device_type: str) -> int:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cann":
@@ -32,8 +32,10 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         return C.OrtDevice.dml()
     elif device_type == "webgpu":
         return C.OrtDevice.webgpu()
-    elif device_type == "ort":
-        return C.get_ort_device(device_index).device_type()
+    elif device_type == "gpu":
+        return C.OrtDevice.gpu()
+    elif device_type == "npu":
+        return C.OrtDevice.npu()
     else:
         raise Exception("Unsupported device type: " + device_type)
 
@@ -196,6 +198,18 @@ class Session:
     def get_modelmeta(self) -> onnxruntime.ModelMetadata:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
+
+    def get_input_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+        "Return the memory info for the inputs."
+        return self._input_meminfos
+
+    def get_output_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+        "Return the memory info for the outputs."
+        return self._output_meminfos
+
+    def get_input_epdevices(self) -> Sequence[onnxruntime.OrtEpDevice]:
+        "Return the execution providers for the inputs."
+        return self._input_epdevices
 
     def get_providers(self) -> Sequence[str]:
         "Return list of registered execution providers."
@@ -574,6 +588,9 @@ class InferenceSession(Session):
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
         self._overridable_initializers = self._sess.overridable_initializers
+        self._input_meminfos = self._sess.input_meminfos
+        self._output_meminfos = self._sess.output_meminfos
+        self._input_epdevices = self._sess.input_epdevices
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
@@ -587,6 +604,9 @@ class InferenceSession(Session):
         self._inputs_meta = None
         self._outputs_meta = None
         self._overridable_initializers = None
+        self._input_meminfos = None
+        self._output_meminfos = None
+        self._input_epdevices = None
         self._model_meta = None
         self._providers = None
         self._provider_options = None
@@ -618,6 +638,36 @@ class InferenceSession(Session):
                 C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
+def make_get_initializer_location_func_wrapper(
+    get_initializer_location_func: GetInitializerLocationFunc,
+) -> GetInitializerLocationWrapperFunc:
+    """
+    Wraps a user's "get initializer location" function. The returned wrapper function adheres to the
+    signature expected by ORT.
+
+    Need this wrapper to:
+      - Convert the `initializer_value` parameter from `C.OrtValue` to `onnxruntime.OrtValue`, which is more
+        convenient for the user's function to use.
+      - Allow the user's function to return the original `external_info` parameter (this wrapper makes a copy)
+    """
+
+    def get_initializer_location_func_wrapper(
+        initializer_name: str,
+        initializer_value: C.OrtValue,
+        external_info: C.OrtExternalInitializerInfo | None,
+    ) -> C.OrtExternalInitializerInfo | None:
+        ret_val: C.OrtExternalInitializerInfo | None = get_initializer_location_func(
+            initializer_name, OrtValue(initializer_value), external_info
+        )
+        if ret_val is not None and ret_val == external_info:
+            # User returned `external_info` (const and owned by ORT). ORT expects the returned value to be
+            # a new instance (that it deletes), so make a copy.
+            ret_val = C.OrtExternalInitializerInfo(ret_val.filepath, ret_val.file_offset, ret_val.byte_size)
+        return ret_val
+
+    return get_initializer_location_func_wrapper
+
+
 class ModelCompiler:
     """
     This class is used to compile an ONNX model. A compiled ONNX model has EPContext nodes that each
@@ -645,6 +695,8 @@ class ModelCompiler:
         external_initializers_file_path: str | os.PathLike | None = None,
         external_initializers_size_threshold: int = 1024,
         flags: int = C.OrtCompileApiFlags.NONE,
+        graph_optimization_level: C.GraphOptimizationLevel = C.GraphOptimizationLevel.ORT_DISABLE_ALL,
+        get_initializer_location_func: GetInitializerLocationFunc | None = None,
     ):
         """
         Creates a ModelCompiler instance.
@@ -661,6 +713,27 @@ class ModelCompiler:
             is None or empty. Initializers larger than this threshold are stored in the external initializers file.
         :param flags: Additional boolean options to enable. Set this parameter to a bitwise OR of
             flags in onnxruntime.OrtCompileApiFlags.
+        :param graph_optimization_level: The graph optimization level.
+            Defaults to onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL.
+        :param get_initializer_location_func: Optional function called for every initializer to allow user to specify
+            whether an initializer should be stored within the model or externally. Example:
+            ```
+                def get_initializer_location(
+                    initializer_name: str,
+                    initializer_value: onnxrt.OrtValue,
+                    external_info: onnxrt.OrtExternalInitializerInfo | None,
+                ) -> onnxrt.OrtExternalInitializerInfo | None:
+                    byte_size = initializer_value.tensor_size_in_bytes()
+
+                    if byte_size < 64:
+                        return None  # Store small initializer within compiled model.
+
+                    # Else, write initializer to new external file.
+                    value_np = initializer_value.numpy()
+                    file_offset = ext_init_file.tell()
+                    ext_init_file.write(value_np.tobytes())
+                    return onnxrt.OrtExternalInitializerInfo(initializer_file_path, file_offset, byte_size)
+            ```
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
@@ -683,6 +756,18 @@ class ModelCompiler:
         else:
             external_initializers_file_path = ""
 
+        if get_initializer_location_func is not None:
+            if external_initializers_file_path:
+                raise ValueError(
+                    "Cannot initialize ModelCompiler with both `external_initializers_file_path` "
+                    "and `get_initializer_location_func`"
+                )
+            self.get_initializer_location_func_wrapper = make_get_initializer_location_func_wrapper(
+                get_initializer_location_func
+            )
+        else:
+            self.get_initializer_location_func_wrapper = None
+
         if input_model_path:
             self._model_compiler = C.ModelCompiler(
                 sess_options,
@@ -692,6 +777,8 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                graph_optimization_level,
+                self.get_initializer_location_func_wrapper,
             )
         else:
             self._model_compiler = C.ModelCompiler(
@@ -702,6 +789,8 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                graph_optimization_level,
+                self.get_initializer_location_func_wrapper,
             )
 
     def compile_to_file(self, output_model_path: str | None = None):
@@ -730,6 +819,14 @@ class ModelCompiler:
         :return: A bytes object representing the compiled ONNX model.
         """
         return self._model_compiler.compile_to_bytes()
+
+    def compile_to_stream(self, write_function: Callable[[bytes], None]):
+        """
+        Compiles the input model and writes the serialized ONNX bytes to a stream using the provided write function.
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+        :param write_function: A callable that accepts a bytes buffer to write.
+        """
+        self._model_compiler.compile_to_stream(write_function)
 
 
 class IOBinding:
@@ -765,7 +862,7 @@ class IOBinding:
         self._iobinding.bind_input(
             name,
             C.OrtDevice(
-                get_ort_device_type(device_type, device_id),
+                get_ort_device_type(device_type),
                 C.OrtDevice.default_memory(),
                 device_id,
             ),
@@ -812,7 +909,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
+                    get_ort_device_type(device_type),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -823,7 +920,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
+                    get_ort_device_type(device_type),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -889,7 +986,7 @@ class OrtValue:
         return self._ortvalue
 
     @classmethod
-    def ortvalue_from_numpy(cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0) -> OrtValue:
+    def ortvalue_from_numpy(cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0, vendor_id=-1) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
@@ -897,6 +994,7 @@ class OrtValue:
         :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
+        :param vendor_id: The device's PCI vendor id. If provided, the device_type should be "gpu" or "npu".
         """
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
         # is backed directly by the data buffer of the numpy object and so the numpy object
@@ -904,11 +1002,7 @@ class OrtValue:
         return cls(
             C.OrtValue.ortvalue_from_numpy(
                 numpy_obj,
-                C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                OrtDevice.make(device_type, device_id, vendor_id)._get_c_device(),
             ),
             numpy_obj if device_type.lower() == "cpu" else None,
         )
@@ -929,7 +1023,7 @@ class OrtValue:
 
     @classmethod
     def ortvalue_from_shape_and_type(
-        cls, shape: Sequence[int], element_type, device_type: str = "cpu", device_id: int = 0
+        cls, shape: Sequence[int], element_type, device_type: str = "cpu", device_id: int = 0, vendor_id: int = -1
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -938,7 +1032,11 @@ class OrtValue:
         :param element_type: The data type of the elements. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16).
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
+        :param vendor_id: If provided the device type should be "gpu" or "npu".
         """
+
+        device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
+
         # Integer for onnx element type (see https://onnx.ai/onnx/api/mapping.html).
         # This is helpful for some data type (like TensorProto.BFLOAT16) that is not available in numpy.
         if isinstance(element_type, int):
@@ -946,11 +1044,7 @@ class OrtValue:
                 C.OrtValue.ortvalue_from_shape_and_onnx_type(
                     shape,
                     element_type,
-                    C.OrtDevice(
-                        get_ort_device_type(device_type, device_id),
-                        C.OrtDevice.default_memory(),
-                        device_id,
-                    ),
+                    device,
                 )
             )
 
@@ -958,11 +1052,7 @@ class OrtValue:
             C.OrtValue.ortvalue_from_shape_and_type(
                 shape,
                 element_type,
-                C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                device,
             )
         )
 
@@ -1062,6 +1152,15 @@ class OrtValue:
         self._ortvalue.update_inplace(np_arr)
 
 
+def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
+    """
+    Copy tensor data from source OrtValue sequence to destination OrtValue sequence.
+    """
+    c_sources = [s._get_c_value() for s in src]
+    c_dsts = [d._get_c_value() for d in dst]
+    C.copy_tensors(c_sources, c_dsts, stream)
+
+
 class OrtDevice:
     """
     A data structure that exposes the underlying C++ OrtDevice
@@ -1074,6 +1173,7 @@ class OrtDevice:
         if isinstance(c_ort_device, C.OrtDevice):
             self._ort_device = c_ort_device
         else:
+            # An end user won't hit this error
             raise ValueError(
                 "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
             )
@@ -1085,20 +1185,39 @@ class OrtDevice:
         return self._ort_device
 
     @staticmethod
-    def make(ort_device_name, device_id):
-        return OrtDevice(
-            C.OrtDevice(
-                get_ort_device_type(ort_device_name, device_id),
-                C.OrtDevice.default_memory(),
-                device_id,
+    def make(ort_device_name, device_id, vendor_id=-1):
+        if vendor_id < 0:
+            # backwards compatibility with predefined OrtDevice names
+            return OrtDevice(
+                C.OrtDevice(
+                    get_ort_device_type(ort_device_name),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                )
             )
-        )
+        else:
+            # generic. use GPU or NPU for ort_device_name and provide a vendor id.
+            # vendor id of 0 is valid in some cases (e.g. webgpu is generic and does not have a vendor id)
+            return OrtDevice(
+                C.OrtDevice(
+                    get_ort_device_type(ort_device_name),
+                    C.OrtDevice.default_memory(),
+                    vendor_id,
+                    device_id,
+                )
+            )
 
     def device_id(self):
         return self._ort_device.device_id()
 
     def device_type(self):
         return self._ort_device.device_type()
+
+    def device_vendor_id(self):
+        return self._ort_device.vendor_id()
+
+    def device_mem_type(self):
+        return self._ort_device.mem_type()
 
 
 class SparseTensor:
@@ -1282,3 +1401,14 @@ class SparseTensor:
         Returns the name of the device where the SparseTensor data buffers reside e.g. cpu, cuda
         """
         return self._tensor.device_name().lower()
+
+
+# Type hint for user-specified function that allows the user to specify initializer locations when compiling a model.
+GetInitializerLocationFunc = Callable[
+    [str, OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]
+
+# Type hint that adheres to the signature expected by ORT.
+GetInitializerLocationWrapperFunc = Callable[
+    [str, C.OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]

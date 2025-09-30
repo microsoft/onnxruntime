@@ -423,7 +423,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     {
       if (!external_intra_op_thread_pool_) {
         bool allow_intra_op_spinning =
+#if !defined(ORT_CLIENT_PACKAGE_BUILD)
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+#else
+            // default KOrtSessionOptionsConfigAllowIntraOpSpinning to "0" for ORT builds targeting client/on-device workloads,
+            // to reduce CPU utilization and improve power efficiency.
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0") == "1";
+#endif
         OrtThreadPoolParams to = session_options_.intra_op_param;
         std::basic_stringstream<ORTCHAR_T> ss;
         if (to.name) {
@@ -461,7 +467,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       if (!external_inter_op_thread_pool_) {
         bool allow_inter_op_spinning =
+#if !defined(ORT_CLIENT_PACKAGE_BUILD)
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
+#else
+            // default kOrtSessionOptionsConfigAllowInterOpSpinning to "0" for ORT builds targeting client/on-device workloads,
+            // to reduce CPU utilization and improve power efficiency.
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "0") == "1";
+#endif
         OrtThreadPoolParams to = session_options_.inter_op_param;
         to.auto_set_affinity = to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
         std::basic_stringstream<ORTCHAR_T> ss;
@@ -1337,7 +1349,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(ensure_unique_dq_for_node_unit, *session_logger_, graph));
   }
 
-  // apply execution provider independent level 1 graph optimizations.
+  // apply execution provider independent level 0 and 1 graph optimizations.
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Default, *session_logger_));
   ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
@@ -1407,6 +1420,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       };
     }
   }
+
+  // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
+  // take advantage of the initializers being in OrtValue format and not to deal with protobuf.
+  //
+  // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
+  // with a TensorProto that has the same data type, shape and name. However, its external data
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
+  // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it, so we choose
+  // to do it as late as possible but before the partitioning so type and shape inference accesses the initializers
+  // before they are converted to OrtValues.
+  //
+  // If any transformations are applied later, they would not introduce any in-memory initializers,
+  // type and shape inference would run only on any newly added nodes and any new initializers
+  // will be converted at session finalization time.
+  //
+  // The conversion is performed using the following steps (within ConvertInitializersIntoOrtValues())
+  //   constexpr const bool use_tensor_buffer_true = true;
+  //   auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
+  //                                                        use_tensor_buffer_true);
+  //   ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto_to_add, ort_value));
+
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues());
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
@@ -1481,12 +1517,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Insert copy node/s.
   {
-    std::vector<std::string> provider_types;
+    InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
     for (auto& provider_ptr : execution_providers_) {
-      provider_types.push_back(provider_ptr->Type());
+      providers.push_back(provider_ptr.get());
     }
 
-    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
+    MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
@@ -1971,13 +2007,15 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
 // For now, this function only checks for invalid combination of DML EP with other EPs.
 // TODO: extend this function to check for other invalid combinations of EPs.
 common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() const {
-  // DML EP is only allowed with CPU EP
+  // DML EP is not allowed with other GPU or NPU EPs.
+  // historical reason for this is unknown. relaxing the limit that it must only be used with the CPU EP to support
+  // scenarios where alternative EPs are CPU based (e.g. openvino).
   bool has_dml_ep = execution_providers_.Get(kDmlExecutionProvider) != nullptr;
   if (has_dml_ep) {
-    const auto& ep_list = execution_providers_.GetIds();
-    for (const auto& ep : ep_list) {
-      if (ep == kDmlExecutionProvider || ep == kCpuExecutionProvider) continue;
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "DML EP can be used with only CPU EP.");
+    for (const auto& ep : execution_providers_) {
+      if (ep->Type() != kDmlExecutionProvider && ep->GetDevice().Type() != OrtDevice::CPU) {
+        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "DML EP can only be used with CPU EPs.");
+      }
     }
   }
   return Status::OK();
@@ -2003,7 +2041,7 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogSessionCreationStart();
+    env.GetTelemetryProvider().LogSessionCreationStart(session_id_);
 
     bool have_cpu_ep = false;
 
@@ -2942,7 +2980,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       }
 
       // log evaluation start to trace logging provider
-      env.GetTelemetryProvider().LogEvaluationStart();
+      env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
@@ -3095,7 +3133,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // log evaluation stop to trace logging provider
-  env.GetTelemetryProvider().LogEvaluationStop();
+  env.GetTelemetryProvider().LogEvaluationStop(session_id_);
 
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
@@ -3127,6 +3165,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
+
+  // Log runtime error telemetry if the return value is not OK
+  ORT_RETURN_IF_ERROR_SESSIONID(retval, session_id_);
   return retval;
 }
 
@@ -3310,6 +3351,137 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOutputs());
 }
 
+common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType type,
+                                                          InlinedVector<const OrtMemoryInfo*>& memory_info) const {
+  memory_info.clear();
+
+  if (!is_inited_) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
+  }
+
+  std::pair<common::Status, const OutputDefList*> result;
+  switch (type) {
+    case SessionInputOutputType::kInput:
+      result = GetModelInputs();
+      break;
+    case SessionInputOutputType::kOutput:
+      result = GetModelOutputs();
+      break;
+    case SessionInputOutputType::kOverridableInitializer:
+      // add if/when needed
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "GetInputOutputMemoryInfo for kOverridableInitializer is not implemented.");
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Unexpected SessionInputOutputType of ", static_cast<uint8_t>(type));
+  }
+
+  ORT_RETURN_IF_ERROR(result.first);
+
+  const auto& def_list = *result.second;
+  memory_info.reserve(def_list.size());
+
+  for (const auto* def : def_list) {
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
+    Status status;
+    if (type == SessionInputOutputType::kOutput) {
+      status = session_state_->GetOutputNodeInfo(def->Name(), node_info_vec);
+    } else {
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
+    }
+
+    if (!status.IsOK()) {
+      if (type == SessionInputOutputType::kInput) {
+        return status;
+      }
+
+      // Check first if this output is produced by an input that directly
+      // propagates to output with the same name.
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
+      if (status.IsOK()) {
+        // all entries are for the same OrtDevice so use the first one.
+        // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+        // from the session state and use its OrtMemoryInfo.
+        auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+        memory_info.push_back(&allocator->Info());
+      } else {
+        // Check if this output is produced by a constant initializer
+        // Pick the MemoryInfo from the initializer's OrtValue
+        const auto& ort_value_map = session_state_->GetOrtValueNameIdxMap();
+
+        OrtValueIndex ort_value_index;
+        status = ort_value_map.GetIdx(def->Name(), ort_value_index);
+        if (!status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+
+        const auto& idx_to_ort_value = session_state_->GetInitializedTensors();
+        auto it = idx_to_ort_value.find(ort_value_index);
+        if (it == idx_to_ort_value.end()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+        const auto& tensor = it->second.Get<Tensor>();
+        auto allocator = session_state_->GetAllocator(tensor.Location());
+        memory_info.push_back(&allocator->Info());
+      }
+    } else {
+      // all entries are for the same OrtDevice so use the first one.
+      // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+      // from the session state and use its OrtMemoryInfo.
+      auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+      memory_info.push_back(&allocator->Info());
+    }
+  }
+
+  return Status::OK();
+}
+
+common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& ep_devices) const {
+  ep_devices.clear();
+
+#if defined(ORT_MINIMAL_BUILD)
+  return common::Status(common::ONNXRUNTIME, common::FAIL,
+                        "GetEpDeviceForInputs is not available in a minimal build.");
+#else
+  if (!is_inited_) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
+  }
+
+  std::pair<common::Status, const OutputDefList*> inputs = GetModelInputs();
+
+  ORT_RETURN_IF_ERROR(inputs.first);
+
+  const auto& def_list = *inputs.second;
+  ep_devices.reserve(def_list.size());
+
+  const auto& available_eps = environment_.GetOrtEpDevices();
+
+  for (const auto* def : def_list) {
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
+    ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+    assert(!node_info_vec.empty());
+    // If we have an input that is not consumed by any node,
+    // including nodes in subgraphs, then we return nullptr.
+    const auto* p_node = node_info_vec.front().p_node;
+    if (p_node != nullptr) {
+      const auto ep_name = p_node->GetExecutionProviderType();
+      auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
+        return entry->ep_name == ep_name;
+      });
+      ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    } else {
+      ep_devices.push_back(nullptr);
+    }
+  }
+
+  return Status::OK();
+#endif
+}
+
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
   {
     std::lock_guard<std::mutex> l(session_mutex_);
@@ -3469,7 +3641,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
       ++iter;
     }
 
-    // Shrink if it is an arena based allocator
+    // Shrink if it is a BFCArena allocator
     // Iterate through the registered allocators as we could have multiple allocators for the device+type
     // if they differ by vendor_id.
     for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
@@ -3630,34 +3802,50 @@ common::Status InferenceSession::AddPredefinedTransformers(
     RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
     const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
-    if (graph_optimization_level >= level) {
-      // Generate and register transformers for level
-      auto transformers_to_register = [&]() {
-        const bool use_full_build_optimizations =
-            level == TransformerLevel::Level1 ||
-            minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
+    std::function<onnxruntime::InlinedVector<std::unique_ptr<GraphTransformer>>()> transformers_to_register;
 
-        if (use_full_build_optimizations) {
+    // Enable free dimension override even when the graph optimization level is 0.
+    // If the optimization level is above 0, the override will be applied during level 1 optimization.
+    if (level == TransformerLevel::Default) {
+      if (graph_optimization_level == TransformerLevel::Default) {
+        transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
                                                        GetIntraOpThreadPoolToUse());
-        } else {
-          const auto sat_context =
-              minimal_build_optimization_handling ==
-                      MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
-                  ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
-                        record_runtime_optimization_produced_op_schema_fn}}
-                  : SatApplyContextVariant{SatDirectApplicationContext{}};
-          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
-                                                                      logger,
-                                                                      optimizers_to_disable_,
-                                                                      GetIntraOpThreadPoolToUse());
-        }
-      }();
+        };
+      }
+    } else {
+      if (graph_optimization_level >= level) {
+        // Generate and register transformers for level
+        transformers_to_register = [&]() {
+          const bool use_full_build_optimizations =
+              level == TransformerLevel::Level1 ||
+              minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
 
-      for (auto& entry : transformers_to_register) {
+          if (use_full_build_optimizations) {
+            return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
+                                                         optimizers_to_disable_,
+                                                         GetIntraOpThreadPoolToUse());
+          } else {
+            const auto sat_context =
+                minimal_build_optimization_handling ==
+                        MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
+                    ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
+                          record_runtime_optimization_produced_op_schema_fn}}
+                    : SatApplyContextVariant{SatDirectApplicationContext{}};
+            return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
+                                                                        logger,
+                                                                        optimizers_to_disable_,
+                                                                        GetIntraOpThreadPoolToUse());
+          }
+        };
+      }
+    }
+
+    if (transformers_to_register) {  // Ensure the lambda is initialized before invoking it
+      for (auto& entry : transformers_to_register()) {
         ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }

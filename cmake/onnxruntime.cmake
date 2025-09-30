@@ -22,13 +22,14 @@ endif()
 function(get_c_cxx_api_headers HEADERS_VAR)
   set(_headers
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -148,7 +149,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
     if (APPLE)
       target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
     elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-      target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
+      target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections" "LINKER:-z,noexecstack")
     endif()
   else()
     target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
@@ -349,8 +350,19 @@ if (winml_is_inbox)
   endif()
 endif()
 
-# Assemble the Apple static framework (iOS and macOS)
+# Assemble the Apple static framework
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS|visionOS|tvOS")
+    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
+  endif()
+
+  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
+  if (CMAKE_OSX_ARCHITECTURES_LEN GREATER 1)
+    # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
+    # but that would not work for universal static libraries
+    message(FATAL_ERROR "universal binary is not supported for apple framework")
+  endif()
+
   # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,
   # we specify as `-macabi` in the name of the output static apple framework directory.
   if (PLATFORM_NAME STREQUAL "macabi")

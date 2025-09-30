@@ -13,7 +13,9 @@
 #undef INTEL
 #endif
 
-// Struct to represent a physical device.
+// Struct to represent a combination of physical device and memory type.
+// A memory allocation and allocator have a specific OrtDevice associated with them, and this information is used
+// to determine when data transfer is required.
 struct OrtDevice {
   using DeviceType = int8_t;
   using MemoryType = int8_t;
@@ -22,16 +24,16 @@ struct OrtDevice {
   using Alignment = size_t;
 
   // Pre-defined device types.
-  static const DeviceType CPU = 0;
-  static const DeviceType GPU = 1;
-  static const DeviceType FPGA = 2;
-  static const DeviceType NPU = 3;
+  static constexpr DeviceType CPU = 0;
+  static constexpr DeviceType GPU = 1;
+  static constexpr DeviceType FPGA = 2;
+  static constexpr DeviceType NPU = 3;
   // this is used in the python API so we need to keep it for backward compatibility
   // it is only used in the OrtDevice ctor, and is mapped to GPU + VendorIds::MICROSOFT
-  static const DeviceType DML = 4;
+  static constexpr DeviceType DML = 4;
 
   struct MemType {
-    static const MemoryType DEFAULT = 0;
+    static constexpr MemoryType DEFAULT = 0;
 
     // deprecated values. MemType + VendorId is used to identify the memory type.
     enum Deprecated : MemoryType {
@@ -41,7 +43,13 @@ struct OrtDevice {
       QNN_HTP_SHARED = 4,
     };
 
-    static const MemoryType HOST_ACCESSIBLE = 5;  // Device memory that is accessible from host and device.
+    // HOST_ACCESSIBLE memory is treated as CPU memory.
+    // When creating an OrtDevice with MemType::HOST_ACCESSIBLE:
+    //   - For memory that is only accessible by a specific device and CPU, use the specific device type and id.
+    //   - When creating an OrtDevice for an EP allocator, you would typically use the same device type and id
+    //     that the EP is registered with (i.e. the OrtDevice passed to the base IExecutionProvider constructor).
+    //   - Otherwise use OrtDevice::CPU.
+    static constexpr MemoryType HOST_ACCESSIBLE = 5;
   };
 
   // PCI vendor ids
@@ -101,6 +109,11 @@ struct OrtDevice {
     return alignment;
   }
 
+  // CPU or HOST_ACCESSIBLE memory.
+  bool UsesCpuMemory() const noexcept {
+    return device_type == CPU || memory_type == MemType::HOST_ACCESSIBLE;
+  }
+
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "Device:["
@@ -135,6 +148,13 @@ struct OrtDevice {
       return device_id < other.device_id;
 
     return alignment < other.alignment;
+  }
+
+  bool EqualIgnoringAlignment(const OrtDevice& other) const {
+    return device_type == other.device_type &&
+           memory_type == other.memory_type &&
+           vendor_id == other.vendor_id &&
+           device_id == other.device_id;
   }
 
  private:

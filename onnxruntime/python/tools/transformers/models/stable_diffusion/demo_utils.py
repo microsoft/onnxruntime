@@ -512,7 +512,7 @@ def load_pipelines(args, batch_size=None):
 
     # Register TensorRT plugins
     if engine_type == EngineType.TRT:
-        from trt_utilities import init_trt_plugins
+        from trt_utilities import init_trt_plugins  # noqa: PLC0415
 
         init_trt_plugins()
 
@@ -610,7 +610,7 @@ def get_depth_image(image):
     """
     Create depth map for SDXL depth control net.
     """
-    from transformers import DPTFeatureExtractor, DPTForDepthEstimation
+    from transformers import DPTFeatureExtractor, DPTForDepthEstimation  # noqa: PLC0415
 
     depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
     feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")

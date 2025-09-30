@@ -44,6 +44,7 @@
 struct OrtGraph;
 
 namespace onnxruntime {
+class ExternalDataInfo;
 class Graph;
 struct IndexedSubGraph;
 class Model;
@@ -739,7 +740,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
 
   /** This function takes externally provided files in memory for initializers with external
-   *    data and replaces graph initializers with its content.
+   *    data and replaces main graph initializers with its content.
    */
   common::Status InjectExternalInitializersFromFilesInMemory(
       const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files);
@@ -788,6 +789,27 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
    */
   bool GetOrtValueInitializer(const std::string& name, OrtValue& value, bool check_outer_scope = false) const;
 
+  /// <summary>
+  /// Loads an initializer with data in an external file into an OrtValue. Does NOT cache the OrtValue
+  /// in this Graph.
+  /// </summary>
+  /// <param name="name">The name of the initializer.</param>
+  /// <param name="value">Output parameter set to the loaded OrtValue. Set to an existing OrtValue if
+  /// it is already loaded.</param>
+  /// <returns>A status indicating an error or success. An error occurs if `name` is not an initializer
+  /// with external data.</returns>
+  Status LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) const;
+
+  /// <summary>
+  /// Gets information (external filepath, file offset, num bytes) for an initializer with data in an external file.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="ext_info">Output parameter set to the location information of the external data.</param>
+  /// <param name="check_outer_scope">Set to true if parent graphs should be checked.</param>
+  /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
+  bool GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
+                                  bool check_outer_scope = false) const;
+
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
 
@@ -817,15 +839,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   /// <summary>
   /// Returns the initializer's TensorProto if 'name' is an initializer (either constant or overridable).
-  /// If the initializer is not found, a nullptr is returned. An output parameter is set to true if the initializer
-  /// is constant.
+  /// If the initializer is not found, a nullptr is returned. Also returns, via output parameters, the
+  /// OrtValue that holds the actual data (if any) and a boolean that indicates if the initializer is constant.
   /// </summary>
   /// <param name="name">The initializer's name.</param>
-  /// <param name="check_outer_scope">Checks outer scope if set to true and the graph is a subgraph.</param>
+  /// <param name="value">Output OrtValue that is populated if the initializer tensor proto has been configured
+  ///                     to use external data that points to an OrtValue. Is set to an unallocated OrtValue for
+  ///                     a tensor proto that holds the weight data (e.g., small initializers).</param>
   /// <param name="is_constant">Output parameter set to true if the initializer is a constant.</param>
+  /// <param name="check_outer_scope">Checks outer scope if set to true and the graph is a subgraph.</param>
   /// <returns>The initializer's TensorProto or nullptr.</returns>
-  const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope,
-                                                    bool& is_constant) const;
+  const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, OrtValue& value,
+                                                    bool& is_constant, bool check_outer_scope = false) const;
 
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
@@ -949,8 +974,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return const_cast<Graph*>(this)->GetNodeArg(name);
   }
 
-  // search this and up through any parent_graph_ instance for a NodeArg
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding mutable NodeArg
   NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
+
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding const NodeArg
+  const NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const;
 
   /** Gets a mutable NodeArg by name. Creates a new NodeArg that is owned by this Graph if not found.
   @param name The NodeArg name.
@@ -1192,8 +1220,19 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the GraphProto representation of this Graph. */
+  /** Gets the GraphProto representation of this Graph only.
+   * This does not remove in-memory tags for graph initializers.
+   * Use ToGraphProto() const to get a GraphProto that can be serialized externally.
+   */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+
+  /// <summary>
+  // This function recurses subgraphs and examines each initializer
+  // If initializer data points to in-memory location, it is inlined
+  // otherwise, the initializer is copied as is including any
+  // external data references.
+  /// </summary>
+  /// <returns>GraphProto</returns>
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
@@ -1207,6 +1246,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
+
+  /// <summary>
+  /// Serialize the Graph to a onnx::GraphProto. Caller provides a function that determines where each initializer
+  /// is stored (i.e., either in an external file or within the model).
+  /// </summary>
+  /// <param name="handle_initializer_func">Function called for every initializer.</param>
+  /// <param name="state">Opaque user state passed to the handle_initializer_func.</param>
+  /// <param name="graph_proto">Output parameter set to the serialized onnx::GraphProto.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  common::Status ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                           void* state,
+                                                           /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1403,6 +1454,27 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return Resolve(default_options);
   }
 
+  /// <summary>
+  /// This function converts all the graph TensorProto initializers into OrtValues
+  /// and creates a in-memory external data reference for each OrtValue.
+  /// </summary>
+  /// <returns></returns>
+  Status ConvertInitializersIntoOrtValues();
+
+  /**
+   * @brief Converts a subset of graph TensorProto initializers into OrtValues and updates the graph proto.
+   *
+   * This function converts specified TensorProto initializers in the graph into OrtValues and
+   * creates in-memory external data references for each OrtValue. It then updates the provided
+   * GraphProto with the modified initializers.
+   *
+   * @param iterators Span of iterators pointing to the initializers and the order that should be processed
+   * @param output_graph_proto The GraphProto to be updated with the modified initializers
+   * @return Status Returns a Status object indicating success or any errors that occurred during conversion
+   */
+  Status RegenerateInitializersAndReplaceInMemory(gsl::span<const InitializedTensorSet::const_iterator> iterators,
+                                                  ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+
   const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept {
     return outer_scope_node_arg_names_;
   }
@@ -1556,6 +1628,30 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        std::optional<std::string_view> new_name);
 
   /// <summary>
+  /// This function is used by ToGraphProto() to ensure in-memory external data references
+  /// don't leak externally since they are non-standard.
+  ///
+  /// It is used when GraphSynchronizationNeeded() is false: GraphProto is simply copied
+  ///   from graph_proto_ by ToGraphProto(). This copy includes both main graph
+  ///   and subgraph initializers. This function examines all initializers
+  ///   and inlines any in-memory data references.
+  /// </summary>
+  /// <param name="output_graph_proto">The GraphProto to process</param>
+  /// <returns>Status indicating success or failure</returns>
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+
+  /// <summary>
+  /// This function replaces all of the initializers within output_graph_proto
+  /// from this Graph instance. All in memory initializers are regenerated and inlined.
+  /// This is necessary even if the graph_proto_ is already up to date because initializers() may
+  /// contain obsolete initializers that are no longer in use due to optimizations and contain obsolete
+  /// references to OrtValues that may no longer be around (since we like appending rather than replacing).
+  /// </summary>
+  /// <param name="output_graph_proto">Destination GraphProto to receive the updated initializers.</param>
+  /// <returns>Status indicating success or failure.</returns>
+  Status RegenerateInitializersAndReplaceInMemory(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+
+  /// <summary>
   /// This function traverses the graph bottom up and externalizes
   /// constant initializers along with their pre-packed blobs from different
   /// kernels. Writes constant initializers to the external file with any pre-packed
@@ -1580,6 +1676,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       std::ostream& external_stream,
       int64_t& external_offset) const;
 
+  Status ToGraphProtoWithCustomInitializerHandlingImpl(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                       void* state,
+                                                       /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 #endif
 
   Version IrVersion() const noexcept {

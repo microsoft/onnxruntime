@@ -123,7 +123,8 @@ static std::optional<wgi::BitmapBounds> GetBoundsFromMetadata(const wfc::IProper
   return {};
 }
 
-static std::optional<winml::LearningModelPixelRange> GetBitmapPixelRangeFromMetadata(const wfc::IPropertySet& properties
+static std::optional<winml::LearningModelPixelRange> GetBitmapPixelRangeFromMetadata(
+  const wfc::IPropertySet& properties
 ) {
   if (properties != nullptr && properties.HasKey(L"PixelRange")) {
     if (auto pixelRangeInspectable = properties.Lookup(L"PixelRange")) {

@@ -285,7 +285,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     sign_buffer.set(1, 1.0f);
   } else if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     if (model_builder.IsFloat16ArrayAvailable()) {
-      // Float16Array is avaliable - use Float16Array.
+      // Float16Array is available - use Float16Array.
       sign_buffer = emscripten::val::global("Float16Array").new_(2);
       sign_buffer.set(0, -1.0f);
       sign_buffer.set(1, 1.0f);
@@ -334,13 +334,13 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   if (input_is_4d) {
     // The output is in 4D shape, we need to transpose it back to the original shape.
     // Reuse the transpose_options' permutation because the original permutation also
-    // happens to be its own inverse. (inserve({0, 2, 1, 3} == {0, 2, 1, 3})
+    // happens to be its own inverse. (inverse({0, 2, 1, 3} == {0, 2, 1, 3})
     transpose_options.set("label", node_name + "_transpose_output");
     output = wnn_builder.call<emscripten::val>("transpose", output, transpose_options);
   } else {
     // The output is in 3D shape, we need to reshape it back to the original shape.
     // The output shape is same as the input shape.
-    const std::vector<uint32_t> output_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+    const std::vector<uint32_t> output_shape = GetNarrowedIntFromInt64<uint32_t>(input_shape);
     emscripten::val reshape_output_options = emscripten::val::object();
     reshape_output_options.set("label", node_name + "_reshape_output");
     output = wnn_builder.call<emscripten::val>(

@@ -5,6 +5,8 @@
 
 #ifndef SHARED_PROVIDER
 #include <memory>
+#include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -34,7 +36,9 @@ class GraphOptimizerRegistry;
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+#include "core/session/onnxruntime_c_api.h"
 
+struct OrtEpDevice;
 struct OrtRunOptions;
 
 namespace onnxruntime {
@@ -62,7 +66,9 @@ using RunOptions = ::OrtRunOptions;
 enum class DataLayout {
   NCHW,
   NHWC,
-  NCHWC,
+
+  // NCHW is the default ONNX standard data layout. So default to it.
+  Default = NCHW,
 };
 
 class IExecutionProvider {
@@ -72,6 +78,10 @@ class IExecutionProvider {
 
   IExecutionProvider(const std::string& type, OrtDevice device)
       : default_device_(device), type_{type} {
+  }
+
+  IExecutionProvider(const std::string& type, OrtDevice device, const logging::Logger& logger)
+      : default_device_(device), type_{type}, logger_{&logger} {
   }
 
   /*
@@ -170,7 +180,12 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return default_device_.Id(); };
+  virtual int GetDeviceId() const { return default_device_.Id(); }
+
+  /**
+   * Get the OrtDevice the execution provider was registered with.
+   */
+  const OrtDevice& GetDevice() const { return default_device_; }
 
   /**
      Get execution provider's configuration options.
@@ -308,6 +323,29 @@ class IExecutionProvider {
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
 
+  /**
+   * Get the compatibility info for a compiled model.
+   *
+   * The execution provider determines this value, which denotes the compatibility of the compiled model with the EP.
+   * This is stored in the model metadata under a key associated with the EP type.
+   */
+  virtual std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const {
+    // graph_viewer and model_metadata are not used in the default implementation.
+    ORT_UNUSED_PARAMETER(graph_viewer);
+    // Default implementation returns empty string
+    return std::string();
+  }
+
+  /**
+   * Validate the compatibility of a compiled model with this execution provider.
+   */
+  virtual common::Status ValidateCompiledModelCompatibilityInfo(const std::string& /*compatibility_info*/,
+                                                                OrtCompiledModelCompatibility& model_compatibility) const {
+    // Default implementation indicates this EP does not support model compatibility validation
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
+  }
+
 #endif
 
   void SetLogger(const logging::Logger* logger) {
@@ -323,9 +361,21 @@ class IExecutionProvider {
   }
 
   virtual DataLayout GetPreferredLayout() const {
-    // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return DataLayout::NCHW;
+    return DataLayout::Default;
+  }
+
+  /**
+    Given an op with domain `domain` and type `op_type`, determine whether an associated node's data layout should be
+    converted to `target_data_layout`.
+    If the EP prefers a non-default data layout (see `GetPreferredLayout()`), this function will be called during
+    layout transformation with `target_data_layout` set to the EP's preferred data layout.
+    A return value of `std::nullopt` indicates that this decision is left to ORT.
+  */
+  virtual std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view /*domain*/,
+                                                           std::string_view /*op_type*/,
+                                                           DataLayout /*target_data_layout*/) const {
+    return std::nullopt;
   }
 
   virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}

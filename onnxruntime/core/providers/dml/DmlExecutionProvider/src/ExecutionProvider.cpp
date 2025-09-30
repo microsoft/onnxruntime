@@ -781,7 +781,10 @@ namespace Dml
                 // this branch could be reached with a bad custom operator or malformed file. If
                 // a legitimate case reaches here and DML needs to support a new input/output type
                 // besides tensors, then remove the assert.
-                assert(false);
+
+                // If the model has nodes that use Optional we will arrive here. It's a valid ONNX model but 
+                // TryGetTensorDataType doesn't handle Optional.              
+                // assert(false);
                 nodeContainsSupportedDataTypes = false;
                 return;
             }
@@ -924,7 +927,7 @@ namespace Dml
 
     bool IsGpuTensor(const onnxruntime::Tensor& tensor)
     {
-        return strcmp(tensor.Location().name, onnxruntime::CPU) &&
+        return strcmp(tensor.Location().name.c_str(), onnxruntime::CPU) &&
             !(tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput);
     }
 

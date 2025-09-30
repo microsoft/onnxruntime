@@ -98,7 +98,8 @@ class SessionState {
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
                PrepackedWeightsContainer* prepacked_weights_container = nullptr,
-               AllocatorMap* parent_allocators = nullptr);
+               AllocatorMap* parent_allocators = nullptr,
+               AllocatorMap* parent_initializer_allocators = nullptr);
 
   ~SessionState() {
   }
@@ -126,6 +127,12 @@ class SessionState {
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
   AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
+
+  /**
+    Get an allocator for the given OrtDevice that is only used for read-only initializers.
+    Falls back to calling GetAllocator as needed.
+   */
+  AllocatorPtr GetInitializerAllocator(const OrtDevice& device) const noexcept;
 
   /*
    * Get allocators.
@@ -464,17 +471,18 @@ class SessionState {
     }
   };
 
-  // using std::map as OrtDevice would need a custom hash function to be used with std::unordered_map,
-  // and as this isn't considered performance critical currently it's not worth the maintenance overhead of adding one.
-  // We do get an allocator from ExecutionFrame so this is looked up frequently, however there most likely aren't many
-  // entries in the map
   // SessionState will contain other SessionState objects for subgraph. The unique ptr will be initialized only the
   // SessionState object is in the parent graph, the raw pointer will be initialized when session state is in parent
   // graph (from the unique ptr) or in the subgraph (from the raw pointer from parent session state). The raw pointer
   // will be used all the way to access std::map<OrtDevice, AllocatorPtr>, unique pointer is only releasing the resource
   // when the parent session state is releasing.
   std::unique_ptr<AllocatorMap> allocators_unique_ptr_;
+  // allocators with type of OrtAllocatorType::OrtReadOnlyAllocator that are used for initializers if found.
+  // if not we fallback to lookup in allocators_;
+  std::unique_ptr<AllocatorMap> initializer_allocators_unique_ptr_;
+
   AllocatorMap* allocators_;
+  AllocatorMap* initializer_allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
 

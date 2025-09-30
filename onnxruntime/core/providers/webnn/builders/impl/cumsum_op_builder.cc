@@ -77,10 +77,6 @@ bool CumSumOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
   const std::string axis_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'axis' input.
   const auto* init = graph_viewer.GetConstantInitializer(axis_name);

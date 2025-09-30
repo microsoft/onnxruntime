@@ -63,11 +63,6 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
-#include "orttraining/training_ops/rocm/communication/nccl_service.h"
-#include "orttraining/core/framework/distributed_run_context.h"
-#endif
-
 #ifdef _WIN32
 #include "core/platform/windows/logging/etw_sink.h"
 #endif
@@ -101,7 +96,6 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
@@ -112,7 +106,6 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory.h"
-#include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -156,8 +149,6 @@ ProviderInfo_CANN* TryGetProviderInfo_CANN();
 ProviderInfo_CANN& GetProviderInfo_CANN();
 ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl();
 ProviderInfo_Dnnl& GetProviderInfo_Dnnl();
-ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
-ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
@@ -290,7 +281,7 @@ struct ProviderHostImpl : ProviderHost {
   void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }
 
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(name); }
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(device_id, name); }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
   void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
@@ -301,27 +292,10 @@ struct ProviderHostImpl : ProviderHost {
   Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg, file, line); }
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg, file, line); }
 
-#ifdef USE_MIGRAPHX
   std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXAllocator(device_id, name); }
   std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGraphX().CreateMIGraphXPinnedAllocator(device_id, name); }
-#endif
 
-#ifdef USE_ROCM
-  std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_ROCM().CreateROCMAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) override { return GetProviderInfo_ROCM().CreateROCMPinnedAllocator(name); }
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_ROCM().CreateGPUDataTransfer(); }
-
-  void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
-  void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
-
-  void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
-  void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
-
-  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg, file, line); }
-  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg, file, line); }
-#else
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }
-#endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
 
@@ -974,6 +948,11 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetType_Float8E5M2() override { return DataTypeImpl::GetType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() override { return DataTypeImpl::GetType<Float8E5M2FNUZ>(); }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+  MLDataType DataTypeImpl__GetType_Float4E2M1x2() override { return DataTypeImpl::GetType<Float4E2M1x2>(); }
+#endif
+
   MLDataType DataTypeImpl__GetType_Int4x2() override { return DataTypeImpl::GetType<Int4x2>(); }
   MLDataType DataTypeImpl__GetType_UInt4x2() override { return DataTypeImpl::GetType<UInt4x2>(); }
 
@@ -998,6 +977,11 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetTensorType_Float8E5M2() override { return DataTypeImpl::GetTensorType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetTensorType<Float8E5M2FNUZ>(); }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+  MLDataType DataTypeImpl__GetTensorType_Float4E2M1x2() override { return DataTypeImpl::GetTensorType<Float4E2M1x2>(); }
+#endif
+
   MLDataType DataTypeImpl__GetTensorType_Int4x2() override { return DataTypeImpl::GetTensorType<Int4x2>(); }
   MLDataType DataTypeImpl__GetTensorType_UInt4x2() override { return DataTypeImpl::GetTensorType<UInt4x2>(); }
 
@@ -1016,12 +1000,14 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_string() override { return DataTypeImpl::GetSparseTensorType<std::string>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() override { return DataTypeImpl::GetSparseTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() override { return DataTypeImpl::GetSparseTensorType<MLFloat16>(); }
+
 #if !defined(DISABLE_FLOAT8_TYPES)
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FN() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FN>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>(); }
 #endif
+
 #endif
 
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
@@ -1040,6 +1026,8 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv4() override { return DataTypeImpl::AllTensorTypesIRv4(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv9() override { return DataTypeImpl::AllTensorTypesIRv9(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv10() override { return DataTypeImpl::AllTensorTypesIRv10(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv11() override { return DataTypeImpl::AllTensorTypesIRv11(); }
 
   const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
 
@@ -1284,6 +1272,10 @@ struct ProviderHostImpl : ProviderHost {
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
   Status Graph__AddInitializedOrtValue(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor,
                                        const OrtValue& value) override { return p->AddInitializedOrtValue(tensor, value); }
+  bool Graph__GetOrtValueInitializer(const Graph* p, const std::string& tensor_name, OrtValue& value,
+                                     bool check_outer_scope) override {
+    return p->GetOrtValueInitializer(tensor_name, value, check_outer_scope);
+  }
   Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
@@ -1382,6 +1374,10 @@ struct ProviderHostImpl : ProviderHost {
                                                                          bool check_outer_scope) const override {
     return p->GetConstantInitializer(name, check_outer_scope);
   }
+  bool GraphViewer__GetOrtValueInitializer(const GraphViewer* p, const std::string& tensor_name,
+                                           OrtValue& value) override {
+    return p->GetOrtValueInitializer(tensor_name, value);
+  }
   const Node* GraphViewer__ParentNode(const GraphViewer* p) override { return p->ParentNode(); }
   int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
   int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept override { return p->MaxNodeIndex(); }
@@ -1413,8 +1409,9 @@ struct ProviderHostImpl : ProviderHost {
                             ONNX_NAMESPACE::GraphProto& graph_proto,
                             bool include_initializers,
                             bool include_outer_scope_args,
-                            int execution_order) noexcept override {
-    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, static_cast<ExecutionOrder>(execution_order));
+                            int execution_order,
+                            bool include_initializer_data) noexcept override {
+    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, static_cast<ExecutionOrder>(execution_order), include_initializer_data);
   }
   const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
   IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const override { return p->GetSchemaRegistry(); }
@@ -1605,6 +1602,11 @@ struct ProviderHostImpl : ProviderHost {
   Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) override { return p->MutableData<Float8E5M2>(); }
   Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) override { return p->MutableData<Float8E5M2FNUZ>(); }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+  Float4E2M1x2* Tensor__MutableData_Float4E2M1x2(Tensor* p) override { return p->MutableData<Float4E2M1x2>(); }
+#endif
+
   Int4x2* Tensor__MutableData_Int4x2(Tensor* p) override { return p->MutableData<Int4x2>(); }
   UInt4x2* Tensor__MutableData_UInt4x2(Tensor* p) override { return p->MutableData<UInt4x2>(); }
 
@@ -1628,6 +1630,11 @@ struct ProviderHostImpl : ProviderHost {
   const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) override { return p->Data<Float8E5M2>(); }
   const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) override { return p->Data<Float8E5M2FNUZ>(); }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+  const Float4E2M1x2* Tensor__Data_Float4E2M1x2(const Tensor* p) override { return p->Data<Float4E2M1x2>(); }
+#endif
+
   const Int4x2* Tensor__Data_Int4x2(const Tensor* p) override { return p->Data<Int4x2>(); }
   const UInt4x2* Tensor__Data_UInt4x2(const Tensor* p) override { return p->Data<UInt4x2>(); }
 
@@ -1659,6 +1666,11 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2>(); }
   bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2FNUZ>(); }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+  bool Tensor__IsDataType_Float4E2M1x2(const Tensor* p) noexcept override { return p->IsDataType<Float4E2M1x2>(); }
+#endif
+
   bool Tensor__IsDataType_Int4x2(const Tensor* p) noexcept override { return p->IsDataType<Int4x2>(); }
   bool Tensor__IsDataType_UInt4x2(const Tensor* p) noexcept override { return p->IsDataType<UInt4x2>(); }
 
@@ -1827,23 +1839,25 @@ Status ProviderLibrary::Load() {
 
   try {
     std::lock_guard<std::mutex> lock{mutex_};
-    s_library_shared.Ensure();
+    if (!provider_) {
+      s_library_shared.Ensure();
 
-    if (absolute_) {
-      // If filename_ is not absolute it should not be loaded.
-      if (!std::filesystem::path{filename_}.is_absolute()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      if (absolute_) {
+        // If filename_ is not absolute it should not be loaded.
+        if (!std::filesystem::path{filename_}.is_absolute()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+        }
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+      } else {
+        auto full_path = Env::Default().GetRuntimePath() + filename_;
+        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
       }
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
-    } else {
-      auto full_path = Env::Default().GetRuntimePath() + filename_;
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+
+      Provider* (*PGetProvider)();
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+      provider_ = PGetProvider();
     }
-
-    Provider* (*PGetProvider)();
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
-
-    provider_ = PGetProvider();
   } catch (const std::exception&) {
     Unload();  // If anything fails we unload the library and rethrow
     throw;
@@ -1860,7 +1874,9 @@ Provider& ProviderLibrary::Get() {
       }
 
       std::lock_guard<std::mutex> lock{mutex_};
-      provider_->Initialize();
+      if (!initialized_) {
+        provider_->Initialize();
+      }
       initialized_ = true;
     }
 
@@ -1912,12 +1928,7 @@ static ProviderLibrary s_library_cann(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
                                       false /* unload - On Linux if we unload the cann shared provider we crash */
 #endif
 );
-static ProviderLibrary s_library_rocm(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_rocm") LIBRARY_EXTENSION
-#ifndef _WIN32
-                                      ,
-                                      false /* unload - On Linux if we unload the rocm shared provider we crash */
-#endif
-);
+
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_dnnl") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_vitisai(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_vitisai") LIBRARY_EXTENSION
 #ifndef _WIN32
@@ -1963,7 +1974,6 @@ void UnloadSharedProviders() {
   s_library_cuda.Unload();
   s_library_cuda_test.Unload();
   s_library_cann.Unload();
-  s_library_rocm.Unload();
   s_library_shared.Unload();
   s_library_migraphx.Unload();
   s_library_qnn.Unload();
@@ -1971,16 +1981,9 @@ void UnloadSharedProviders() {
 }
 
 // Used by test code
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
-    return info->CreateCUDAPinnedAllocator(name);
-
-  return nullptr;
-}
-
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
-  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
-    return info->CreateROCMPinnedAllocator(name);
+    return info->CreateCUDAPinnedAllocator(device_id, name);
 
   return nullptr;
 }
@@ -2027,10 +2030,6 @@ std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
   // Will get an exception when fail to load EP library.
   LOGS_DEFAULT(ERROR) << exception.what();
   return nullptr;
-}
-
-std::shared_ptr<IExecutionProviderFactory> RocmProviderFactoryCreator::Create(const OrtROCMProviderOptions* provider_options) {
-  return s_library_rocm.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 std::shared_ptr<IExecutionProviderFactory>
@@ -2146,8 +2145,13 @@ std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
   return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
-  return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
+}
+
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* options) {
+  const auto provider_options{s_library_migraphx.Get().GetProviderOptions(options)};
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
 }
 
 // Adapter to convert the legacy OrtOpenVINOProviderOptions to ProviderOptions
@@ -2326,20 +2330,6 @@ ProviderInfo_Dnnl& GetProviderInfo_Dnnl() {
   ORT_THROW("oneDNN Provider not available, can't get interface for it");
 }
 
-ProviderInfo_ROCM* TryGetProviderInfo_ROCM() try {
-  return reinterpret_cast<ProviderInfo_ROCM*>(s_library_rocm.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
-}
-
-ProviderInfo_ROCM& GetProviderInfo_ROCM() {
-  if (auto* info = TryGetProviderInfo_ROCM())
-    return *info;
-
-  ORT_THROW("ROCM Provider not available, can't get interface for it");
-}
-
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX() try {
   return reinterpret_cast<ProviderInfo_MIGraphX*>(s_library_migraphx.Get().GetInfo());
 } catch (const std::exception& exception) {
@@ -2362,16 +2352,12 @@ void CopyGpuToCpu(
     const OrtMemoryInfo& src_location) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);
-  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
-    return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);
   ORT_THROW("GPU-to-CPU copy is not implemented.");
 }
 
 void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->cudaMemcpy_HostToDevice(dst, src, count);
-  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
-    return info->rocmMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
 
@@ -2393,14 +2379,6 @@ INcclService& INcclService::GetInstance() {
   return GetProviderInfo_CUDA().GetINcclService();
 }
 }  // namespace cuda
-#endif
-
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
-namespace rocm {
-INcclService& INcclService::GetInstance() {
-  return GetProviderInfo_ROCM().GetINcclService();
-}
-}  // namespace rocm
 #endif
 
 void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptionsV2* provider_options, const ProviderOptions& options) {
@@ -2567,12 +2545,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int de
     return info->SetCurrentGpuDeviceId(device_id);
 #endif
 
-#ifdef USE_ROCM
-  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
-    return info->SetCurrentGpuDeviceId(device_id);
-#endif
-
-  return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
@@ -2584,12 +2557,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, [[maybe_unused]] _In_ int* d
     return info->GetCurrentGpuDeviceId(device_id);
 #endif
 
-#ifdef USE_ROCM
-  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
-    return info->GetCurrentGpuDeviceId(device_id);
-#endif
-
-  return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
@@ -2598,25 +2566,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id) {
-  OrtROCMProviderOptions provider_options{};
-  provider_options.device_id = device_id;
-
-  return OrtApis::SessionOptionsAppendExecutionProvider_ROCM(options, &provider_options);
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
-  API_IMPL_BEGIN
-  auto factory = onnxruntime::RocmProviderFactoryCreator::Create(rocm_options);
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Rocm: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
@@ -2735,8 +2684,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
     defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) ||         \
     defined(USE_CANN) ||                                                 \
-    defined(USE_DNNL) ||                                                 \
-    defined(USE_ROCM)
+    defined(USE_DNNL)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
   std::ostringstream options;
@@ -2983,6 +2931,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProvider
   options->npu_mem_limit = SIZE_MAX;
   options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
   options->enable_cann_graph = 1;
+  options->enable_cann_subgraph = 0;
   options->dump_graphs = 0;
   options->dump_om_model = 1;
   options->default_memory_arena_cfg = nullptr;
@@ -3131,86 +3080,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
 ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
 #ifdef USE_DNNL
   std::unique_ptr<OrtDnnlProviderOptions> p(ptr);
-#else
-  ORT_UNUSED_PARAMETER(ptr);
-#endif
-}
-
-ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
-  API_IMPL_BEGIN
-#ifdef USE_ROCM
-  auto options = std::make_unique<OrtROCMProviderOptions>();
-  options->device_id = 0;
-  options->miopen_conv_exhaustive_search = 0;
-  options->gpu_mem_limit = std::numeric_limits<size_t>::max();
-  options->arena_extend_strategy = 0;
-  options->do_copy_in_default_stream = 1;
-  options->has_user_compute_stream = 0;
-  options->user_compute_stream = nullptr;
-  options->default_memory_arena_cfg = nullptr;
-  options->enable_hip_graph = false;
-  options->tunable_op_enable = 0;
-  options->tunable_op_tuning_enable = 0;
-  options->tunable_op_max_tuning_duration_ms = 0;
-
-  *out = options.release();
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(out);
-  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
-#endif
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::UpdateROCMProviderOptions,
-                    _Inout_ OrtROCMProviderOptions* rocm_options,
-                    _In_reads_(num_keys) const char* const* provider_options_keys,
-                    _In_reads_(num_keys) const char* const* provider_options_values,
-                    size_t num_keys) {
-  API_IMPL_BEGIN
-#ifdef USE_ROCM
-  onnxruntime::ProviderOptions provider_options_map;
-  for (size_t i = 0; i != num_keys; ++i) {
-    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
-        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
-    }
-
-    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
-  }
-
-  onnxruntime::s_library_rocm.Get().UpdateProviderOptions(rocm_options, provider_options_map);
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(rocm_options);
-  ORT_UNUSED_PARAMETER(provider_options_keys);
-  ORT_UNUSED_PARAMETER(provider_options_values);
-  ORT_UNUSED_PARAMETER(num_keys);
-  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
-#endif
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options,
-                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr) {
-  API_IMPL_BEGIN
-#ifdef USE_ROCM
-  onnxruntime::ProviderOptions options = onnxruntime::s_library_rocm.Get().GetProviderOptions(rocm_options);
-  std::string options_str = BuildOptionsString(options.begin(), options.end());
-  *ptr = onnxruntime::StrDup(options_str, allocator);
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(rocm_options);
-  ORT_UNUSED_PARAMETER(allocator);
-  ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "ROCm execution provider is not enabled in this build.");
-#endif
-  API_IMPL_END
-}
-
-ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
-#ifdef USE_ROCM
-  std::unique_ptr<OrtROCMProviderOptions> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif

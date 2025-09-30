@@ -123,6 +123,7 @@ struct Flash_fwd_params : public Qkv_params {
 
   bool is_rotary_interleaved = false;
 
+  void* __restrict__ head_sink_ptr = nullptr;
   bool smooth_softmax = false;
 
   int num_splits = 0;  // For split-KV version

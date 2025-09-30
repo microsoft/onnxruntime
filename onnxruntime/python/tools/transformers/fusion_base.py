@@ -91,11 +91,11 @@ class Fusion:
 
     def add_initializer(self, name: str, data_type: int, dims: Sequence[int], vals: Any, raw: bool = True):
         if raw:
-            np_type = helper.tensor_dtype_to_np_dtype(data_type)
             if not isinstance(vals, np.ndarray):
+                np_type = helper.tensor_dtype_to_np_dtype(data_type)
                 bytes = np.array(vals, dtype=np_type).tobytes()
             else:
-                bytes = vals.astype(np_type).tobytes()
+                bytes = vals.tobytes()
             tensor = helper.make_tensor(
                 name=name,
                 data_type=data_type,

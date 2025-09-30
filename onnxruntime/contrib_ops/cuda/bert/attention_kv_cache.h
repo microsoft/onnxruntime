@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -37,6 +38,18 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const half* tensor_in,
                                   const half* tensor_add,
                                   half* tensor_out);
+
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
+                                  const int all_sequence_length,
+                                  const int sequence_length,
+                                  const int batch_size,
+                                  const int head_size,
+                                  const int num_heads,
+                                  const int max_threads_per_block,
+                                  const int matrix_num,
+                                  const BFloat16* tensor_in,
+                                  const BFloat16* tensor_add,
+                                  BFloat16* tensor_out);
 
 template <typename T>
 Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,

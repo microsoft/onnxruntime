@@ -23,37 +23,50 @@ jobs:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       # Only build arm64 for CPU
-      matrix_exclude: >-
+      matrix_include: >-
         [
-          {"platform_machine": "x86_64"}
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
 
   coreml:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_coreml: true
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
 
   xnnpack:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_xnnpack: true
       # only build arm64/Debug for XNNPack
-      matrix_exclude: >-
+      matrix_include: >-
         [
-          {"platform_machine": "x86_64"},
-          {"platform_machine": "arm64", "build_config": "Release"}
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
         ]
 
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       use_webgpu: true
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
 
   iphone_simulator:
     runs-on: macos-15
 
     env:
-      xcode_version: 16
+      xcode_version: 16.4
+      simulator_runtime_version: 18.5
 
     strategy:
       matrix:
@@ -63,7 +76,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup
@@ -90,6 +111,8 @@ jobs:
             --apple_deploy_target=15.1 \
             --apple_sysroot=iphonesimulator \
             --osx_arch=${{ matrix.target_arch }}
+        env:
+          ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
   Objective-C-StaticAnalysis:
     runs-on: macos-14
@@ -101,7 +124,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        with:
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
 
       - name: macOS CI pipeline prepare steps
         uses: ./.github/actions/macos-ci-setup

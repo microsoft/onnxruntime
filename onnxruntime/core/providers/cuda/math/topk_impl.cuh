@@ -28,8 +28,8 @@ struct KV {
 
 #define BT GridDim::maxThreadsPerBlock
 #define ALIGN(N) static_cast<int64_t>(pow(2, ceil(log2(static_cast<double>(N)))))
-#define FROM(idx) (left_dim + (idx)*mid_dim + right_dim)
-#define TO(idx) (left_dim * K / dimension + (idx)*mid_dim + right_dim)
+#define FROM(idx) (left_dim + (idx) * mid_dim + right_dim)
+#define TO(idx) (left_dim * K / dimension + (idx) * mid_dim + right_dim)
 #define TRIVIAL (1 == largest ? type_min : type_max)
 #define BIGGER(n, m) (n.key > m.key ? n : (n.key < m.key ? m : (n.val > m.val ? (1 == largest ? m : n) : (1 == largest ? n : m))))
 #define SMALLER(n, m) (n.key < m.key ? n : (n.key > m.key ? m : (n.val < m.val ? (1 == largest ? m : n) : (1 == largest ? n : m))))

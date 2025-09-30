@@ -317,6 +317,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -355,6 +356,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -393,6 +395,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embe
   compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
   compile_options.SetOutputModelPath(output_model_file);
   compile_options.SetEpContextEmbedMode(true);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -427,6 +430,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
 
   // Create model compilation options from the session options. Output model is stored in a buffer.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
   compile_options.SetInputModelPath(input_model_file);
 
   Ort::AllocatorWithDefaultOptions allocator;
@@ -482,6 +486,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
     compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
     compile_options.SetEpContextEmbedMode(true);
+    compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
     // Compile the model.
     Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -509,7 +514,13 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
     compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
     compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+    std::string target_dir = "./testdata/";
+    std::string model_name = "test_model_in_mem.onnx";
+    auto pos = model_name.rfind(".onnx");
+    std::string bin_file_name = model_name.substr(0, pos) + "_qnn.bin";
+    compile_options.SetEpContextBinaryInformation(ToWideString(target_dir).c_str(), ToWideString(model_name).c_str());
     compile_options.SetEpContextEmbedMode(false);
+    compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
     // Compile the model.
     Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -519,12 +530,18 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     ASSERT_TRUE(output_model_buffer != nullptr);
     ASSERT_TRUE(output_model_buffer_size > 0);
 
+    ASSERT_TRUE(std::filesystem::exists(target_dir + bin_file_name)) << "expected context binary file should exist";
+
     // Check that the compiled model has the expected number of EPContext nodes.
     CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
 
+    // Add session option "ep.context_file_path" so that the session can use it to locate the [model_name]_qnn.bin file
+    std::string ctx_model = target_dir + model_name;
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ctx_model.c_str());
     // Should be able to create a session with the compiled model and the original session options.
     EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, session_options)));
 
+    std::filesystem::remove(target_dir + bin_file_name);
     allocator.Free(output_model_buffer);
   }
 }
@@ -562,6 +579,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
   compile_options.SetOutputModelExternalInitializersFile(output_initializers_file, 0);
   compile_options.SetEpContextEmbedMode(true);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -748,7 +766,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
-void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
+void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file, bool load_model_from_buffer = false) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
 
@@ -787,7 +805,22 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
     so.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersFileName, external_ini_file.c_str());
   }  // otherwise all initializers are in Onnx file, no external data file generated
 
-  Ort::Session session(*ort_env, ToPathString(model_with_ext).c_str(), so);
+  if (load_model_from_buffer) {
+    std::vector<char> buffer;
+    {
+      std::ifstream file(model_with_ext, std::ios::binary | std::ios::ate);
+      if (!file)
+        ORT_THROW("Error reading model");
+      buffer.resize(narrow<size_t>(file.tellg()));
+      file.seekg(0, std::ios::beg);
+      if (!file.read(buffer.data(), buffer.size()))
+        ORT_THROW("Error reading model");
+    }
+    so.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "./testdata/");
+    Ort::Session session(*ort_env, buffer.data(), buffer.size(), so);
+  } else {
+    Ort::Session session(*ort_env, ToPathString(model_with_ext).c_str(), so);
+  }
 
   EXPECT_TRUE(std::filesystem::exists(ep_context_model_file.c_str()));
   if (expect_external_ini_file) {
@@ -803,16 +836,23 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
   CleanUpCtxFile(ep_context_model_file);
 }
 
-// Set the external initializer size threshold to 1024 so FusedMatMul (which fallback on CPU)
+// Set the session option "ep.context_model_external_initializers_file_name" so FusedMatMul (which fallback on CPU)
 // will dump initializer data to external file
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithExternalWeights) {
   EpCtxCpuNodeWithExternalIniFileTestBody(true);
 }
 
-// Use the default external initializer size threshold (1024000) so FusedMatMul (which fallback on CPU)
-// will NOT dump initializer data to external file
+// Without setting the session option "ep.context_model_external_initializers_file_name"
+// so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
   EpCtxCpuNodeWithExternalIniFileTestBody(false);
+}
+
+// Load model from memory
+// Without setting the session option "ep.context_model_external_initializers_file_name"
+// so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeightsModelFromMemory) {
+  EpCtxCpuNodeWithExternalIniFileTestBody(false, true);
 }
 
 // Set ep.context_file_path to folder path which is not a valid option, check the error message
@@ -1627,7 +1667,6 @@ static void DumpModelWithSharedCtx(ProviderOptions provider_options,
   Ort::Session session2(*ort_env, ToPathString(onnx_model_path2).c_str(), so);
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64)
 static void GetModelInputNames(const std::string& model_path,
                                std::vector<std::string>& input_names,
                                std::vector<std::string>& output_names,
@@ -1647,7 +1686,6 @@ static void GetModelInputNames(const std::string& model_path,
     output_names.push_back(output->Name());
   }
 }
-#endif
 
 // 1. Create 2 QDQ models
 // 2. Initialize 2 Ort sessions which share the same QNN EP from these 2 QDQ models
@@ -1709,6 +1747,107 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   Ort::SessionOptions so2;
   so2.SetLogId("so2");
   so2.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so2.AppendExecutionProvider("QNN", provider_options);
+
+  EXPECT_TRUE(2 == ctx_model_paths.size());
+#ifdef _WIN32
+  std::wstring ctx_model_file1(ctx_model_paths[0].begin(), ctx_model_paths[0].end());
+  std::wstring ctx_model_file2(ctx_model_paths[1].begin(), ctx_model_paths[1].end());
+#else
+  std::string ctx_model_file1(ctx_model_paths[0].begin(), ctx_model_paths[0].end());
+  std::string ctx_model_file2(ctx_model_paths[1].begin(), ctx_model_paths[1].end());
+#endif
+  Ort::Session session1(*ort_env, ctx_model_file1.c_str(), so1);
+  Ort::Session session2(*ort_env, ctx_model_file2.c_str(), so2);
+
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames(ctx_model_paths[1], input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run sessions
+  // prepare input
+  std::vector<int64_t> input_dim{2, 3};
+  std::vector<float> input_value(2 * 3, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                   output_names_c.data(), 1);
+#endif
+
+  for (auto model_path : onnx_model_paths) {
+    std::remove(model_path.c_str());
+  }
+  for (auto ctx_model_path : ctx_model_paths) {
+    std::remove(ctx_model_path.c_str());
+  }
+  std::remove(qnn_ctx_binary_file_name1.c_str());
+}
+
+TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
+  ProviderOptions provider_options;
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["backend_type"] = "htp";
+
+  // Create QDQ models
+  std::vector<std::string> onnx_model_paths{"./weight_share1.onnx", "./weight_share2.onnx"};
+  // cleanup in case some failure test doesn't remove them
+  for (auto model_path : onnx_model_paths) {
+    std::remove(model_path.c_str());
+  }
+
+  std::vector<std::string> ctx_model_paths;
+  for (auto model_path : onnx_model_paths) {
+    CreateQdqModel(model_path, DefaultLoggingManager().DefaultLogger());
+    EXPECT_TRUE(std::filesystem::exists(model_path.c_str()));
+    auto pos = model_path.find_last_of(".");
+    if (pos != std::string::npos) {
+      model_path = model_path.substr(0, pos) + "_ctx.onnx";
+    } else {
+      model_path = model_path + "_ctx.onnx";
+    }
+    ctx_model_paths.push_back(model_path);
+  }
+  for (auto ctx_model_path : ctx_model_paths) {
+    std::remove(ctx_model_path.c_str());
+  }
+
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths[0], onnx_model_paths[1]);
+
+  std::string qnn_ctx_binary_file_name1;
+  GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
+                           DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
+
+  std::string qnn_ctx_binary_file_name2;
+  GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
+                           DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
+  // 2 *_ctx.onn point to same .bin file
+  EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
+  auto file_size_1 = std::filesystem::file_size(qnn_ctx_binary_file_name1);
+  EXPECT_TRUE(file_size_1 > 0);
+
+  provider_options["enable_vtcm_backup_buffer_sharing"] = "1";
+  // only load and run the session on real device
+#if defined(__aarch64__) || defined(_M_ARM64)
+  Ort::SessionOptions so1;
+  so1.SetLogId("so1");
+  so1.AppendExecutionProvider("QNN", provider_options);
+  Ort::SessionOptions so2;
+  so2.SetLogId("so2");
   so2.AppendExecutionProvider("QNN", provider_options);
 
   EXPECT_TRUE(2 == ctx_model_paths.size());
@@ -1871,6 +2010,360 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
     });
   }
 }
+
+TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", provider_options);
+  so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
+
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx", input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run sessions
+  // prepare input
+  std::vector<int64_t> input_dim{3, 4};
+  std::vector<float> input_value(3 * 4, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  auto ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                output_names_c.data(), 1);
+
+  const char* const workload_type[] = {"ep.dynamic.workload_type"};
+  const char* const efficient_type[] = {"Efficient"};
+  const char* const default_type[] = {"Default"};
+
+  // Test Efficient & Default options
+  session.SetEpDynamicOptions(workload_type, efficient_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  session.SetEpDynamicOptions(workload_type, default_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  // Test invalid EP dynamic option and invalid workload type
+  const char* const dne[] = {"DNE"};
+  try {
+    session.SetEpDynamicOptions(workload_type, dne, 1);
+    FAIL() << "Expected exception to be thrown for workload type DNE but was set successfully";
+  } catch (const std::exception& e) {
+    EXPECT_STREQ("Invalid EP Workload Type.", e.what());
+  }
+
+  try {
+    session.SetEpDynamicOptions(dne, efficient_type, 1);
+    FAIL() << "Expected exception to be thrown for dynamic option DNE but was set successfully";
+  } catch (const std::exception& e) {
+    EXPECT_STREQ("Unsupported EP Dynamic Option", e.what());
+  }
+
+  const char* const htp_perf_mode_type[] = {"ep.dynamic.qnn_htp_performance_mode"};
+  const char* const eps_type[] = {"extreme_power_saver"};
+  const char* const shp_type[] = {"sustained_high_performance"};
+  session.SetEpDynamicOptions(htp_perf_mode_type, shp_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  session.SetEpDynamicOptions(htp_perf_mode_type, eps_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  session.SetEpDynamicOptions(htp_perf_mode_type, shp_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+}
+
+// Implementation of OrtOutStreamWriteFunc that writes the compiled model to a file.
+static OrtStatus* ORT_API_CALL TestWriteToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
+  std::ofstream* outfile = reinterpret_cast<std::ofstream*>(stream_state);
+  outfile->write(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
+  return nullptr;  // No error
+}
+
+// Implementation of OrtOutStreamWriteFunc that directly returns an OrtStatus indicating an error.
+static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
+  ORT_UNUSED_PARAMETER(stream_state);
+  ORT_UNUSED_PARAMETER(buffer);
+  ORT_UNUSED_PARAMETER(buffer_num_bytes);
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "Error from OrtOutStreamWriteFunc callback");
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model comes from a file
+//   - write output model to custom write stream
+TEST_F(QnnHTPBackendTests, CompileApi_InputFile_WriteOutputModelBytes) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_inputfile_writeoutputmodelbytes.onnx");
+  std::filesystem::remove(input_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("compileapi_inputfile_writeoutputmodelbytes_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Open an output file. Test will incrementally write the output model to file
+  // via calls to our OrtOutStreamWriteFunc callback.
+  ASSERT_FALSE(std::filesystem::exists(output_model_file));
+  std::ofstream outfile(output_model_file, std::ios::binary);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelWriteFunc(TestWriteToStream, reinterpret_cast<void*>(&outfile));
+  compile_options.SetEpContextEmbedMode(true);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  outfile.flush();
+  outfile.close();
+
+  // Check that the compiled model has the expected number of EPContext nodes.
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 2, 2);
+}
+
+// Tests using an OrtOutStreamFunc function that returns an error.
+TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
+  // Create a test model (in memory).
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  std::string model_data = test_model.Serialize();
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+  compile_options.SetOutputModelWriteFunc(ReturnStatusFromStream, nullptr);  // Set output stream that returns error
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model. Expect a specific error status.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+  EXPECT_EQ(status.GetErrorMessage(), "Error from OrtOutStreamWriteFunc callback");
+}
+
+struct CustomInitializerHandlerState {
+  const ORTCHAR_T* external_file_path = nullptr;
+  std::ofstream* outfile = nullptr;
+};
+
+static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
+                                                             const char* initializer_name,
+                                                             const OrtValue* c_initializer_value,
+                                                             const OrtExternalInitializerInfo* /*c_external_info*/,
+                                                             OrtExternalInitializerInfo** c_new_external_info) {
+  Ort::Status final_status{nullptr};
+
+  ORT_TRY {
+    CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
+
+    if (std::string("constant") == initializer_name) {
+      // Keep a specific initializer in the model just to test both scenarios.
+      // A real implementation may check the byte size and keep small initializers in the model.
+      *c_new_external_info = nullptr;
+      return nullptr;
+    }
+
+    //
+    // Store other initializers in an external file.
+    //
+    Ort::ConstValue value{c_initializer_value};
+    size_t byte_size = value.GetTensorSizeInBytes();
+    int64_t offset = custom_state->outfile->tellp();
+    const ORTCHAR_T* location = custom_state->external_file_path;
+
+    custom_state->outfile->write(static_cast<const char*>(value.GetTensorRawData()), byte_size);
+    custom_state->outfile->flush();
+
+    // Provide caller (ORT) with the new external info.
+    Ort::ExternalInitializerInfo new_external_info{nullptr};
+    if (Ort::Status status = Ort::ExternalInitializerInfo::Create(location, offset, byte_size, new_external_info);
+        !status.IsOK()) {
+      return status.release();
+    }
+
+    *c_new_external_info = new_external_info.release();
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status{ex};
+    }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status(ex.what(), ORT_FAIL);
+    }));
+  }
+
+  return final_status.release();
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model comes from a file
+//   - write output model to a file
+//   - Use callback to specify where each initializer is stored (i.e., external file or within model).
+TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler_ctx.onnx");
+  const ORTCHAR_T* initializer_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler.bin");
+  std::filesystem::remove(input_model_file);
+  std::filesystem::remove(output_model_file);
+  std::filesystem::remove(initializer_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Open a file to store external initializers. ORT will call our handler function for every initializer.
+  ASSERT_FALSE(std::filesystem::exists(initializer_file));
+  std::ofstream outfile(initializer_file, std::ios::binary);
+  CustomInitializerHandlerState custom_state = {initializer_file, &outfile};
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetOutputModelGetInitializerLocationFunc(TestHandleInitializerDataFunc,
+                                                           reinterpret_cast<void*>(&custom_state));
+  compile_options.SetEpContextEmbedMode(true);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  outfile.flush();
+  outfile.close();
+
+  ASSERT_TRUE(std::filesystem::exists(initializer_file));
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 2, 2);
+}
+
+static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
+                                                         const char* /*initializer_name*/,
+                                                         const OrtValue* /*initializer_value*/,
+                                                         const OrtExternalInitializerInfo* external_info,
+                                                         OrtExternalInitializerInfo** new_external_info) {
+  Ort::Status final_status{nullptr};
+
+  ORT_TRY {
+    // If the original initializer was stored in an external file, keep it there (just for testing).
+    if (external_info != nullptr) {
+      Ort::ConstExternalInitializerInfo info(external_info);
+      auto location = info.GetFilePath();
+      int64_t offset = info.GetFileOffset();
+      size_t byte_size = info.GetByteSize();
+
+      Ort::ExternalInitializerInfo new_info(nullptr);
+      Ort::Status status = Ort::ExternalInitializerInfo::Create(location.c_str(), offset, byte_size, new_info);
+      if (!status.IsOK()) {
+        return status.release();
+      }
+
+      *new_external_info = new_info.release();
+
+      // Keep track of number of reused external initializers so that we can assert
+      // that we reused the expected number of initializers.
+      // THIS IS TEST CODE. An application would not do this.
+      size_t* num_reused_ext_initializers = reinterpret_cast<size_t*>(state);
+      *num_reused_ext_initializers += 1;
+
+      return nullptr;
+    }
+
+    // If not originally external, save it within the generated compiled model
+    *new_external_info = nullptr;
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status{ex};
+    }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status(ex.what(), ORT_FAIL);
+    }));
+  }
+
+  return final_status.release();
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model comes from a file
+//   - write output model to a file
+//   - Use callback to specify where each initializer is stored. We'll reuse external initializers
+//     from original model!
+TEST_F(QnnHTPBackendTests, CompileApi_InitializerHandler_ReuseExternalInitializers) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/conv_qdq_external_ini.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("testdata/conv_qdq_external_ini_reuse_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  size_t num_reused_ext_initializers = 0;
+
+  // Create model compilation options from the session options.
+  Ort::SessionOptions so;
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetOutputModelGetInitializerLocationFunc(ReuseExternalInitializers,
+                                                           reinterpret_cast<void*>(&num_reused_ext_initializers));
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  std::filesystem::remove(output_model_file);
+
+  ASSERT_EQ(num_reused_ext_initializers, 2);  // Reused external conv weight and bias.
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

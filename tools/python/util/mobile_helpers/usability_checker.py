@@ -358,7 +358,7 @@ def _check_partitioning_for_graph(
             supported_group.append(node)
 
             # remove node from the border and add its outputs to the border
-            if node in supported_group_border:
+            if node in supported_group_border:  # noqa: FURB132
                 supported_group_border.remove(node)
 
             # for each consumer node add to supported_group_border

@@ -367,7 +367,7 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
       IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
       const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
       if (calculate_sqt) {
-        input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+        input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream);
         input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
         fast_divmod tmp_div;
         Impl_Mul<CudaT>(stream, static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
@@ -384,7 +384,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
         } break;
         case ApplicableMatrixReduction::Columns: {
           const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<CudaT>(m, n);
-          auto buffer = buffer_size_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(gpu_allocator, buffer_size_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+          auto buffer = buffer_size_bytes == 0
+                            ? nullptr
+                            : IAllocator::MakeUniquePtr<void>(gpu_allocator, buffer_size_bytes, false, ort_stream);
           ORT_RETURN_IF_ERROR(reduce_matrix_columns(stream, input_data,
                                                     reinterpret_cast<CudaT*>(output.MutableData<T>()), m, n,
                                                     buffer.get(), buffer_size_bytes));
@@ -421,7 +423,7 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
   if ((ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
       (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
-    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, ort_stream);
     Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()), temp_X.get(), input_shape.Size());
   } else {
     cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
@@ -444,18 +446,22 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
   CudaStream* cuda_stream = static_cast<CudaStream*>(ort_stream);
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                        input_tensor, output_tensor, &workspace_bytes));
-  auto workspace_cuda = workspace_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, workspace_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+  auto workspace_cuda = workspace_bytes == 0
+                            ? nullptr
+                            : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, workspace_bytes, false, ort_stream);
 
   size_t indices_bytes = 0;
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                      input_tensor, output_tensor, &indices_bytes));
-  auto indices_cuda = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+  auto indices_cuda = indices_bytes == 0
+                          ? nullptr
+                          : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream);
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
     IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     CudaT* input_data = nullptr;
     if (calculate_sqt) {
-      input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+      input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream);
       input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<CudaT>(stream,
@@ -482,7 +488,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
         size_t indices_bytes_max = 0;
         CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc,
                                                            input_tensor, output_tensor, &indices_bytes_max));
-        auto indices_cuda_max = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+        auto indices_cuda_max = indices_bytes == 0
+                                    ? nullptr
+                                    : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream);
         auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,
@@ -493,9 +501,11 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
 
       // Exp(X-ReduceMax)
       const TensorShape output_shape(output_dims);
-      auto exp_result_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+      auto exp_result_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream);
       auto exp_result = exp_result_buffer.get();
-      auto log_sum_result_buffer = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<T>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+      auto log_sum_result_buffer = output_count == 0
+                                       ? nullptr
+                                       : IAllocator::MakeUniquePtr<T>(gpu_allocator, output_count, false, ort_stream);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
@@ -563,7 +573,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
         }
       } else {
         if (temp_X) {
-          auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+          auto temp_output = output_count == 0
+                                 ? nullptr
+                                 : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream);
           CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
               CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
               workspace_cuda.get(), workspace_bytes,
@@ -589,14 +601,18 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t), stream));
     } else {
       if (temp_X) {
-        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+        auto temp_output = output_count == 0
+                               ? nullptr
+                               : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, temp_X.get(),
             &zero, output_tensor, temp_output.get()));
       } else {
-        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+        auto temp_output = output_count == 0
+                               ? nullptr
+                               : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, output_count, false, ort_stream);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
@@ -605,7 +621,8 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
       }
 
       // CUDA reduction index is uint32_t for now, cast it to int64_t according to ONNX spec
-      Impl_Cast<uint32_t, int64_t>(stream, reinterpret_cast<uint32_t*>(indices_cuda.get()), output.MutableData<int64_t>(), output_count);
+      Impl_Cast<uint32_t, int64_t>(stream, reinterpret_cast<uint32_t*>(indices_cuda.get()),
+                                   output.MutableData<int64_t>(), output_count);
     }
   }
 

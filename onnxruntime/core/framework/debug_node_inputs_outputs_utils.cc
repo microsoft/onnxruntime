@@ -398,15 +398,13 @@ void DumpTensor(
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
-  if (tensor_location.device.Type() == OrtDevice::CPU ||
-      tensor_location.mem_type == OrtMemTypeCPUInput ||
-      tensor_location.mem_type == OrtMemTypeCPUOutput) {
+  if (tensor_location.device.UsesCpuMemory()) {
     tensor_metadata.device_type = "CPU";
     DumpCpuTensor(dump_options, tensor, tensor_metadata, tensor_statistics);
   } else {
     std::cout << tensor_location << "\n";
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
     const auto data_type = tensor.DataType();
     // Dumping GPU only when cuda is enabled.
     if (tensor_location.device.Type() == OrtDevice::GPU) {
@@ -668,6 +666,13 @@ void DumpNodeOutputs(
 
             const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
             PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
+
+            // For MemcpyToHost, the memory copy has not been syncronized so the data is not ready to read yet.
+            // Here we skip it since it is just a copy of input tensor (or output of previous node) which has been dumped.
+            if (node.OpType() == "MemcpyToHost") {
+              std::cout << " is same as input.\n";
+              continue;
+            }
 
             if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0 || check_half_overflow) {
               tensor_metadata.name = output_defs[i]->Name();

@@ -34,6 +34,12 @@ steps:
     addToPath: true
     architecture: ${{parameters.BuildArch}}
 
+- task: PipAuthenticate@1
+  displayName: 'Pip Authenticate'
+  inputs:
+    artifactFeeds: 'PublicPackages/ORT-Nightly'
+
+
 - ${{ if eq(parameters.BuildArch, 'x64') }}:
   - script: |
       @echo off

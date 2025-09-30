@@ -235,8 +235,11 @@ RopeKernel_Avx2_fp32_Impl<true>(
         __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
         float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
         float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        float32x8_t sin_val = _mm256_loadu_ps(sin_data+ i / 2);
-        float32x8_t cos_val = _mm256_loadu_ps(cos_data + i / 2);
+        // Use masked loads for sin/cos data to avoid reading beyond buffer bounds
+        size_t cos_sin_rem = rem / 2;
+        const __m256i cos_sin_mask = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - cos_sin_rem));
+        float32x8_t sin_val = _mm256_maskload_ps(sin_data + i / 2, cos_sin_mask);
+        float32x8_t cos_val = _mm256_maskload_ps(cos_data + i / 2, cos_sin_mask);
         //Compute Real and Imaginary output values
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));

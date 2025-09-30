@@ -35,7 +35,7 @@ Abstract:
 #endif
 #endif  // MLAS_NO_EXCEPTION
 
-#include "mlas.h"
+#include "core/mlas/inc/mlas.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -118,9 +118,8 @@ Abstract:
 
 #ifdef MLAS_NO_EXCEPTION
 
-MLAS_FORCEINLINE
-void
-MlasPrintFinalMessage(const std::string& msg)
+MLAS_FORCEINLINE void
+    MlasPrintFinalMessage(const std::string& msg)
 {
 #if defined(__ANDROID__)
     __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg.c_str());
@@ -133,6 +132,7 @@ MlasPrintFinalMessage(const std::string& msg)
     std::cerr << msg << std::endl;
 #endif
 }
+
 
 #define MLAS_THROW_EX(ex, what)     \
     do {                            \
@@ -192,6 +192,8 @@ class MLASCPUIDInfo
 
     bool HasArmNeon_I8MM() const { return has_arm_neon_i8mm_; }
 
+    bool HasArmSVE() const { return has_arm_sve_; }
+
     bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
 
     bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
@@ -202,6 +204,7 @@ class MLASCPUIDInfo
     bool has_arm_neon_dot_{false};
     bool has_fp16_{false};
     bool has_arm_neon_i8mm_{false};
+    bool has_arm_sve_{false};
     bool has_arm_sve_i8mm_{false};
     bool has_arm_neon_bf16_{false};
 };
@@ -747,6 +750,24 @@ void
     float Scale,
     int8_t ZeroPoint);
 
+typedef
+void
+(MLASCALL MLAS_DEQUANTIZE_LINEAR_U8_KERNEL)(
+    const uint8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint);
+
+typedef
+void
+(MLASCALL MLAS_DEQUANTIZE_LINEAR_S8_KERNEL)(
+    const int8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -763,6 +784,119 @@ struct MLAS_QUANT_KERNEL
         size_t KernelSize
         );
 };
+typedef
+void
+(MLASCALL MLAS_CONV_FLOAT_FN)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+typedef
+bool
+(MLASCALL MLAS_CONV_FLOAT_OVERRIDE)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+// TODO: Investigate if overridden typedefs can be removed
+typedef
+void
+(MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
+typedef
+bool
+(MLASCALL MLAS_CONV_PREPARE_FLOAT_OVERRIDE)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+typedef void (MLASCALL MLAS_GEMM_BATCH)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef bool (MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
+
+typedef bool (MLASCALL MLAS_GEMM_PACK_B_KERNEL_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
 
 extern "C" {
 
@@ -818,6 +952,15 @@ extern "C" {
 #if defined(__aarch64__) && defined(__linux__)
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
+#endif
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
 #endif
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
@@ -903,6 +1046,8 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
+    MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
@@ -1067,7 +1212,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH;
 
 const MLAS_QNBIT_GEMM_DISPATCH&
 GetMlasQNBitGemmDispatchNeon(
-    bool InitializeWithDotSupport
+    bool InitializeWithDotSupport,
+    bool InitializeWithI8MMSupport
 );
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
@@ -1164,6 +1310,14 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    bool ArmNeonIsQuantActivationsUnsigned = false;
+
+    // Mlas overrides initialisation
+    MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
+    MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
+    MLAS_GEMM_PACK_B_KERNEL_OVERRIDE* MlasGemmPackBOverride = nullptr;
+    MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
+    MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
@@ -1193,6 +1347,14 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
+    uint32_t NchwcBlockSize;
+#endif
 #endif
     const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 
@@ -1214,6 +1376,15 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_S4_KERNEL* QuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
 #endif
+
+#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64)
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;
+    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel;
+    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
+    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
@@ -1229,16 +1400,10 @@ struct MLAS_PLATFORM {
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
-    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel;
-    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
-    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
-    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
@@ -1246,11 +1411,14 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL* QuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
+    MLAS_DEQUANTIZE_LINEAR_S8_KERNEL* DequantizeLinearS8Kernel;
+    MLAS_DEQUANTIZE_LINEAR_U8_KERNEL* DequantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
 #elif defined(MLAS_TARGET_ARM64)
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
+    static constexpr size_t MLAS_NEON_NCHWC_BLOCK_SIZE = 16;
 #else
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
@@ -2139,7 +2307,12 @@ MLAS_FLOAT32X4
 MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FLOAT32X4 Vector3)
 {
 #if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_TARGET_ARM)
+    // ARMv7 NEON doesn't have vfmaq_f32()
     return vmlaq_f32(Vector3, Vector1, Vector2);
+#else
+    return vfmaq_f32(Vector3, Vector1, Vector2);
+#endif
 #elif defined(MLAS_FMA3_INTRINSICS)
     return _mm_fmadd_ps(Vector1, Vector2, Vector3);
 #elif defined(MLAS_SSE2_INTRINSICS)

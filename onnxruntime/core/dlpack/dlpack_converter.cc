@@ -191,11 +191,7 @@ DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
       device.device_type = DLDeviceType::kDLCPU;
       break;
     case OrtDevice::GPU:
-#ifdef USE_ROCM
-      device.device_type = DLDeviceType::kDLROCM;
-#else
       device.device_type = DLDeviceType::kDLCUDA;
-#endif
       break;
     default:
       ORT_THROW("Cannot pack tensors on this device.");

@@ -155,7 +155,7 @@ def parse_arguments(argv=None):
 
 
 def run_profile(onnx_model_path, use_gpu, provider, basic_optimization, thread_num, all_inputs):
-    from benchmark_helper import create_onnxruntime_session
+    from benchmark_helper import create_onnxruntime_session  # noqa: PLC0415
 
     session = create_onnxruntime_session(
         onnx_model_path,
@@ -246,7 +246,7 @@ def create_bert_inputs(
     Returns:
         List[Dict]: list of inputs
     """
-    from bert_test_data import find_bert_inputs, generate_test_data
+    from bert_test_data import find_bert_inputs, generate_test_data  # noqa: PLC0415
 
     input_ids, segment_ids, input_mask = find_bert_inputs(onnx_model, input_ids_name, segment_ids_name, input_mask_name)
     all_inputs = generate_test_data(
@@ -366,8 +366,8 @@ def run(args):
     if "OMP_NUM_THREADS" not in os.environ:
         os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
-    from onnx import load
-    from onnx_model import OnnxModel
+    from onnx import load  # noqa: PLC0415
+    from onnx_model import OnnxModel  # noqa: PLC0415
 
     onnx_model = OnnxModel(load(args.model))
 

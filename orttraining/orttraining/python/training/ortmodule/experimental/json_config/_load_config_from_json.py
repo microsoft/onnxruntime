@@ -77,7 +77,7 @@ def _load_enable_custom_autograd_function(ortmodule_config_accessor, data):
         f"{_load_enable_custom_autograd_function.loading_key} must be a boolean"
     )
 
-    from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
+    from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support  # noqa: PLC0415
 
     enable_custom_autograd_support(data.EnableCustomAutogradFunction)
     ortmodule_config_accessor._runtime_options.enable_custom_autograd_function = data.EnableCustomAutogradFunction

@@ -36,7 +36,9 @@ template <
     bool Columnwise>
 struct BlkQuantTraits {
   // number of qbit elements to pack into whole bytes
-  static constexpr int kPackSize = (qbits == 8) ? 1 : (qbits == 4) ? 2 : (qbits == 2) ? 4 : 0;
+  static constexpr int kPackSize = (qbits == 8) ? 1 : (qbits == 4) ? 2
+                                                  : (qbits == 2)   ? 4
+                                                                   : 0;
   static_assert(kPackSize != 0, "Packing to whole bytes not supported for this qbits!");
 
   using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;

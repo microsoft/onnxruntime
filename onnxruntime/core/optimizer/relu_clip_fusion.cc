@@ -97,7 +97,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         mutable_next_node->AddAttribute("min", 0.f);
       } else {
         // Add the initialized tensor to the graph
-        auto* replacement_min_nodearg = &graph_utils::AddInitializerWithExternalData(graph, replacement_min);
+        auto* replacement_min_nodearg = &graph_utils::AddInitializer(graph, replacement_min);
 
         // Replace the input def at the appropriate index of the Clip node
         auto& mutable_input_defs = mutable_next_node->MutableInputDefs();

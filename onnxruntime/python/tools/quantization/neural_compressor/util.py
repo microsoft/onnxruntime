@@ -54,7 +54,7 @@ def find_by_name(name, item_list):
 
 def to_numpy(data):
     """Convert to numpy ndarrays."""
-    import torch
+    import torch  # noqa: PLC0415
 
     if not isinstance(data, np.ndarray):
         if not importlib.util.find_spec("torch"):

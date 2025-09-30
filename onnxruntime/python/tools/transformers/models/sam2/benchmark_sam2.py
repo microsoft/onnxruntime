@@ -190,8 +190,8 @@ def run_torch(config: TestConfig):
                 _image_features_0, _image_features_1, _image_embeddings = sam2_encoder(img)
 
             if is_cuda and config.enable_nvtx_profile:
-                import nvtx
-                from cuda import cudart
+                import nvtx  # noqa: PLC0415
+                from cuda import cudart  # noqa: PLC0415
 
                 cudart.cudaProfilerStart()
                 print("Start nvtx profiling on encoder ...")
@@ -249,8 +249,8 @@ def run_torch(config: TestConfig):
                 _masks, _iou_predictions, _low_res_masks = sam2_decoder(*torch_inputs)
 
             if is_cuda and config.enable_nvtx_profile:
-                import nvtx
-                from cuda import cudart
+                import nvtx  # noqa: PLC0415
+                from cuda import cudart  # noqa: PLC0415
 
                 cudart.cudaProfilerStart()
                 print("Start nvtx profiling on decoder...")
@@ -345,8 +345,8 @@ def run_test(
             return
 
         if config.enable_nvtx_profile:
-            import nvtx
-            from cuda import cudart
+            import nvtx  # noqa: PLC0415
+            from cuda import cudart  # noqa: PLC0415
 
             cudart.cudaProfilerStart()
             with nvtx.annotate("one_run"):

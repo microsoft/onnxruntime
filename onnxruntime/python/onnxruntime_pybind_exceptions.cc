@@ -37,6 +37,7 @@ void RegisterExceptions(pybind11::module& m) {
   pybind11::register_exception<EPFail>(m, "EPFail");
   pybind11::register_exception<ModelLoadCanceled>(m, "ModelLoadCanceled");
   pybind11::register_exception<ModelRequiresCompilation>(m, "ModelRequiresCompilation");
+  pybind11::register_exception<NotFound>(m, "NotFound");
 }
 
 void OrtPybindThrowIfError(onnxruntime::common::Status status) {
@@ -67,6 +68,8 @@ void OrtPybindThrowIfError(onnxruntime::common::Status status) {
         throw ModelLoadCanceled(std::move(msg));
       case onnxruntime::common::StatusCode::MODEL_REQUIRES_COMPILATION:
         throw ModelRequiresCompilation(std::move(msg));
+      case onnxruntime::common::StatusCode::NOT_FOUND:
+        throw NotFound(std::move(msg));
       default:
         throw std::runtime_error(std::move(msg));
     }

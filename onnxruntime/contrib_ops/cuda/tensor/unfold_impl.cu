@@ -17,12 +17,11 @@ __global__ void UnfoldTensorKernel(
     const T* input,
     T* output,
     int64_t N,
-    int64_t unfold_size, // stride_tailing_dim_dst
-    int64_t tailing_dims_size, // stride_fold_dim_dst = tailing_dims_size * unfold_size, stride_append_dim_src = tailing_dims_size
+    int64_t unfold_size,        // stride_tailing_dim_dst
+    int64_t tailing_dims_size,  // stride_fold_dim_dst = tailing_dims_size * unfold_size, stride_append_dim_src = tailing_dims_size
     int64_t stride_leading_dst,
     int64_t stride_fold_dim_src,
-    int64_t stride_leading_src
-) {
+    int64_t stride_leading_src) {
   int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= N) return;
 
@@ -38,7 +37,6 @@ __global__ void UnfoldTensorKernel(
   output[idx] = input[idx_src];
 }
 
-
 Status LaunchUnfoldTensor(
     cudaStream_t stream,
     const cudaDeviceProp& device_prop,
@@ -49,8 +47,7 @@ Status LaunchUnfoldTensor(
     int64_t unfold_dim_size,
     int64_t tailing_dims_size,
     int64_t unfold_size,
-    int64_t step_size
-) {
+    int64_t step_size) {
   int64_t TPB = device_prop.maxThreadsPerBlock;
   int64_t unfold_dim_size_dst = (unfold_dim_size - unfold_size) / step_size + 1;
   int64_t N = leading_dims_size * unfold_dim_size_dst * tailing_dims_size * unfold_size;
@@ -65,32 +62,32 @@ Status LaunchUnfoldTensor(
   dim3 grid((unsigned)SafeInt<unsigned>(num_blocks));
   switch (element_size) {
     case 1:
-        UnfoldTensorKernel<int8_t><<<grid, block, 0, stream>>>(
-            (const int8_t*)input, (int8_t*)output, N, unfold_size,
-            tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
-        break;
+      UnfoldTensorKernel<int8_t><<<grid, block, 0, stream>>>(
+          (const int8_t*)input, (int8_t*)output, N, unfold_size,
+          tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
+      break;
     case 2:
-        UnfoldTensorKernel<int16_t><<<grid, block, 0, stream>>>(
-            (const int16_t*)input, (int16_t*)output, N, unfold_size,
-            tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
-        break;
+      UnfoldTensorKernel<int16_t><<<grid, block, 0, stream>>>(
+          (const int16_t*)input, (int16_t*)output, N, unfold_size,
+          tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
+      break;
     case 4:
-        UnfoldTensorKernel<int32_t><<<grid, block, 0, stream>>>(
-            (const int32_t*)input, (int32_t*)output, N, unfold_size,
-            tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
-        break;
+      UnfoldTensorKernel<int32_t><<<grid, block, 0, stream>>>(
+          (const int32_t*)input, (int32_t*)output, N, unfold_size,
+          tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
+      break;
     case 8:
-        UnfoldTensorKernel<int64_t><<<grid, block, 0, stream>>>(
-            (const int64_t*)input, (int64_t*)output, N, unfold_size,
-            tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
-        break;
+      UnfoldTensorKernel<int64_t><<<grid, block, 0, stream>>>(
+          (const int64_t*)input, (int64_t*)output, N, unfold_size,
+          tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
+      break;
     case 16:
-        UnfoldTensorKernel<float4><<<grid, block, 0, stream>>>(
-            (const float4*)input, (float4*)output, N, unfold_size,
-            tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
-        break;
+      UnfoldTensorKernel<float4><<<grid, block, 0, stream>>>(
+          (const float4*)input, (float4*)output, N, unfold_size,
+          tailing_dims_size, stride_leading_dst, stride_fold_dim_src, stride_leading_src);
+      break;
     default:
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported element_size");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported element_size");
   }
 
   return CUDA_CALL(cudaGetLastError());

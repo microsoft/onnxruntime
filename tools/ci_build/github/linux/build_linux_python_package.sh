@@ -7,14 +7,13 @@ mkdir -p /build/dist
 
 EXTRA_ARG=""
 ENABLE_CACHE=false
-# Put 3.10 at the last because Ubuntu 22.04 use python 3.10 and we will upload the intermediate build files of this
-# config to Azure DevOps Artifacts and download them to a Ubuntu 22.04 machine to run the tests.
+# Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this
+# config to Azure DevOps Artifacts and download them to a Ubuntu 24.04 machine to run the tests.
 PYTHON_EXES=(
   "/opt/python/cp311-cp311/bin/python3.11"
-  "/opt/python/cp312-cp312/bin/python3.12"
   "/opt/python/cp313-cp313/bin/python3.13"
   "/opt/python/cp313-cp313t/bin/python3.13t"
-  "/opt/python/cp310-cp310/bin/python3.10"
+    "/opt/python/cp312-cp312/bin/python3.12"
   )
 while getopts "d:p:x:c:e" parameter_Option
 do case "${parameter_Option}"
@@ -70,7 +69,7 @@ fi
 if [ "$BUILD_DEVICE" == "GPU" ]; then
     SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=60-real;70-real;75-real;80-real;86-real;90a-real;90a-virtual")
+    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=60-real;70-real;75-real;80-real;86-real;90a-real;90a-virtual" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
 fi
 
 if [ "$BUILD_DEVICE" == "NPU" ]; then

@@ -48,11 +48,11 @@ class Telemetry {
 
   virtual void LogProcessInfo() const;
 
-  virtual void LogSessionCreationStart() const;
+  virtual void LogSessionCreationStart(uint32_t session_id) const;
 
-  virtual void LogEvaluationStop() const;
+  virtual void LogEvaluationStop(uint32_t session_id) const;
 
-  virtual void LogEvaluationStart() const;
+  virtual void LogEvaluationStart(uint32_t session_id) const;
 
   virtual void LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                   const std::string& model_producer_version, const std::string& model_domain,
@@ -77,6 +77,14 @@ class Telemetry {
   virtual void LogDriverInfoEvent(const std::string_view device_class,
                                   const std::wstring_view& driver_names,
                                   const std::wstring_view& driver_versions) const;
+
+  virtual void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                                  const std::vector<std::string>& requested_execution_provider_ids,
+                                  const std::vector<std::string>& available_execution_provider_ids) const;
+
+  virtual void LogProviderOptions(const std::string& provider_id,
+                                  const std::string& provider_options_string,
+                                  bool captureState) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);

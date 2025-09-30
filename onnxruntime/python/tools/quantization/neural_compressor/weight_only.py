@@ -299,8 +299,8 @@ def quant_tensor_k_quant_cuda(data, num_bits=4, group_size=32):
         zero_point: zero point
     """
     try:
-        import cupy as cp
-        import torch
+        import cupy as cp  # noqa: PLC0415
+        import torch  # noqa: PLC0415
 
         if torch.cuda.is_available():
             data = cp.asarray(data)
@@ -557,13 +557,13 @@ def prepare_inputs(model, n_samples, dataloader, providers):
         inputs: prepared inputs.
         so: session options
     """
-    from importlib.util import find_spec
+    from importlib.util import find_spec  # noqa: PLC0415
 
-    from .util import to_numpy
+    from .util import to_numpy  # noqa: PLC0415
 
     so = ort.SessionOptions()
     if sys.version_info < (3, 11) and find_spec("onnxruntime_extensions"):  # pragma: no cover
-        from onnxruntime_extensions import get_library_path
+        from onnxruntime_extensions import get_library_path  # noqa: PLC0415
 
         so.register_custom_ops_library(get_library_path())
     if model.is_large_model:
@@ -925,7 +925,7 @@ def gptq_quantize(
 
     # reload external data to prevent external data file path errors
     if model.is_large_model:
-        from onnx.external_data_helper import load_external_data_for_model
+        from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
 
         load_external_data_for_model(model.model, os.path.split(model.model_path)[0])
 

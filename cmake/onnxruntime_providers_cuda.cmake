@@ -191,6 +191,17 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
     endif()
 
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+      if (UNIX)
+        # Suppress -Wattributes warning from protobuf headers with nvcc on Linux
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-attributes>")
+      endif()
+
+      if (MSVC)
+          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+      endif()
+    endif()
+
     if (UNIX)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -239,18 +250,6 @@
       endif()
       target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-    endif()
-
-    if (onnxruntime_USE_TRITON_KERNEL)
-      # compile triton kernel, generate .a and .h files
-      include(onnxruntime_compile_triton_kernel.cmake)
-      compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
-      add_dependencies(${target} onnxruntime_triton_kernel)
-      target_compile_definitions(${target} PRIVATE USE_TRITON_KERNEL)
-      target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
-      target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
-      # lib cuda needed by cuLaunchKernel
-      target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
     endif()
 
     include(cutlass)

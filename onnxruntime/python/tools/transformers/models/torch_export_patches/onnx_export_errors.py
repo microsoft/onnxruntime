@@ -69,16 +69,16 @@ def unpatch_module(mod, info: dict[type, dict[type, Callable]], verbose: int = 0
 
 def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
     # Cache serialization: to be moved into appropriate packages
-    import packaging.version as pv
-    import torch
+    import packaging.version as pv  # noqa: PLC0415
+    import torch  # noqa: PLC0415
 
     try:
-        from transformers.cache_utils import DynamicCache
+        from transformers.cache_utils import DynamicCache  # noqa: PLC0415
     except ImportError:
         DynamicCache = None
 
     try:
-        from transformers.cache_utils import MambaCache
+        from transformers.cache_utils import MambaCache  # noqa: PLC0415
     except ImportError:
         MambaCache = None
 
@@ -132,7 +132,7 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
         torch.fx._pytree.register_pytree_flatten_spec(DynamicCache, lambda x, _: [x.key_cache, x.value_cache])
 
         # check
-        from .cache_helper import make_dynamic_cache
+        from .cache_helper import make_dynamic_cache  # noqa: PLC0415
 
         cache = make_dynamic_cache([(torch.rand((4, 4, 4)), torch.rand((4, 4, 4)))])
         values, spec = torch.utils._pytree.tree_flatten(cache)
@@ -144,8 +144,8 @@ def _register_cache_serialization(verbose: int = 0) -> dict[str, bool]:
 
 
 def _unregister(cls: type, verbose: int = 0):
-    import optree
-    import torch
+    import optree  # noqa: PLC0415
+    import torch  # noqa: PLC0415
 
     # torch.fx._pytree._deregister_pytree_flatten_spec(cls)
     if cls in torch.fx._pytree.SUPPORTED_NODES:
@@ -157,7 +157,7 @@ def _unregister(cls: type, verbose: int = 0):
         torch.utils._pytree._deregister_pytree_node(cls)
     optree.unregister_pytree_node(cls, namespace="torch")
     if cls in torch.utils._pytree.SUPPORTED_NODES:
-        import packaging.version as pv
+        import packaging.version as pv  # noqa: PLC0415
 
         if pv.Version(torch.__version__) < pv.Version("2.7.0"):
             del torch.utils._pytree.SUPPORTED_NODES[cls]
@@ -172,14 +172,14 @@ def _unregister(cls: type, verbose: int = 0):
 
 def _unregister_cache_serialization(undo: dict[str, bool], verbose: int = 0):
     if undo.get("MambaCache", False):
-        from transformers.cache_utils import MambaCache
+        from transformers.cache_utils import MambaCache  # noqa: PLC0415
 
         _unregister(MambaCache, verbose)
     elif verbose > 1:
         print("[_unregister_cache_serialization] skip unregister MambaCache")
 
     if undo.get("DynamicCache", False):
-        from transformers.cache_utils import DynamicCache
+        from transformers.cache_utils import DynamicCache  # noqa: PLC0415
 
         _unregister(DynamicCache, verbose)
     elif verbose > 1:
@@ -282,9 +282,9 @@ def bypass_export_some_errors(
         finally:
             _unregister_cache_serialization(done, verbose=verbose)
     else:
-        import torch
-        import torch._export.non_strict_utils  # produce_guards_and_solve_constraints
-        import torch.jit
+        import torch  # noqa: PLC0415
+        import torch._export.non_strict_utils  # produce_guards_and_solve_constraints  # noqa: PLC0415
+        import torch.jit  # noqa: PLC0415
 
         if verbose:
             print("[bypass_export_some_errors] replace torch.jit.isinstance, torch._dynamo.mark_static_address")
@@ -300,7 +300,7 @@ def bypass_export_some_errors(
         #############
 
         if patch_sympy:
-            import sympy
+            import sympy  # noqa: PLC0415
 
             f_sympy_name = getattr(sympy.core.numbers.IntegerConstant, "name", None)
 
@@ -317,7 +317,7 @@ def bypass_export_some_errors(
         f__broadcast_shapes = f_shape_env__set_replacement = revert_patches_info = None
 
         if patch_torch:
-            from .patches.patch_torch import (
+            from .patches.patch_torch import (  # noqa: PLC0415
                 _catch_produce_guards_and_solve_constraints,
                 patch__check_input_constraints_for_graph,
                 patched__broadcast_shapes,
@@ -365,9 +365,9 @@ def bypass_export_some_errors(
             if verbose:
                 print("[bypass_export_some_errors] assert when a dynamic dimension turns static")
 
-            from torch.fx.experimental.symbolic_shapes import ShapeEnv
+            from torch.fx.experimental.symbolic_shapes import ShapeEnv  # noqa: PLC0415
 
-            from .patches.patch_torch import patched_ShapeEnv
+            from .patches.patch_torch import patched_ShapeEnv  # noqa: PLC0415
 
             f_shape_env__set_replacement = ShapeEnv._set_replacement
             ShapeEnv._set_replacement = patched_ShapeEnv._set_replacement

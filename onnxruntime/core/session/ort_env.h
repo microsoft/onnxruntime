@@ -48,26 +48,8 @@ struct OrtEnv {
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
 
-  /**
-   * Registers an allocator for sharing between multiple sessions.
-   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
-   */
-  onnxruntime::common::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
-
-  /**
-   * Creates and registers an allocator for sharing between multiple sessions.
-   * Return an error if an allocator with the same OrtMemoryInfo is already registered.
-   */
-  onnxruntime::common::Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
-                                                         const OrtArenaCfg* arena_cfg = nullptr);
-
-  /**
-   * Removes registered allocator that was previously registered for sharing between multiple sessions.
-   */
-  onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
   ~OrtEnv();
-  onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
  private:
   // p_instance_ holds the single, global instance of OrtEnv.

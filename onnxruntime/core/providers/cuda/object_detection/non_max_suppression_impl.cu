@@ -23,9 +23,8 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-
 #include <cub/cub.cuh>
-//TODO:fix the warnings
+// TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)
 #endif
@@ -266,11 +265,11 @@ Status NmsGpu(cudaStream_t stream,
   thread_block.y = kNmsBlockDim;
   thread_block.z = 1;
   NMSKernel<<<block_dim, thread_block, 0, stream>>>(center_point_box,
-                                         d_sorted_boxes,
-                                         num_boxes,
-                                         iou_threshold,
-                                         bit_mask_len,
-                                         d_delete_mask);
+                                                    d_sorted_boxes,
+                                                    num_boxes,
+                                                    iou_threshold,
+                                                    bit_mask_len,
+                                                    d_delete_mask);
 
   IAllocatorUniquePtr<void> d_selected_boxes_ptr{allocator(num_boxes * sizeof(char))};
   auto* d_selected_boxes = static_cast<char*>(d_selected_boxes_ptr.get());
@@ -351,7 +350,7 @@ Status NonMaxSuppressionImpl(
       static_cast<int*>(nullptr),    // input indices
       static_cast<int*>(nullptr),    // sorted indices
       num_boxes,                     // num items
-      0, 8 * sizeof(float),           // sort all bits
+      0, 8 * sizeof(float),          // sort all bits
       stream));
 
   // allocate temporary memory

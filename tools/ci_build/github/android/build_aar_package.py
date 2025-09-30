@@ -16,7 +16,7 @@ BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 JAVA_ROOT = os.path.join(REPO_DIR, "java")
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
-from util import is_windows  # noqa: E402
+from util import is_windows, parse_qnn_version_from_sdk_yaml  # noqa: E402
 
 # We by default will build all 4 ABIs
 DEFAULT_BUILD_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
@@ -102,14 +102,7 @@ def _build_aar(args):
 
     if qnn_android_build:
         qnn_home = args.qnn_path
-        sdk_file = os.path.join(qnn_home, "sdk.yaml")
-        qnn_sdk_version = None
-        with open(sdk_file) as f:
-            for line in f:
-                if line.strip().startswith("version:"):
-                    # yaml file has simple key: value format with version as key
-                    qnn_sdk_version = line.split(":", 1)[1].strip()
-                    break
+        qnn_sdk_version = parse_qnn_version_from_sdk_yaml(qnn_home)
 
         # Note: The QNN package version does not follow Semantic Versioning (SemVer) format.
         # only use major.minor.patch version for qnn sdk version and truncate the build_id info if any

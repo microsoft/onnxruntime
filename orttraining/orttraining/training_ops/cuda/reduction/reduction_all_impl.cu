@@ -30,7 +30,7 @@ template void ScalarSqrt(cudaStream_t stream, float* input, BFloat16* output);
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
 __launch_bounds__(ChunkGroup<1>::thread_count_per_block)
-__global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output) {
+    __global__ void MultiTensorReduceKernel(ChunkGroup<1> chunk_group, TOut* output) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;

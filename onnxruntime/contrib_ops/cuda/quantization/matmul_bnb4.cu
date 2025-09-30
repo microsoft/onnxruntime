@@ -23,12 +23,12 @@ __device__ inline float ScalarMulFloatOut(float a, float b) {
 
 template <>
 __device__ inline float ScalarMulFloatOut(half a, half b) {
-  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
-    return static_cast<float>(a * b);
-  #else
-    // half multiplication not supported
-    return static_cast<float>(a) * static_cast<float>(b);
-  #endif
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+  return static_cast<float>(a * b);
+#else
+  // half multiplication not supported
+  return static_cast<float>(a) * static_cast<float>(b);
+#endif
 }
 
 template <>
@@ -95,7 +95,7 @@ __global__ void kgemm_4bit_inference_naive(
         reinterpret_cast<int4(&)[num_values_8bit]>(local_B_4bit)[0] =
             reinterpret_cast<const int4*>(B)[(offset_B + (inner_idx_halved)) / (num_values_8bit)];
       } else {
-        #pragma unroll
+#pragma unroll
         for (int j = 0; j < (num_values_8bit); j++)
           if ((inner_idx_halved) + j < (K / 2))
             local_B_4bit[j] = B[offset_B + inner_idx_halved + j];
@@ -103,12 +103,12 @@ __global__ void kgemm_4bit_inference_naive(
             local_B_4bit[j] = 0b01110111;
       }
     } else {
-      #pragma unroll
+#pragma unroll
       for (int j = 0; j < (num_values_8bit); j++) local_B_4bit[j] = 0b01110111;
     }
 
     for (int i = 0; i < 4; i++) {
-      #pragma unroll
+#pragma unroll
       for (int k = 0; k < num_values_8bit / 4; k++) {
         local_B[k * 2] = ScalarMul(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4], local_absmax);
         local_B[k * 2 + 1] = ScalarMul(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F], local_absmax);
@@ -126,7 +126,7 @@ __global__ void kgemm_4bit_inference_naive(
               reinterpret_cast<const int4*>(A)[inner_idx / (num_values_4bit / 8) + (2 * i) + 1];
         }
       } else {
-        #pragma unroll
+#pragma unroll
         for (int k = 0; k < num_values_4bit / 4; k++) {
           if (inner_idx + (i * num_values_4bit / 4) + k < K)
             local_A[k] = A[inner_idx + k + (i * num_values_4bit / 4)];
@@ -135,8 +135,8 @@ __global__ void kgemm_4bit_inference_naive(
         }
       }
 
-      // accumulate in float; small performance hit for Ampere, but lower error for outputs
-      #pragma unroll
+// accumulate in float; small performance hit for Ampere, but lower error for outputs
+#pragma unroll
       for (int k = 0; k < num_values_4bit / 4; k++) {
         local_C += ScalarMulFloatOut(local_A[k], local_B[k]);
       }
@@ -243,22 +243,22 @@ bool TryMatMulBnb4<BFloat16>(
     return false;
   }
 
-  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 800
-    Callkgemm_4bit_inference_naive<nv_bfloat16>(
-        reinterpret_cast<const nv_bfloat16*>(quant_map),
-        reinterpret_cast<nv_bfloat16*>(output),
-        reinterpret_cast<const nv_bfloat16*>(a_data),
-        b_data_quant,
-        reinterpret_cast<const nv_bfloat16*>(absmax),
-        m,
-        n,
-        k,
-        block_size,
-        stream);
-  #else
-    Callkgemm_4bit_inference_naive<BFloat16>(
-        quant_map, output, a_data, b_data_quant, absmax, m, n, k, block_size, stream);
-  #endif
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 800
+  Callkgemm_4bit_inference_naive<nv_bfloat16>(
+      reinterpret_cast<const nv_bfloat16*>(quant_map),
+      reinterpret_cast<nv_bfloat16*>(output),
+      reinterpret_cast<const nv_bfloat16*>(a_data),
+      b_data_quant,
+      reinterpret_cast<const nv_bfloat16*>(absmax),
+      m,
+      n,
+      k,
+      block_size,
+      stream);
+#else
+  Callkgemm_4bit_inference_naive<BFloat16>(
+      quant_map, output, a_data, b_data_quant, absmax, m, n, k, block_size, stream);
+#endif
 
   return true;
 }

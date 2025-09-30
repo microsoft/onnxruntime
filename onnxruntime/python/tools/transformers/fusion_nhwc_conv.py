@@ -78,7 +78,7 @@ class FusionNhwcConv(Fusion):
         nhwc_output_name = node_name + "_out" + "-" + conv.output[0]
         nhwc_conv = helper.make_node(
             "NhwcConv",
-            inputs=[nhwc_conv_input, weight_name] + conv.input[2:],
+            inputs=[nhwc_conv_input, weight_name, *conv.input[2:]],
             outputs=[nhwc_output_name],
             name=node_name + "-" + conv.name,
         )

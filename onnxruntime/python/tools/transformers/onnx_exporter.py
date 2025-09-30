@@ -167,7 +167,7 @@ def get_onnx_file_path(
     optimized_by_onnxruntime: bool,
     use_external_data: bool,
 ):
-    from re import sub
+    from re import sub  # noqa: PLC0415
 
     normalized_model_name = sub(r"[^a-zA-Z0-9_]", "_", model_name)
 
@@ -205,7 +205,7 @@ def add_filename_suffix(file_path: str, suffix: str) -> str:
 def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics):
     if overwrite or not os.path.exists(ort_model_path):
         Path(ort_model_path).parent.mkdir(parents=True, exist_ok=True)
-        from optimizer import get_fusion_statistics, optimize_by_onnxruntime
+        from optimizer import get_fusion_statistics, optimize_by_onnxruntime  # noqa: PLC0415
 
         # Use onnxruntime to optimize model, which will be saved to *_ort.onnx
         _ = optimize_by_onnxruntime(
@@ -236,8 +236,8 @@ def optimize_onnx_model(
     if overwrite or not os.path.exists(optimized_model_path):
         Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        from fusion_options import FusionOptions
-        from optimizer import optimize_model
+        from fusion_options import FusionOptions  # noqa: PLC0415
+        from optimizer import optimize_model  # noqa: PLC0415
 
         if optimization_options is None:
             optimization_options = FusionOptions(model_type)
@@ -288,7 +288,7 @@ def modelclass_dispatcher(model_name, custom_model_class):
     if model_name in PRETRAINED_GPT2_MODELS:
         return "GPT2ModelNoPastState"
 
-    import re
+    import re  # noqa: PLC0415
 
     if re.search("-squad$", model_name) is not None:
         return "AutoModelForQuestionAnswering"
@@ -355,7 +355,7 @@ def load_tf_model(model_name, model_class, cache_dir, config_modifier):
 def load_pt_model_from_tf(model_name):
     # Note that we could get pt model from tf, but model source and its structure in this case is different from directly using
     # load_pt_model() and load_tf_model() even with the same name. Therefore it should not be used for comparing with them
-    from convert_tf_models_to_pytorch import tf2pt_pipeline
+    from convert_tf_models_to_pytorch import tf2pt_pipeline  # noqa: PLC0415
 
     config, model = tf2pt_pipeline(model_name)
 
@@ -590,7 +590,7 @@ def export_onnx_model_from_tf(
     fusion_options,
 ):
     # Use CPU to export
-    import tensorflow as tf
+    import tensorflow as tf  # noqa: PLC0415
 
     tf.config.set_visible_devices([], "GPU")
 
@@ -640,7 +640,7 @@ def export_onnx_model_from_tf(
         example_outputs = example_outputs["last_hidden_state"]
 
     # Flatten is needed for gpt2 and distilgpt2. Output name sorting is needed for tf2onnx outputs to match onnx outputs.
-    from tensorflow.python.util import nest
+    from tensorflow.python.util import nest  # noqa: PLC0415
 
     example_outputs_flatten = nest.flatten(example_outputs)
 
@@ -661,9 +661,9 @@ def export_onnx_model_from_tf(
         if not use_external_data_format:
             Path(tf_internal_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        import zipfile
+        import zipfile  # noqa: PLC0415
 
-        import tf2onnx
+        import tf2onnx  # noqa: PLC0415
 
         tf2onnx.logging.set_level(tf2onnx.logging.ERROR)
         specs = []

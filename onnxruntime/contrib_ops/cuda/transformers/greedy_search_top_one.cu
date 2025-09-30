@@ -5,7 +5,6 @@
 
 #include <cub/cub.cuh>
 
-
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 

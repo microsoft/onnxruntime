@@ -28,4 +28,3 @@
 namespace ort_fastertransformer {
 template class MoeGemmRunner<half, uint8_t>;
 }  // namespace ort_fastertransformer
-

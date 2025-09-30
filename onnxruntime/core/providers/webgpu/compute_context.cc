@@ -5,12 +5,16 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
-ComputeContext::ComputeContext(OpKernelContext& kernel_context)
+ComputeContext::ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep)
     : webgpu_context_{WebGpuContextFactory::GetContext(kernel_context.GetDeviceId())},
-      kernel_context_{kernel_context} {
+      kernel_context_{kernel_context},
+      ep_{ep} {
 }
 
 void ComputeContext::PushErrorScope() {
@@ -24,6 +28,10 @@ Status ComputeContext::PopErrorScope() {
     return webgpu_context_.PopErrorScope();
   }
   return Status::OK();
+}
+
+const webgpu::BufferManager& ComputeContext::BufferManager() const {
+  return ep_.BufferManager();
 }
 
 }  // namespace webgpu

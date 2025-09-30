@@ -24,7 +24,7 @@ __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::
 
   const float sqrt_param = 0.79788456080286535587989211986876f;
   const float mul_param = 0.044715f;
-  
+
   constexpr float one = 1.0;
   constexpr float two = 2.0;
 
@@ -33,7 +33,7 @@ __device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::
   // float tan_h = tanhf(sqrt_param * (X_float + X_float * x2mul));
   float u = two * sqrt_param * (X_float + X_float * x2mul);
   float emu = __expf(-u);
-  float tan_h = two/(one + emu) - one;
+  float tan_h = two / (one + emu) - one;
 
   float dg1 = 0.5f * (1.0f + tan_h);
   float dg2 = X_float * 0.5f * sqrt_param * (1 - tan_h * tan_h);

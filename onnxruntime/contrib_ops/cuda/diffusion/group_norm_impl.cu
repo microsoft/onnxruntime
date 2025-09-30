@@ -52,7 +52,7 @@ void GroupNormNHWCSum(GroupNormNHWCParams<T> const& params, cudaStream_t stream)
 #define LAUNCH_GROUPNORM_SUM(ThreadsPerBlock, VecSize)                                               \
   GroupNormNHWCSumKernel<T, ThreadsPerBlock, VecSize>                                                \
       <<<grid, ThreadsPerBlock, 0, stream>>>(                                                        \
-          params.skip_workspace, params.group_sum_buffer, params.src, params.skip, params.bias,       \
+          params.skip_workspace, params.group_sum_buffer, params.src, params.skip, params.bias,      \
           params.channels_per_block, params.hw_per_block, params.hw, params.hwc, params.c,           \
           params.channels_per_group, params.groups, params.groups_per_block, params.broadcast_skip); \
   break;
@@ -128,7 +128,6 @@ Status LaunchGroupNormKernel(
     bool use_silu,
     bool broadcast_skip,
     int channels_per_block) {
-
   // tuning_ctx only used for ROCm EP.
   ORT_UNUSED_PARAMETER(tuning_ctx);
 

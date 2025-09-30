@@ -44,7 +44,7 @@ struct GemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
 
   int3 bias_strides;
 
-  const T* ones; // used for broadcasting bias if the underlying algorithm does not support strides
+  const T* ones;  // used for broadcasting bias if the underlying algorithm does not support strides
   T* workspace_buffer;
 };
 

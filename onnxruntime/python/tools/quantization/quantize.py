@@ -673,7 +673,7 @@ def quantize_static(
     }
 
     if extra_options.get("SmoothQuant", False):
-        import importlib
+        import importlib  # noqa: PLC0415
 
         try:
             importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
@@ -681,7 +681,7 @@ def quantize_static(
             logging.error(f"{e}.")
             raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
 
-        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant  # noqa: PLC0415
 
         def inc_dataloader():
             data_reader = copy.deepcopy(calibration_data_reader)
@@ -939,7 +939,7 @@ def quantize(
         )
     else:
         # training package doesn't has quantize_matmul_4bits, avoid global import
-        from .matmul_nbits_quantizer import MatMulNBitsQuantizer, WeightOnlyQuantConfig
+        from .matmul_nbits_quantizer import MatMulNBitsQuantizer, WeightOnlyQuantConfig  # noqa: PLC0415
 
         if isinstance(quant_config, WeightOnlyQuantConfig):
             model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load(model_input)

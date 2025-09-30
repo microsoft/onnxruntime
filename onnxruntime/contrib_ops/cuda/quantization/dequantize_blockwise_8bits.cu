@@ -2,16 +2,17 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <cmath>
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
-#include <cmath>
-#include <type_traits>
+#include <cuda_bf16.h>
 #include <math_constants.h>
+#include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
-#include "dequantize_blockwise.cuh"
+#include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -40,6 +41,31 @@ __device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, ha
 
   // Write 4 half values (equivalent to float2)
   *(reinterpret_cast<float2*>(output)) = *(reinterpret_cast<float2*>(results));
+}
+
+// Processes 4 elements (since each is 8 bits, 4 fit in uint32_t) for bfloat16
+__device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, __nv_bfloat16 scale, __nv_bfloat16 zp, __nv_bfloat16* output) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  __nv_bfloat162 scale_bf162 = __bfloat162bfloat162(scale);
+  // Formula: val = (quant - zp) * scale = quant * scale - zp * scale
+  __nv_bfloat16 zp_adjust = -scale * zp;
+  __nv_bfloat162 zp_adjust2 = __bfloat162bfloat162(zp_adjust);
+
+  alignas(16) __nv_bfloat162 results[2];  // Store 4 bfloat16 values
+
+  // Extract 4 uint8_t values from uint32_t
+  __nv_bfloat16 v0 = __uint2bfloat16_rn(static_cast<uint8_t>(values_quant & 0xFF));
+  __nv_bfloat16 v1 = __uint2bfloat16_rn(static_cast<uint8_t>((values_quant >> 8) & 0xFF));
+  results[0] = __halves2bfloat162(v0, v1) * scale_bf162 + zp_adjust2;
+
+  __nv_bfloat16 v2 = __uint2bfloat16_rn(static_cast<uint8_t>((values_quant >> 16) & 0xFF));
+  __nv_bfloat16 v3 = __uint2bfloat16_rn(static_cast<uint8_t>((values_quant >> 24) & 0xFF));
+  results[1] = __halves2bfloat162(v2, v3) * scale_bf162 + zp_adjust2;
+
+  // Write 4 bfloat16 values
+  *(reinterpret_cast<__nv_bfloat162*>(output)) = results[0];
+  *(reinterpret_cast<__nv_bfloat162*>(output + 2)) = results[1];
+#endif
 }
 
 // Processes 4 elements (since each is 8 bits, 4 fit in uint32_t)
@@ -108,6 +134,10 @@ __global__ void Dequantize8BitsKernelReOrder(
       T zp_T = __ushort2half_rn(zp);
       T zp_adjust = -scale * zp_T;
       output_i[i] = __ushort2half_rn(q_val) * scale + zp_adjust;
+    } else if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      T zp_T = __uint2bfloat16_rn(zp);
+      T zp_adjust = -scale * zp_T;
+      output_i[i] = __uint2bfloat16_rn(q_val) * scale + zp_adjust;
     } else {
       T zp_T = static_cast<T>(zp);
       T zp_adjust = -scale * zp_T;
@@ -145,14 +175,16 @@ __global__ void Dequantize8BitsKernel(
     if (zero_points) {
       zp = zero_points[block_id];  // Direct lookup, no packing
     }
-    // Convert uint8_t zp to T (float/half)
+    // Convert uint8_t zp to T (float/half/bfloat16)
     if constexpr (std::is_same_v<T, half>) {
       zero_point_value = __uint2half_rn(zp);
+    } else if constexpr (std::is_same_v<T, __nv_bfloat16>) {
+      zero_point_value = __uint2bfloat16_rn(zp);
     } else {
       zero_point_value = static_cast<T>(zp);
     }
-  } else {  // ZeroT is T (float or half)
-    // Default 0 for float/half zero point
+  } else {  // ZeroT is T (float, half, or bfloat16)
+    // Default 0 for float/half/bfloat16 zero point
     zero_point_value = zero_points ? *(zero_points + block_id) : static_cast<T>(0.0f);
   }
 
@@ -240,6 +272,17 @@ template Status Dequantize8Bits<half, uint8_t>(
     int block_size,
     cudaStream_t stream);
 
+template Status Dequantize8Bits<__nv_bfloat16, uint8_t>(
+    __nv_bfloat16* output,
+    const uint8_t* quant_data,
+    const __nv_bfloat16* scales_data,
+    const uint8_t* zero_points,
+    const int32_t* reorder_idx,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
+
 template Status Dequantize8Bits<float, float>(
     float* output,
     const uint8_t* quant_data,
@@ -256,6 +299,17 @@ template Status Dequantize8Bits<half, half>(
     const uint8_t* quant_data,
     const half* scales_data,
     const half* zero_points,
+    const int32_t* reorder_idx,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream);
+
+template Status Dequantize8Bits<__nv_bfloat16, __nv_bfloat16>(
+    __nv_bfloat16* output,
+    const uint8_t* quant_data,
+    const __nv_bfloat16* scales_data,
+    const __nv_bfloat16* zero_points,
     const int32_t* reorder_idx,
     int k,
     int n,
@@ -345,8 +399,12 @@ __global__ void dequantizeThread8b(ElementT* dst,
         const half zp_half = __uint2half_rn(zp_uint8);
         const half adjust = -scale * zp_half;
         dst[q_val_idx] = __uint2half_rn(q_val) * scale + adjust;
+      } else if constexpr (std::is_same<ElementT, __nv_bfloat16>::value) {
+        const __nv_bfloat16 zp_bf16 = __uint2bfloat16_rn(zp_uint8);
+        const __nv_bfloat16 adjust = -scale * zp_bf16;
+        dst[q_val_idx] = __uint2bfloat16_rn(q_val) * scale + adjust;
       } else {  // Float
-        static_assert(std::is_same<ElementT, float>::value, "Only float and half are supported!");
+        static_assert(std::is_same<ElementT, float>::value, "Only float, half and bfloat16 are supported!");
         const float zp_float = static_cast<float>(zp_uint8);
         const float adjust = -scale * zp_float;
         dst[q_val_idx] = static_cast<float>(q_val) * scale + adjust;
@@ -453,6 +511,17 @@ template Status DequantizeBlockwise8b<half>(
     half* dst,
     const uint8_t* src,
     const half* scales,
+    const uint8_t* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    cudaStream_t stream);
+
+template Status DequantizeBlockwise8b<__nv_bfloat16>(
+    __nv_bfloat16* dst,
+    const uint8_t* src,
+    const __nv_bfloat16* scales,
     const uint8_t* zero_points,
     int block_size,
     bool columnwise,

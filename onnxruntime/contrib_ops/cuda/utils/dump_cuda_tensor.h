@@ -36,7 +36,7 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
   CUDA_DUMPER_PRINT_TYPE(UInt4x2)
   CUDA_DUMPER_PRINT_TYPE(Int4x2)
   CUDA_DUMPER_PRINT_TYPE(half)
-
+  CUDA_DUMPER_PRINT_TYPE(__nv_bfloat16)
 #undef CUDA_DUMPER_PRINT_TYPE
 };
 

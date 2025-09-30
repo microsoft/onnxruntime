@@ -14,9 +14,15 @@ Abstract:
     operation (QGEMM).
 
 --*/
-
-#include "mlasi.h"
+#include <cassert>
+#include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
+
+// TODO: When overrides are implemented, remove this
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
+
 
 //
 // Define the parameters to execute segments of a QGEMM operation on worker
@@ -195,6 +201,26 @@ MlasGemmBatch(
     });
 }
 
+void
+MLASCALL
+MlasDynamicQGemmBatch (
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+) {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    //No fallback and putting in guards
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
+    ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+    }
+#endif
+
+    MLAS_UNREFERENCED_PARAMETER(Shape);
+    MLAS_UNREFERENCED_PARAMETER(DataParams);
+    MLAS_UNREFERENCED_PARAMETER(BatchN);
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+}
 
 int32_t
 MlasSymmQgemmGetKernelOutputCnt()
@@ -293,9 +319,34 @@ MlasSymmQgemmBatch(
     });
 }
 
+
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
+
+size_t
+MLASCALL
+MlasDynamicQgemmPackBSize(
+    size_t N,
+    size_t K
+)
+{
+    size_t bytes = 0;
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    //No fallback available
+    //TODO: Insert Override
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
+        bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
+    }
+#endif
+
+    MLAS_UNREFERENCED_PARAMETER(N);
+    MLAS_UNREFERENCED_PARAMETER(K);
+
+    return bytes;
+}
+
 
 size_t
 MLASCALL
@@ -354,9 +405,37 @@ Return Value:
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
         ~(BufferAlignment - 1);
-
-    return AlignedBytesRequired;
+    //If this gemm B argument is used in a dynamically quantization gemm operation we can optimize for
+    //this use case. Concat both packed representations for later decision.
+    return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K);
 }
+
+void
+MLASCALL
+MlasDynamicQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    const float* Scales,
+    const float* Bias,
+    void* PackedB
+)
+{
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    //No fallback
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
+        ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
+    }
+#endif
+
+    MLAS_UNREFERENCED_PARAMETER(N);
+    MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(B);
+    MLAS_UNREFERENCED_PARAMETER(Scales);
+    MLAS_UNREFERENCED_PARAMETER(Bias);
+    MLAS_UNREFERENCED_PARAMETER(PackedB);
+}
+
 
 void
 MLASCALL
@@ -400,7 +479,6 @@ Return Value:
     //
     // Retrieve the packing parameters.
     //
-
     const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
 
     size_t PackedK = GemmQuantDispatch->PackedK;
@@ -514,7 +592,6 @@ MlasSymmQgemmPackBSize(
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-
 
 void
 MLASCALL

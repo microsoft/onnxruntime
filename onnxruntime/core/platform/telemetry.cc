@@ -40,13 +40,16 @@ void Telemetry::SetLanguageProjection(uint32_t projection) const {
 void Telemetry::LogProcessInfo() const {
 }
 
-void Telemetry::LogSessionCreationStart() const {
+void Telemetry::LogSessionCreationStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
-void Telemetry::LogEvaluationStop() const {
+void Telemetry::LogEvaluationStop(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
-void Telemetry::LogEvaluationStart() const {
+void Telemetry::LogEvaluationStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
 void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
@@ -105,6 +108,23 @@ void Telemetry::LogDriverInfoEvent(const std::string_view device_class,
   ORT_UNUSED_PARAMETER(device_class);
   ORT_UNUSED_PARAMETER(driver_names);
   ORT_UNUSED_PARAMETER(driver_versions);
+}
+
+void Telemetry::LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                                   const std::vector<std::string>& requested_execution_provider_ids,
+                                   const std::vector<std::string>& available_execution_provider_ids) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(selection_policy);
+  ORT_UNUSED_PARAMETER(requested_execution_provider_ids);
+  ORT_UNUSED_PARAMETER(available_execution_provider_ids);
+}
+
+void Telemetry::LogProviderOptions(const std::string& provider_id,
+                                   const std::string& provider_options_string,
+                                   bool captureState) const {
+  ORT_UNUSED_PARAMETER(provider_id);
+  ORT_UNUSED_PARAMETER(provider_options_string);
+  ORT_UNUSED_PARAMETER(captureState);
 }
 
 }  // namespace onnxruntime
