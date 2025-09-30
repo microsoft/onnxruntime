@@ -1325,6 +1325,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/layer_normalization.cc)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
+    if (onnxruntime_USE_SVE)
+      target_compile_definitions(onnxruntime_benchmark PRIVATE MLAS_USE_SVE)
+    endif()
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
@@ -1352,6 +1355,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
     target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
+    if (onnxruntime_USE_SVE)
+      target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE MLAS_USE_SVE)
+    endif()
     if(WIN32)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
@@ -1523,7 +1529,7 @@ endif()
       list(APPEND onnxruntime_shared_lib_test_LIBS cpuinfo)
     endif()
     if (onnxruntime_USE_CUDA)
-      list(APPEND onnxruntime_shared_lib_test_LIBS)
+      list(APPEND onnxruntime_shared_lib_test_LIBS CUDA::cudart)
     endif()
 
     if (onnxruntime_USE_TENSORRT)
@@ -1649,6 +1655,9 @@ endif()
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
       )
     endif()
+    if (onnxruntime_USE_SVE)
+      target_compile_definitions(onnxruntime_mlas_test PRIVATE MLAS_USE_SVE)
+    endif()
     target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
             ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
@@ -1751,6 +1760,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (HAS_QSPECTRE)
       list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /Qspectre>")
     endif()
+    set(custom_op_lib_link ${custom_op_lib_link} CUDA::cudart)
   endif()
 
   file(GLOB custom_op_src ${custom_op_src_patterns})
@@ -1973,6 +1983,7 @@ endif()
 if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
+  # example_plugin_ep
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/*.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
@@ -1994,6 +2005,9 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
 
   set_property(TARGET example_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
+
+  set_target_properties(example_plugin_ep PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_library_src})
 
   # test library
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"

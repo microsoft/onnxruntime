@@ -42,7 +42,7 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
                                           {"K", ProgramUniformVariableDataType::Uint32});
 
  private:
-  const Activation& activation_;
+  const Activation activation_;
   const size_t output_rank_;
   const int64_t output_number_;
   const bool has_bias_;
