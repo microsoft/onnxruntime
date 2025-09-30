@@ -115,3 +115,16 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 }
+
+
+inline bool mul_overflow_size_t_builtin(size_t a, size_t b, size_t* out) {
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_mul_overflow)
+    return __builtin_mul_overflow(a, b, out);
+#  endif
+#endif
+    // Fallback to manual check if builtin not available
+    if (b != 0 && a > SIZE_MAX / b) return true;
+    if (out) *out = a * b;
+    return false;
+}

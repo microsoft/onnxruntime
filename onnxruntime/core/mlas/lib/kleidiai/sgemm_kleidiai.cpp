@@ -237,7 +237,7 @@ Return Value:
     size_t n_step = UseSME2 ? kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
                             : kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
 
-    if (M < m_step && N < n_step && !Data->BIsPacked) {
+    if ((M < m_step || N < n_step) && !Data->BIsPacked) {
         // Fallback to MLAS
         return false;
     }
@@ -247,11 +247,18 @@ Return Value:
 
     LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr);
 
-    if (g_kai_tls.lhs_packed.capacity() < LhsPackedStride * BatchSize) {
-
-        g_kai_tls.lhs_packed.reserve(LhsPackedStride * BatchSize);
+    size_t lhs_resize = 0;
+    if(mul_overflow_size_t_builtin(LhsPackedStride, BatchSize, &lhs_resize))
+    {
+        // size_t wraparound detected, exit
+        return false;
     }
-    g_kai_tls.lhs_packed.resize(LhsPackedStride * BatchSize);
+
+    if (g_kai_tls.lhs_packed.capacity() < lhs_resize) {
+
+        g_kai_tls.lhs_packed.reserve(lhs_resize);
+    }
+    g_kai_tls.lhs_packed.resize(lhs_resize);
     LhsPackedData = g_kai_tls.lhs_packed.data();
 
     // RHS packed buffer: use TLS reusable vector to minimize allocations
@@ -268,11 +275,18 @@ Return Value:
     } else {
         // Multithread pack lhs and rhs
         RhsPackedStride = ArmKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
-        if (g_kai_tls.rhs_packed.capacity() < RhsPackedStride * BatchSize) {
-            g_kai_tls.rhs_packed.reserve(RhsPackedStride * BatchSize);
+        size_t rhs_resize = 0;
+        if (mul_overflow_size_t_builtin(RhsPackedStride, BatchSize, &rhs_resize))
+        {
+            // size_t wraparound detected, exit
+            return false;
         }
 
-        g_kai_tls.rhs_packed.resize(RhsPackedStride * BatchSize);
+        if (g_kai_tls.rhs_packed.capacity() < rhs_resize) {
+            g_kai_tls.rhs_packed.reserve(rhs_resize);
+        }
+
+        g_kai_tls.rhs_packed.resize(rhs_resize);
         RhsPackedData = g_kai_tls.rhs_packed.data();
 
         MlasTrySimpleParallel(ThreadPool, BatchSize * 2, [&](ptrdiff_t batch_idx) {
@@ -345,17 +359,22 @@ Return Value:
             NIdx * n_step * sizeof(float)
         );
         // Allocate temporary buffer for raw A*B result (TLS reusable buffer)
+
+        size_t tile_elems = 0;
+        if (mul_overflow_size_t_builtin(TileSizeM, TileSizeN, &tile_elems))
         {
-            const size_t tile_elems = TileSizeM * TileSizeN;
-            if (g_kai_tls.output_tile.capacity() < tile_elems) {
-                // reserve more memory if required
-                g_kai_tls.output_tile.reserve(tile_elems);
-            }
-            // resize the tile to the required size (doesn't effect memory)
-            g_kai_tls.output_tile.resize(tile_elems);
+            // size_t wraparound detected, exit
+            return
         }
+        if (g_kai_tls.output_tile.capacity() < tile_elems) {
+
+            g_kai_tls.output_tile.reserve(tile_elems);
+        }
+        // resize the tile to the required size
+        g_kai_tls.output_tile.resize(tile_elems);
+
         float* temp_tile = g_kai_tls.output_tile.data();
-        std::fill_n(temp_tile, TileSizeM * TileSizeN, 0.0f);
+        std::fill_n(temp_tile, tile_elems, 0.0f);
 
         if (UseSME2) {
             kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(
