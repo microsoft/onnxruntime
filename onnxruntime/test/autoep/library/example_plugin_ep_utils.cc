@@ -3,7 +3,6 @@
 
 #include "example_plugin_ep_utils.h"
 
-#include <gsl/gsl>
 #include <string>
 
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& /* ort_api */, const OrtSessionOptions& session_options,
