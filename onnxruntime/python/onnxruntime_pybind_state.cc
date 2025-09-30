@@ -1892,6 +1892,9 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::class_<OrtSyncStream> py_sync_stream(m, "OrtSyncStream",
                                            R"pbdoc(Represents a synchronization stream for model inference.)pbdoc");
+  py_sync_stream.def("get_handle", [](OrtSyncStream* stream) -> uintptr_t { 
+      Ort::UnownedSyncStream ort_stream(stream);
+      return reinterpret_cast<uintptr_t>(ort_stream.GetHandle()); }, R"pbdoc(SyncStream handle that can be converted to a string and added to SessionOptions)pbdoc");
 
   py::class_<OrtEpDevice> py_ep_device(m, "OrtEpDevice",
                                        R"pbdoc(Represents a hardware device that an execution provider supports
