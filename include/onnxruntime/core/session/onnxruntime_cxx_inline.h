@@ -3582,14 +3582,21 @@ inline KernelDefBuilder& KernelDefBuilder::SetOutputMemType(size_t output_index,
 }
 
 inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
-                                                             const OrtMLDataType* const* data_types,
-                                                             size_t num_data_types) {
-  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, data_types, num_data_types));
+                                                             const OrtMLDataType* data_types) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, &data_types, 1));
   return *this;
 }
 
-inline Status KernelDefBuilder::Build(OrtKernelDef*& kernel_def) {
-  return Status{GetEpApi().KernelDefBuilder_Build(p_, &kernel_def)};
+inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
+                                                             const std::vector<const OrtMLDataType*>& data_types) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, data_types.data(), data_types.size()));
+  return *this;
+}
+
+inline OrtKernelDef* KernelDefBuilder::Build() {
+  OrtKernelDef* kernel_def = nullptr;
+  ThrowOnError(GetEpApi().KernelDefBuilder_Build(p_, &kernel_def));
+  return kernel_def;
 }
 
 }  // namespace Ort

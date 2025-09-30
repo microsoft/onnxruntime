@@ -10,8 +10,12 @@
 class MLDataTypes {
  public:
   static MLDataTypes& GetInstance();
+
   static OrtStatus* GetTensorType(ONNXTensorElementDataType elem_type, /*out*/ const OrtMLDataType*& tensor_type);
+  static const OrtMLDataType* GetTensorType(ONNXTensorElementDataType elem_type);
+
   static OrtStatus* GetAllFixedSizeTensorTypesIRv9(/*out*/ std::vector<const OrtMLDataType*>& tensor_types);
+  static std::vector<const OrtMLDataType*> GetAllFixedSizeTensorTypesIRv9();
 
  private:
   MLDataTypes();

@@ -32,6 +32,13 @@ OrtStatus* MLDataTypes::GetTensorType(ONNXTensorElementDataType elem_type, /*out
 }
 
 /*static*/
+const OrtMLDataType* MLDataTypes::GetTensorType(ONNXTensorElementDataType elem_type) {
+  const OrtMLDataType* result = nullptr;
+  Ort::ThrowOnError(GetInstance().GetTensorType(elem_type, result));
+  return result;
+}
+
+/*static*/
 OrtStatus* MLDataTypes::GetAllFixedSizeTensorTypesIRv9(/*out*/ std::vector<const OrtMLDataType*>& result) {
   MLDataTypes& instance = GetInstance();
   const OrtEpApi& ep_api = Ort::GetEpApi();
@@ -68,4 +75,11 @@ OrtStatus* MLDataTypes::GetAllFixedSizeTensorTypesIRv9(/*out*/ std::vector<const
 
   result = instance.fixed_tensor_v9_;
   return nullptr;
+}
+
+/*static*/
+std::vector<const OrtMLDataType*> MLDataTypes::GetAllFixedSizeTensorTypesIRv9() {
+  std::vector<const OrtMLDataType*> result;
+  Ort::ThrowOnError(GetInstance().GetAllFixedSizeTensorTypesIRv9(result));
+  return result;
 }
