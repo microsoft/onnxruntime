@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <algorithm>
+#include <string>
 
 #include "core/providers/cann/cann_utils.h"
 
