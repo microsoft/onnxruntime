@@ -144,6 +144,9 @@ void RunTestWrapper() {
   RunTest<T>({2, 1, 3}, {2, 2, 1});
   RunTest<T>({2, 1, 3}, {2, 2, 1}, true);
 
+// The WebGPU EP is not currently prepared for this possibility:
+//   onnxruntime/core/providers/webgpu/program.cc:46
+//   ProgramUniformVariableValue(...) length > 0 was false. number of element of uniform variable must be greater than 0.
 #if !defined(USE_WEBGPU)
   // Tile0D (nop)
   RunTest<T>({}, {});
