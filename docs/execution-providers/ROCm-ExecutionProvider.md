@@ -11,6 +11,14 @@ redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
 
 The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm-enabled GPUs. 
 
+** NOTE ** As of ROCm 7.1 There will be no more ROCm Execution Provider support provider by Microsoft
+
+Please Migrate your applications to use the [MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html#migraphx-execution-provider)
+
+ROCm 7.0 is the last offiicaly AMD supported distribution of this provider and all builds going forward (ROCm 7.1+) Will have ROCm EP removed.
+
+Please refer to this [Pull Request](https://github.com/microsoft/onnxruntime/pull/25181) for background.
+
 ## Contents
 {: .no_toc }
 
@@ -36,9 +44,18 @@ Below is the matrix of supported ROCm versions corresponding to Ubuntu builds.
 As of ROCm 6.0.2 Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
 All links can be found on AMD's [repo.radeon manylinux page](https://repo.radeon.com/rocm/manylinux) for each corresponding to the ROCm release.
 
+ROCm 7.0 Will be the last officially supported AMD Release which includes ROCm Execution Provider 
+Please use [MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html#migraphx-execution-provider) For your applications instead.
+
 | ONNX Runtime Version | ROCm Version | Python 3.8 | Python 3.9 | Python 3.10 | Python 3.12 |
 |---|---|---|---|---|---|
 |||||||
+|ONNX Runtime Version|MIGraphX ROCm Release| Python 3.8 | Python 3.9 | Python 3.10 | Python 3.12 |
+|---|---|---|---|---|---|
+|1.22.1|7.0||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0/onnxruntime_rocm-1.22.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.0/onnxruntime_rocm-1.22.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |
+|1.21|6.4.4|| [3.9](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.4/onnxruntime_rocm-1.21.0-cp39-cp39-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.4/onnxruntime_rocm-1.21.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.4/onnxruntime_rocm-1.21.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |
+|1.21|6.4.3|| [3.9](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.3/onnxruntime_rocm-1.21.0-cp39-cp39-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.3/onnxruntime_rocm-1.21.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.3/onnxruntime_rocm-1.21.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |
+|1.21|6.4.2|| [3.9](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/onnxruntime_rocm-1.21.0-cp39-cp39-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/onnxruntime_rocm-1.21.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.2/onnxruntime_rocm-1.21.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |
 |1.21|6.4.1|| [3.9](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/onnxruntime_rocm-1.21.0-cp39-cp39-manylinux_2_28_x86_64.whl) | [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/onnxruntime_rocm-1.21.0-cp310-cp310-manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/onnxruntime_rocm-1.21.0-cp312-cp312-manylinux_2_28_x86_64.whl) |
 |1.21|6.4||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp312-cp312-linux_x86_64.whl)|
 |1.19|6.3.1||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
