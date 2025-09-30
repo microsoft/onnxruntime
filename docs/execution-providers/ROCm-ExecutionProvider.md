@@ -15,7 +15,7 @@ The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm
 
 Please Migrate your applications to use the [MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html#migraphx-execution-provider)
 
-As of ROCm 7.0 There is support for the ROCm Execution Provider but support will be removed from AMDs builds and testing when releasing Onnxruntime packages.
+ROCm 7.0 is the last offiicaly AMD supported distribution of this provider and all builds going forwar (ROCm 7.1+) Will have ROCm EP removed.
 
 Please refer to this [Pull Request](https://github.com/microsoft/onnxruntime/pull/25181) for background.
 
@@ -43,6 +43,9 @@ Below is the matrix of supported ROCm versions corresponding to Ubuntu builds.
 
 As of ROCm 6.0.2 Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
 All links can be found on AMD's [repo.radeon manylinux page](https://repo.radeon.com/rocm/manylinux) for each corresponding to the ROCm release.
+
+ROCm 7.0 Will be the last officially supported AMD Release which includes ROCm Execution Provider 
+Please use [MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html#migraphx-execution-provider) For your applications instead.
 
 | ONNX Runtime Version | ROCm Version | Python 3.8 | Python 3.9 | Python 3.10 | Python 3.12 |
 |---|---|---|---|---|---|
