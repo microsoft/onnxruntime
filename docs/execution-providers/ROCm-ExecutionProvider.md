@@ -11,6 +11,14 @@ redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
 
 The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm-enabled GPUs. 
 
+** NOTE ** As of ROCm 7.1 There will be no more ROCm Execution Provider support provider by Microsoft
+
+Please Migrate your applications to use the [MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html#migraphx-execution-provider)
+
+As of ROCm 7.0 There is support for the ROCm Execution Provider but support will be removed from AMDs builds and testing when releasing Onnxruntime packages.
+
+Please refer to this [Pull Request](https://github.com/microsoft/onnxruntime/pull/25181) for background.
+
 ## Contents
 {: .no_toc }
 
