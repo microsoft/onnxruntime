@@ -78,6 +78,11 @@ static inline bool IsControlFlowNode(const Node& node) {
 // - It's outputs should be consumed by CPU nodes or be graph outputs
 bool LoopSubgraphCpuFallbackOptimizer::IsCandidateForFallback(const Graph& graph, const Node& node,
                                                               const logging::Logger& logger) const {
+  const auto* execution_provider = FindProviderByType(providers_by_type_, node.GetExecutionProviderType());
+  if (utils::ProviderIsCpuBased(*execution_provider)) {
+    return false;
+  }
+
   // Here we need to check if all its outputs are consumed by CPU nodes or are graph outputs
   const auto output_defs = node.OutputDefs();
   for (size_t i = 0, lim = output_defs.size(); i < lim; ++i) {
@@ -144,9 +149,6 @@ Status LoopSubgraphCpuFallbackOptimizer::ApplyImpl(Graph& graph, bool& modified,
       if (!utils::ProviderIsCpuBased(*execution_provider)) {
         nodes_not_cpu_based.insert(node);
 
-        size_t cpu_based_consumers = 0;
-        size_t candidates_for_fallback_count = 0;
-
         const KernelCreateInfo* kci = nullptr;
         ORT_IGNORE_RETURN_VALUE(registry_manager_.SearchKernelRegistry(*node, logger, &kci));
 
@@ -160,24 +162,12 @@ Status LoopSubgraphCpuFallbackOptimizer::ApplyImpl(Graph& graph, bool& modified,
           const auto consumer_nodes = graph.GetMutableConsumerNodes(output_name);
 
           for (auto* consumer_node : consumer_nodes) {
-            const auto* consumer_ep = FindProviderByType(providers_by_type_,
-                                                         consumer_node->GetExecutionProviderType());
-            if (utils::ProviderIsCpuBased(*consumer_ep)) {
-              cpu_based_consumers++;
-            } else if (utils::IsOutputOnCpu(*node, kci, j)) {
+            if (utils::IsOutputOnCpu(*node, kci, j)) {
               if (IsCandidateForFallback(graph, *consumer_node, logger)) {
                 candidates_for_fallback.insert(consumer_node);
-                candidates_for_fallback_count++;
               }
             }
           }
-        }
-
-        if (static_cast<float>(cpu_based_consumers + candidates_for_fallback_count) /
-                static_cast<float>(output_defs.size()) >
-            0.5f) {
-          // Add this node to candidates as well
-          candidates_for_fallback.insert(node);
         }
       }
     }
@@ -186,8 +176,8 @@ Status LoopSubgraphCpuFallbackOptimizer::ApplyImpl(Graph& graph, bool& modified,
       const float assignment_ratio = static_cast<float>(nodes_not_cpu_based.size()) /
                                      (graph.NumberOfNodes() - control_flow_nodes);
       if (assignment_ratio < non_cpu_to_cpu_provider_ratio_) {
-        LOGS(logger, WARNING) << " Falling back to CPU nodes in a Loop from " << graph.ParentNode()->OpType()
-                              << " node. Non-CPU to CPU node ratio: " << assignment_ratio
+        LOGS(logger, WARNING) << " Falling back to CPU nodes in a Loop from `" << graph.ParentNode()->Name()
+                              << "` node. Non-CPU to CPU node ratio: " << assignment_ratio
                               << " is below the threshold: " << non_cpu_to_cpu_provider_ratio_;
         for (const auto& node : nodes_not_cpu_based) {
           // Fallback to CPU
@@ -202,10 +192,9 @@ Status LoopSubgraphCpuFallbackOptimizer::ApplyImpl(Graph& graph, bool& modified,
     if (!local_modified) {
       for (const auto& node : candidates_for_fallback) {
         node->SetExecutionProviderType(kCpuExecutionProvider);
-        modified = true;
-        LOGS(logger, VERBOSE) << " Falling back to CPU node: " << node->Name()
-                              << " of type: " << node->OpType()
-                              << " in a Loop from " << graph.ParentNode()->OpType() << " node.";
+        LOGS(logger, WARNING) << " Falling back to CPU node: `" << node->Name()
+                              << "` of type: `" << node->OpType()
+                              << "` in a Loop `" << graph.ParentNode()->Name() << "` node.";
       }
       local_modified = !candidates_for_fallback.empty();
     }
