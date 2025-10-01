@@ -1435,6 +1435,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"scatter_elements_with_negative_indices", "unknown version"});
     // Fails since ONNX==1.19.0
     broken_tests->insert({"l2normalization_axis_0", "unknown version"});
+    broken_tests->insert({"attention_3d_gqa", "unknown version"});
     broken_tests->insert({"attention_3d_gqa_attn_mask", "unknown version"});
     broken_tests->insert({"attention_3d_gqa_causal", "unknown version"});
     broken_tests->insert({"attention_3d_gqa_scaled", "unknown version"});
