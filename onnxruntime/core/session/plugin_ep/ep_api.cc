@@ -282,7 +282,7 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ size_t output_index, _In_ OrtMemType mem_type) {
   API_IMPL_BEGIN
-  kernel_def_builder->InputMemoryType(mem_type, static_cast<int>(output_index));
+  kernel_def_builder->OutputMemoryType(mem_type, static_cast<int>(output_index));
   return nullptr;
   API_IMPL_END
 }

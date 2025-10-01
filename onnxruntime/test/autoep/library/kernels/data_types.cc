@@ -34,7 +34,7 @@ OrtStatus* MLDataTypes::GetTensorType(ONNXTensorElementDataType elem_type, /*out
 /*static*/
 const OrtMLDataType* MLDataTypes::GetTensorType(ONNXTensorElementDataType elem_type) {
   const OrtMLDataType* result = nullptr;
-  Ort::ThrowOnError(GetInstance().GetTensorType(elem_type, result));
+  Ort::ThrowOnError(MLDataTypes::GetTensorType(elem_type, result));
   return result;
 }
 
