@@ -100,7 +100,7 @@ jobs:
           # Note on skipped tests:
           # The skipped tests are either:
           # - relying on CPU EP fallback for BFloat16 which is not supported
-          # - testing contrib op LayerNormalization with mixed input/output types (only supported by a few EPs)
+          # - testing the LayerNormalization contrib op with mixed input/output types (only supported by a few EPs)
           # Some other hardcoded EP types are skipped in these tests. For a plugin EP, we skip these tests by
           # specifying them in the dynamic plugin EP configuration.
 
