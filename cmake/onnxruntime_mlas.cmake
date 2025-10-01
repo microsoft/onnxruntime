@@ -219,7 +219,6 @@ function(setup_mlas_source_for_windows)
     set(mlas_platform_srcs_sse41
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
     )
-    set_source_files_properties(${mlas_platform_srcs_sse41} PROPERTIES COMPILE_FLAGS "-msse4.1")
 
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
