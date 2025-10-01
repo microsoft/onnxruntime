@@ -100,9 +100,17 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
+  // TODO:: just use Q4BitGemmPackQuantBDataSize if extra params are not needed in future
+    typedef size_t(Q2BitGemmPackQuantBDataSize_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    );
+
     Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
-    Q4BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
+    Q2BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
 
     /** Gets size of packed quantized B data containing 8-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
     typedef size_t(Q8BitGemmPackQuantBDataSize_Fn)(

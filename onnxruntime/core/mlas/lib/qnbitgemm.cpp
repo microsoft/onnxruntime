@@ -236,7 +236,7 @@ MlasQNBitGemmPackQuantBDataSize(
 
     if (BlkBitWidth == 2 && Dispatch->Q2BitGemmPackQuantBDataSize != nullptr) {
         return Dispatch->Q2BitGemmPackQuantBDataSize(
-            N, K, BlkLen, HasZeroPoint, ComputeType
+            N, K, BlkLen, ComputeType
         );
     }
 

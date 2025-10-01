@@ -46,10 +46,15 @@ Q2BitGemmPackQuantBDataSize(
 )
 {
   // TODO: This code shall change according to T-Mac.
+  // Modify based on tmac compute type if needed.
     MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
 
-    const size_t PackedQuantBDataSize = N * K / 8;
-    return PackedQuantBDataSize;
+    // const size_t PackedQuantBDataSize = N * K / 8;
+    constexpr size_t BlkBitWidth = 2;
+    constexpr size_t g = 4; // group size
+    const size_t ngroups_per_elem = 8 / g;
+    const size_t PackedQuantBDataSize = (N * BlkBitWidth) * (K / g / ngroups_per_elem);
+    return PackedQuantBDataSize; // 1048576
 }
 
 void SQ2BitGemmPackQuantBData(
@@ -62,15 +67,17 @@ void SQ2BitGemmPackQuantBData(
   MLAS_THREADPOOL* ThreadPool
 )
 {
+    //decompose W into w1,... w_bits create temp buffer buf2 of size N * bits * (K/g)
+
     // T-MAC like configuration (approved):
     // bits=2, g=4, ngroups_per_elem=8/g=2, simd_n_in=16, simd_n_out=8, bm=512, kfactor=16
-    constexpr int bits = 2;
-    constexpr int g = 4;
-    constexpr int ngroups_per_elem = 8 / g; // 2
-    constexpr int simd_n_in = 16;
-    constexpr int simd_n_out = 8;
-    constexpr int bm = 512;      // tune as needed; must be multiple of bits and mgroup
-    constexpr int kfactor = 16;  // tune as needed; must divide K/g per block
+    constexpr size_t bits = 2;
+    constexpr size_t g = 4;
+    constexpr size_t ngroups_per_elem = 8 / g; // 2
+    constexpr size_t simd_n_in = 16;
+    constexpr size_t simd_n_out = 8;
+    constexpr size_t bm = 256;      // tune as needed; must be multiple of bits and mgroup
+    constexpr size_t kfactor = 16;  // tune as needed; must divide K/g per block
 
     // Basic checks
     MLAS_UNREFERENCED_PARAMETER(K);
@@ -80,118 +87,105 @@ void SQ2BitGemmPackQuantBData(
     assert(bm % mgroup == 0);
     assert(bm % bits == 0);
 
+    uint8_t * buf = new uint8_t[N * bits * (K / g)];
+    memset(buf, 0, N * bits * (K / g));
+
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(bits, BlkLen); // BlkLen/4 bytes
+    const size_t Iterations = N; // we parallelize over N, TODO:: tune if needed
+    
+    MlasTrySimpleParallel(
+        ThreadPool, Iterations,
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
+            for (size_t ik = 0; ik < K; ++ik) {
+                size_t idx = (im * K + ik);
+                size_t num_elem_per_byte = 8 / bits;
+                size_t elem_idx = idx % num_elem_per_byte;
 
-    const int m_block = bm / bits;       // number of original rows (columns of B) per tile
-    assert(N % static_cast<size_t>(m_block) == 0);
-    const size_t tiles_in_m = N / static_cast<size_t>(m_block);
+                uint8_t v = ((const uint8_t *)QuantBDataBegin)[idx / num_elem_per_byte] >> (elem_idx * bits);
 
-    const int K_over_g = static_cast<int>(BlkLen / g);
+                for (size_t ib =0; ib < bits; ++ib) {
+                    size_t new_ik = ik / g;
+                    size_t shft_left = ik % g;
+                    buf[im * bits * K / g + ib * K /g  + new_ik] += ((v >> ib) & 1) << shft_left;
+                }
+            }
+        }
+    );
 
-    // We write destination in block-major layout: for each k-block, its N columns packed contiguously.
-    // Per (k_blk, tile) we produce a chunk of size m_block * BlkDataSize bytes.
-    const size_t tile_chunk_bytes = static_cast<size_t>(m_block) * BlkDataSize; // = m_block * BlkLen/4
+    // Now buf contains the bit planes grouped by g along K
+    // Next, we need to do a multi-reshape/transpose into the final layout
 
-    const size_t Iterations = BlockCountK * tiles_in_m;
+
+    const size_t c0_fac2 = K / g;
+    const size_t c0_fac1 = simd_n_out * c0_fac2;
+    const size_t c0_fac0 = bits * c0_fac1;
+
+    const size_t c1_nb2 = K / g;
+    const size_t c1_nb1 = simd_n_in * c1_nb2;
+    const size_t c1_nb0 = ngroups_per_elem * c1_nb1;
+    const size_t c1_fac2 = K / g;
+    const size_t c1_fac1 = ngroups_per_elem * c1_fac2;
+    const size_t c1_fac0 = simd_n_in * c1_fac1;
+
+
+    const size_t c2_nb4 = kfactor;
+    const size_t c2_nb3 = K / g / kfactor * c2_nb4;
+    const size_t c2_nb2 = ngroups_per_elem * c2_nb3;
+    const size_t c2_nb1 = simd_n_in * c2_nb2;
+    const size_t c2_nb0 = bm / mgroup * c2_nb1;
+    const size_t c2_fac3 = simd_n_in * ngroups_per_elem;
+    const size_t c2_fac2 = kfactor * c2_fac3;
+    const size_t c2_fac1 = bm / mgroup * c2_fac2;
+    const size_t c2_fac0 = K / g / kfactor * c2_fac1;
+
+    const size_t PackedQuantBDataSize = (N * bits) * (K / g / ngroups_per_elem);
+    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize); // TODO: is this needed?
 
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
-            const size_t k_blk = static_cast<size_t>(tid) / tiles_in_m;
-            const size_t tile_idx = static_cast<size_t>(tid) % tiles_in_m;
+            size_t im = static_cast<size_t>(tid);
+            for (size_t ib = 0; ib < bits; ib++) {
+                for (size_t ik = 0; ik < K / g; ik++) {
+                    // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
+                    size_t new_im = im / simd_n_out;
+                    size_t new_isno = im % simd_n_out;
+                    size_t new_ib = ib;
+                    size_t new_ik = ik;
+                    size_t new_idx = new_im * c0_fac0 + new_ib * c0_fac1 + new_isno * c0_fac2 + new_ik;
 
-            // Temporary buffers per tile
-            // buf2: size = (m_block * bits) * (BlkLen/g)
-            // tilechunk: size = m_block * BlkLen/4 bytes
-            std::vector<uint8_t> buf2(static_cast<size_t>(m_block) * bits * K_over_g, 0);
-            std::vector<uint8_t> tilechunk(tile_chunk_bytes, 0);
+                    // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
+                    new_im = new_idx / c1_nb0;
+                    size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
+                    size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
+                    new_ik = (new_idx % c1_nb2);
+                    new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
 
-            // Stage 1: build buf2 (bit-planes grouped along K by g)
-            for (int im = 0; im < m_block; ++im) {
-                const size_t n_col = tile_idx * static_cast<size_t>(m_block) + static_cast<size_t>(im);
-                const size_t src_block_offset = n_col * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
-                const std::byte* src_block = QuantBDataBegin + src_block_offset;
+                    // #             0        1             2             3                 4                  5
+                    // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
+                    new_im = new_idx / c2_nb0;
+                    size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
+                    new_isni = (new_idx % c2_nb1) / c2_nb2;
+                    new_ing = (new_idx % c2_nb2) / c2_nb3;
+                    new_ik = (new_idx % c2_nb3) / c2_nb4;
+                    size_t new_ikf = (new_idx % c2_nb4);
+                    new_idx = new_im * c2_fac0 +
+                            new_ik * c2_fac1 +
+                            new_ibm * c2_fac2 +
+                            new_ikf * c2_fac3 +
+                            new_isni * ngroups_per_elem +
+                            new_ing;
+                    new_idx = new_idx / ngroups_per_elem;
+                    size_t buf_idx = im * bits * K / g + ib * K / g + ik;
+                    uint8_t buf_val = buf[buf_idx];
 
-                for (int ik = 0; ik < static_cast<int>(BlkLen); ++ik) {
-                    const int byte_idx = ik >> 2;                 // ik/4
-                    const int lane = ik & 3;                      // ik%4
-                    const uint8_t src_byte = static_cast<uint8_t>(src_block[byte_idx]);
-                    const uint8_t v = static_cast<uint8_t>((src_byte >> (lane * bits)) & 0x3u);
-
-                    const int ik_g = ik / g;
-                    const int shft_left = ik % g; // 0..3
-                    for (int ib = 0; ib < bits; ++ib) {
-                        const size_t idx = static_cast<size_t>(im) * bits * K_over_g + static_cast<size_t>(ib) * K_over_g + static_cast<size_t>(ik_g);
-                        buf2[idx] = static_cast<uint8_t>(buf2[idx] + (((v >> ib) & 0x1u) << shft_left));
-                    }
+                    // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
+                    PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
+                        static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
+                        (buf_val << (new_ing * g)));
                 }
-            }
-
-            // Precompute reshape/transpose factors (use K' = BlkLen)
-            const int c0_fac2 = K_over_g;
-            const int c0_fac1 = simd_n_out * c0_fac2;
-            const int c0_fac0 = bits * c0_fac1;
-
-            const int c1_nb2 = K_over_g;
-            const int c1_nb1 = simd_n_in * c1_nb2;
-            const int c1_nb0 = ngroups_per_elem * c1_nb1;
-            const int c1_fac2 = K_over_g;
-            const int c1_fac1 = ngroups_per_elem * c1_fac2;
-            const int c1_fac0 = simd_n_in * c1_fac1;
-
-            const int c2_nb4 = kfactor;
-            const int c2_nb3 = (K_over_g / kfactor) * c2_nb4;
-            const int c2_nb2 = ngroups_per_elem * c2_nb3;
-            const int c2_nb1 = simd_n_in * c2_nb2;
-            const int c2_nb0 = (bm / mgroup) * c2_nb1;
-            const int c2_fac3 = simd_n_in * ngroups_per_elem;
-            const int c2_fac2 = kfactor * c2_fac3;
-            const int c2_fac1 = (bm / mgroup) * c2_fac2;
-            const int c2_fac0 = (K_over_g / kfactor) * c2_fac1;
-
-            // Stage 2: multi-reshape/transpose into tilechunk
-            for (int im = 0; im < m_block; ++im) {
-                for (int ib = 0; ib < bits; ++ib) {
-                    for (int ik = 0; ik < K_over_g; ++ik) {
-                        // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
-                        int new_im = im / simd_n_out;
-                        int new_isno = im % simd_n_out;
-                        int new_ib = ib;
-                        int new_ik = ik;
-                        int new_idx = new_im * c0_fac0 + new_ib * c0_fac1 + new_isno * c0_fac2 + new_ik;
-
-                        // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
-                        new_im = new_idx / c1_nb0;
-                        int new_ing = (new_idx % c1_nb0) / c1_nb1;
-                        int new_isni = (new_idx % c1_nb1) / c1_nb2;
-                        new_ik = (new_idx % c1_nb2);
-                        new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
-
-                        // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
-                        new_im = new_idx / c2_nb0;
-                        int new_ibm = (new_idx % c2_nb0) / c2_nb1;
-                        new_isni = (new_idx % c2_nb1) / c2_nb2;
-                        new_ing = (new_idx % c2_nb2) / c2_nb3;
-                        new_ik = (new_idx % c2_nb3) / c2_nb4;
-                        int new_ikf = (new_idx % c2_nb4);
-                        new_idx = new_im * c2_fac0 + new_ik * c2_fac1 + new_ibm * c2_fac2 + new_ikf * c2_fac3 + new_isni * ngroups_per_elem + new_ing;
-
-                        // Collapse ngroups into byte by left-shifting lanes of g
-                        const size_t src_idx = static_cast<size_t>(im) * bits * K_over_g + static_cast<size_t>(ib) * K_over_g + static_cast<size_t>(ik);
-                        const uint8_t v = buf2[src_idx];
-                        const size_t dst_idx = static_cast<size_t>(new_idx / ngroups_per_elem);
-                        tilechunk[dst_idx] = static_cast<uint8_t>(tilechunk[dst_idx] + (v << (new_ing * g)));
-                    }
-                }
-            }
-
-            // Store the tile chunk into destination
-            std::byte* dst_block_base = PackedQuantBDataBegin + k_blk * (N * BlkDataSize);
-            std::byte* tile_dest = dst_block_base + tile_idx * tile_chunk_bytes;
-            // copy bytes
-            for (size_t i = 0; i < tile_chunk_bytes; ++i) {
-                tile_dest[i] = static_cast<std::byte>(tilechunk[i]);
             }
         }
     );
@@ -222,7 +216,7 @@ Q2BitGemmPerGemmWorkspaceSize(
     }
 }
 
-// pass in LUT for 
+// pass in LUT for
 size_t
 SQ2BitGemmKernel_CompInt8_avx2(
     size_t BlkLen, // group
@@ -414,7 +408,9 @@ PRAGMA_UNROLL
         }
 PRAGMA_UNROLL
         for (int g = 0; g < 16; g += 2) {
-            vec_lut[g] = -vec_lut[15 - g];
+            //vec_lut[g] = -vec_lut[15 - g];
+            const __m256 neg_mask = _mm256_set1_ps(-0.0f);  // all lanes have sign bit set
+            vec_lut[g] = _mm256_xor_ps(vec_lut[15 - g], neg_mask);
         }
 
         biases += _mm256_addv_ps(vec_lut[0]);
@@ -483,7 +479,7 @@ PRAGMA_UNROLL
 
 
 // based on lut_ctor_g4_int8_impl
-void 
+void
 GenerateLUT_avx2(
 	int32_t group_size,
 	int8_t* lut,
