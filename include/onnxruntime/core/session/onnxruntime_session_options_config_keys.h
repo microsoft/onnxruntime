@@ -408,3 +408,10 @@ static const char* const kOrtSessionOptionsDisableModelCompile = "session.disabl
 // Note: UNSUPPORTED models always fail regardless of this setting.
 static const char* const kOrtSessionOptionsFailOnSuboptimalCompiledModel =
     "session.fail_on_suboptimal_compiled_model";
+
+// THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
+// Meant to be used with SetEpDynamicOptions
+// options for HTP performance mode: "burst", "balanced", "default", "high_performance",
+// "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver",
+// "sustained_high_performance". Default to "default".
+static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic.qnn_htp_performance_mode";
