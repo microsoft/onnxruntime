@@ -44,7 +44,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
-#include "core/optimizer/subgraph_memcpy_minimizer.h"
+#include "core/optimizer/loop_subgraph_fallback_optimizer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
@@ -1522,8 +1522,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       providers.push_back(provider_ptr.get());
     }
 
-    SubgraphMemcpyMinimizer subgraph_memcpy_minimizer{session_options_.config_options, providers, kernel_registry_manager_};
-    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(subgraph_memcpy_minimizer, *session_logger_, graph));
+    // We only do that if there is more than one provider and there is a setting in force.
+    if (providers.size() > 1) {
+      std::string config_value;
+      if (session_options_.config_options.TryGetConfigEntry(kOrtLoopSubgraphCpuFallbackOptimizerNonCpuToCpuProviderRatio,
+                                                            config_value)) {
+        LoopSubgraphCpuFallbackOptimizer subgraph_memcpy_minimizer{session_options_.config_options, providers, kernel_registry_manager_};
+        ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(subgraph_memcpy_minimizer, *session_logger_, graph));
+      }
+    }
 
     MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));

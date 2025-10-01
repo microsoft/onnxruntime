@@ -4847,3 +4847,19 @@ TEST(CApiTest, custom_cast) {
                                inputs, "output", expected_dims_y, expected_values_y, 0,
                                custom_op_domain, nullptr);
 }
+
+TEST(CApiTest, TestMemcpyMinimizer) {
+  Ort::Env env(ORT_LOGGING_LEVEL_VERBOSE);
+  const auto* model_path = TSTR("D:\\dev\\data\\GPUPlacementControl_gh_23154\\bert-tok-trunc-loop.onnx");
+  const auto* opt_model_path = TSTR("D:\\dev\\data\\GPUPlacementControl_gh_23154\\bert-tok-trunc-loop-opt.onnx");
+  Ort::SessionOptions session_options;
+  // Add CUDA execution provider
+  session_options.AppendExecutionProvider_CUDA_V2(OrtCUDAProviderOptionsV2{});
+  session_options.SetOptimizedModelFilePath(opt_model_path);
+  session_options.AddConfigEntry("session.loop_subgraph_cpu_fallback_optimizer_min_nocpu_cpu_ratio", "0.6");
+  // add extension path
+  session_options.RegisterCustomOpsLibrary(
+      ORT_TSTR("D:\\dev\\data\\GPUPlacementControl_gh_23154\\.venv\\lib\\site-packages\\onnxruntime_extensions\\_extensions_pydll.cp310-win_amd64.pyd"));
+
+  Ort::Session session(env, model_path, session_options);
+}
