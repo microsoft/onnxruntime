@@ -115,7 +115,7 @@ static std::vector<std::unique_ptr<::testing::TestEventListener>> MakeTestEventL
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
   {
     namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
-    const auto tests_to_skip = dynamic_plugin_ep_infra::GetEpTestsToSkip();
+    const auto tests_to_skip = dynamic_plugin_ep_infra::GetTestsToSkip();
     auto skipping_test_listener = std::make_unique<onnxruntime::test::SkippingTestListener>(tests_to_skip);
     result.emplace_back(std::move(skipping_test_listener));
   }

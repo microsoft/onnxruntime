@@ -199,7 +199,7 @@ std::optional<std::string> GetEpName() {
   return g_plugin_ep_infrastructure_state->ep_name;
 }
 
-std::vector<std::string> GetEpTestsToSkip() {
+std::vector<std::string> GetTestsToSkip() {
   if (!IsInitialized()) {
     return {};
   }

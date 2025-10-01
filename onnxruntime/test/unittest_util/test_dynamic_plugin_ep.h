@@ -79,8 +79,8 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger = nullp
 // Gets the dynamic plugin EP name, or `std::nullopt` if uninitialized.
 std::optional<std::string> GetEpName();
 
-// Gets the list of tests to skip for the dynamic plugin EP, or an empty list if uninitialized.
-std::vector<std::string> GetEpTestsToSkip();
+// Gets the list of tests to skip, or an empty list if uninitialized.
+std::vector<std::string> GetTestsToSkip();
 
 }  // namespace dynamic_plugin_ep_infra
 }  // namespace test
