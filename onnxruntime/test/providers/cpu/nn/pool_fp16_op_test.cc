@@ -323,15 +323,13 @@ TEST(PoolTest, MaxPool_DilationPadding_3d) {
 }
 
 TEST(PoolBF16Test, AveragePool) {
-#ifdef USE_CUDA
+#ifndef USE_CUDA
+  GTEST_SKIP() << "BFloat16 tests are only enabled on CUDA builds";
+#else
   if (!CudaHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
-#else
-  return;
-#endif
-
   OpTester test("AveragePool", 22);
 
   test.AddAttribute("auto_pad", "");
@@ -411,6 +409,7 @@ TEST(PoolBF16Test, AveragePool) {
   test.AddInput<BFloat16>("X", x_dims, x_vals);
   test.AddOutput<BFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+#endif
 }
 
 TEST(PoolFp16Test, AveragePool) {
