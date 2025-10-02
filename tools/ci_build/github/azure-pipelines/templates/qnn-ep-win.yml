@@ -56,8 +56,7 @@ stages:
       parameters:
         host_cpu_arch: 'x64'
 
-    - task: jobs/download_win_webgpu_build_tools.yml
-      displayName: 'Download WebGPU build tools'
+    - template: jobs/download_win_webgpu_build_tools.yml
 
     - template: jobs/download_win_qnn_sdk.yml
       parameters:
