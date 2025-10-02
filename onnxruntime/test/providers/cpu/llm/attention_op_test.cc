@@ -220,14 +220,14 @@ static void RunTest3D(
   std::vector<int64_t> v_shape = {batch_size, kv_sequence_length, v_hidden_size};
 
   std::vector<int64_t> attn_mask_shape = {q_sequence_length, total_sequence_length};
-  size_t expected_mask_size = static_cast<size_t>(q_sequence_length) * static_cast<size_t>(total_sequence_length);
-  if (expected_mask_size != attn_mask.size() && attn_mask.size() > 0) {
-    if (static_cast<size_t>(batch_size) * expected_mask_size == attn_mask.size()) {
+  int mask_size = static_cast<int>(attn_mask.size());
+  if (q_sequence_length * total_sequence_length != mask_size && mask_size > 0) {
+    if (batch_size * q_sequence_length * total_sequence_length == mask_size) {
       attn_mask_shape = {batch_size, 1, q_sequence_length, total_sequence_length};
-    } else if (static_cast<size_t>(batch_size) * static_cast<size_t>(q_num_heads) * expected_mask_size == attn_mask.size()) {
+    } else if (batch_size * q_num_heads * q_sequence_length * total_sequence_length == mask_size) {
       attn_mask_shape = {batch_size, q_num_heads, q_sequence_length, total_sequence_length};
     } else {
-      ORT_THROW("Invalid attention mask size: ", attn_mask.size(),
+      ORT_THROW("Invalid attention mask size: ", mask_size,
                 " expected ", q_sequence_length, "*", total_sequence_length, " or ",
                 batch_size, "*", q_sequence_length, "*", total_sequence_length);
     }
@@ -299,14 +299,14 @@ static void RunTest4D(
   std::vector<int64_t> v_shape = {batch_size, kv_num_heads, kv_sequence_length, v_head_size};
 
   std::vector<int64_t> attn_mask_shape = {q_sequence_length, total_sequence_length};
-  size_t expected_mask_size = static_cast<size_t>(q_sequence_length) * static_cast<size_t>(total_sequence_length);
-  if (expected_mask_size != attn_mask.size() && attn_mask.size() > 0) {
-    if (static_cast<size_t>(batch_size) * expected_mask_size == attn_mask.size()) {
+  int mask_size = static_cast<int>(attn_mask.size());
+  if (q_sequence_length * total_sequence_length != mask_size && mask_size > 0) {
+    if (batch_size * q_sequence_length * total_sequence_length == mask_size) {
       attn_mask_shape = {batch_size, 1, q_sequence_length, total_sequence_length};
-    } else if (static_cast<size_t>(batch_size) * static_cast<size_t>(q_num_heads) * expected_mask_size == attn_mask.size()) {
+    } else if (batch_size * q_num_heads * q_sequence_length * total_sequence_length == mask_size) {
       attn_mask_shape = {batch_size, q_num_heads, q_sequence_length, total_sequence_length};
     } else {
-      ORT_THROW("Invalid attention mask size: ", attn_mask.size(),
+      ORT_THROW("Invalid attention mask size: ", mask_size,
                 " expected ", q_sequence_length, "*", total_sequence_length, " or ",
                 batch_size, "*", q_sequence_length, "*", total_sequence_length);
     }

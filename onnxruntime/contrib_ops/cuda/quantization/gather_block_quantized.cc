@@ -67,7 +67,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   int64_t data_rank = data->Shape().NumDimensions();
 
   auto indices_shape = indices->Shape().GetDims();
-  auto indices_rank = indices->Shape().NumDimensions();
+  int64_t indices_rank = static_cast<int64_t>(indices->Shape().NumDimensions());
 
   ORT_ENFORCE(quantize_axis_ == static_cast<int64_t>(data_rank) - 1);
 
