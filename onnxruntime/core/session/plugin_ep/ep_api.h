@@ -75,5 +75,6 @@ ORT_API_STATUS_IMPL(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,
                     _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
-
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
 }  // namespace OrtExecutionProviderApi

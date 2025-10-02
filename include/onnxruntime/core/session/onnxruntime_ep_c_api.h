@@ -524,6 +524,8 @@ struct OrtEpApi {
                   _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
+  ORT_API2_STATUS(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                  _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
 };
 
 /**

@@ -198,7 +198,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        IResourceAccountant* resource_accountant) const {
   ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
-  ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
   const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
 
@@ -208,7 +207,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return {};
   }
 
-  OrtEpGraphSupportInfo api_graph_support_info(*ep_graph);
+  OrtEpGraphSupportInfo api_graph_support_info(*ep_graph, kernel_lookup);
   Status status = ToStatusAndRelease(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info));
 
   if (!status.IsOK()) {

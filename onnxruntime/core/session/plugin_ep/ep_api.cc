@@ -76,7 +76,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInf
                     _In_opt_ const OrtNodeFusionOptions* node_fusion_options) {
   API_IMPL_BEGIN
   if (ort_graph_support_info == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtEpGraphSupportInfo instance");
   }
 
   if (num_nodes == 0 || nodes == nullptr) {
@@ -378,6 +378,37 @@ ORT_API_STATUS_IMPL(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def) {
+  API_IMPL_BEGIN
+  if (out_kernel_def == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtKernelDef output parameter");
+  }
+
+  *out_kernel_def = nullptr;
+
+  if (graph_support_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid non-null OrtEpGraphSupportInfo instance");
+  }
+
+  if (node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid non-null OrtNode instance");
+  }
+
+  const onnxruntime::EpNode* ep_node = onnxruntime::EpNode::ToInternal(node);
+  if (ep_node == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
+                                 "OrtNode created via the ModelEditor API is not supported");
+  }
+
+  const onnxruntime::KernelCreateInfo* create_info =
+      graph_support_info->kernel_lookup.LookUpKernel(ep_node->GetInternalNode());
+
+  *out_kernel_def = static_cast<const OrtKernelDef*>(create_info->kernel_def.get());
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -419,6 +450,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseKernelDef,
     &OrtExecutionProviderApi::GetTensorMLDataType,
     &OrtExecutionProviderApi::KernelInfo_CopyTensors,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

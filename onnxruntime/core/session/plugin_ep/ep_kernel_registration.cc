@@ -105,11 +105,10 @@ Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRe
   const OrtKernelRegistry* ep_kernel_registry = nullptr;
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep.GetKernelRegistry(&ort_ep, &ep_kernel_registry)));
 
-  if (ep_kernel_registry == nullptr) {
-    return Status::OK();
+  if (ep_kernel_registry != nullptr) {
+    kernel_registry = ep_kernel_registry->registry;
   }
 
-  kernel_registry = ep_kernel_registry->registry;
   return Status::OK();
 }
 

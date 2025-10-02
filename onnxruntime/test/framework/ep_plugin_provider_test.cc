@@ -128,8 +128,18 @@ MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {
   return result;
 }
 
+using LookUpKernelFunc = std::function<const KernelCreateInfo*(const Node&)>;
+
 class MockKernelLookup : public IExecutionProvider::IKernelLookup {
-  const KernelCreateInfo* LookUpKernel(const Node& /*node*/) const override { return nullptr; }
+ public:
+  explicit MockKernelLookup(LookUpKernelFunc lookup = nullptr) : lookup_{lookup} {}
+
+  const KernelCreateInfo* LookUpKernel(const Node& node) const override {
+    return lookup_ != nullptr ? lookup_(node) : nullptr;
+  }
+
+ private:
+  LookUpKernelFunc lookup_ = nullptr;
 };
 
 }  // namespace test_plugin_ep

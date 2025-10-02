@@ -10,6 +10,10 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 
+OrtEpGraphSupportInfo::OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph,
+                                             const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup)
+    : ort_graph(graph), kernel_lookup{kernel_lookup} {}
+
 onnxruntime::Status OrtEpGraphSupportInfo::AddNodesToFuse(gsl::span<const OrtNode* const> nodes,
                                                           const OrtNodeFusionOptions* optional_fusion_options) {
   std::vector<const onnxruntime::EpNode*> ep_nodes;
