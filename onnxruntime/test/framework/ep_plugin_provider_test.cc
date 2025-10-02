@@ -8,6 +8,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/logging/sinks/file_sink.h"
+#include "core/framework/kernel_def_builder.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
@@ -34,6 +35,14 @@ static void CheckStringInFile(const PathString& filename, const std::string& loo
                       std::istreambuf_iterator<char>{});
 
   EXPECT_NE(content.find(look_for), std::string::npos);
+}
+
+static void CheckFileIsEmpty(const PathString& filename) {
+  std::ifstream ifs{filename};
+  std::string content(std::istreambuf_iterator<char>{ifs},
+                      std::istreambuf_iterator<char>{});
+
+  EXPECT_TRUE(content.empty());
 }
 
 // Normally, a plugin EP would be implemented in a separate library.
@@ -446,10 +455,23 @@ static OrtStatus* ORT_API_CALL GetCapabilityTakeSingleNode(OrtEp* this_ptr, cons
     return st;
   }
 
-  // Take only the first node using EpGraphSupportInfo_AddSingleNode().
-  if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddSingleNode(graph_support_info, nodes[0]);
-      st != nullptr) {
-    return st;
+  // Take only the first node that has a registered kernel for this EP.
+  for (const OrtNode* node : nodes) {
+    const OrtKernelDef* kernel_def = nullptr;
+    OrtStatus* status = this_ep->ep_api->EpGraphSupportInfo_LookUpKernel(graph_support_info, node, &kernel_def);
+
+    if (status != nullptr) {
+      return status;
+    }
+
+    if (kernel_def != nullptr) {
+      if (OrtStatus* st = this_ep->ep_api->EpGraphSupportInfo_AddSingleNode(graph_support_info, node);
+          st != nullptr) {
+        return st;
+      }
+
+      break;
+    }
   }
 
   return nullptr;
@@ -465,7 +487,8 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   auto run_test = [&log_file](IExecutionProvider& ep,
                               const std::unordered_set<std::string>& nodes_for_other_ep,
                               const std::unordered_set<std::string>& nodes_for_this_ep,
-                              const char* expected_log_string) {
+                              const char* expected_log_string,
+                              test_plugin_ep::LookUpKernelFunc lookup_kernel_func = nullptr) {
     std::shared_ptr<Model> model;
     ASSERT_NO_FATAL_FAILURE(LoadModelAndAssignNodesToEp(ORT_TSTR("testdata/add_mul_add.onnx"),
                                                         "OtherEp", nodes_for_other_ep, model));
@@ -482,7 +505,7 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
 
       GraphViewer graph_viewer(model->MainGraph());
       auto compute_capabilities = ep.GetCapability(graph_viewer,
-                                                   test_plugin_ep::MockKernelLookup{},
+                                                   test_plugin_ep::MockKernelLookup(lookup_kernel_func),
                                                    GraphOptimizerRegistry(nullptr, nullptr, file_logger.get()),
                                                    nullptr);
 
@@ -500,7 +523,12 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
     }
 
     ASSERT_TRUE(std::filesystem::exists(log_file));
-    EXPECT_NO_FATAL_FAILURE(CheckStringInFile(log_file, expected_log_string));
+
+    if (expected_log_string != nullptr) {
+      EXPECT_NO_FATAL_FAILURE(CheckStringInFile(log_file, expected_log_string));
+    } else {
+      EXPECT_NO_FATAL_FAILURE(CheckFileIsEmpty(log_file));
+    }
   };
 
   constexpr std::array<const char*, 3> node_names = {"add_0", "mul_0", "add_1"};
@@ -547,6 +575,19 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
            "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
 
+  // Build dummy kernel definition for an Add node. Retrieved by OrtEp using EpGraphSupportInfo_LookUpKernel().
+  KernelDefBuilder builder;
+  builder.SetName("Add").SinceVersion(1).Provider("TestOrtEp");
+  auto add_kernel_create_info = std::make_unique<KernelCreateInfo>(builder.Build(), nullptr);
+
+  auto mock_kernel_lookup_fn = [&add_kernel_create_info](const Node& node) -> const KernelCreateInfo* {
+    // Only return a result for an Add node.
+    if (add_kernel_create_info->kernel_def->OpName() == node.OpType()) {
+      return add_kernel_create_info.get();
+    }
+    return nullptr;
+  };
+
   // Load a model and assign the first Add node to another EP named 'OtherEp'.
   // The plugin EP will try to take only the first Add node with a single call to EpGraphSupportInfo_AddSingleNode.
   // IExecutionProvider::GetCapability() will return an empty result and log a warning.
@@ -554,7 +595,17 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   nodes_for_other_ep = std::unordered_set<std::string>{"add_0"};
   nodes_for_this_ep = std::unordered_set<std::string>{};
   run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
-           "Found one or more nodes that were already assigned to a different EP named 'OtherEp'");
+           "Found one or more nodes that were already assigned to a different EP named 'OtherEp'",
+           mock_kernel_lookup_fn);
+
+  // Load a model and assign the last Add node to another EP named 'OtherEp'.
+  // The plugin EP will try to take only the first Add node with a single call to EpGraphSupportInfo_AddSingleNode.
+  // IExecutionProvider::GetCapability() will return a single capability and will not log warnings.
+  ort_ep->GetCapability = GetCapabilityTakeSingleNode;
+  nodes_for_other_ep = std::unordered_set<std::string>{"add_1"};
+  nodes_for_this_ep = std::unordered_set<std::string>{"add_0"};
+  run_test(*ep, nodes_for_other_ep, nodes_for_this_ep,
+           /*expected_log_string*/ nullptr, mock_kernel_lookup_fn);
 
   std::filesystem::remove(log_file);
 }
