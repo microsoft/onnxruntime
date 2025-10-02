@@ -6,7 +6,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     target_precompile_headers(onnxruntime_test_all PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/test_pch.h"
     )
-
     target_precompile_headers(onnxruntime_provider_test PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/test_pch.h"
    )
