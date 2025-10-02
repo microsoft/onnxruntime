@@ -1,0 +1,20 @@
+steps:
+  - powershell: |
+      azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/webgpu-build-tools $(Agent.TempDirectory)
+    displayName: 'Download WebGPU build tools'
+
+  - powershell: |
+      echo "##vso[task.setvariable variable=WebGPUBuildToolsDir]$(Agent.TempDirectory)\webgpu-build-tools"
+    displayName: Set WebGPUBuildToolsDir
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        echo $(WebGPUBuildToolsDir)
+    displayName: 'Print WebGPUBuildToolsDir after downloading WebGPU build tools'
+
+  - task: CmdLine@2
+    displayName: 'Print contents of WebGPU build tools'
+    inputs:
+      script: |
+        dir $(WebGPUBuildToolsDir)
