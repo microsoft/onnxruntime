@@ -109,6 +109,7 @@ constexpr const int kSleepMinLatency = 40;
 constexpr const int kSleepLowLatency = 100;
 constexpr const int kSleepMediumLatency = 1000;
 constexpr const int kSleepHighLatency = 2000;
+constexpr const int kSleepHigherLatency = 65535;
 constexpr const int kDcvsDisable = 0;
 constexpr const int kDcvsEnable = 1;
 
