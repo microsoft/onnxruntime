@@ -50,6 +50,7 @@ stages:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       commonBuildArgs: '--skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
+      WebGPUBuildFlags: ''
 
     steps:
     - template: set-version-number-variables-step.yml
