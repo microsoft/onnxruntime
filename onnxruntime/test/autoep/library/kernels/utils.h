@@ -19,13 +19,14 @@ struct KernelCreateInfo {
   void* kernel_create_func_state = nullptr;
 };
 
-using BuildKernelCreateInfoFn = OrtStatus* (*)(const char*, KernelCreateInfo*);
+using BuildKernelCreateInfoFn = OrtStatus* (*)(const char*, void*, KernelCreateInfo*);
 
 template <typename T>
-OrtStatus* BuildKernelCreateInfo(const char* ep_name, /*out*/ KernelCreateInfo* result);
+OrtStatus* BuildKernelCreateInfo(const char* ep_name, void* create_func_state, /*out*/ KernelCreateInfo* result);
 
 template <>
-inline OrtStatus* BuildKernelCreateInfo<void>(const char* /*ep_name*/, /*out*/ KernelCreateInfo* result) {
+inline OrtStatus* BuildKernelCreateInfo<void>(const char* /*ep_name*/, void* /*create_func_state*/,
+                                              /*out*/ KernelCreateInfo* result) {
   result->kernel_def = nullptr;
   result->kernel_create_func = nullptr;
   result->kernel_create_func_state = nullptr;
@@ -43,6 +44,7 @@ static constexpr const char* kOnnxDomain = "";
   template <>                                                                                               \
   OrtStatus*                                                                                                \
   BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(domain, ver, name)>(const char* ep_name,            \
+                                                                            void* create_kernel_state,      \
                                                                             KernelCreateInfo* result) {     \
     try {                                                                                                   \
       OrtKernelDef* kernel_def = builder.SetOperatorType(#name)                                             \
@@ -53,16 +55,15 @@ static constexpr const char* kOnnxDomain = "";
                                                                                                             \
       auto kernel_create_func = [](OrtKernelCreateContext* /*ctx*/, void* state, const OrtKernelInfo* info, \
                                    OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {                     \
-        (void)state;                                                                                        \
         *kernel_out = nullptr;                                                                              \
                                                                                                             \
         std::unique_ptr<kernel_class> kernel;                                                               \
-        RETURN_IF_ERROR(kernel_class::Create(info, kernel));                                                \
+        RETURN_IF_ERROR(kernel_class::Create(info, state, kernel));                                         \
         *kernel_out = kernel.release();                                                                     \
         return nullptr;                                                                                     \
       };                                                                                                    \
                                                                                                             \
-      *result = KernelCreateInfo(kernel_def, kernel_create_func, nullptr);                                  \
+      *result = KernelCreateInfo(kernel_def, kernel_create_func, create_kernel_state);                      \
     } catch (const Ort::Exception& ex) {                                                                    \
       Ort::Status status(ex);                                                                               \
       return status.release();                                                                              \

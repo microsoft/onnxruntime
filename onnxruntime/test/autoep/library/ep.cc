@@ -404,10 +404,12 @@ OrtStatus* ORT_API_CALL ExampleEp::GetKernelRegistryImpl(
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
   if (ep->kernel_registry_ == nullptr) {
+    void* op_kernel_state = ep;  // State that should be provided to kernels on creation (can be null).
+
     // This statement creates the kernel registry and caches it in the OrtEp instance.
     // Alternatively, an EP library author can instead cache the registry in the OrtEpFactory if reusing the same
     // registry across all OrtEp instances created by a single factory is desired.
-    RETURN_IF_ERROR(CreateKernelRegistry(ep->name_.c_str(), &ep->kernel_registry_));
+    RETURN_IF_ERROR(CreateKernelRegistry(ep->name_.c_str(), op_kernel_state, &ep->kernel_registry_));
   }
 
   *out_kernel_registry = ep->kernel_registry_;

@@ -9,4 +9,4 @@
 
 size_t GetNumKernels();
 
-OrtStatus* CreateKernelRegistry(const char* ep_name, OrtKernelRegistry** kernel_registry);
+OrtStatus* CreateKernelRegistry(const char* ep_name, void* create_kernel_state, OrtKernelRegistry** kernel_registry);

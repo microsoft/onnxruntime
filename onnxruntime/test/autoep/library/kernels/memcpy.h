@@ -6,9 +6,9 @@
 #include "../example_plugin_ep_utils.h"
 
 struct Memcpy : public OrtKernelImpl {
-  static OrtStatus* Create(const OrtKernelInfo* info, /*out*/ std::unique_ptr<Memcpy>& kernel);
+  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Memcpy>& kernel);
 
-  Memcpy(const OrtKernelInfo* info);
+  Memcpy(const OrtKernelInfo* info, void* state);
 
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
@@ -17,4 +17,5 @@ struct Memcpy : public OrtKernelImpl {
 
  private:
   const OrtKernelInfo* info_;
+  void* state_;  // Custom state passed from OrtEp
 };

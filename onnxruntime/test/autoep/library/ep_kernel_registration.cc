@@ -28,7 +28,7 @@ size_t GetNumKernels() {
   return num_kernel_create_info_funcs - 1;
 }
 
-OrtStatus* CreateKernelRegistry(const char* ep_name, OrtKernelRegistry** kernel_registry) {
+OrtStatus* CreateKernelRegistry(const char* ep_name, void* create_kernel_state, OrtKernelRegistry** kernel_registry) {
   *kernel_registry = nullptr;
 
   if (GetNumKernels() == 0) {
@@ -44,7 +44,7 @@ OrtStatus* CreateKernelRegistry(const char* ep_name, OrtKernelRegistry** kernel_
   for (auto& build_func : build_kernel_create_info_funcs) {
     KernelCreateInfo kernel_create_info = {};
 
-    status = build_func(ep_name, &kernel_create_info);
+    status = build_func(ep_name, create_kernel_state, &kernel_create_info);
     DeferOrtRelease<OrtKernelDef> release_kernel_def(&kernel_create_info.kernel_def, ep_api.ReleaseKernelDef);
 
     if (status != nullptr) {

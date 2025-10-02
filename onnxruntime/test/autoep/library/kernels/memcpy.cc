@@ -22,14 +22,14 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     Memcpy)
 
-Memcpy::Memcpy(const OrtKernelInfo* info) : info_{info} {
+Memcpy::Memcpy(const OrtKernelInfo* info, void* state) : info_{info}, state_{state} {
   ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 }
 
 /*static*/
-OrtStatus* Memcpy::Create(const OrtKernelInfo* info,
+OrtStatus* Memcpy::Create(const OrtKernelInfo* info, void* state,
                           /*out*/ std::unique_ptr<Memcpy>& result) {
   const OrtApi& ort_api = Ort::GetApi();
 
@@ -42,7 +42,7 @@ OrtStatus* Memcpy::Create(const OrtKernelInfo* info,
     RETURN_IF(num_inputs != 1, ort_api, "Expected only 1 input for Memcpy kernel");
     RETURN_IF(num_outputs != 1, ort_api, "Expected only 1 output for Memcpy kernel");
 
-    result = std::make_unique<Memcpy>(info);
+    result = std::make_unique<Memcpy>(info, state);
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
     return status.release();
