@@ -10,6 +10,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     (Ort::KernelDefBuilder()
          .SetInputMemType(0, OrtMemType::OrtMemTypeCPUInput)
+         // .AddTypeConstraint("T", MLDataTypes::GetAllFixedSizeTensorTypesIRv9()),
          .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     Memcpy)
 
@@ -19,6 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     (Ort::KernelDefBuilder()
          .SetOutputMemType(0, OrtMemType::OrtMemTypeCPUOutput)
+         // .AddTypeConstraint("T", MLDataTypes::GetAllFixedSizeTensorTypesIRv9()),
          .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     Memcpy)
 

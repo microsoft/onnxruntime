@@ -54,29 +54,45 @@ Status PluginEpOpKernel::Create(FuncManager& fn_manager, const OpKernelInfo& inf
   return Status::OK();
 }
 
-//
-// struct PluginEpKernelCreateFunctor
-//
+/// <summary>
+/// A functor that creates a PluginEpOpKernel instance using the creation function (+ state) provided by a plugin EP.
+/// </summary>
+class PluginEpKernelCreateFunctor {
+ public:
+  PluginEpKernelCreateFunctor() : kernel_create_func_(nullptr), kernel_create_func_state_(nullptr) {}
+  PluginEpKernelCreateFunctor(OrtKernelCreateFunc create_func, void* state)
+      : kernel_create_func_{create_func}, kernel_create_func_state_{state} {}
 
-PluginEpKernelCreateFunctor::PluginEpKernelCreateFunctor() : kernel_create_func_(nullptr), kernel_create_func_state_(nullptr) {}
-PluginEpKernelCreateFunctor::PluginEpKernelCreateFunctor(OrtKernelCreateFunc create_func, void* state)
-    : kernel_create_func_{create_func}, kernel_create_func_state_{state} {}
+  Status operator()(FuncManager& fn_manager, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+    if (kernel_create_func_ == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "PluginEpKernelCreateFunctor does not wrap a valid OrtKernelCreateFunc");
+    }
 
-Status PluginEpKernelCreateFunctor::operator()(FuncManager& fn_manager, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
-  if (kernel_create_func_ == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "PluginEpKernelCreateFunctor does not wrap a valid OrtKernelCreateFunc");
+    std::unique_ptr<PluginEpOpKernel> plugin_ep_op_kernel;
+    ORT_RETURN_IF_ERROR(PluginEpOpKernel::Create(fn_manager, info, kernel_create_func_, kernel_create_func_state_,
+                                                 plugin_ep_op_kernel));
+
+    out = std::move(plugin_ep_op_kernel);
+    return Status::OK();
   }
 
-  std::unique_ptr<PluginEpOpKernel> plugin_ep_op_kernel;
-  ORT_RETURN_IF_ERROR(PluginEpOpKernel::Create(fn_manager, info, kernel_create_func_, kernel_create_func_state_,
-                                               plugin_ep_op_kernel));
+ private:
+  OrtKernelCreateFunc kernel_create_func_;
+  void* kernel_create_func_state_;
+};
 
-  out = std::move(plugin_ep_op_kernel);
-  return Status::OK();
+// Make a KernelCreateInfo for a plugin EP's kernel
+KernelCreateInfo MakePluginEpKernelCreateInfo(const KernelDef* kernel_def,
+                                              OrtKernelCreateFunc kernel_create_func,
+                                              void* kernel_create_func_state) {
+  auto kernel_def_copy = std::make_unique<onnxruntime::KernelDef>(*kernel_def);
+  PluginEpKernelCreateFunctor kernel_create_functor(kernel_create_func, kernel_create_func_state);
+  return KernelCreateInfo(std::move(kernel_def_copy), kernel_create_functor);
 }
 
-Status InitKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry) {
+// Gets an OrtEp instance's kernel registry.
+Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry) {
   kernel_registry = nullptr;
 
   if (ort_ep.GetKernelRegistry == nullptr) {

@@ -237,9 +237,8 @@ ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_reg
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtKernelCreateFunc");
   }
 
-  auto kernel_def_copy = std::make_unique<onnxruntime::KernelDef>(*static_cast<const KernelDef*>(kernel_def));
-  PluginEpKernelCreateFunctor kernel_create_functor(kernel_create_func, ep_state);
-  KernelCreateInfo kernel_create_info(std::move(kernel_def_copy), kernel_create_functor);
+  KernelCreateInfo kernel_create_info = MakePluginEpKernelCreateInfo(static_cast<const KernelDef*>(kernel_def),
+                                                                     kernel_create_func, ep_state);
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(kernel_registry->registry->Register(std::move(kernel_create_info)));
   return nullptr;

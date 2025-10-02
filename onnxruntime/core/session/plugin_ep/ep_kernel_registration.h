@@ -24,20 +24,23 @@ struct OrtKernelRegistry {
 namespace onnxruntime {
 
 /// <summary>
-/// A functor that creates a PluginEpOpKernel instance using the creation function (+ state) provided by a plugin EP.
+/// Make a KernelCreateInfo for a plugin EP's kernel. A KernelCreateInfo contains the function and state
+/// necessary to create a kernel.
 /// </summary>
-class PluginEpKernelCreateFunctor {
- public:
-  PluginEpKernelCreateFunctor();
-  PluginEpKernelCreateFunctor(OrtKernelCreateFunc create_func, void* state);
+/// <param name="kernel_def"></param>
+/// <param name="kernel_create_func"></param>
+/// <param name="kernel_create_func_state"></param>
+/// <returns></returns>
+KernelCreateInfo MakePluginEpKernelCreateInfo(const KernelDef* kernel_def,
+                                              OrtKernelCreateFunc kernel_create_func,
+                                              void* kernel_create_func_state);
 
-  Status operator()(FuncManager& fn_manager, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out);
-
- private:
-  OrtKernelCreateFunc kernel_create_func_;
-  void* kernel_create_func_state_;
-};
-
-Status InitKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry);
+/// <summary>
+/// Gets the kernel registry for a plugin EP.
+/// </summary>
+/// <param name="ort_ep">The OrtEp instance.</param>
+/// <param name="kernel_registry">Output parameter set to the EP's registry.</param>
+/// <returns>A status indicating success or an error</returns>
+Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry);
 
 }  // namespace onnxruntime

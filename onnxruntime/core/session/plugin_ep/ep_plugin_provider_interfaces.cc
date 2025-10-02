@@ -144,7 +144,7 @@ Status PluginExecutionProvider::Create(OrtEpFactory& ep_factory,
                 "' returned a NULL OrtEp instance");
 
   std::shared_ptr<KernelRegistry> kernel_registry;
-  ORT_RETURN_IF_ERROR(InitKernelRegistry(*ort_ep, kernel_registry));
+  ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
 
   plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory)),
                                                         session_options, ep_factory, ep_devices,
