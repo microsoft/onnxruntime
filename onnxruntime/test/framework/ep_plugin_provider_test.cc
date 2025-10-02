@@ -9,6 +9,7 @@
 
 #include "core/common/logging/sinks/file_sink.h"
 #include "core/framework/kernel_def_builder.h"
+#include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
