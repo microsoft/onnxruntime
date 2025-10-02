@@ -160,8 +160,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
-  GetNumKernelCreateInfos = GetNumKernelCreateInfosImpl;      // optional. can be nullptr
-  GetKernelCreateInfos = GetKernelCreateInfosImpl;            // optional. can be nullptr
+  GetKernelRegistry = GetKernelRegistryImpl;                  // optional. can be nullptr
 
   auto status = ort_api.Logger_LogMessage(&logger_,
                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -171,7 +170,11 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   (void)status;
 }
 
-ExampleEp::~ExampleEp() = default;
+ExampleEp::~ExampleEp() {
+  if (kernel_registry_ != nullptr) {
+    Ort::GetEpApi().ReleaseKernelRegistry(kernel_registry_);
+  }
+}
 
 /*static*/
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
@@ -389,29 +392,25 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
 }
 
 /*static*/
-size_t ORT_API_CALL ExampleEp::GetNumKernelCreateInfosImpl(_In_ OrtEp* this_ptr) noexcept {
-  (void)this_ptr;
-  return GetNumKernels();
-}
+OrtStatus* ORT_API_CALL ExampleEp::GetKernelRegistryImpl(
+    _In_ OrtEp* this_ptr,
+    _Outptr_result_maybenull_ const OrtKernelRegistry** out_kernel_registry) noexcept {
+  *out_kernel_registry = nullptr;
 
-/*static*/
-OrtStatus* ORT_API_CALL ExampleEp::GetKernelCreateInfosImpl(_In_ OrtEp* this_ptr,
-                                                            _Inout_ OrtKernelCreateInfo** kernel_create_infos,
-                                                            _In_ size_t num_kernel_create_infos) noexcept {
-  if (num_kernel_create_infos != GetNumKernels()) {
-    Ort::Status status("Unexpected number of OrtKernelCreateInfo elements", ORT_EP_FAIL);
-    return status.release();
+  if (GetNumKernels() == 0) {
+    return nullptr;
   }
 
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-  std::vector<OrtKernelCreateInfo*> infos;
-  RETURN_IF_ERROR(CreateKernelCreateInfos(ep->name_.c_str(), infos));
-
-  for (size_t i = 0; i < num_kernel_create_infos; i++) {
-    kernel_create_infos[i] = infos[i];  // transfer ownership to ORT.
+  if (ep->kernel_registry_ == nullptr) {
+    // This statement creates the kernel registry and caches it in the OrtEp instance.
+    // Alternatively, an EP library author can instead cache the registry in the OrtEpFactory if reusing the same
+    // registry across all OrtEp instances created by a single factory is desired.
+    RETURN_IF_ERROR(CreateKernelRegistry(ep->name_.c_str(), &ep->kernel_registry_));
   }
 
+  *out_kernel_registry = ep->kernel_registry_;
   return nullptr;
 }
 

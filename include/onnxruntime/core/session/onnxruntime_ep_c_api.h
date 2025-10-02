@@ -18,7 +18,7 @@ ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
 // Opaque types for kernel-based EPs
-ORT_RUNTIME_CLASS(KernelCreateInfo);
+ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(KernelCreateContext);  // stand-in for FuncManager. may not be needed.
 ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
@@ -489,11 +489,11 @@ struct OrtEpApi {
   ORT_API_T(uint64_t, GetSyncIdForLastWaitOnSyncStream,
             _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
 
-  ORT_API2_STATUS(CreateKernelCreationInfo, _In_ const OrtKernelDef* kernel_def,
-                  _In_ OrtKernelCreateFunc kernel_create_func,
-                  _In_ void* ep_state,
-                  _Outptr_ OrtKernelCreateInfo** kernel_create_info_out);
-  ORT_CLASS_RELEASE(KernelCreateInfo);
+  ORT_API2_STATUS(CreateKernelRegistry, _Outptr_ OrtKernelRegistry** kernel_registry);
+  ORT_CLASS_RELEASE(KernelRegistry);
+  ORT_API2_STATUS(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_registry,
+                  _In_ const OrtKernelDef* kernel_def, _In_ OrtKernelCreateFunc kernel_create_func,
+                  _In_ void* ep_state);
 
   ORT_API2_STATUS(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out);
   ORT_CLASS_RELEASE(KernelDefBuilder);
@@ -786,11 +786,8 @@ struct OrtEp {
   ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
             _In_ const OrtGraph* graph);
 
-  ORT_API_T(size_t, GetNumKernelCreateInfos, _In_ OrtEp* this_ptr);
-
-  ORT_API2_STATUS(GetKernelCreateInfos, _In_ OrtEp* this_ptr,
-                  _Inout_ OrtKernelCreateInfo** kernel_create_infos,
-                  _In_ size_t num_kernel_create_infos);
+  ORT_API2_STATUS(GetKernelRegistry, _In_ OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

@@ -9,4 +9,4 @@
 
 size_t GetNumKernels();
 
-OrtStatus* CreateKernelCreateInfos(const char* ep_name, std::vector<OrtKernelCreateInfo*>& kernel_create_infos);
+OrtStatus* CreateKernelRegistry(const char* ep_name, OrtKernelRegistry** kernel_registry);

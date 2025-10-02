@@ -15,34 +15,57 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyToHost);
 
 // Table of BuildKernelCreateInfo functions for each operator
 static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
+    BuildKernelCreateInfo<void>,  // Dummy to avoid table becoming empty.
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyFromHost)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyToHost)>,
 };
 
-constexpr size_t num_kernels = sizeof(build_kernel_create_info_funcs) /
-                               sizeof(build_kernel_create_info_funcs[0]);
+constexpr size_t num_kernel_create_info_funcs = sizeof(build_kernel_create_info_funcs) /
+                                                sizeof(build_kernel_create_info_funcs[0]);
 
-size_t GetNumKernels() { return num_kernels; }
+size_t GetNumKernels() {
+  static_assert(num_kernel_create_info_funcs >= 1);
+  return num_kernel_create_info_funcs - 1;
+}
 
-OrtStatus* CreateKernelCreateInfos(const char* ep_name, std::vector<OrtKernelCreateInfo*>& result) {
-  const OrtEpApi& ep_api = Ort::GetEpApi();
-  std::vector<OrtKernelCreateInfo*> kernel_create_infos;
-  kernel_create_infos.reserve(num_kernels);
+OrtStatus* CreateKernelRegistry(const char* ep_name, OrtKernelRegistry** kernel_registry) {
+  *kernel_registry = nullptr;
 
-  for (auto& build_func : build_kernel_create_info_funcs) {
-    OrtKernelCreateInfo* kernel_create_info = nullptr;
-
-    if (OrtStatus* status = build_func(ep_name, &kernel_create_info); status != nullptr) {
-      // Error occurred: clean up OrtKernelCreateInfo instances and return error.
-      for (OrtKernelCreateInfo* create_info_to_release : kernel_create_infos) {
-        ep_api.ReleaseKernelCreateInfo(create_info_to_release);
-      }
-      return status;
-    }
-
-    kernel_create_infos.push_back(kernel_create_info);
+  if (GetNumKernels() == 0) {
+    return nullptr;
   }
 
-  result = std::move(kernel_create_infos);
-  return nullptr;
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+  RETURN_IF_ERROR(ep_api.CreateKernelRegistry(kernel_registry));
+
+  OrtStatus* status = nullptr;
+
+  // Add kernel creation info to registry
+  for (auto& build_func : build_kernel_create_info_funcs) {
+    KernelCreateInfo kernel_create_info = {};
+
+    status = build_func(ep_name, &kernel_create_info);
+    DeferOrtRelease<OrtKernelDef> release_kernel_def(&kernel_create_info.kernel_def, ep_api.ReleaseKernelDef);
+
+    if (status != nullptr) {
+      break;
+    }
+
+    if (kernel_create_info.kernel_def != nullptr) {
+      status = ep_api.KernelRegistry_AddKernel(*kernel_registry,
+                                               kernel_create_info.kernel_def,  // copied
+                                               kernel_create_info.kernel_create_func,
+                                               kernel_create_info.kernel_create_func_state);
+      if (status != nullptr) {
+        break;
+      }
+    }
+  }
+
+  if (status != nullptr) {
+    ep_api.ReleaseKernelRegistry(*kernel_registry);
+    *kernel_registry = nullptr;
+  }
+
+  return status;
 }

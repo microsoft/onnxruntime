@@ -208,23 +208,41 @@ ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* pr
   return id;
 }
 
-ORT_API_STATUS_IMPL(CreateKernelCreationInfo, _In_ const OrtKernelDef* kernel_def,
-                    _In_ OrtKernelCreateFunc kernel_create_func,
-                    _In_ void* ep_state,
-                    _Outptr_ OrtKernelCreateInfo** kernel_create_info_out) {
+ORT_API_STATUS_IMPL(CreateKernelRegistry, _Outptr_ OrtKernelRegistry** kernel_registry) {
   API_IMPL_BEGIN
-  auto ort_kernel_create_info = std::make_unique<OrtKernelCreateInfo>();
-  ort_kernel_create_info->kernel_def = *kernel_def;
-  ort_kernel_create_info->kernel_create_func = kernel_create_func;
-  ort_kernel_create_info->kernel_create_func_state = ep_state;
+  auto unique_kernel_registry = std::make_unique<OrtKernelRegistry>();
+  unique_kernel_registry->registry = std::make_shared<onnxruntime::KernelRegistry>();
 
-  *kernel_create_info_out = ort_kernel_create_info.release();
+  *kernel_registry = unique_kernel_registry.release();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API(void, ReleaseKernelCreateInfo, _Frees_ptr_opt_ OrtKernelCreateInfo* kernel_create_info) {
-  delete kernel_create_info;
+ORT_API(void, ReleaseKernelRegistry, _Frees_ptr_opt_ OrtKernelRegistry* kernel_registry) {
+  delete kernel_registry;
+}
+
+ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_registry,
+                    _In_ const OrtKernelDef* kernel_def, _In_ OrtKernelCreateFunc kernel_create_func,
+                    _In_ void* ep_state) {
+  if (kernel_registry == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtKernelRegistry");
+  }
+
+  if (kernel_def == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtKernelDef");
+  }
+
+  if (kernel_create_func == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtKernelCreateFunc");
+  }
+
+  auto kernel_def_copy = std::make_unique<onnxruntime::KernelDef>(*static_cast<const KernelDef*>(kernel_def));
+  PluginEpKernelCreateFunctor kernel_create_functor(kernel_create_func, ep_state);
+  KernelCreateInfo kernel_create_info(std::move(kernel_def_copy), kernel_create_functor);
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(kernel_registry->registry->Register(std::move(kernel_create_info)));
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out) {
@@ -384,8 +402,9 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::SyncStream_GetImpl,
     &OrtExecutionProviderApi::SyncStream_GetSyncId,
     &OrtExecutionProviderApi::GetSyncIdForLastWaitOnSyncStream,
-    &OrtExecutionProviderApi::CreateKernelCreationInfo,
-    &OrtExecutionProviderApi::ReleaseKernelCreateInfo,
+    &OrtExecutionProviderApi::CreateKernelRegistry,
+    &OrtExecutionProviderApi::ReleaseKernelRegistry,
+    &OrtExecutionProviderApi::KernelRegistry_AddKernel,
     &OrtExecutionProviderApi::CreateKernelDefBuilder,
     &OrtExecutionProviderApi::ReleaseKernelDefBuilder,
     &OrtExecutionProviderApi::KernelDefBuilder_SetOperatorType,

@@ -41,11 +41,11 @@ ORT_API(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream);
 ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* producer_stream,
         _In_ const OrtSyncStream* consumer_stream);
 
-ORT_API_STATUS_IMPL(CreateKernelCreationInfo, _In_ const OrtKernelDef* kernel_def,
-                    _In_ OrtKernelCreateFunc kernel_create_func,
-                    _In_ void* ep_state,
-                    _Outptr_ OrtKernelCreateInfo** kernel_create_info_out);
-ORT_API(void, ReleaseKernelCreateInfo, _Frees_ptr_opt_ OrtKernelCreateInfo* kernel_create_info);
+ORT_API_STATUS_IMPL(CreateKernelRegistry, _Outptr_ OrtKernelRegistry** kernel_registry);
+ORT_API(void, ReleaseKernelRegistry, _Frees_ptr_opt_ OrtKernelRegistry* kernel_registry);
+ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_registry,
+                    _In_ const OrtKernelDef* kernel_def, _In_ OrtKernelCreateFunc kernel_create_func,
+                    _In_ void* ep_state);
 
 ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out);
 ORT_API(void, ReleaseKernelDefBuilder, _Frees_ptr_opt_ OrtKernelDefBuilder* kernel_def_builder);
