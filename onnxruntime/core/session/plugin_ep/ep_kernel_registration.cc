@@ -3,6 +3,9 @@
 
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 
+#include <memory>
+#include <utility>
+
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_registry.h"
 #include "core/session/plugin_ep/ep_api.h"

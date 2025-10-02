@@ -66,5 +66,4 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;
-  OrtKernelRegistry* kernel_registry_ = nullptr;
 };

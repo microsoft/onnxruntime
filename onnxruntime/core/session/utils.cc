@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"

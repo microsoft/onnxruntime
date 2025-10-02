@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "ep_factory.h"
-#include "ep_kernel_registration.h"
 #include "ep_stream_support.h"
 
 /// <summary>
@@ -170,11 +169,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   (void)status;
 }
 
-ExampleEp::~ExampleEp() {
-  if (kernel_registry_ != nullptr) {
-    Ort::GetEpApi().ReleaseKernelRegistry(kernel_registry_);
-  }
-}
+ExampleEp::~ExampleEp() = default;
 
 /*static*/
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
@@ -394,25 +389,13 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEp::GetKernelRegistryImpl(
     _In_ OrtEp* this_ptr,
-    _Outptr_result_maybenull_ const OrtKernelRegistry** out_kernel_registry) noexcept {
-  *out_kernel_registry = nullptr;
-
-  if (GetNumKernels() == 0) {
-    return nullptr;
-  }
-
+    _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry) noexcept {
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-  if (ep->kernel_registry_ == nullptr) {
-    void* op_kernel_state = ep;  // State that should be provided to kernels on creation (can be null).
+  *kernel_registry = nullptr;
 
-    // This statement creates the kernel registry and caches it in the OrtEp instance.
-    // Alternatively, an EP library author can instead cache the registry in the OrtEpFactory if reusing the same
-    // registry across all OrtEp instances created by a single factory is desired.
-    RETURN_IF_ERROR(CreateKernelRegistry(ep->name_.c_str(), op_kernel_state, &ep->kernel_registry_));
-  }
-
-  *out_kernel_registry = ep->kernel_registry_;
+  // Get the cached kernel registry from parent factory to avoid recreating the kernel registry for every EP instance.
+  RETURN_IF_ERROR(ep->factory_.GetKernelRegistryForEp(*ep, kernel_registry));
   return nullptr;
 }
 

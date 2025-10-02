@@ -4,6 +4,8 @@
 #include "core/session/plugin_ep/ep_api.h"
 
 #include <algorithm>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "core/common/semver.h"
