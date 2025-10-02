@@ -16,12 +16,12 @@
 #include "ep_stream_support.h"
 
 /// <summary>
-/// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
+/// Example implementation of ONNX Mul for compiling EP. Does not handle many things like broadcasting.
 /// </summary>
-struct MulKernel {
-  MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
-            const std::unordered_map<std::string, FloatInitializer>& float_initializers,
-            std::string input0_name, std::string input1_name)
+struct CompiledMul {
+  CompiledMul(const OrtApi& ort_api, const OrtLogger& logger,
+              const std::unordered_map<std::string, FloatInitializer>& float_initializers,
+              std::string input0_name, std::string input1_name)
       : ort_api(ort_api),
         logger(logger),
         float_initializers(float_initializers),
@@ -52,7 +52,7 @@ struct MulKernel {
   OrtStatus* Compute(OrtKernelContext* kernel_ctx) {
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
                                               OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                              "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
+                                              "CompiledMul::Compute", ORT_FILE, __LINE__, __FUNCTION__));
     Ort::KernelContext kernel_context(kernel_ctx);
     try {
       gsl::span<const float> input0;
@@ -100,7 +100,7 @@ struct MulKernel {
 
       size_t num_outputs = kernel_context.GetOutputCount();
       if (num_outputs != 1) {
-        throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
+        throw Ort::Exception("Expected 1 output for CompiledMul", ORT_INVALID_ARGUMENT);
       }
 
       auto output = kernel_context.GetOutput(0, shape0);
@@ -348,12 +348,12 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
       return status.release();
     }
 
-    // Associate the name of the fused node with our MulKernel.
+    // Associate the name of the fused node with our CompiledMul.
     auto fused_node_name = fused_node.GetName();
-    ep->kernels_.emplace(std::move(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
-                                                                                 ep->float_initializers_,
-                                                                                 node_input_names[0],
-                                                                                 node_input_names[1]));
+    ep->compiled_subgraphs_.emplace(std::move(fused_node_name), std::make_unique<CompiledMul>(ep->ort_api, ep->logger_,
+                                                                                              ep->float_initializers_,
+                                                                                              node_input_names[0],
+                                                                                              node_input_names[1]));
 
     // Update the OrtNodeComputeInfo associated with the graph.
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
@@ -530,27 +530,27 @@ OrtStatus* ExampleNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
   ExampleEp& ep = node_compute_info->ep;
 
   std::string fused_node_name = ep.ep_api.NodeComputeContext_NodeName(compute_context);
-  auto kernel_it = ep.Kernels().find(fused_node_name);
-  if (kernel_it == ep.Kernels().end()) {
-    std::string message = "Unable to get kernel for fused node with name " + fused_node_name;
+  auto subgraph_it = ep.CompiledSubgraphs().find(fused_node_name);
+  if (subgraph_it == ep.CompiledSubgraphs().end()) {
+    std::string message = "Unable to get compiled subgraph for fused node with name " + fused_node_name;
     return ep.ort_api.CreateStatus(ORT_EP_FAIL, message.c_str());
   }
 
-  MulKernel& kernel = *kernel_it->second;
-  *compute_state = &kernel;
+  CompiledMul& subgraph = *subgraph_it->second;
+  *compute_state = &subgraph;
   return nullptr;
 }
 
 OrtStatus* ExampleNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
                                                OrtKernelContext* kernel_context) {
   (void)this_ptr;
-  MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
-  return kernel.Compute(kernel_context);
+  CompiledMul& subgraph = *reinterpret_cast<CompiledMul*>(compute_state);
+  return subgraph.Compute(kernel_context);
 }
 
 void ExampleNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
   (void)this_ptr;
-  MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
-  (void)kernel;
+  CompiledMul& subgraph = *reinterpret_cast<CompiledMul*>(compute_state);
+  (void)subgraph;
   // Do nothing for this example.
 }

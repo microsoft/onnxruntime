@@ -8,7 +8,7 @@
 #include "example_plugin_ep_utils.h"
 
 class ExampleEpFactory;
-struct MulKernel;
+struct CompiledMul;
 
 /// <summary>
 /// Example EP that can compile a single Mul operator.
@@ -24,8 +24,8 @@ class ExampleEp : public OrtEp, public ApiPtrs {
 
   ~ExampleEp();
 
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>>& Kernels() {
-    return kernels_;
+  std::unordered_map<std::string, std::unique_ptr<CompiledMul>>& CompiledSubgraphs() {
+    return compiled_subgraphs_;
   }
 
  private:
@@ -64,6 +64,6 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
+  std::unordered_map<std::string, std::unique_ptr<CompiledMul>> compiled_subgraphs_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;
 };
