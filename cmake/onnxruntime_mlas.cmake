@@ -50,6 +50,26 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/saturation_check.cpp
 )
 
+if (onnxruntime_DISABLE_SSE4)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_SSE4)
+endif()
+
+if (onnxruntime_DISABLE_AVX)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX)
+endif()
+
+if (onnxruntime_DISABLE_AVX2)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX2)
+endif()
+
+if (onnxruntime_DISABLE_AVX512)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX512)
+endif()
+
+if (onnxruntime_DISABLE_AMX)
+  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AMX)
+endif()
+
 target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_float16.h
   ${MLAS_INC_DIR}/mlas_gemm_postprocessor.h
@@ -193,17 +213,18 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    set(mlas_platform_srcs_sse41
+      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+    )
+
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
-      ${mlas_platform_srcs_avx}
-      ${mlas_platform_srcs_avx2}
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
@@ -246,6 +267,24 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
 
+    if(NOT onnxruntime_DISABLE_SSE4)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_sse41}
+      )
+    endif()
+
+    if(NOT onnxruntime_DISABLE_AVX)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_avx}
+      )
+    endif()
+
+    if(NOT onnxruntime_DISABLE_AVX2)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${mlas_platform_srcs_avx2}
+      )
+    endif()
+
     if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
       set_source_files_properties(${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx2.asm PROPERTIES COMPILE_FLAGS "-DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
     endif()
@@ -264,10 +303,14 @@ function(setup_mlas_source_for_windows)
   else()
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
-      ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/i386/SgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
+    if (NOT onnxruntime_DISABLE_SSE4)
+      target_sources(onnxruntime_mlas PRIVATE
+        ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+      )
+    endif()
   endif()
 endfunction()
 
@@ -445,7 +488,7 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
         )
-        
+
         # Conditionally add the SVE implementation if compiler supports it
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
@@ -463,8 +506,8 @@ else()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
-        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp 
-				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+                                   PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
 
         if (NOT APPLE)
           set(mlas_platform_srcs
@@ -601,8 +644,13 @@ else()
 
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}
-          ${mlas_platform_srcs_avx}
         )
+
+        if (NOT onnxruntime_DISABLE_AVX)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs_avx}
+          )
+        endif()
 
         # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
         # implementation to avoid external dependency.
@@ -728,26 +776,51 @@ endif()
           ${MLAS_SRC_DIR}/dwconv.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/pooling_fp16.cpp
-          ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
           ${mlas_platform_srcs_sse2}
-          ${mlas_platform_srcs_avx}
-          ${mlas_platform_srcs_avx2}
-          ${mlas_platform_srcs_avx512f}
-          ${mlas_platform_srcs_avx512core}
-          ${mlas_platform_srcs_avx512vnni}
         )
 
-        if (NOT onnxruntime_ORT_MINIMAL_BUILD)
+        if (NOT onnxruntime_DISABLE_SSE4)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_sse41}
+          )
+        endif()
+
+        if (NOT onnxruntime_DISABLE_AVX)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_avx}
+          )
+        endif()
+
+        if (NOT onnxruntime_DISABLE_AVX2)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_avx2}
+            ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
+          )
+        endif()
+
+        if (NOT onnxruntime_DISABLE_AVX512)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_avx512f}
+            ${mlas_platform_srcs_avx512core}
+            ${mlas_platform_srcs_avx512vnni}
+          )
+        endif()
+
+        if (NOT onnxruntime_ORT_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_AVX512)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/q4gemm_avx512.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
         endif()
-        if(NOT APPLE)
+        if(NOT APPLE AND NOT onnxruntime_DISABLE_AMX)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
-	        ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
+            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
             ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
             ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
             )
