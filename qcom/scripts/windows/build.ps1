@@ -61,6 +61,10 @@ else {
     $BuildDir = (Join-Path $BuildRoot "windows-$BuildDirArch")
 }
 
+if (-not (Test-Path $BuildDir)) {
+    New-Item -ItemType Directory -Path $BuildDir | Out-Null
+}
+
 Enter-PyVenv $PyVEnv
 
 if ($QairtSdkRoot -eq "") {
@@ -115,9 +119,22 @@ $MakeTestArchive = $false
 $RunTests = $false
 $TestRunner = "$RepoRoot\qcom\scripts\windows\run_tests.ps1"
 
+# Don't miss the cache due to __TIME__, __DATE__, or __TIMESTAMP__.
+$env:CCACHE_SLOPPINESS = "time_macros"
+
 if ($CMakeGenerator -eq "Ninja") {
-    $CommonArgs += "--use_cache"
     $env:Path = "$(Get-CCacheBinDir);" + $env:Path
+    $CommonArgs += "--use_cache"
+}
+else {
+    # https://github.com/ccache/ccache/wiki/MS-Visual-Studio#usage-with-cmake
+    Assert-Success -ErrorMessage "Failed to copy ccache.exe to $BuildDir\cl.exe" {
+        Copy-Item "$(Get-CCacheBinDir)\ccache.exe" "$BuildDir\cl.exe"
+    }
+    $FakeClCcacheDir = $BuildDir.Replace("\", "/")
+    $CommonArgs += `
+        "--cmake_extra_defines", "CMAKE_VS_GLOBALS=CLToolExe=cl.exe;CLToolPath=$FakeClCcacheDir;UseMultiToolTask=true", `
+        "--cmake_extra_defines", 'CMAKE_MSVC_DEBUG_INFORMATION_FORMAT=$"<"$"<"CONFIG:Debug,RelWithDebInfo">":Embedded">"'
 }
 
 $TargetPyExe = $null
