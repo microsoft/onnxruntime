@@ -127,7 +127,7 @@ python_313_windows_arm64:
   version: 3.13.7
   md5: 66c0ba98b20b7d4ea0904223d484d369
 qairt:
-  version: 2.38.0.250901
+  version: 2.39.0.250926
   url: https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/{version}/v{version}.zip
   content_root: qairt/{version}
   bindir: bin
