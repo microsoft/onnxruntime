@@ -72,6 +72,14 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     main_input_name = "input_ids";
   }
 
+  if (ModelHasInputOutputNames(ov_model, "input_hidden_states")) {
+    main_input_name = "input_hidden_states";
+  }
+
+  if (ModelHasInputOutputNames(ov_model, "/model/embed_tokens/Gather_output_0")) {
+    main_input_name = "/model/embed_tokens/Gather_output_0";
+  }
+
   auto input_batch = ov_model->input(main_input_name).get_partial_shape()[0];
 
   auto beam_idx = std::make_shared<ov::opset13::Parameter>(ov::element::i32, ov::PartialShape({std::move(input_batch)}));
@@ -121,20 +129,22 @@ void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
 void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
-  for (const ov::Output<ov::Node>& input : model->inputs()) {
-    auto& names = input.get_names();
-
-    bool found = false;
-    for (auto& name : names) {
-      if (name.find("key_values") != std::string::npos) {
-        key_value_input_names.push_back(name);
+  const auto& params = model->get_parameters();
+  bool found = false;
+  for (auto i = 0; i < params.size(); i++) {
+    auto param_name = params.at(i)->output(0).get_any_name();
+    if (param_name.find("key_values") != std::string::npos) {
+         key_value_input_names.push_back(param_name);
         found = true;
-        break;
-      }
+    } else if (param_name.find("key") != std::string::npos) {
+        key_value_input_names.push_back(param_name);
+        found = true;
+    } else if (param_name.find("value") != std::string::npos) {
+        key_value_input_names.push_back(param_name);
+        found = true;
     }
-
     if (!found) {
-      not_kv_inputs.push_back(input.get_any_name());
+      not_kv_inputs.push_back(param_name);
     }
   }
 
