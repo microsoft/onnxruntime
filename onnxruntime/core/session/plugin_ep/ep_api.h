@@ -68,6 +68,16 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def
                     _Outptr_ OrtKernelDef** kernel_def_out);
 
 ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def);
+ORT_API(const char*, KernelDef_GetOperatorType, _In_ const OrtKernelDef* kernel_def);
+ORT_API(const char*, KernelDef_GetDomain, _In_ const OrtKernelDef* kernel_def);
+ORT_API_STATUS_IMPL(KernelDef_GetSinceVersion, _In_ const OrtKernelDef* kernel_def,
+                    _Out_ int* start_version, _Out_ int* end_version);
+ORT_API(const char*, KernelDef_GetExecutionProvider, _In_ const OrtKernelDef* kernel_def);
+ORT_API_STATUS_IMPL(KernelDef_GetInputMemType, _In_ const OrtKernelDef* kernel_def,
+                    _In_ size_t input_index, _Out_ OrtMemType* mem_type);
+ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_def,
+                    _In_ size_t output_index, _Out_ OrtMemType* mem_type);
+
 ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtMLDataType** out);
 ORT_API_STATUS_IMPL(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,

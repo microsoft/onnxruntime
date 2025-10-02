@@ -43,9 +43,7 @@ OrtStatus* CreateKernelRegistry(const char* ep_name, void* create_kernel_state, 
   // Add kernel creation info to registry
   for (auto& build_func : build_kernel_create_info_funcs) {
     KernelCreateInfo kernel_create_info = {};
-
     status = build_func(ep_name, create_kernel_state, &kernel_create_info);
-    DeferOrtRelease<OrtKernelDef> release_kernel_def(&kernel_create_info.kernel_def, ep_api.ReleaseKernelDef);
 
     if (status != nullptr) {
       break;

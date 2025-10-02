@@ -611,4 +611,45 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   std::filesystem::remove(log_file);
 }
 
+TEST(PluginExecutionProviderTest, KernelDefCxxApis) {
+  auto check_kernel_def = [&](const KernelDef& expected, Ort::ConstKernelDef actual) -> void {
+    EXPECT_EQ(expected.OpName(), actual.GetOperatorType());
+    EXPECT_EQ(expected.Domain(), actual.GetDomain());
+    EXPECT_EQ(expected.SinceVersion(), actual.GetSinceVersion());
+    EXPECT_EQ(expected.Provider(), actual.GetExecutionProvider());
+    EXPECT_EQ(expected.InputMemoryType(0), actual.GetInputMemType(0));
+    EXPECT_EQ(expected.InputMemoryType(1), actual.GetInputMemType(1));
+    EXPECT_EQ(expected.OutputMemoryType(1), actual.GetOutputMemType(1));
+  };
+
+  // Check that C++ APIs for Ort::KernelDef return the expected values.
+  {
+    KernelDefBuilder builder;
+    std::unique_ptr<KernelDef> expected_def = builder.SetName("Mul")
+                                                  .SetDomain("TestDomain")
+                                                  .SinceVersion(3, 13)
+                                                  .Provider("TestOrtEp")
+                                                  .InputMemoryType(OrtMemTypeCPUInput, 0)
+                                                  .InputMemoryType(OrtMemTypeCPUInput, 1)
+                                                  .OutputMemoryType(OrtMemTypeCPUOutput, 1)
+                                                  .Build();
+
+    Ort::ConstKernelDef actual_def(reinterpret_cast<const OrtKernelDef*>(expected_def.get()));
+    EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def));
+  }
+
+  // SinceVersion with no explicit end (defaults to -1)
+  {
+    KernelDefBuilder builder;
+    std::unique_ptr<KernelDef> expected_def = builder.SetName("Mul")
+                                                  .SetDomain("TestDomain")
+                                                  .Provider("TestOrtEp")
+                                                  .SinceVersion(3)  // end should default to -1
+                                                  .Build();
+
+    Ort::ConstKernelDef actual_def(reinterpret_cast<const OrtKernelDef*>(expected_def.get()));
+    EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def));
+  }
+}
+
 }  // namespace onnxruntime::test

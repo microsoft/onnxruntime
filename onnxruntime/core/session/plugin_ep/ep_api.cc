@@ -347,6 +347,76 @@ ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def) {
   delete kernel_def;
 }
 
+ORT_API(const char*, KernelDef_GetOperatorType, _In_ const OrtKernelDef* kernel_def) {
+  return static_cast<const onnxruntime::KernelDef*>(kernel_def)->OpName().c_str();
+}
+
+ORT_API(const char*, KernelDef_GetDomain, _In_ const OrtKernelDef* kernel_def) {
+  return static_cast<const onnxruntime::KernelDef*>(kernel_def)->Domain().c_str();
+}
+
+ORT_API_STATUS_IMPL(KernelDef_GetSinceVersion, _In_ const OrtKernelDef* kernel_def,
+                    _Out_ int* start_version, _Out_ int* end_version) {
+  API_IMPL_BEGIN
+  if (kernel_def == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid non-null OrtKernelDef");
+  }
+
+  if (start_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null `start_version` output parameter");
+  }
+
+  if (end_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null `end_version` output parameter");
+  }
+
+  auto internal_kernel_def = static_cast<const onnxruntime::KernelDef*>(kernel_def);
+  internal_kernel_def->SinceVersion(start_version, end_version);
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(const char*, KernelDef_GetExecutionProvider, _In_ const OrtKernelDef* kernel_def) {
+  return static_cast<const onnxruntime::KernelDef*>(kernel_def)->Provider().c_str();
+}
+
+ORT_API_STATUS_IMPL(KernelDef_GetInputMemType, _In_ const OrtKernelDef* kernel_def,
+                    _In_ size_t input_index, _Out_ OrtMemType* mem_type) {
+  API_IMPL_BEGIN
+  if (kernel_def == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid non-null OrtKernelDef");
+  }
+
+  if (mem_type == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null `mem_type` output parameter");
+  }
+
+  auto internal_kernel_def = static_cast<const onnxruntime::KernelDef*>(kernel_def);
+  *mem_type = internal_kernel_def->InputMemoryType(input_index);
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_def,
+                    _In_ size_t output_index, _Out_ OrtMemType* mem_type) {
+  API_IMPL_BEGIN
+  if (kernel_def == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid non-null OrtKernelDef");
+  }
+
+  if (mem_type == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null `mem_type` output parameter");
+  }
+
+  auto internal_kernel_def = static_cast<const onnxruntime::KernelDef*>(kernel_def);
+  *mem_type = internal_kernel_def->OutputMemoryType(output_index);
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtMLDataType** out) {
   API_IMPL_BEGIN
@@ -448,6 +518,12 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDefBuilder_AddTypeConstraint,
     &OrtExecutionProviderApi::KernelDefBuilder_Build,
     &OrtExecutionProviderApi::ReleaseKernelDef,
+    &OrtExecutionProviderApi::KernelDef_GetOperatorType,
+    &OrtExecutionProviderApi::KernelDef_GetDomain,
+    &OrtExecutionProviderApi::KernelDef_GetSinceVersion,
+    &OrtExecutionProviderApi::KernelDef_GetExecutionProvider,
+    &OrtExecutionProviderApi::KernelDef_GetInputMemType,
+    &OrtExecutionProviderApi::KernelDef_GetOutputMemType,
     &OrtExecutionProviderApi::GetTensorMLDataType,
     &OrtExecutionProviderApi::KernelInfo_CopyTensors,
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,

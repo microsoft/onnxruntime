@@ -11,10 +11,10 @@
 /// </summary>
 struct KernelCreateInfo {
   KernelCreateInfo() = default;
-  KernelCreateInfo(OrtKernelDef* def, OrtKernelCreateFunc func, void* state)
-      : kernel_def{def}, kernel_create_func{func}, kernel_create_func_state{state} {}
+  KernelCreateInfo(Ort::KernelDef def, OrtKernelCreateFunc func, void* state)
+      : kernel_def{std::move(def)}, kernel_create_func{func}, kernel_create_func_state{state} {}
 
-  OrtKernelDef* kernel_def = nullptr;
+  Ort::KernelDef kernel_def{nullptr};
   OrtKernelCreateFunc kernel_create_func = nullptr;
   void* kernel_create_func_state = nullptr;
 };
@@ -27,7 +27,7 @@ OrtStatus* BuildKernelCreateInfo(const char* ep_name, void* create_func_state, /
 template <>
 inline OrtStatus* BuildKernelCreateInfo<void>(const char* /*ep_name*/, void* /*create_func_state*/,
                                               /*out*/ KernelCreateInfo* result) {
-  result->kernel_def = nullptr;
+  result->kernel_def = Ort::KernelDef{nullptr};
   result->kernel_create_func = nullptr;
   result->kernel_create_func_state = nullptr;
   return nullptr;
@@ -47,11 +47,11 @@ static constexpr const char* kOnnxDomain = "";
                                                                             void* create_kernel_state,      \
                                                                             KernelCreateInfo* result) {     \
     try {                                                                                                   \
-      OrtKernelDef* kernel_def = builder.SetOperatorType(#name)                                             \
-                                     .SetDomain(domain)                                                     \
-                                     .SetSinceVersion(ver)                                                  \
-                                     .SetExecutionProvider(ep_name)                                         \
-                                     .Build();                                                              \
+      Ort::KernelDef kernel_def = builder.SetOperatorType(#name)                                            \
+                                      .SetDomain(domain)                                                    \
+                                      .SetSinceVersion(ver)                                                 \
+                                      .SetExecutionProvider(ep_name)                                        \
+                                      .Build();                                                             \
                                                                                                             \
       auto kernel_create_func = [](OrtKernelCreateContext* /*ctx*/, void* state, const OrtKernelInfo* info, \
                                    OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {                     \
@@ -63,7 +63,7 @@ static constexpr const char* kOnnxDomain = "";
         return nullptr;                                                                                     \
       };                                                                                                    \
                                                                                                             \
-      *result = KernelCreateInfo(kernel_def, kernel_create_func, create_kernel_state);                      \
+      *result = KernelCreateInfo(std::move(kernel_def), kernel_create_func, create_kernel_state);           \
     } catch (const Ort::Exception& ex) {                                                                    \
       Ort::Status status(ex);                                                                               \
       return status.release();                                                                              \

@@ -644,6 +644,7 @@ ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
@@ -3286,6 +3287,44 @@ struct Model : detail::ModelImpl<OrtModel> {
 #endif
 };
 
+namespace detail {
+template <typename T>
+struct ConstKernelDefImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::KernelDef_GetOperatorType
+  const char* GetOperatorType() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetDomain
+  const char* GetDomain() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetSinceVersion
+  std::pair<int, int> GetSinceVersion() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetExecutionProvider
+  const char* GetExecutionProvider() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetInputMemType
+  OrtMemType GetInputMemType(size_t input_index) const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetOutputMemType
+  OrtMemType GetOutputMemType(size_t output_index) const;
+};
+}  // namespace detail
+
+using ConstKernelDef = detail::ConstKernelDefImpl<detail::Unowned<const OrtKernelDef>>;
+
+struct KernelDef : detail::ConstKernelDefImpl<OrtKernelDef> {
+  using Base = detail::ConstKernelDefImpl<OrtKernelDef>;
+  using Base::Base;
+
+  explicit KernelDef(std::nullptr_t) {}
+  explicit KernelDef(OrtKernelDef* p) : detail::ConstKernelDefImpl<OrtKernelDef>{p} {}
+
+  ConstKernelDef GetConst() const { return ConstKernelDef{this->p_}; }
+};
+
 /** \brief Builder for OrtKernelDef.
  *
  * Used by plugin EPs to build a kernel definition.
@@ -3304,8 +3343,7 @@ struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
   KernelDefBuilder& AddTypeConstraint(const char* arg_name, const OrtMLDataType* data_types);
   KernelDefBuilder& AddTypeConstraint(const char* arg_name, const std::vector<const OrtMLDataType*>& data_types);
 
-  // TODO: Create and return Ort::KernelDef
-  OrtKernelDef* Build();
+  KernelDef Build();
 };
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

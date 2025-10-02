@@ -3553,6 +3553,48 @@ inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
 }
 #endif
 
+namespace detail {
+template <typename T>
+inline const char* ConstKernelDefImpl<T>::GetOperatorType() const {
+  return GetEpApi().KernelDef_GetOperatorType(this->p_);
+}
+
+template <typename T>
+inline const char* ConstKernelDefImpl<T>::GetDomain() const {
+  return GetEpApi().KernelDef_GetDomain(this->p_);
+}
+
+template <typename T>
+inline std::pair<int, int> ConstKernelDefImpl<T>::GetSinceVersion() const {
+  int start = 0;
+  int end = 0;
+
+  ThrowOnError(GetEpApi().KernelDef_GetSinceVersion(this->p_, &start, &end));
+  return std::pair<int, int>(start, end);
+}
+
+template <typename T>
+inline const char* ConstKernelDefImpl<T>::GetExecutionProvider() const {
+  return GetEpApi().KernelDef_GetExecutionProvider(this->p_);
+}
+
+template <typename T>
+inline OrtMemType ConstKernelDefImpl<T>::GetInputMemType(size_t input_index) const {
+  OrtMemType mem_type{};
+  ThrowOnError(GetEpApi().KernelDef_GetInputMemType(this->p_, input_index, &mem_type));
+
+  return mem_type;
+}
+
+template <typename T>
+inline OrtMemType ConstKernelDefImpl<T>::GetOutputMemType(size_t output_index) const {
+  OrtMemType mem_type{};
+  ThrowOnError(GetEpApi().KernelDef_GetOutputMemType(this->p_, output_index, &mem_type));
+
+  return mem_type;
+}
+}  // namespace detail
+
 inline KernelDefBuilder::KernelDefBuilder() {
   ThrowOnError(GetEpApi().CreateKernelDefBuilder(&p_));
 }
@@ -3602,10 +3644,10 @@ inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_nam
   return *this;
 }
 
-inline OrtKernelDef* KernelDefBuilder::Build() {
+inline KernelDef KernelDefBuilder::Build() {
   OrtKernelDef* kernel_def = nullptr;
   ThrowOnError(GetEpApi().KernelDefBuilder_Build(p_, &kernel_def));
-  return kernel_def;
+  return KernelDef(kernel_def);
 }
 
 }  // namespace Ort
