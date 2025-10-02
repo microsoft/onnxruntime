@@ -270,12 +270,22 @@ std::vector<int64_t> generateStrides(const std::vector<int64_t>& shape, bool cha
   }
   if (channels_last) {
     // Here we assume that the format is CUDNN_TENSOR_NHWC
+    // Note: This should only be called with nbDims >= 4 from CudnnFeTensor
+    // but we add safety checks for smaller dimensions
     strides[1] = 1;
     strides[nbDims - 1] = strides[1] * shape[1];
     for (int64_t d = nbDims - 2; d >= 2; d--) {
       strides[d] = strides[d + 1] * shape[d + 1];
     }
-    strides[0] = strides[2] * shape[2];
+    if (nbDims >= 3) {
+      strides[0] = (nbDims >= 4 ? strides[2] : strides[nbDims - 1]) * (nbDims >= 4 ? shape[2] : shape[nbDims - 1]);
+    } else {
+      // For nbDims == 2, fallback to standard row-major strides
+      strides[nbDims - 1] = 1;
+      for (int64_t d = nbDims - 2; d >= 0; d--) {
+        strides[d] = strides[d + 1] * shape[d + 1];
+      }
+    }
   } else {
     strides[nbDims - 1] = 1;
     for (int64_t d = nbDims - 2; d >= 0; d--) {
