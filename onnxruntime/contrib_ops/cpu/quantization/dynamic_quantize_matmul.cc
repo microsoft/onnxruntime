@@ -306,7 +306,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   int GetBIdx() const override { return IN_B; }
 
  private:
-  //Indicates when dynamic quantization is available so we can use the KleidiAI dynamic qgemm kernel
+  // Indicates when MlasDynamicQGemmBatch() can be used
   bool can_use_dynamic_quant_mlas_{false};
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
   //Indicates that the biases are a constant input and thus already quantized / packed
