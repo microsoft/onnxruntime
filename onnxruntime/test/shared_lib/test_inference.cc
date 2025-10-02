@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include <algorithm>
@@ -4848,19 +4848,139 @@ TEST(CApiTest, custom_cast) {
                                custom_op_domain, nullptr);
 }
 
+// Make individual lines below as valid C++ strings
+static std::vector<std::string> CreateInput(size_t size) {
+  constexpr const std::string_view strings[] = {
+      "This is an input string", "this is another one", "this one is also pretty short, but the next is much longer",
+      "Anarchism is a political philosophy and movement that is skeptical of all justifications for authority",
+      "and seeks to abolish the institutions it claims maintain unnecessary coercion and hierarchy, typically including nation-states, and capitalism.",
+      "Anarchism advocates for the replacement of the state with stateless societies and voluntary free associations.",
+      "As a historically left-wing movement, this reading of anarchism is placed on the farthest left of the political spectrum, usually described as the libertarian wing of the socialist movement (libertarian socialism).",
+      "Although traces of anarchist ideas are found all throughout history, modern anarchism emerged from the Enlightenment.",
+      "During the latter half of the 19th and the first decades of the 20th century, the anarchist movement flourished in most parts of the world and had a significant role in workers' struggles for emancipation.",
+      "Various anarchist schools of thought formed during this period.",
+      "Anarchists have taken part in several revolutions, most notably in the Paris Commune, the Russian Civil War and the Spanish Civil War, whose end marked the end of the classical era of anarchism.",
+      "In the last decades of the 20th and into the 21st century, the anarchist movement has been resurgent once more, growing in popularity and influence within anti-capitalist, anti-war and anti-globalisation movements.",
+      "Anarchists employ diverse approaches, which may be generally divided into revolutionary and evolutionary strategies;",
+      "there is significant overlap between the two.Evolutionary methods try to simulate what an anarchist society might be like, but revolutionary tactics, which have historically taken a violent turn, aim to overthrow authority and the state.",
+      "Some scholars describe anarchism as having many influences from liberalism, and being both liberal and socialist but more so.",
+      "Many scholars reject anarcho-capitalism as a misunderstanding of anarchist principles.",
+      "While opposition to the state is central to anarchist thought, defining anarchism is not an easy task for scholars, as there is a lot of discussion among scholars and anarchists on the matter, and various currents perceive anarchism slightly differently.",
+      "Major definitional elements include the will for a non-coercive society, the rejection of the state apparatus, the belief that human nature allows humans to exist in or progress toward such a non-coercive society, and a suggestion on how to act to pursue the ideal of anarchy.",
+      "The most notable precursors to anarchism in the ancient world were in China and Greece.",
+      "In China, philosophical anarchism (the discussion on the legitimacy of the state) was delineated by Taoist philosophers Zhuang Zhou and Laozi.",
+      "Alongside Stoicism, Taoism has been said to have had \"significant anticipations\" of anarchism.",
+      "Anarchic attitudes were also articulated by tragedians and philosophers in Greece.",
+      "Aeschylus and Sophocles used the myth of Antigone to illustrate the conflict between laws imposed by the state and personal autonomy.",
+      "Socrates questioned Athenian authorities constantly and insisted on the right of individual freedom of conscience.",
+      "Cynics dismissed human law (nomos) and associated authorities while trying to live according to nature (physis).",
+      "Stoics were supportive of a society based on unofficial and friendly relations among its citizens without the presence of a state.",
+      "In medieval Europe, there was no anarchistic activity except some ascetic religious movements.",
+      "These, and other Muslim movements, later gave birth to religious anarchism.",
+      "In the Sasanian Empire, Mazdak called for an egalitarian society and the abolition of monarchy, only to be soon executed by Emperor Kavad I.",
+      "In Basra, religious sects preached against the state.",
+      "In Europe, various sects developed anti-state and libertarian tendencies.",
+      "Renewed interest in antiquity during the Renaissance and in private judgment during the Reformation restored elements of anti-authoritarian secularism, particularly in France.",
+      "Enlightenment challenges to intellectual authority (secular and religious) and the revolutions of the 1790s and 1848 all spurred the ideological development of what became the era of classical anarchism.",
+      "During the French Revolution, partisan groups such as the Enragés and the sans-culottes saw a turning point in the fermentation of anti-state and federalist sentiments.",
+      "The first anarchist currents developed throughout the 18th century as William Godwin espoused philosophical anarchism in England, morally delegitimising the state, Max Stirner's thinking paved the way to individualism and Pierre-Joseph Proudhon's theory of mutualism found fertile soil in France.",
+      "By the late 1870s, various anarchist schools of thought had become well-defined and a wave of then unprecedented globalisation occurred from 1880 to 1914.",
+      "This era of classical anarchism lasted until the end of the Spanish Civil War and is considered the golden age of anarchism.",
+      "Drawing from mutualism, Mikhail Bakunin founded collectivist anarchism and entered the International Workingmen's Association, a class worker union later known as the First International that formed in 1864 to unite diverse revolutionary currents.",
+      "The International became a significant political force, with Karl Marx being a leading figure and a member of its General Council.",
+      "Bakunin's faction (the Jura Federation) and Proudhon's followers (the mutualists) opposed state socialism, advocating political abstentionism and small property holdings.",
+      "After bitter disputes, the Bakuninists were expelled from the International by the Marxists at the 1872 Hague Congress.",
+      "Anarchists were treated similarly in the Second International, being ultimately expelled in 1896.",
+      "Bakunin famously predicted that if revolutionaries gained power by Marx's terms, they would end up the new tyrants of workers.",
+      "In response to their expulsion from the First International, anarchists formed the St. Imier International.",
+      "Under the influence of Peter Kropotkin, a Russian philosopher and scientist, anarcho-communism overlapped with collectivism.",
+      "Anarcho-communists, who drew inspiration from the 1871 Paris Commune, advocated for free federation and for the distribution of goods according to one's needs.",
+      "By the turn of the 20th century, anarchism had spread all over the world.",
+      "It was a notable feature of the international syndicalist movement.",
+      "In China, small groups of students imported the humanistic pro-science version of anarcho-communism.",
+      "Tokyo was a hotspot for rebellious youth from East Asian countries, who moved to the Japanese capital to study.",
+      "In Latin America, Argentina was a stronghold for anarcho-syndicalism, where it became the most prominent left-wing ideology.",
+      "During this time, a minority of anarchists adopted tactics of revolutionary political violence, known as propaganda of the deed.",
+      "The former sought to create a coherent group that would push for revolution while the latter were against anything that would resemble a political party.",
+      "Seeing the victories of the Bolsheviks in the October Revolution and the resulting Russian Civil War, many workers and activists turned to communist parties which grew at the expense of anarchism and other socialist movements.",
+      "In France and the United States, members of major syndicalist movements such as the General Confederation of Labour and the Industrial Workers of the World left their organisations and joined the Communist International.",
+      "In the Spanish Civil War of 1936–39, anarchists and syndicalists (CNT and FAI) once again allied themselves with various currents of leftists.",
+      "A long tradition of Spanish anarchism led to anarchists playing a pivotal role in the war, and particularly in the Spanish Revolution of 1936.",
+      "In response to the army rebellion, an anarchist-inspired movement of peasants and workers, supported by armed militias, took control of Barcelona and of large areas of rural Spain, where they collectivised the land.",
+      "The Soviet Union provided some limited assistance at the beginning of the war, but the result was a bitter fight between communists and other leftists in a series of events known as the May Days, as Joseph Stalin asserted Soviet control of the Republican government, ending in another defeat of anarchists at the hands of the communists.",
+      "By the end of World War II, the anarchist movement had been severely weakened.",
+      "The 1960s witnessed a revival of anarchism, likely caused by a perceived failure of Marxism–Leninism and tensions built by the Cold War.",
+      "During this time, anarchism found a presence in other movements critical towards both capitalism and the state such as the anti-nuclear, environmental, and peace movements, the counterculture of the 1960s, and the New Left.",
+      "It also saw a transition from its previous revolutionary nature to provocative anti-capitalist reformism.",
+      "Anarchism became associated with punk subculture as exemplified by bands such as Crass and the Sex Pistols.",
+      "The established feminist tendencies of anarcha-feminism returned with vigour during the second wave of feminism.",
+      "Black anarchism began to take form at this time and influenced anarchism's move from a Eurocentric demographic.",
+      "This coincided with its failure to gain traction in Northern Europe and its unprecedented height in Latin America.",
+      "Around the turn of the 21st century, anarchism grew in popularity and influence within anti-capitalist, anti-war and anti-globalisation movements.",
+      "Anarchists became known for their involvement in protests against the World Trade Organization (WTO), the Group of Eight and the World Economic Forum.",
+      "During the protests, ad hoc leaderless anonymous cadres known as black blocs engaged in rioting, property destruction and violent confrontations with the police.",
+      "Other organisational tactics pioneered at this time include affinity groups, security culture and the use of decentralised technologies such as the Internet.",
+      "A significant event of this period was the confrontations at the 1999 Seattle WTO conference.",
+      "Anarchist ideas have been influential in the development of the Zapatistas in Mexico and the Democratic Federation of Northern Syria, more commonly known as Rojava, a de facto autonomous region in northern Syria.",
+      "While having revolutionary aspirations, many forms of anarchism are not confrontational nowadays.",
+      "Instead, they are trying to build an alternative way of social organization, based on mutual interdependence and voluntary cooperation.",
+      "Scholar Carissa Honeywell takes the example of Food not Bombs group of collectives, to highlight some features of how anarchist groups work: direct action, working together and in solidarity with those left behind.",
+      "While doing so, they inform about the rising rates of world hunger suggest a policy to tackle hunger, ranging from de-funding the arms industry to addressing Monsanto seed-saving policies and patents, helping farmers and commodification of food and housing.",
+      "Honeywell also emphasizes that contemporary anarchists are interested in the flourishing not only of humans, but non-humans and the environment as well.",
+      "Honeywell argues that escalation of problems such as continuous wars and world poverty show that the current framework not only cannot solve those pressing problems for humanity, but are causal factors as well, resulting in the rejection of representative democracy and the state as a whole.",
+      "Anarchist schools of thought have been generally grouped into two main historical traditions, social anarchism and individualist anarchism, owing to their different origins, values and evolution.",
+      "The individualist current emphasises negative liberty in opposing restraints upon the free individual, while the social current emphasises positive liberty in aiming to achieve the free potential of society through equality and social ownership.",
+      "In a chronological sense, anarchism can be segmented by the classical currents of the late 19th century and the post-classical currents (anarcha-feminism, green anarchism, and post-anarchism) developed thereafter.",
+      "Beyond the specific factions of anarchist movements which constitute political anarchism lies philosophical anarchism which holds that the state lacks moral legitimacy, without necessarily accepting the imperative of revolution to eliminate it.",
+      "A component especially of individualist anarchism, philosophical anarchism may tolerate the existence of a minimal state but claims that citizens have no moral obligation to obey government when it conflicts with individual autonomy."};
+
+  std::vector<std::string> result;
+  result.reserve(size);
+
+  for (size_t i = 0; i < size; i++) {
+    auto idx = i % 4;
+    assert(idx < std::size(strings));
+    result.emplace_back(std::string(strings[idx]));
+  }
+  return result;
+}
+
 TEST(CApiTest, TestMemcpyMinimizer) {
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
   const auto* model_path = TSTR("D:\\dev\\data\\GPUPlacementControl_gh_23154\\bert-tok-trunc-loop.onnx");
-  const auto* opt_model_path = TSTR("D:\\dev\\data\\GPUPlacementControl_gh_23154\\bert-tok-trunc-loop-opt.onnx");
+  // const auto* opt_model_path = TSTR("D:\\dev\\data\\GPUPlacementControl_gh_23154\\bert-tok-trunc-loop-opt.onnx");
   Ort::SessionOptions session_options;
   // Add CUDA execution provider
   session_options.AppendExecutionProvider_CUDA_V2(OrtCUDAProviderOptionsV2{});
-  session_options.SetOptimizedModelFilePath(opt_model_path);
-  session_options.AddConfigEntry("session.loop_subgraph_cpu_fallback_optimizer_min_nocpu_cpu_ratio", "0.6");
+  // session_options.SetOptimizedModelFilePath(opt_model_path);
+  // session_options.AddConfigEntry("session.loop_subgraph_cpu_fallback_optimizer_min_nocpu_cpu_ratio", "0.6");
   session_options.SetLogSeverityLevel(2);
   // add extension path
   session_options.RegisterCustomOpsLibrary(
       ORT_TSTR("D:\\dev\\data\\GPUPlacementControl_gh_23154\\.venv\\lib\\site-packages\\onnxruntime_extensions\\_extensions_pydll.cp310-win_amd64.pyd"));
 
   Ort::Session session(env, model_path, session_options);
+
+  // Call CreateInput() and use that to create an Ort::Value based on that string array
+  auto input_strings = CreateInput(64);
+  const std::array<int64_t, 1U> input_dims = {static_cast<int64_t>(input_strings.size())};
+  constexpr const std::array<const char*, 1U> input_cstrs = {"text_input"};
+  constexpr const std::array<const char*, 1U> output_names = {"token_type_ids"};
+  auto cpu_allocator = Ort::AllocatorWithDefaultOptions();
+  auto input_tensor = Ort::Value::CreateTensor(cpu_allocator, input_dims.data(), input_dims.size(),
+                                               ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  // use FillStringTensorElement to fill the tensor for all elements in input_strings
+  for (size_t i = 0, lim = input_strings.size(); i < lim; ++i)
+    input_tensor.FillStringTensorElement(input_strings[i].c_str(), i);
+
+  // Call the below line 100 times and measure output in milliseconds using std::chrono
+  auto time_now_ms = std::chrono::high_resolution_clock::now();
+
+  for (int i = 0; i < 100; ++i) {
+    session.Run({}, input_cstrs.data(), &input_tensor, 1, output_names.data(), 1);
+  }
+
+  auto time_now_ms_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::milli> duration = time_now_ms_end - time_now_ms;
+  std::cout << "Average time per inference: " << duration.count() / 100 << " ms" << std::endl;
 }
