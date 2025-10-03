@@ -618,6 +618,8 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
                                        std::unordered_map<std::wstring, std::wstring>* extra_metadata = nullptr) {
     OrtHardwareDevice ortdevice{device.type, device.vendor_id, device.device_id, to_safe_string(device.vendor)};
 
+    ortdevice.metadata.Add(kHardwareDeviceKey_DiscoveredBy, "ONNX Runtime");
+
     if (!device.description.empty()) {
       ortdevice.metadata.Add("Description", to_safe_string(device.description));
     }

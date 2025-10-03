@@ -33,6 +33,13 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetAdditionalHardwareDevicesImpl(OrtEpFactory* this_ptr,
+                                                                  const OrtHardwareDevice* const* found_devices,
+                                                                  size_t num_found_devices,
+                                                                  OrtHardwareDevice** additional_devices,
+                                                                  size_t max_additional_devices,
+                                                                  size_t* num_additional_devices) noexcept;
+
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                          const OrtHardwareDevice* const* devices,
                                                          size_t num_devices,
