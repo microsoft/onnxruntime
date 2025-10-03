@@ -64,9 +64,21 @@ class PluginExecutionProvider : public IExecutionProvider {
   using Base = IExecutionProvider;
 
  public:
+  static Status Create(OrtEpFactory& ep_factory,
+                       gsl::span<const OrtEpDevice* const> ep_devices,
+                       gsl::span<const OrtHardwareDevice* const> hw_devices,
+                       gsl::span<const OrtKeyValuePairs* const> ep_metadata,
+                       const OrtSessionOptions& session_options,
+                       const OrtLogger& logger,
+                       /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep);
+
   explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options, OrtEpFactory& ep_factory,
-                                   gsl::span<const OrtEpDevice* const> ep_devices, const logging::Logger& logger);
+                                   gsl::span<const OrtEpDevice* const> ep_devices,
+                                   std::shared_ptr<KernelRegistry> kernel_registry,
+                                   const logging::Logger& logger);
   ~PluginExecutionProvider();
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -136,5 +148,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   // calls IExecutionProvider::GetEpContextNodes().
   std::vector<std::unique_ptr<Node>> ep_context_nodes_;
   std::vector<std::unique_ptr<NodeArg>> ep_context_node_args_;
+
+  std::shared_ptr<KernelRegistry> kernel_registry_;
 };
 }  // namespace onnxruntime
