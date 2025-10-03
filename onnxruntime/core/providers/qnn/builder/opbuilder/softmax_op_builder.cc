@@ -152,7 +152,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                      std::vector<std::string>&& input_names,
                                                      const logging::Logger& logger,
                                                      bool do_op_validation) const {
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  const bool is_qpu_backend = IsQpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const std::string& op_type = node_unit.OpType();
   const auto& outputs = node_unit.Outputs();
   const std::string& orig_output_name = outputs[0].node_arg.Name();
@@ -202,7 +202,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                          do_op_validation,
                                                          false,
                                                          is_graph_output));
-  } else if (is_npu_backend && axis != static_cast<int32_t>(output_rank) - 1) {
+  } else if (is_qpu_backend && axis != static_cast<int32_t>(output_rank) - 1) {
     std::string transpose_input_name = utils::GetUniqueName(orig_output_name, "_transpose");
 
     std::vector<uint32_t> transpose_input_shape = output_info.shape;
