@@ -182,12 +182,14 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
 )
 
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
+endif()
+if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)
   # onnxruntime_pybind11_state is a DLL
