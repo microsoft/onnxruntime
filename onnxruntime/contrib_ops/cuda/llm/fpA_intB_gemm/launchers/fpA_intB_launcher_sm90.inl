@@ -60,7 +60,7 @@ namespace cutlass_kernels {
 template <typename ActivationType, typename WeightType, typename ScaleZeroType, typename BiasType, typename OutputType,
           cutlass::WeightOnlyQuantOp QuantOp, typename EpilogueTag, typename CTAShape, typename ClusterShape,
           typename MainloopScheduleType, typename EpilogueScheduleType>
-#ifdef COMPILE_HOPPER_TMA_GEMMS
+#if defined(COMPILE_HOPPER_TMA_GEMMS) && defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 900) && defined(__NV_SASS_VERSION__)
 void sm90_generic_mixed_gemm_kernelLauncher(
     ActivationType const* A, WeightType const* B,
     ScaleZeroType const* weight_scales, ScaleZeroType const* weight_zero_points, BiasType const* biases,
@@ -269,6 +269,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(
   }
 }
 #else   // COMPILE_HOPPER_TMA_GEMMS
+// This stub is now used for ALL non-SASS or non-SM90A compilation passes includes the 90-virtual (PTX) pass.
 void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const*, WeightType const*,
                                             ScaleZeroType const*, ScaleZeroType const*, BiasType const*,
                                             float const, OutputType*, int, int, int, int const, tkc::CutlassGemmConfig,
