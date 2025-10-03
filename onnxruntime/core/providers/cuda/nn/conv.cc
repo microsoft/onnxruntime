@@ -139,8 +139,11 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
     s_.cudnn_fe_graph->set_compute_data_type(data_type);
   }
 
-  s_.cudnn_fe_X = s_.cudnn_fe_graph->tensor(CudnnFeTensor(x_dims, "x", data_type, Layout == LAYOUT_NHWC).Get());
-  s_.cudnn_fe_W = s_.cudnn_fe_graph->tensor(CudnnFeTensor(w_dims, "w", data_type, w_in_nhwc).Get());
+  // Note: x_dims and w_dims have already been transformed to NCHW format in UpdateState
+  // before being passed to CreateCudnnFeExecutionPlan, so we should use false (NCHW)
+  // for the nhwc parameter instead of the Layout flag.
+  s_.cudnn_fe_X = s_.cudnn_fe_graph->tensor(CudnnFeTensor(x_dims, "x", data_type, false).Get());
+  s_.cudnn_fe_W = s_.cudnn_fe_graph->tensor(CudnnFeTensor(w_dims, "w", data_type, false).Get());
 
   auto conv_options = cudnn_frontend::graph::Conv_fprop_attributes()
                           .set_pre_padding(std::vector<int64_t>(pads.begin(),
@@ -149,7 +152,8 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
                           .set_stride(strides)
                           .set_dilation(dilations);
   s_.cudnn_fe_conv_Y = s_.cudnn_fe_graph->conv_fprop(s_.cudnn_fe_X, s_.cudnn_fe_W, conv_options);
-  auto cudnn_fe_y_tensor = CudnnFeTensor(y_dims, "y", data_type, Layout == LAYOUT_NHWC).Get();
+  // y_dims have also been transformed to NCHW format
+  auto cudnn_fe_y_tensor = CudnnFeTensor(y_dims, "y", data_type, false).Get();
 
   if (!bias_expected && B == nullptr) {
     s_.cudnn_fe_Y = s_.cudnn_fe_conv_Y;
@@ -164,7 +168,8 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
     std::optional<cudnn_frontend::graph::Tensor_attributes> cudnn_fe_z_tensor;
     if (Z) {
       const auto& z_shape = Z->Shape().AsShapeVector();
-      cudnn_fe_z_tensor = CudnnFeTensor(z_shape, "z", data_type, Layout == LAYOUT_NHWC).Get();
+      // z_shape has also been transformed to NCHW format
+      cudnn_fe_z_tensor = CudnnFeTensor(z_shape, "z", data_type, false).Get();
     } else if (fuse_bias && Layout == LAYOUT_NCHW) {
       // Z is required for NCHW precompiled kernels in cuDNN
       s_.z_data = s_.y_data;
@@ -185,7 +190,8 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
       for (size_t i = 0; i < x_dims.size(); i++) {
         b_dims.push_back(i == 1 ? bias_size : 1);
       }
-      auto bias_tensor = CudnnFeTensor(b_dims, "b", data_type, Layout == LAYOUT_NHWC).Get();
+      // b_dims are in NCHW format  
+      auto bias_tensor = CudnnFeTensor(b_dims, "b", data_type, false).Get();
       auto bias_options = cudnn_frontend::graph::Pointwise_attributes().set_mode(cudnn_frontend::PointwiseMode_t::ADD);
       s_.cudnn_fe_B = s_.cudnn_fe_graph->tensor(bias_tensor);
       s_.cudnn_fe_Y = s_.cudnn_fe_graph->pointwise(add_output, s_.cudnn_fe_B, bias_options);

@@ -119,8 +119,11 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
     s_.cudnn_fe_graph->set_compute_data_type(data_type);
   }
 
-  s_.cudnn_fe_X = s_.cudnn_fe_graph->tensor(CudnnFeTensor(x_dims, "x", data_type, Layout == LAYOUT_NHWC).Get());
-  s_.cudnn_fe_W = s_.cudnn_fe_graph->tensor(CudnnFeTensor(w_dims, "w", data_type, w_in_nhwc).Get());
+  // Note: x_dims and w_dims have already been transformed to NCHW format in UpdateState
+  // before being passed to CreateCudnnFeExecutionPlan, so we should use false (NCHW)
+  // for the nhwc parameter instead of the Layout flag.
+  s_.cudnn_fe_X = s_.cudnn_fe_graph->tensor(CudnnFeTensor(x_dims, "x", data_type, false).Get());
+  s_.cudnn_fe_W = s_.cudnn_fe_graph->tensor(CudnnFeTensor(w_dims, "w", data_type, false).Get());
 
   auto conv_options = cudnn_frontend::graph::Conv_dgrad_attributes()
                           .set_pre_padding(std::vector<int64_t>(pads.begin(),
@@ -129,7 +132,8 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
                           .set_stride(strides)
                           .set_dilation(dilations);
   s_.cudnn_fe_conv_Y = s_.cudnn_fe_graph->conv_dgrad(s_.cudnn_fe_X, s_.cudnn_fe_W, conv_options);
-  auto cudnn_fe_y_tensor = CudnnFeTensor(y_dims, "y", data_type, Layout == LAYOUT_NHWC).Get();
+  // y_dims have also been transformed to NCHW format
+  auto cudnn_fe_y_tensor = CudnnFeTensor(y_dims, "y", data_type, false).Get();
 
   if (B == nullptr) {
     s_.cudnn_fe_Y = s_.cudnn_fe_conv_Y;
@@ -146,7 +150,8 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
       for (size_t i = 0; i < x_dims.size(); i++) {
         b_dims.push_back(i == 1 ? bias_size : 1);
       }
-      auto bias_tensor = CudnnFeTensor(b_dims, "b", data_type, Layout == LAYOUT_NHWC).Get();
+      // b_dims are in NCHW format
+      auto bias_tensor = CudnnFeTensor(b_dims, "b", data_type, false).Get();
       auto bias_options = cudnn_frontend::graph::Pointwise_attributes().set_mode(cudnn_frontend::PointwiseMode_t::ADD);
       s_.cudnn_fe_B = s_.cudnn_fe_graph->tensor(bias_tensor);
       s_.cudnn_fe_Y = s_.cudnn_fe_graph->pointwise(s_.cudnn_fe_conv_Y, s_.cudnn_fe_B, bias_options);

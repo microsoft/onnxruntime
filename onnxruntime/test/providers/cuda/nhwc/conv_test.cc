@@ -81,5 +81,17 @@ TYPED_TEST(CudaNhwcTypedTest, ConvNhwcPadding) {
   MAKE_PROVIDERS_EPS_TYPE(TypeParam)
 }
 
+// Test for kernel_shape={2, 2} which was failing before the fix
+TYPED_TEST(CudaNhwcTypedTest, ConvNhwcKernel2x2) {
+  auto op = ConvOp<TypeParam>{};
+  op.input_dims = {1, 16, 32, 32};
+  op.kernel_shape = {2, 2};
+  op.channels = 16;
+  op.bias = true;
+  op.padding = {0, 0, 1, 1};  // Similar to the issue description
+
+  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
+}
+
 }  // namespace test
 }  // namespace onnxruntime
