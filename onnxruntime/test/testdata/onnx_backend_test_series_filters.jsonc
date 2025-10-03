@@ -33,6 +33,7 @@
         "^test_adagrad_multiple",
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
         "^test_attention_4d_fp16_expanded*",  // precision issue: 3 / 192 mismatched elements
+        "^test_attention_4d_diff_heads_mask4d_padded_kv*" // Need nonpad_kv_seqlen
         "^test_l2normalization*",  // LpNormalization(22) not implemented
         "^test_l1normalization*",  // LpNormalization(22) not implemented
         "^test_lpnormalization*",  // LpNormalization(22) not implemented
