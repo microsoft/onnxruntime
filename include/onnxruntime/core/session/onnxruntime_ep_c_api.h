@@ -1058,9 +1058,6 @@ struct OrtEp {
    *
    * A kernel registry contains kernel creation information for operator kernels supported by an EP.
    *
-   * This is used by EPs that do not compile supported nodes into opaque subgraphs, but instead, register operator
-   * kernels with ORT. A compiling EP should either not implement this function or return a NULL registry.
-   *
    * \param[in] this_ptr The OrtEp instance.
    * \param[out] kernel_registry Output parameter set to the EP's kernel registry, which must remain valid throughout
    *                             the lifetime of the EP.
