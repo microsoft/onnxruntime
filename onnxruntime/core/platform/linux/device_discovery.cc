@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/platform/device_discovery.h"
+#include "core/framework/ortdevice.h"
 
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <string>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -110,7 +112,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
     ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, gpu_device.vendor_id));
   }
 
-  // TODO vendor name
+  gpu_device.vendor = OrtDevice::VendorIdToString(gpu_device.vendor_id);
 
   // device id
   {
@@ -120,6 +122,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
 
   // metadata
   gpu_device.metadata.Add("card_idx", MakeString(path_info.card_idx));
+  gpu_device.metadata.Add("bus_id", std::filesystem::read_symlink(sysfs_path / "device").filename().string());  // e.g. 0000:65:00.0
   // TODO is card discrete?
 
   gpu_device.type = OrtHardwareDeviceType_GPU;
