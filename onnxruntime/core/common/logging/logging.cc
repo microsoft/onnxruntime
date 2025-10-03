@@ -64,9 +64,10 @@ LoggingManager* LoggingManager::GetDefaultInstance() {
 #pragma warning(disable : 26426)
 #endif
 
+static std::mutex default_logger_mutex;
+
 static std::mutex& DefaultLoggerMutex() noexcept {
-  static std::mutex mutex;
-  return mutex;
+  return default_logger_mutex;
 }
 
 Logger* LoggingManager::s_default_logger_ = nullptr;

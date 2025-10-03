@@ -452,9 +452,12 @@ TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
   return trt_logger;
 }
 
+namespace {
+std::mutex trt_api_lock;
+}  // namespace
+
 std::unique_lock<std::mutex> TensorrtExecutionProvider::GetApiLock() const {
-  static std::mutex singleton;
-  return std::unique_lock<std::mutex>(singleton);
+  return std::unique_lock<std::mutex>(trt_api_lock);
 }
 
 /*

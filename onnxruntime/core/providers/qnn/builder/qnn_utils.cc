@@ -790,16 +790,19 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
   return Status::OK();
 }
 
+namespace {
+static std::mutex counter_mutex;
+}  // namespace
+
 std::string GetUniqueName(const std::string& base, std::string_view suffix) {
   std::string name = base;
   if (!suffix.empty()) {
     name += suffix;
   }
   {
-    static std::unordered_map<std::string, int> counter;
-    static std::mutex counter_mutex;
     std::lock_guard<std::mutex> lock(counter_mutex);
 
+    static std::unordered_map<std::string, int> counter;
     int& count = counter[name];
     if (count++ > 0) {
       return name + "_" + std::to_string(count);
