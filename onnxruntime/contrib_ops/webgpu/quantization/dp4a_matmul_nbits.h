@@ -71,7 +71,7 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
 };
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
-                                  const Tensor* zero_points,
+                                  const Tensor* zero_points, const Tensor* bias,
                                   uint32_t M,
                                   uint32_t N,
                                   uint32_t K,
@@ -80,7 +80,8 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   uint32_t min_M_for_tile_optimization,
                                   uint32_t nbits,
                                   onnxruntime::webgpu::ComputeContext& context,
-                                  Tensor* y);
+                                  Tensor* y,
+                                  const Tensor* offsets);
 
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint64_t accuracy_level,
