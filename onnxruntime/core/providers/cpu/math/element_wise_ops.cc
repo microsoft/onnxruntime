@@ -2025,6 +2025,10 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
 
   const auto narrow_task_count = onnxruntime::narrow<std::ptrdiff_t>(task_count);
 
+  // get allocator for temporary buffers
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
   concurrency::ThreadPool::TryBatchParallelFor(
       tp, narrow_task_count,
       [&](ptrdiff_t task_idx) {
@@ -2035,14 +2039,14 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
         const MLFloat16* p_input = input_data + start;
         MLFloat16* p_output = output_data + start;
 
-        std::vector<float> input_fp32(narrow_count);
-        std::vector<float> output_fp32(narrow_count);
+        // allocate temp buffers using ORT allocator
+        IAllocatorUniquePtr<float> input_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
+        IAllocatorUniquePtr<float> output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
 
-        MlasConvertHalfToFloatBuffer(p_input, input_fp32.data(), narrow_count);
-
-        MlasComputeErf(input_fp32.data(), output_fp32.data(), narrow_count);
-
-        MlasConvertFloatToHalfBuffer(output_fp32.data(), p_output, narrow_count);
+        // convert, compute, convert back
+        MlasConvertHalfToFloatBuffer(p_input, input_fp32.get(), narrow_count);
+        MlasComputeErf(input_fp32.get(), output_fp32.get(), narrow_count);
+        MlasConvertFloatToHalfBuffer(output_fp32.get(), p_output, narrow_count);
       },
       0);
 
