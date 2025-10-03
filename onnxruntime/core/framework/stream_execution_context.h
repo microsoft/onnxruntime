@@ -39,15 +39,15 @@ class StreamExecutionContext {
 
     void Set(int32_t v) {
       ORT_ENFORCE(v >= 0);
-      v_.store(v, std::memory_order_relaxed);
+      v_.store(v, std::memory_order_release);
     }
 
     bool Dec() {
-      return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
+      return v_.fetch_sub(1, std::memory_order_acq_rel) == 1;
     }
 
     int32_t Get() {
-      return gsl::narrow_cast<int32_t>(v_.load(std::memory_order_relaxed));
+      return gsl::narrow_cast<int32_t>(v_.load(std::memory_order_acquire));
     }
 
     void Inc() {
