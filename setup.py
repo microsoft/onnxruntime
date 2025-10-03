@@ -380,6 +380,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libtensorrt_onnxparser_rtx.so.*"
     ]
     dl_libs.extend(nv_tensorrt_rtx_deps)
+    libs.extend(nv_tensorrt_rtx_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
