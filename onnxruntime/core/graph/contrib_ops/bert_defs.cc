@@ -234,8 +234,37 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
 void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                   int past_key_index = -1,
                                                   int use_max_past_present_buffer = -1,
-                                                  int output_qk_index = -1) {
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                                  int output_qk_index = -1,
+                                                  bool support_quantized_kv_cache = false) {
+  // Type inference for outputs
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);  // output
+
+  if (ctx.getNumOutputs() >= 3) {  // has present output
+    const auto* past_key_type = ctx.getInputType(past_key_index);
+    if (past_key_type != nullptr) {
+      // present_key and present_value have the same type as past_key/past_value.
+      // This allows them to be int8 or packed uint8 when quantization is enabled.
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);      // present_key
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index + 1, 2);  // present_value
+    } else {
+      // If no past state, present is the same type as query.
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+    }
+  }
+
+  if (support_quantized_kv_cache) {
+    // If k_scale and v_scale are present, propagate their types and shapes to the present_scale outputs.
+    if (ctx.hasOutput(12) && ctx.hasOutput(4)) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 12, 4);
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 12, 4);
+    }
+
+    if (ctx.hasOutput(13) && ctx.hasOutput(5)) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 13, 5);
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 13, 5);
+    }
+  }
 
   int64_t kv_sequence_length = -1;
   if (hasInputShape(ctx, 0)) {
@@ -280,12 +309,6 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
   }
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
-    // copy the type from query to present key
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
-
-    // copy the type from query to present value
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
-
     int64_t total_sequence_length_value = 0;
     const auto* total_sequence_length_data = ctx.getInputData(6);
     if (total_sequence_length_data != nullptr) {
@@ -1121,15 +1144,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
-Group Query Self/Cross Attention.
+Group Query Self/Cross Attention with KV Cache Quantization Support.
 
-*Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
-Supports different number of heads for q and kv for CPU and CUDA.
-Only supports causal and local attention.
-Supports rotary position embedding for CPU and CUDA.
-Supports packed input for CPU and CUDA.
-Supports continuous decoding for batch_size == 1 for CPU and CUDA.
+This operator implements causal grouped-query attention with past state (KV cache) support.
+It also supports optional float8, int8, int4 or int2 quantization for the KV cache to reduce memory footprint.
 
+**Cache Format:**
+The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
+
+**Quantization:**
+When quantization is enabled, `past_key` and `past_value` inputs must be of type `float8e4m3fn`, `float8e5m2`, `uint8`, `int8` or `int4`. The corresponding `k_scale` and `v_scale` tensors must be provided.
+The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`, and `present_k_scale` and `present_v_scale` will contain updated scales if dynamic quantization is used.
+k_scale and present_k_scale will share buffer when past and present buffer sharing is used, same for v_scale and present_v_scale.
+The shapes of the k_scale, v_scale, present_k_scale and present_v_scale tensors shall be broadcastable to present_key shape.
+For 4-bit quantization, the data type can be int4 or uint8. When uint8 is used, each byte contains two 4-bit quantized values.
+For 2-bit quantization, the data type can be uint8, and each byte contains four 2-bit quantized values.
+The bit width of quantized KV cache can be set using `kv_cache_bit_width` attribute. It is only required when the data type of KV cache is uint8. Supported values are 4 and 2.
+
+**Quantization Modes (`k_quant_type`, `v_quant_type` attributes):**
+- **"NONE"**: No quantization.
+- **"PER_TENSOR"**: A single scale for the entire tensor. Scale example shape: `[1]` or `[1, 1, 1, 1]`.
+- **"PER_CHANNEL"**: A scale for each channel (head_size dimension), shared across all other dimensions. Scale example shape: `[num_heads_k, 1, head_size]` or `[1, num_heads_k, 1, head_size]`.
+- **"PER_TOKEN"**: A scale for each token. Scale shape: `[batch_size, 1, cache_sequence_length, 1]`. This mode is dynamic and computes scales on-the-fly for new tokens.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1166,6 +1202,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).",
               AttributeProto::INT,
               static_cast<int64_t>(QKOutputType::NO_OUTPUT))
+        .Attr("k_quant_type", "Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL', 'PER_TOKEN'.", AttributeProto::STRING, std::string("NONE"))
+        .Attr("v_quant_type", "Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL', 'PER_TOKEN'.", AttributeProto::STRING, std::string("NONE"))
+        .Attr("kv_cache_bit_width", "Bit width of quantized KV cache when its data type is uint8. Supported values are 4 and 2.", AttributeProto::INT, OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1185,13 +1224,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_key",
                "past state key with support for format BNSH. When past_key uses same tensor as present_key"
                "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
-               "T",
+               "T_CACHE",
                OpSchema::Optional)
         .Input(4,
                "past_value",
                "past state value with support for format BNSH. When past_value uses same tensor as present_value"
                "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
-               "T",
+               "T_CACHE",
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
@@ -1228,6 +1267,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.",
                "T",
                OpSchema::Optional)
+        .Input(12, "k_scale", "Scale tensor for past_key.", "T", OpSchema::Optional)
+        .Input(13, "v_scale", "Scale tensor for past_value.", "T", OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
@@ -1237,19 +1278,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present state key with support for format BNSH. When past_key uses same tensor as present_key"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T")
+                "T_CACHE")
         .Output(2,
                 "present_value",
                 "present state value with support for format BNSH. When past_value uses same tensor as present_value"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T")
+                "T_CACHE")
         .Output(3,
                 "output_qk",
                 "Values of QK matrix multiplication, either before or after softmax normalization",
                 "T",
                 OpSchema::Optional)
+        .Output(4, "present_k_scale", "Scale tensor for present_key.", "T", OpSchema::Optional)
+        .Output(5, "present_v_scale", "Scale tensor for present_value.", "T", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T_CACHE", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(uint8)", "tensor(int8)", "tensor(int4)", "tensor(float8e4m3fn)", "tensor(float8e5m2)"}, "Constrain KV cache types.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3, 3);
