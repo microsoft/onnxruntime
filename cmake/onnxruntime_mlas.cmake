@@ -5,8 +5,8 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
-# mlas_private_compile_definitions contains compile definitions which are private to MLAS and targets which include
-# internal MLAS headers like mlasi.h.
+# mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
+# use internal MLAS headers like mlasi.h.
 set(mlas_private_compile_definitions)
 #
 # All hardware agnostic source files here
