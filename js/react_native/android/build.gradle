@@ -48,23 +48,22 @@ static def findNodeModules(baseDir) {
 
 def nodeModules = findNodeModules(projectDir);
 
-def checkIfOrtExtensionsEnabled() {
+def readPackageJsonField(field) {
   // locate user's project dir
   def reactnativeRootDir = project.rootDir.parentFile
   // get package.json file in root directory
   def packageJsonFile = new File(reactnativeRootDir, 'package.json')
-  // read field 'onnxruntimeExtensionsEnabled'
   if (packageJsonFile.exists()) {
     def packageJsonContents = packageJsonFile.getText()
     def packageJson = new groovy.json.JsonSlurper().parseText(packageJsonContents)
-    return packageJson.onnxruntimeExtensionsEnabled == "true"
+    return packageJson.get(field)
   } else {
-    logger.warn("Could not find package.json file in the expected directory: ${reactnativeRootDir}. ONNX Runtime Extensions will not be enabled.")
+    logger.warn("Could not find package.json file in the expected directory: ${reactnativeRootDir}. ${field} will not be enabled.")
   }
-  return false
 }
 
-boolean ortExtensionsEnabled = checkIfOrtExtensionsEnabled()
+boolean ortExtensionsEnabled = readPackageJsonField('onnxruntimeExtensionsEnabled') == "true"
+boolean useQnn = readPackageJsonField('onnxruntimeUseQnn') == "true"
 
 def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"].execute(null, rootDir).text.trim()
 def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
@@ -85,9 +84,18 @@ android {
         cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
         if (REACT_NATIVE_MINOR_VERSION >= 71) {
           // fabricjni required c++_shared
-          arguments "-DANDROID_STL=c++_shared", "-DNODE_MODULES_DIR=${nodeModules}", "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}"
+          arguments "-DANDROID_STL=c++_shared",
+            "-DNODE_MODULES_DIR=${nodeModules}",
+            "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}",
+            "-DREACT_NATIVE_VERSION=${REACT_NATIVE_VERSION}",
+            "-DUSE_QNN=${useQnn}",
+            "-DUSE_NNAPI=${!useQnn}"
         } else {
-          arguments "-DNODE_MODULES_DIR=${nodeModules}", "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}"
+          arguments "-DNODE_MODULES_DIR=${nodeModules}",
+            "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}",
+            "-DREACT_NATIVE_VERSION=${REACT_NATIVE_VERSION}",
+            "-DUSE_QNN=${useQnn}",
+            "-DUSE_NNAPI=${!useQnn}"
         }
         abiFilters (*reactNativeArchitectures())
       }
@@ -146,6 +154,10 @@ android {
         java.exclude '**/OnnxruntimeExtensionsEnabled.java'
       }
     }
+  }
+
+  configurations {
+    extractLibs
   }
 }
 
@@ -234,10 +246,45 @@ dependencies {
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
-  implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+  if (useQnn) {
+    extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:latest.integration@aar"
+  } else {
+    extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+  }
+
+  if (VersionNumber.parse(REACT_NATIVE_VERSION) < VersionNumber.parse("0.71")) {
+    extractLibs "com.facebook.fbjni:fbjni:+:headers"
+    extractLibs "com.facebook.fbjni:fbjni:+"
+  }
 
   // By default it will just include onnxruntime full aar package
   if (ortExtensionsEnabled) {
     implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
   }
+}
+
+task extractLibs {
+  doLast {
+    configurations.extractLibs.files.each {
+      def file = it.absoluteFile
+      copy {
+        from zipTree(file)
+        into "$buildDir/$file.name"
+        include "**/*.h", "**/*.so"
+      }
+    }
+  }
+}
+
+def nativeBuildDependsOn(dependsOnTask, variant) {
+  def buildTasks = tasks.findAll({ task ->
+      !task.name.contains("Clean") && (task.name.contains("externalNative") || task.name.contains("CMake")) })
+  if (variant != null) {
+    buildTasks = buildTasks.findAll({ task -> task.name.contains(variant) })
+  }
+  buildTasks.forEach { task -> task.dependsOn(dependsOnTask) }
+}
+
+afterEvaluate {
+  nativeBuildDependsOn(extractLibs, null)
 }
