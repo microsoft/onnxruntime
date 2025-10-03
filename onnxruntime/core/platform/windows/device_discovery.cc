@@ -43,7 +43,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/session/abi_devices.h"
 
 namespace onnxruntime {
-// unsupported in minimal build. also needs xbox specific handling to be implemented.
+// discovery of non-CPU devices is unsupported in minimal build. also needs xbox specific handling to be implemented.
 #if !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)
 namespace {
 
@@ -666,7 +666,12 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
 }
 #else  // !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  return {};
+  // basic implementation that only returns a CPU device
+  std::unordered_set<OrtHardwareDevice> devices{};
+
+  devices.emplace(GetCpuDeviceFromCPUIDInfo());
+
+  return devices;
 }
 #endif
 }  // namespace onnxruntime
