@@ -713,6 +713,32 @@ else()
   endif()
 endif()
 
+if(onnxruntime_USE_SVE)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
+    if(HAS_ARM64_SVE)
+      message(STATUS "Compiler supports SVE!")
+    else()
+      message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
+      set(onnxruntime_USE_SVE OFF)
+    endif()
+  else()
+    message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
+    set(onnxruntime_USE_SVE OFF)
+  endif()
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
+  if(KLEIDIAI_DEBUG)
+    add_definitions(-DKLEIDIAI_DEBUG=1)
+    add_definitions(-DKLEIDIAI_KERNEL=1)
+  endif()
+  if(KLEIDIAI_KERNEL)
+    add_definitions(-DKLEIDIAI_KERNEL=1)
+  endif()
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 #ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
