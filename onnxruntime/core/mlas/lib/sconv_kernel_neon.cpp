@@ -14,6 +14,8 @@ Abstract:
 
 --*/
 
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
+
 #include "mlasi.h"
 #include "sconv.h"
 
@@ -58,7 +60,7 @@ void
     const size_t InputWidthElements = InputWidth / sizeof(float);
     const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
 
-    (void)InputStride;
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
@@ -100,7 +102,7 @@ void
                     const float* input_base = Input + output_idx * StrideWidthElements +
                                               kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
-                    if (IsNchwcFormat) {
+                    if constexpr (IsNchwcFormat) {
                         for (size_t filterBlock = 0; filterBlock < BlockSize; filterBlock++) {
                             const float* input_element = input_base + filterBlock;
                             const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
@@ -343,7 +345,7 @@ void
     const size_t InputStrideElements = InputStride / sizeof(float);
     const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
 
-    (void)InputStrideElements;
+    MLAS_UNREFERENCED_PARAMETER(InputStrideElements);
 
     const size_t InputWidthElements = InputWidth / sizeof(float);
 
@@ -518,3 +520,5 @@ void
         }
     }
 }
+
+#endif
