@@ -159,6 +159,7 @@ def update_npm_packages(js_root: Path, new_version: str):
         full_command = command_prefix + list(args)
         print(full_command)
         run_command(*full_command, cwd=cwd)
+
     npm_exe = "npm.cmd" if is_windows() else "npm"
     packages = ["common", "node", "web", "react_native"]
 
