@@ -83,6 +83,9 @@ jobs:
       versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '22.x'
 
   - ${{if eq(parameters.WithCache, true)}}:
     - script: |

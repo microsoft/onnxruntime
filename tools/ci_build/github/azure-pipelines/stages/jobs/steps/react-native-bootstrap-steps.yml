@@ -18,8 +18,3 @@ steps:
     npm run bootstrap-no-pods
   workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
   displayName: bootstrap react_native
-
-- script: |
-    npm install --save-dev jest-junit
-  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-  displayName: install jest junit reporter js/react_native/e2e

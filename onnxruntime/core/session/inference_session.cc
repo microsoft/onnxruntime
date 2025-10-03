@@ -1421,6 +1421,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 
+  // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
+  // take advantage of the initializers being in OrtValue format and not to deal with protobuf.
+  //
+  // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
+  // with a TensorProto that has the same data type, shape and name. However, its external data
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
+  // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it, so we choose
+  // to do it as late as possible but before the partitioning so type and shape inference accesses the initializers
+  // before they are converted to OrtValues.
+  //
+  // If any transformations are applied later, they would not introduce any in-memory initializers,
+  // type and shape inference would run only on any newly added nodes and any new initializers
+  // will be converted at session finalization time.
+  //
+  // The conversion is performed using the following steps (within ConvertInitializersIntoOrtValues())
+  //   constexpr const bool use_tensor_buffer_true = true;
+  //   auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
+  //                                                        use_tensor_buffer_true);
+  //   ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto_to_add, ort_value));
+
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues());
+
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_,
@@ -1494,12 +1517,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Insert copy node/s.
   {
-    std::vector<std::string> provider_types;
+    InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
     for (auto& provider_ptr : execution_providers_) {
-      provider_types.push_back(provider_ptr->Type());
+      providers.push_back(provider_ptr.get());
     }
 
-    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
+    MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
@@ -1984,13 +2007,15 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
 // For now, this function only checks for invalid combination of DML EP with other EPs.
 // TODO: extend this function to check for other invalid combinations of EPs.
 common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() const {
-  // DML EP is only allowed with CPU EP
+  // DML EP is not allowed with other GPU or NPU EPs.
+  // historical reason for this is unknown. relaxing the limit that it must only be used with the CPU EP to support
+  // scenarios where alternative EPs are CPU based (e.g. openvino).
   bool has_dml_ep = execution_providers_.Get(kDmlExecutionProvider) != nullptr;
   if (has_dml_ep) {
-    const auto& ep_list = execution_providers_.GetIds();
-    for (const auto& ep : ep_list) {
-      if (ep == kDmlExecutionProvider || ep == kCpuExecutionProvider) continue;
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "DML EP can be used with only CPU EP.");
+    for (const auto& ep : execution_providers_) {
+      if (ep->Type() != kDmlExecutionProvider && ep->GetDevice().Type() != OrtDevice::CPU) {
+        return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "DML EP can only be used with CPU EPs.");
+      }
     }
   }
   return Status::OK();
@@ -2016,7 +2041,7 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogSessionCreationStart();
+    env.GetTelemetryProvider().LogSessionCreationStart(session_id_);
 
     bool have_cpu_ep = false;
 
@@ -2955,7 +2980,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       }
 
       // log evaluation start to trace logging provider
-      env.GetTelemetryProvider().LogEvaluationStart();
+      env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
@@ -3108,7 +3133,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // log evaluation stop to trace logging provider
-  env.GetTelemetryProvider().LogEvaluationStop();
+  env.GetTelemetryProvider().LogEvaluationStop(session_id_);
 
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
@@ -3358,17 +3383,58 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
 
   for (const auto* def : def_list) {
     InlinedVector<SessionState::NodeInfo> node_info_vec;
+    Status status;
     if (type == SessionInputOutputType::kOutput) {
-      ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(def->Name(), node_info_vec));
+      status = session_state_->GetOutputNodeInfo(def->Name(), node_info_vec);
     } else {
-      ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
     }
 
-    // all entries are for the same OrtDevice so use the first one.
-    // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
-    // from the session state and use its OrtMemoryInfo.
-    auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
-    memory_info.push_back(&allocator->Info());
+    if (!status.IsOK()) {
+      if (type == SessionInputOutputType::kInput) {
+        return status;
+      }
+
+      // Check first if this output is produced by an input that directly
+      // propagates to output with the same name.
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
+      if (status.IsOK()) {
+        // all entries are for the same OrtDevice so use the first one.
+        // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+        // from the session state and use its OrtMemoryInfo.
+        auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+        memory_info.push_back(&allocator->Info());
+      } else {
+        // Check if this output is produced by a constant initializer
+        // Pick the MemoryInfo from the initializer's OrtValue
+        const auto& ort_value_map = session_state_->GetOrtValueNameIdxMap();
+
+        OrtValueIndex ort_value_index;
+        status = ort_value_map.GetIdx(def->Name(), ort_value_index);
+        if (!status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+
+        const auto& idx_to_ort_value = session_state_->GetInitializedTensors();
+        auto it = idx_to_ort_value.find(ort_value_index);
+        if (it == idx_to_ort_value.end()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+        const auto& tensor = it->second.Get<Tensor>();
+        auto allocator = session_state_->GetAllocator(tensor.Location());
+        memory_info.push_back(&allocator->Info());
+      }
+    } else {
+      // all entries are for the same OrtDevice so use the first one.
+      // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+      // from the session state and use its OrtMemoryInfo.
+      auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+      memory_info.push_back(&allocator->Info());
+    }
   }
 
   return Status::OK();
@@ -3397,15 +3463,19 @@ common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpD
   for (const auto* def : def_list) {
     InlinedVector<SessionState::NodeInfo> node_info_vec;
     ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
-
-    // if we have a lot of inputs or there are a lot of execution providers it may be worth creating a map
-    // instead of doing a linear search each time.
-    const auto& ep_name = node_info_vec.front().p_node->GetExecutionProviderType();
-    auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
-      return entry->ep_name == ep_name;
-    });
-
-    ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    assert(!node_info_vec.empty());
+    // If we have an input that is not consumed by any node,
+    // including nodes in subgraphs, then we return nullptr.
+    const auto* p_node = node_info_vec.front().p_node;
+    if (p_node != nullptr) {
+      const auto ep_name = p_node->GetExecutionProviderType();
+      auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
+        return entry->ep_name == ep_name;
+      });
+      ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    } else {
+      ep_devices.push_back(nullptr);
+    }
   }
 
   return Status::OK();

@@ -1,4 +1,5 @@
 
+#if USE_FPA_INTB_GEMM
 #ifndef EXCLUDE_SM_90
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.inl"
 
@@ -515,3 +516,4 @@ __nv_bfloat16*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::
 }  // namespace kernels
 }  // namespace onnxruntime::llm
 #endif  // EXCLUDE_SM_90
+#endif  // USE_FPA_INTB_GEMM

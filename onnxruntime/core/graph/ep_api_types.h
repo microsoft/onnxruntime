@@ -209,8 +209,9 @@ struct EpNode : public OrtNode {
   // Helper that returns this node's outputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetOutputsSpan() const;
 
-  // Helper that gets the node's attributes by name.
-  const OrtOpAttr* GetAttribute(const std::string& name) const;
+  // Helper that gets the node's attributes by name. If the attribute is not set, returns NULL and sets the
+  // output parameter `is_unset_optional_attr` to true if this is an unset optional attribute.
+  const OrtOpAttr* GetAttribute(const std::string& name, bool& is_unset_optional_attr) const;
 
   // Helper that gets the execution provider name that this node is assigned to run on.
   const std::string& GetEpName() const;
@@ -293,6 +294,9 @@ struct EpGraph : public OrtGraph {
 
   // Returns the graph's name.
   const std::string& GetName() const override;
+
+  // Returns the graph's metadata
+  std::unique_ptr<ModelMetadata> GetModelMetadata() const override;
 
   // Returns the model path.
   const ORTCHAR_T* GetModelPath() const override;

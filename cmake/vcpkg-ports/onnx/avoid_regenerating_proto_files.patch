@@ -1,0 +1,46 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 479955793..cc3ef1400 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -321,7 +321,7 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS)
+   set(${SRCS})
+
+   set(GEN_PROTO_PY "${ONNX_ROOT}/onnx/gen_proto.py")
+-  set(GENERATED_FILE_TARGETS)
++  set(GENERATED_FILES)
+   foreach(INFILE ${ARGN})
+     set(ABS_FILE "${ONNX_ROOT}/${INFILE}")
+     get_filename_component(FILE_DIR ${ABS_FILE} DIRECTORY)
+@@ -371,12 +371,11 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS)
+         list(APPEND GEN_PROTO_ARGS "${ONNX_PROTOC_EXECUTABLE}")
+     endif()
+
+-    add_custom_target("${GENERATED_FILE_WE}_proto_file"
+-                       COMMAND ${ONNX_PYTHON_INTERPRETER} "${GEN_PROTO_PY}" ${GEN_PROTO_ARGS}
+-                       BYPRODUCTS "${GENERATED_PROTO}"
+-                       DEPENDS ${INFILE}
+-                       COMMENT "Running gen_proto.py on ${INFILE}"
+-                       )
++    # Use add_custom_command to avoid re-generate of PROTO files
++    add_custom_command(OUTPUT "${GENERATED_PROTO}"
++        COMMAND ${ONNX_PYTHON_INTERPRETER} "${GEN_PROTO_PY}" ${GEN_PROTO_ARGS}
++        DEPENDS ${INFILE}
++        COMMENT "Running gen_proto.py on ${INFILE}")
+     message("Generated: ${GENERATED_PROTO}")
+
+     set(PROTOC_ARGS
+@@ -393,11 +392,10 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS)
+         list(APPEND PROTOC_ARGS ${CMAKE_CURRENT_BINARY_DIR})
+       endif()
+     endif()
+-    list(APPEND GENERATED_FILE_TARGETS ${GENERATED_FILE_WE}_proto_file)
+-    add_custom_target(${GENERATED_FILE_WE}_src
++    list(APPEND GENERATED_FILES "${GENERATED_PROTO}")
++    add_custom_command(OUTPUT "${OUTPUT_PB_SRC}"
+         COMMAND "${ONNX_PROTOC_EXECUTABLE}" ${PROTOC_ARGS}
+-        BYPRODUCTS "${OUTPUT_PB_SRC}"
+-        DEPENDS ${GENERATED_FILE_TARGETS}
++        DEPENDS ${GENERATED_FILES}
+         COMMENT "Running C++ protocol buffer compiler on ${GENERATED_PROTO}")
+   endforeach()
+

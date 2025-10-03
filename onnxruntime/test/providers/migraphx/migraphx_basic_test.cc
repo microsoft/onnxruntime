@@ -3,7 +3,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -188,6 +188,24 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
 }
 
+static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+  // Access the underlying InferenceSession.
+  const OrtSession* ort_session = session;
+  const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+  bool has_ep = false;
+
+  for (const auto& provider : s->GetRegisteredProviderTypes()) {
+    if (provider == ep_name) {
+      has_ep = true;
+      break;
+    }
+  }
+  return has_ep;
+}
+
+#if defined(WIN32)
+// Tests autoEP feature to automatically select an EP that supports the GPU.
+// Currently only works on Windows.
 TEST(MIGraphXExecutionProviderTest, AutoEp_PreferGpu) {
   PathString model_name = ORT_TSTR("migraphx_basic_test.onnx");
 
@@ -212,6 +230,7 @@ TEST(MIGraphXExecutionProviderTest, AutoEp_PreferGpu) {
 
   env.UnregisterExecutionProviderLibrary(kMIGraphXExecutionProvider);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

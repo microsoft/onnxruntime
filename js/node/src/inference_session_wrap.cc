@@ -15,7 +15,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
   Ort::InitApi();
   ORT_NAPI_THROW_ERROR_IF(
-      Ort::Global<void>::api_ == nullptr, env,
+      &Ort::GetApi() == nullptr, env,
       "Failed to initialize ONNX Runtime API. It could happen when this nodejs binding was built with a higher version "
       "ONNX Runtime but now runs with a lower version ONNX Runtime DLL(or shared library).");
 

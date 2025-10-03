@@ -2,12 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "migraphx_call.h"
-#include "migraphx_allocator.h"
+#include "core/providers/migraphx/migraphx_call.h"
+#include "core/providers/migraphx/migraphx_allocator.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
-#include "core/common/status.h"
-#include "gpu_data_transfer.h"
+#include "core/providers/migraphx/gpu_data_transfer.h"
 
 namespace onnxruntime {
 
@@ -18,7 +17,7 @@ void MIGraphXAllocator::CheckDevice() const {
   int current_device;
   auto hip_err = hipGetDevice(&current_device);
   if (hip_err == hipSuccess) {
-    ORT_ENFORCE(current_device == Info().id);
+    ORT_ENFORCE(current_device == Info().device.Id());
   }
 #endif
 }
@@ -55,7 +54,9 @@ void MIGraphXExternalAllocator::Free(void* p) {
   auto it = reserved_.find(p);
   if (it != reserved_.end()) {
     reserved_.erase(it);
-    if (empty_cache_) empty_cache_();
+    if (empty_cache_ != nullptr) {
+      empty_cache_();
+    }
   }
 }
 

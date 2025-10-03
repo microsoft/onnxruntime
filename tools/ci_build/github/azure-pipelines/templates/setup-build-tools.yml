@@ -1,0 +1,65 @@
+# Setup python/nodejs/cmake/vcpkg tools. Also, setup telemetry header file if the current OS is Windows.
+
+parameters:
+# for selecting python binary
+- name: host_cpu_arch
+  type: string
+
+- name: python_version
+  type: string
+  default: '3.12'
+  
+- name: action_version
+  type: string
+  default: 'v0.0.9'
+
+steps:
+- template: telemetry-steps.yml
+
+# Currently all ADO macOS machines are x64 machines
+- task: UsePythonVersion@0
+  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (macOS)'
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Darwin'))
+  inputs:
+    versionSpec: ${{ parameters.python_version }}    
+    architecture: 'x64'
+    
+- task: UsePythonVersion@0
+  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (non-macOS)'
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Darwin'))
+  inputs:
+    versionSpec: ${{ parameters.python_version }}    
+    architecture: ${{ parameters.host_cpu_arch }}
+
+- task: PipAuthenticate@1
+  displayName: 'Pip Authenticate'
+  inputs:
+    artifactFeeds: 'Lotus'
+
+# The following task does not support different arches.
+- task: UseNode@1
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Windows_NT'))
+  inputs:
+    version: '22.x'
+
+- task: PowerShell@2
+  displayName: 'Setup Latest Node.js v20 (Win)'
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+  inputs:
+    filePath: '$(System.DefaultWorkingDirectory)\tools\ci_build\github\windows\setup_nodejs.ps1' 
+    arguments: '-MajorVersion 22'
+
+- script: |
+    node -v
+    npm -v
+
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Verify Node.js Version'
+
+- script: python3 -m pip install requests
+
+- task: PythonScript@0
+  displayName: 'Run GitHub Action via Python Wrapper'
+  inputs:
+    scriptPath: 'tools/ci_build/run_gh_action.py'
+    arguments: '${{ parameters.action_version }}'

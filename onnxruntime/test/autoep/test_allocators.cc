@@ -60,66 +60,58 @@ struct DummyAllocator : OrtAllocator {
 
 // validate CreateSharedAllocator allows adding an arena to the shared allocator
 TEST(SharedAllocators, AddArenaToSharedAllocator) {
-  const OrtApi& c_api = Ort::GetApi();
   RegisteredEpDeviceUniquePtr example_ep;
   Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
 
-  const auto* ep_memory_info = c_api.EpDevice_MemoryInfo(example_ep.get(), OrtDeviceMemoryType_DEFAULT);
+  Ort::ConstEpDevice example_ep_device{example_ep.get()};
+
+  auto ep_memory_info = example_ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
 
   // validate there is a shared allocator
-  OrtAllocator* allocator = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, ep_memory_info, &allocator));
+  auto allocator = ort_env->GetSharedAllocator(ep_memory_info);
   ASSERT_NE(allocator, nullptr);
 
   // call CreateSharedAllocator to replace with arena based allocator. arena is configured with kvps
-  OrtKeyValuePairs allocator_options;
+  Ort::KeyValuePairs allocator_options;
   auto initial_chunk_size = "25600";  // arena allocates in 256 byte amounts
   allocator_options.Add(OrtArenaCfg::ConfigKeyNames::InitialChunkSizeBytes, initial_chunk_size);
 
-  ASSERT_ORTSTATUS_OK(c_api.CreateSharedAllocator(*ort_env, example_ep.get(), OrtDeviceMemoryType_DEFAULT,
-                                                  // allocator is internally added by EP.
-                                                  // OrtArenaAllocator can only be used for the internal BFCArena
-                                                  OrtDeviceAllocator,
-                                                  &allocator_options, &allocator));
+  allocator = ort_env->CreateSharedAllocator(example_ep.get(), OrtDeviceMemoryType_DEFAULT,
+                                             // allocator is internally added by EP.
+                                             // OrtArenaAllocator can only be used for the internal BFCArena
+                                             OrtDeviceAllocator,
+                                             allocator_options);
 
   // first allocation should init the arena to the initial chunk size
-  void* mem = allocator->Alloc(allocator, 16);
-  allocator->Free(allocator, mem);
+  void* mem = allocator.Alloc(16);
+  allocator.Free(mem);
 
   // stats should prove the arena was used
-  OrtKeyValuePairs* allocator_stats = nullptr;
-  ASSERT_ORTSTATUS_OK(allocator->GetStats(allocator, &allocator_stats));
+  auto allocator_stats = allocator.GetStats();
 
   using ::testing::Contains;
   using ::testing::Pair;
-  const auto& stats = allocator_stats->Entries();
+  const auto& stats = static_cast<OrtKeyValuePairs*>(allocator_stats)->Entries();
   EXPECT_THAT(stats, Contains(Pair("NumAllocs", "1")));
   EXPECT_THAT(stats, Contains(Pair("NumArenaExtensions", "1")));
   EXPECT_THAT(stats, Contains(Pair("TotalAllocated", initial_chunk_size)));
 
   // optional. ORT owns the allocator but we want to test the release implementation
-  ASSERT_ORTSTATUS_OK(c_api.ReleaseSharedAllocator(*ort_env, example_ep.get(), OrtDeviceMemoryType_DEFAULT));
+  ort_env->ReleaseSharedAllocator(example_ep.get(), OrtDeviceMemoryType_DEFAULT);
 }
 
 TEST(SharedAllocators, GetSharedAllocator) {
-  const OrtApi& c_api = Ort::GetApi();
-
   // default CPU allocator should be available.
   // create a memory info with a different name to validate the shared allocator lookup ignores the name
-  OrtMemoryInfo* test_cpu_memory_info = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api.CreateMemoryInfo_V2("dummy", OrtMemoryInfoDeviceType_CPU, 0, 0,
-                                                OrtDeviceMemoryType_DEFAULT, 0, OrtDeviceAllocator,
-                                                &test_cpu_memory_info));
+  auto test_cpu_memory_info = Ort::MemoryInfo("dummy", OrtMemoryInfoDeviceType_CPU, 0, 0,
+                                              OrtDeviceMemoryType_DEFAULT, 0, OrtDeviceAllocator);
 
   const auto get_allocator_and_check_name = [&](const std::string& expected_name) {
-    OrtAllocator* allocator = nullptr;
-    ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, test_cpu_memory_info, &allocator));
+    auto allocator = ort_env->GetSharedAllocator(test_cpu_memory_info);
     ASSERT_NE(allocator, nullptr);
 
-    const OrtMemoryInfo* ort_cpu_memory_info = nullptr;
-    ASSERT_ORTSTATUS_OK(c_api.AllocatorGetInfo(allocator, &ort_cpu_memory_info));
-    const char* allocator_name;
-    ASSERT_ORTSTATUS_OK(c_api.MemoryInfoGetName(ort_cpu_memory_info, &allocator_name));
+    auto ort_cpu_memory_info = allocator.GetInfo();
+    auto allocator_name = ort_cpu_memory_info.GetAllocatorName();
     ASSERT_EQ(expected_name, allocator_name);  // Default ORT CPU allocator
   };
 
@@ -128,18 +120,16 @@ TEST(SharedAllocators, GetSharedAllocator) {
 
   // register custom allocator and make sure that is accessible by exact match
   DummyAllocator dummy_alloc{test_cpu_memory_info};
-  c_api.RegisterAllocator(*ort_env, &dummy_alloc);
+  ort_env->RegisterAllocator(&dummy_alloc);
 
   // GetSharedAllocator should now match the custom allocator
   get_allocator_and_check_name("dummy");
 
   // unregister custom allocator
-  ASSERT_ORTSTATUS_OK(c_api.UnregisterAllocator(*ort_env, test_cpu_memory_info));
+  ort_env->UnregisterAllocator(test_cpu_memory_info);
 
   // there should always be a CPU allocator available
   get_allocator_and_check_name(onnxruntime::CPU);
-
-  c_api.ReleaseMemoryInfo(test_cpu_memory_info);
 }
 
 }  // namespace test

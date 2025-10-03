@@ -20,6 +20,22 @@ TEST(SqueezeOpTest, Squeeze_1) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // Incorrect precision. Will be re-enabled after it's fixed
 }
 
+TEST(SqueezeOpTest, Squeeze_21) {
+  OpTester test("Squeeze", 21);
+  test.AddInput<float>("data", {1, 3, 4, 5}, std::vector<float>(60, 1.0f));
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0});
+  test.AddOutput<float>("squeezed", {3, 4, 5}, std::vector<float>(60, 1.0f));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // Incorrect precision. Will be re-enabled after it's fixed
+}
+
+TEST(SqueezeOpTest, Squeeze_23) {
+  OpTester test("Squeeze", 23);
+  test.AddInput<float>("data", {1, 3, 4, 5}, std::vector<float>(60, 1.0f));
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0});
+  test.AddOutput<float>("squeezed", {3, 4, 5}, std::vector<float>(60, 1.0f));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // Incorrect precision. Will be re-enabled after it's fixed
+}
+
 TEST(SqueezeOpTest, Squeeze_Empty_Axes_1) {
   OpTester test("Squeeze");
   test.AddInput<float>("data", {1, 1, 4, 1}, std::vector<float>(4, 1.0f));

@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - name: PackageName
   displayName: 'Package name'
@@ -76,9 +76,11 @@ jobs:
       git checkout -- .gitattributes
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Testing: force EOL to lf on windows for /js/**'
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '22.x'
+  
+  - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: 'x64'
+
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: '${{ parameters.BuildConfig }}_wasm/**/*'

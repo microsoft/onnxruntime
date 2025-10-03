@@ -386,20 +386,9 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
  * Get compute capability
  *
  */
-std::string GetComputeCapacity(const cudaDeviceProp& prop) {
+std::string GetComputeCapability(const cudaDeviceProp& prop) {
   const std::string compute_capability = std::to_string(prop.major * 10 + prop.minor);
   return compute_capability;
-}
-
-/*
- * Get Timing by compute capability
- *
- */
-std::string GetTimingCachePath(const std::string& root, std::string& compute_cap) {
-  // append compute capability of the GPU as this invalidates the cache and TRT will throw when loading the cache
-  const std::string timing_cache_name = "NvExecutionProvider_cache_sm" +
-                                        compute_cap + ".timing";
-  return GetCachePath(root, timing_cache_name);
 }
 
 /*
@@ -682,5 +671,30 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
     return join(suffix_group, "_");
   }
   return "";
+}
+
+/*
+ * Checks if there is a an element with value `-1` in nvinfer1::Dims
+ */
+static bool checkTrtDimIsDynamic(nvinfer1::Dims dims) {
+  for (int j = 0, end = dims.nbDims; j < end; ++j) {
+    if (dims.d[j] == -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/*
+ * Checks if an nvinfer1::ITensor signales a dynamic shape,
+ * either due to dynamic shapes or due to it being a shape tensor
+ */
+static bool checkTrtTensorIsDynamic(nvinfer1::ITensor* tensor) {
+  if (tensor->isShapeTensor()) {
+    return true;
+  } else {
+    // Execution tensor
+    return checkTrtDimIsDynamic(tensor->getDimensions());
+  }
 }
 }  // namespace onnxruntime
