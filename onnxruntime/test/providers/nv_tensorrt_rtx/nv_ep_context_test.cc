@@ -113,6 +113,42 @@ void SmallModelTest(CompileParam test_param, bool fully_supported_model) {
   session_object.Run(run_options, io_binding);
 }
 
+TEST(CompileApiTest, ModelWithOptionalNodeOutput) {
+  PathString model_name = path_utils::MakePathString("nv_execution_provider_compile_simple_model_with_optional_node_output.onnx");
+  PathString model_name_ctx = path_utils::MakePathString("nv_execution_provider_compile_simple_model_with_optional_node_output_ctx.onnx");
+  CreateSimpleModelWithOptionalNodeOutput(model_name);
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> option_map{
+      {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer, std::to_string(false)}};
+  auto ep = AppendTrtEtxEP(session_options, option_map);
+  Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
+
+  model_compile_options.SetInputModelPath(model_name.c_str());
+  model_compile_options.SetOutputModelPath(model_name_ctx.c_str());
+
+  ASSERT_TRUE(Ort::CompileModel(*ort_env, model_compile_options).IsOK());
+
+  // Load the model from file
+  onnx::ModelProto model;
+  std::ifstream ifs(model_name_ctx, std::ios::binary);
+  if (!ifs) {
+    std::cerr << "Failed to open " << model_name_ctx.c_str() << "\n";
+    ASSERT_TRUE(false);
+  }
+
+  if (!model.ParseFromIstream(&ifs)) {
+    std::cerr << "Failed to parse ONNX model\n";
+    ASSERT_TRUE(false);
+  }
+
+  const onnx::GraphProto& graph = model.graph();
+  ASSERT_TRUE(graph.node_size() == 1);
+
+  const onnx::NodeProto& node = graph.node(0);
+  ASSERT_TRUE(node.output_size() == 1);
+}
+
 TEST_P(CompileApiTest, SmallModel) {
   const auto& test_param = GetCompileParam();
   SmallModelTest(test_param, true);
