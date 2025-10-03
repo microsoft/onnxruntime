@@ -78,7 +78,7 @@ class ConstantOfShapeBase {
     auto* t_proto_p = t_proto.get();
 #endif
     if (info.GetAttr<ONNX_NAMESPACE::TensorProto>("value", t_proto_p).IsOK()) {
-      // value can be any dimentional. It only needs to be a single-element tensor.
+      // value can be any dimensional. It only needs to be a single-element tensor.
       SetValueFromTensorProto(*t_proto_p);
     } else {
       float f_value = 0.f;
