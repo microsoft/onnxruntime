@@ -1368,6 +1368,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     min_subgraph_size_ = info.min_subgraph_size;
     max_workspace_size_ = info.max_workspace_size;
     fp16_enable_ = info.fp16_enable;
+    // TF32 per-session toggle (default true)
+    use_tf32_ = info.use_tf32;
     bf16_enable_ = info.bf16_enable;
     // BF16 support is primarily available on NVIDIA GPUs with the Ampere and later architectures with compute capability of 8.0 or higher.
     if (bf16_enable_ && prop.major < 8) {
@@ -3363,6 +3365,21 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #endif
   // Set precision flags
   std::string trt_node_name_with_precision = fused_node.Name();
+  // apply TF32 builder flag if supported by TensorRT
+#if defined(NV_TENSORRT_MAJOR) && (NV_TENSORRT_MAJOR >= 8)
+  if (use_tf32_) {
+    trt_config->setFlag(nvinfer1::BuilderFlag::kTF32);
+    trt_node_name_with_precision += "_tf32";
+  } else {
+    // clear if available in this TensorRT version
+    trt_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
+    trt_node_name_with_precision += "_notf32";
+  }
+#else
+  if (!use_tf32_) {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] use_tf32 unsupported on this TensorRT version; ignoring.";
+  }
+#endif
   if (fp16_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     trt_node_name_with_precision += "_fp16";
@@ -4006,6 +4023,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
       }
+      // apply TF32 builder flag for this build path as well
+#if defined(NV_TENSORRT_MAJOR) && (NV_TENSORRT_MAJOR >= 8)
+      if (use_tf32_) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kTF32);
+      } else {
+        trt_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
+      }
+#endif
       if (trt_state->fp16_enable) {
         trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
