@@ -120,7 +120,7 @@ void ComputeJob(
   float mean_square = 0.0f;
 
   for (int64_t i = 0; i < norm_size; ++i) {
-    float val = gsl::narrow_cast<float>(input_vec[ToEigenIndex(i)]);
+    float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
     mean += val;
     mean_square += val * val;
   }
@@ -136,7 +136,7 @@ void ComputeJob(
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (int64_t h = 0; h < norm_size; ++h, ++i) {
-    float x = gsl::narrow_cast<float>(input_vec[ToEigenIndex(h)]);
+    float x = static_cast<float>(input_vec[ToEigenIndex(h)]);
 
     float y = 0.0f;
     if (simplified) {
