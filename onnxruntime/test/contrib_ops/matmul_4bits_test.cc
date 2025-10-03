@@ -25,6 +25,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -545,7 +546,11 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
 #ifdef USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
-
+#ifdef USE_WEBGPU
+    ConfigOptions config_options{};
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kSmallStorageBufferBindingSizeForTesting, "1").IsOK());
+    execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
+#endif
     RunTest<float>(opts, std::move(execution_providers));
   }
 }
@@ -598,6 +603,23 @@ TEST(MatMulNBits, Float16_Large) {
     }
   }
 }
+
+#ifdef USE_WEBGPU
+// Similar to Float16_Large but for float32 and crafted so that the input_b and output buffer size exceeds
+// maxStorageBufferBindingSize (128MB) so it must be split into 2 segments internally (~128.00006MB).
+//
+// input_b size(4-bits): N * K / 2 = 8388612 * 32 / 2 = 134217792 bytes > 134217728 bytes (128MB)
+// output size(float32): M * N * 4 = 4 * 8388612 * 4 = 134217792 bytes > 134217728 bytes (128MB)
+TEST(MatMulNBits, Float32_Large) {
+  // Keep tolerance similar to Float16_Large (float path typically equal or better numerically).
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+  constexpr auto block_size = 16;
+
+  RunTest<float>(4 /*M*/, 8388612 /*N*/, 32 /*K*/, block_size, has_zeropoint, zp_is_4bit, abs_error);
+}
+#endif
 
 #ifdef USE_CUDA
 TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
