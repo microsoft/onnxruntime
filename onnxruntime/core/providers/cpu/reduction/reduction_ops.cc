@@ -1156,6 +1156,12 @@ template class ReduceSum<float>;
 template class ReduceSum<int32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
+template class ReduceSum<uint64_t>;
+template class ReduceSum<uint32_t>;
+template class ReduceSum<int8_t>;
+template class ReduceSum<uint8_t>;
+template class ReduceSum<int16_t>;
+template class ReduceSum<uint16_t>;
 
 template void CommonReduce1Loop<ReduceAggregatorSum<float>>(OpKernelContext* ctx,
                                                             const gsl::span<const int64_t>& axes_, int64_t keepdims_,
