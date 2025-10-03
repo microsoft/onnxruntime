@@ -126,7 +126,7 @@ def update_npm_packages(js_root: Path, new_version: str):
     if shutil.which("node") and shutil.which("npm"):
         print("Found node and npm in PATH.")
     # If not, and if on Linux, check if 'fnm' is available.
-    elif sys.platform.startswith("linux") and shutil.which("fnm"):
+    elif shutil.which("fnm"):
         print("node/npm not in PATH. Found 'fnm' on Linux, will use it to run commands.")
         nvmrc_path = js_root / ".nvmrc"
         # Check for .nvmrc file.
@@ -157,27 +157,24 @@ def update_npm_packages(js_root: Path, new_version: str):
     def run_npm(args, cwd):
         """Helper to run npm commands, prepending fnm if necessary."""
         full_command = command_prefix + list(args)
-
-        if is_windows():
-            run_command("cmd", "/c", *full_command, cwd=cwd)
-        else:
-            run_command(*full_command, cwd=cwd)
-
+        print(full_command)
+        run_command(*full_command, cwd=cwd)
+    npm_exe = "npm.cmd" if is_windows() else "npm"
     packages = ["common", "node", "web", "react_native"]
 
     for package in packages:
         print(f"\n--- Updating package: {package} ---")
         # Use npm's --prefix argument and run from js_root.
         # --allow-same-version prevents an error if the version is already correct.
-        run_npm(["npm", "--prefix", package, "version", new_version, "--allow-same-version"], cwd=js_root)
-        run_npm(["npm", "--prefix", package, "install", "--package-lock-only", "--ignore-scripts"], cwd=js_root)
+        run_npm([npm_exe, "--prefix", package, "version", new_version, "--allow-same-version"], cwd=js_root)
+        run_npm([npm_exe, "--prefix", package, "install", "--package-lock-only", "--ignore-scripts"], cwd=js_root)
 
     print("\n--- Finalizing JS versions and formatting ---")
-    run_npm(["npm", "ci"], cwd=js_root)
+    run_npm([npm_exe, "ci"], cwd=js_root)
     for package in packages:
-        run_npm(["npm", "run", "update-version", package], cwd=js_root)
+        run_npm([npm_exe, "run", "update-version", package], cwd=js_root)
 
-    run_npm(["npm", "run", "format"], cwd=js_root)
+    run_npm([npm_exe, "run", "format"], cwd=js_root)
     print("NPM package updates complete.")
 
 
