@@ -9,5 +9,6 @@ sympy==1.14
 flatbuffers
 psutil
 onnxscript==0.3.2
+onnx-ir
 jinja2
 markupsafe

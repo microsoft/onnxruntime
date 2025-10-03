@@ -888,12 +888,10 @@ def generate_build_tree(
     #     *  Linux on Arm
     #     *  MacOs (case must be ignored)
     if not args.no_kleidiai:
-        if (
-            (args.android and "arm64" in args.android_abi.lower())
-            or (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64")
-            or ("arm64" in platform.machine().lower() and not args.build_wasm)
-        ):
-            cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
+        cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
+
+    if args.enable_arm_neon_nchwc:
+        cmake_args += ["-Donnxruntime_USE_ARM_NEON_NCHWC=ON"]
 
     if not args.no_sve:
         cmake_args += ["-Donnxruntime_USE_SVE=ON"]
@@ -1182,7 +1180,8 @@ def generate_build_tree(
                 if config == "Release":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
@@ -1193,7 +1192,8 @@ def generate_build_tree(
                 elif config == "RelWithDebInfo":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
@@ -1208,7 +1208,8 @@ def generate_build_tree(
                 elif config == "MinSizeRel":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-Os",

@@ -1477,19 +1477,19 @@ template <typename F4>
 void CastOpTestFloatFloat4(std::vector<int64_t> shape,
                            std::vector<float> float_data,
                            bool is_fp4_input = false) {
-  int num_pairs = static_cast<int>(float_data.size()) / 2;
+  size_t num_pairs = float_data.size() / 2;
   int num_fp4_elements = static_cast<int>((float_data.size() + 1) / 2);
   bool is_odd_count = (float_data.size() % 2 != 0);
 
   std::vector<F4> fp4_data;
   fp4_data.reserve(num_fp4_elements);
 
-  for (size_t i = 0; i < num_pairs; ++i) {
+  for (int i = 0; i < num_pairs; ++i) {
     fp4_data.emplace_back(F4(float_data[i * 2], float_data[i * 2 + 1]));
   }
 
   if (is_odd_count) {
-    fp4_data.emplace_back(F4(float_data[num_pairs * 2], 0));  // Padding zero
+    fp4_data.emplace_back(F4(float_data.back(), 0));  // Padding zero
   }
 
   if (!is_fp4_input) {
@@ -1498,7 +1498,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
 
   } else {
     std::vector<float> casted_back_float;
-    for (size_t i = 0; i < num_pairs; ++i) {
+    for (int i = 0; i < num_pairs; ++i) {
       auto pair = fp4_data[i].ToFloat2();
       casted_back_float.push_back(pair.first);
       casted_back_float.push_back(pair.second);

@@ -201,6 +201,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateRandomUniformLikeOpBuilder("RandomUniformLike", *this);
+  }
+
+  {
     CreateGatherNDOpBuilder("GatherND", *this);
   }
 

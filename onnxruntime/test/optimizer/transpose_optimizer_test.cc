@@ -352,7 +352,7 @@ TEST(TransposeOptimizerTests, TestResize) {
                     // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
                     // assigned to the CPU EP first
                     TransformerLevel::Level2,
-                    /*opset_version*/ {10, 18});
+                    /*opset_version*/ {10, 18, 21, 23});
 }
 
 TEST(TransposeOptimizerTests, TestResizeOpset11) {
@@ -592,7 +592,7 @@ TEST(TransposeOptimizerTests, TestShape) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 18});
+                    /*opset_version*/ {7, 18, 21, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShapeOpset15) {
