@@ -687,7 +687,7 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   return true;
 }
 
-std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const {
+std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph, bool is_graph_split) const {
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.size());
   for (const auto& index : graph_nodes_index) {
@@ -1144,9 +1144,9 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   bool is_graph_not_split = unsupported_nodes.empty();
 
   // If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
-  if (unsupported_nodes.empty()) {
+  if (is_graph_not_split) {
     auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
-    auto sub_graph = GetSubGraph(node_indices, graph_viewer);
+    auto sub_graph = GetSubGraph(node_indices, graph_viewer, !is_graph_not_split);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
   } else {
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
@@ -1155,7 +1155,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     SubgraphPostProcessing(graph_viewer, mgx_clusters, *GetLogger());
 
     for (const auto& this_cluster : mgx_clusters) {
-      auto sub_graph = GetSubGraph(this_cluster, graph_viewer);
+      auto sub_graph = GetSubGraph(this_cluster, graph_viewer, !is_graph_not_split);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
   }
