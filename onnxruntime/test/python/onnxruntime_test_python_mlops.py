@@ -80,7 +80,7 @@ class TestInferenceSession(unittest.TestCase):
         x = {0: 25.0, 1: 5.13, 2: 0.0, 3: 0.453, 4: 5.966}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         xwrong = x.copy()
         xwrong["a"] = 5.6
@@ -96,17 +96,17 @@ class TestInferenceSession(unittest.TestCase):
         x = {np.int64(k): np.float32(v) for k, v in x.items()}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         x = {np.int64(k): np.float64(v) for k, v in x.items()}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         x = {np.int32(k): np.float64(v) for k, v in x.items()}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_label_encoder(self):
         sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"), providers=onnxrt.get_available_providers())
@@ -127,18 +127,18 @@ class TestInferenceSession(unittest.TestCase):
         x = np.array([["4"]])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[3]], dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         # Python type
         x = np.array(["4"], ndmin=2)
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([3], ndmin=2, dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         x = np.array(["4"], ndmin=2, dtype=object)
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([3], ndmin=2, dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model_mlnet(self):
         available_providers = onnxrt.get_available_providers()

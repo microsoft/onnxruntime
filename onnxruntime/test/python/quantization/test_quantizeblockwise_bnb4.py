@@ -131,8 +131,8 @@ class TestQuantizeBlockwiseBnb4(unittest.TestCase):
                         matrix_float = np.random.uniform(-1, 1, (k, n)).astype(type)
                         quant_value_ref, absmax_ref = quantize_blockwise_bnb4_ref(matrix_float, block_size, quant_type)
                         quant_value, absmax = quantize_blockwise_bnb4_target(matrix_float, block_size, quant_type)
-                        np.testing.assert_allclose(quant_value_ref, quant_value)
-                        np.testing.assert_allclose(absmax_ref, absmax)
+                        np.testing.assert_allclose(quant_value, quant_value_ref)
+                        np.testing.assert_allclose(absmax, absmax_ref)
 
 
 if __name__ == "__main__":
