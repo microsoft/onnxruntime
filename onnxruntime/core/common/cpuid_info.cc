@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/cpuid_info.h"
+
+#include <iostream>
+#include <optional>
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/platform/check_intel.h"
@@ -23,6 +27,10 @@
 // this capability bit.
 #ifndef HWCAP_ASIMDDP
 #define HWCAP_ASIMDDP (1 << 20)
+#endif
+
+#ifndef HWCAP_SVE
+#define HWCAP_SVE (1 << 22)
 #endif
 
 #ifndef HWCAP2_I8MM
@@ -51,6 +59,14 @@
 
 #endif  // _WIN32
 
+#if defined(__APPLE__)
+#if defined(CPUIDINFO_ARCH_ARM)
+
+#include <sys/sysctl.h>
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
+#endif  // defined(__APPLE__)
+
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
 #if defined(CPUIDINFO_ARCH_ARM)
@@ -73,6 +89,14 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 #endif  // defined(CPUIDINFO_ARCH_X86)
 
 namespace onnxruntime {
+
+void CPUIDInfo::LogEarlyWarning(std::string_view message) {
+  if (logging::LoggingManager::HasDefaultLogger()) {
+    LOGS_DEFAULT(WARNING) << message;
+  } else {
+    std::cerr << "onnxruntime cpuid_info warning: " << message << "\n";
+  }
+}
 
 #if defined(CPUIDINFO_ARCH_X86)
 
@@ -107,9 +131,6 @@ static inline int XGETBV() {
 void CPUIDInfo::X86Init() {
   int data[4] = {-1};
   GetCPUID(0, data);
-
-  vendor_ = GetX86Vendor(data);
-  vendor_id_ = GetVendorId(vendor_);
 
   int num_IDs = data[0];
   if (num_IDs >= 1) {
@@ -158,23 +179,7 @@ void CPUIDInfo::X86Init() {
   }
 }
 
-std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
-  char vendor[sizeof(int32_t) * 3 + 1]{};
-  *reinterpret_cast<int*>(vendor + 0) = data[1];
-  *reinterpret_cast<int*>(vendor + 4) = data[3];
-  *reinterpret_cast<int*>(vendor + 8) = data[2];
-  return vendor;
-}
-
 #endif  // defined(CPUIDINFO_ARCH_X86)
-
-uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
-  if (vendor == "GenuineIntel") return 0x8086;
-  if (vendor == "AuthenticAMD") return 0x1022;
-  if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
-  if (vendor.find("NV") == 0) return 0x10DE;
-  return 0;
-}
 
 #if defined(CPUIDINFO_ARCH_ARM)
 
@@ -188,9 +193,12 @@ void CPUIDInfo::ArmLinuxInit() {
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    // SVE is enabled only on Linux-based ARM CPUs for now, where it has been tested.
+    has_arm_sve_ = cpuinfo_has_arm_sve();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
     has_arm_sme_ = cpuinfo_has_arm_sme();
+    has_arm_sme2_ = cpuinfo_has_arm_sme2();
 
     const uint32_t core_cnt = cpuinfo_get_cores_count();
     core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
@@ -219,6 +227,7 @@ void CPUIDInfo::ArmLinuxInit() {
     has_fp16_ |= has_arm_neon_dot_;
 
     has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_ = ((getauxval(AT_HWCAP) & HWCAP_SVE) != 0);
     has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
@@ -228,10 +237,6 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
-  // Get the ARM vendor string from the registry
-  vendor_ = GetArmWindowsVendor();
-  vendor_id_ = GetVendorId(vendor_);
-
   // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
   // There should be one per CPU
   std::vector<uint64_t> midr_values{}, id_aa64isar1_el1_values{};
@@ -323,15 +328,6 @@ void CPUIDInfo::ArmWindowsInit() {
 #endif  // defined(CPUINFO_SUPPORTED)
 }
 
-std::string CPUIDInfo::GetArmWindowsVendor() {
-  const int MAX_VALUE_NAME = 256;
-  const CHAR vendorKey[] = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
-  CHAR vendorVal[MAX_VALUE_NAME] = "";
-  unsigned long vendorSize = sizeof(char) * MAX_VALUE_NAME;
-  ::RegGetValueA(HKEY_LOCAL_MACHINE, vendorKey, "Vendor Identifier", RRF_RT_REG_SZ | RRF_ZEROONFAILURE, nullptr, &vendorVal, &vendorSize);
-  return vendorVal;
-}
-
 #elif defined(__APPLE__)  // ^ defined(_WIN32)
 
 void CPUIDInfo::ArmAppleInit() {
@@ -344,6 +340,7 @@ void CPUIDInfo::ArmAppleInit() {
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
     has_arm_sme_ = cpuinfo_has_arm_sme();
+    has_arm_sme2_ = cpuinfo_has_arm_sme2();
 
     // Note: We leave is_armv8_narrow_ld_ unset because it only applies to a limited set of uarchs that we don't expect
     // to encounter on Apple platforms.
@@ -376,16 +373,21 @@ uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 }
 
 CPUIDInfo::CPUIDInfo() {
-#ifdef CPUIDINFO_ARCH_X86
-  X86Init();
-#elif defined(CPUIDINFO_ARCH_ARM)
 #if defined(CPUINFO_SUPPORTED)
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to initialize PyTorch cpuinfo library. May cause CPU EP performance degradation "
-                             "due to undetected CPU features.";
+    LogEarlyWarning(
+        "Failed to initialize PyTorch cpuinfo library. May cause CPU EP performance degradation due to undetected CPU "
+        "features.");
   }
 #endif  // defined(CPUINFO_SUPPORTED)
+
+  // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
+  VendorInfoInit();
+
+#ifdef CPUIDINFO_ARCH_X86
+  X86Init();
+#elif defined(CPUIDINFO_ARCH_ARM)
 #if defined(__linux__)
   ArmLinuxInit();
 #elif defined(_WIN32)

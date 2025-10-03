@@ -119,9 +119,9 @@ Status WhereDummyDq::InsertDummyDQ(Node& node, Graph& graph, bool& modified, con
   }
 
   // Start editing the graph
-  NodeArg& dummy_data_arg = graph_utils::AddInitializerWithExternalData(graph, dummy_data_proto);
-  NodeArg& dummy_scale_arg = graph_utils::AddInitializerWithExternalData(graph, dummy_scale_proto);
-  NodeArg& dummy_zp_arg = graph_utils::AddInitializerWithExternalData(graph, dummy_zp_proto);
+  NodeArg& dummy_data_arg = graph_utils::AddInitializer(graph, dummy_data_proto);
+  NodeArg& dummy_scale_arg = graph_utils::AddInitializer(graph, dummy_scale_proto);
+  NodeArg& dummy_zp_arg = graph_utils::AddInitializer(graph, dummy_zp_proto);
 
   ONNX_NAMESPACE::TypeProto dummy_dq_type_proto = utils::TypeProtoFromTensorProto(*const_node_data_proto);
   dummy_dq_type_proto.mutable_tensor_type()->set_elem_type(const_node_data_proto->data_type());

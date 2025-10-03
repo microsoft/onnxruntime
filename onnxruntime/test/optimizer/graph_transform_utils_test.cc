@@ -3,7 +3,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/graph/onnx_protobuf.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "gtest/gtest.h"

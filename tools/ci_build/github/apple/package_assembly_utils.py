@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import enum
 import json
 import os
 import pathlib
@@ -10,19 +9,6 @@ import shutil
 
 _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 repo_root = _script_dir.parents[3]
-
-
-class PackageVariant(enum.Enum):
-    Full = 0  # full ORT build with all opsets, ops, and types
-    Training = 1  # full ORT build with all opsets, ops, and types, plus training APIs
-
-    @classmethod
-    def release_variant_names(cls):
-        return [v.name for v in cls if v.value >= 0]
-
-    @classmethod
-    def all_variant_names(cls):
-        return [v.name for v in cls]
 
 
 _template_variable_pattern = re.compile(r"@(\w+)@")  # match "@var@"

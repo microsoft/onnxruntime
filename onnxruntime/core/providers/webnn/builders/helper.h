@@ -38,19 +38,6 @@ WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
 
-inline std::vector<int64_t> convertAxesFromNCHWtoNHWC(const std::vector<int64_t>& axes) {
-  constexpr std::array<int64_t, 4> nchw_to_nhwc = {0, 3, 1, 2};
-  std::vector<int64_t> new_axes;
-  new_axes.reserve(axes.size());
-  for (int64_t axis : axes) {
-    if (axis >= nchw_to_nhwc.size()) {
-      ORT_THROW("Invalid axis value: ", axis);
-    }
-    new_axes.push_back(nchw_to_nhwc[static_cast<size_t>(axis)]);
-  }
-  return new_axes;
-}
-
 inline std::vector<int64_t> HandleNegativeAxes(const std::vector<int64_t>& axes, size_t input_size) {
   std::vector<int64_t> new_axes(axes.size());
   for (size_t i = 0; i < axes.size(); ++i) {
@@ -281,7 +268,10 @@ inline bool GetWebNNOpInputs(const std::string_view onnx_op_type,
 bool AreDataTypesSame(const std::string_view op_type,
                       gsl::span<const int32_t> input_types,
                       const logging::Logger& logger);
-bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types);
+bool IsSupportedDataType(const int32_t onnx_data_type,
+                         const emscripten::val& wnn_limits,
+                         const std::string_view webnn_op_type,
+                         const std::string_view webnn_input_output_name);
 bool IsDataTypeSupportedByOp(const std::string_view onnx_op_type,
                              const int32_t onnx_data_type,
                              const emscripten::val& wnn_limits,

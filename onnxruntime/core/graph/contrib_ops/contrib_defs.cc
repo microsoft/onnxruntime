@@ -3733,10 +3733,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         uint32_t components = (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
         for (int i = 0; i < r; ++i) {
-          if (!data_shape.dim(i).has_dim_value() ||
-              !scales_shape.dim(i).has_dim_value() ||
-              (i == quantize_axis && (data_shape.dim(i).dim_value() * components + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
-              (i != quantize_axis && data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value())) {
+          if (data_shape.dim(i).has_dim_value() &&
+              scales_shape.dim(i).has_dim_value() &&
+              ((i == quantize_axis && (data_shape.dim(i).dim_value() * components + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
+               (i != quantize_axis && data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()))) {
             fail_shape_inference("data shape and scales shape do not match");
           }
         }

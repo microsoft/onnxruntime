@@ -22,20 +22,25 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
 endif()
 
 # Needed for Java
-set(CMAKE_C_STANDARD 99)
+if (NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
+include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
-# TODO: update this once all system adapt c++20
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-set(CMAKE_CXX_STANDARD 20)
-else()
-set(CMAKE_CXX_STANDARD 17)
+if (NOT CMAKE_CXX_STANDARD)
+  # TODO: update this once all system adapt c++20
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(CMAKE_CXX_STANDARD 20)
+  else()
+    set(CMAKE_CXX_STANDARD 17)
+  endif()
 endif()
 
 if (MSVC)
@@ -82,12 +87,10 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
+option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
+
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
-# iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
-if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
-    message(WARNING "Disabling KleidiAI: not supported on Apple x86_64 platforms")
-  set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
-endif()
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -97,7 +100,8 @@ option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
-option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -140,7 +144,7 @@ option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C+
 option(onnxruntime_WGSL_TEMPLATE "Specify the code generator for WGSL template. Default is static." "static")
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
-option(onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY "Build Dawn as a monolithic library" OFF)
+option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
@@ -153,6 +157,7 @@ option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
+option(onnxruntime_DISABLE_FLOAT4_TYPES "Disable float 4 types" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_CLIENT_PACKAGE_BUILD "Enables default settings that are more appropriate for client/on-device workloads." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON;NOT onnxruntime_USE_CUDA" OFF)
@@ -248,6 +253,8 @@ option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is comp
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
 endif()
+
+include(detect_onnxruntime_target_platform.cmake)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -425,14 +432,6 @@ set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
 
 include(adjust_global_compile_flags.cmake)
 
-if (APPLE)
-  if (NOT CMAKE_OSX_ARCHITECTURES)
-    message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR} CPU ARCH")
-  endif()
-elseif (NOT WIN32 AND NOT APPLE)
-  message("Building ONNX Runtime for ${onnxruntime_target_platform} CPU ARCH")
-endif()
-
 # We need to link with libatomic on systems that do not have built-in atomics, or
 # don't have built-in support for 8 byte atomics
 # Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
@@ -501,6 +500,66 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
     endif()
   else()
     find_package(Python 3.10 COMPONENTS Interpreter)
+  endif()
+endif()
+
+if (onnxruntime_USE_ARM_NEON_NCHWC)
+  message(STATUS "Building MLAS with ARM Neon NCHWc kernels")
+endif()
+
+if(onnxruntime_USE_SVE)
+  if(LINUX AND onnxruntime_target_platform STREQUAL "aarch64")
+    check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
+    if(HAS_ARM64_SVE)
+      message(STATUS "Compiler supports SVE!")
+    else()
+      message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
+      set(onnxruntime_USE_SVE OFF)
+    endif()
+  else()
+    message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
+    set(onnxruntime_USE_SVE OFF)
+  endif()
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  function(is_kleidiai_supported is_supported_var)
+    # check for supported target platforms
+    if(NOT (onnxruntime_target_platform STREQUAL "aarch64" OR
+            onnxruntime_target_platform STREQUAL "ARM64" OR
+            onnxruntime_target_platform STREQUAL "arm64"))
+      message(WARNING "KleidiAI is not supported on this platform.")
+
+      set(${is_supported_var} FALSE PARENT_SCOPE)
+      return()
+    endif()
+
+    # check for compiler support
+    if(MSVC)
+      # TODO detect on MSVC
+    else()
+      check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+      check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+      if(NOT HAS_ARM64_DOTPROD)
+        message(WARNING "The compiler doesn't support dotprod instructions.")
+      endif()
+      if(NOT HAS_ARM64_I8MM)
+        message(WARNING "The compiler doesn't support i8mm instructions.")
+      endif()
+      if(NOT HAS_ARM64_DOTPROD OR NOT HAS_ARM64_I8MM)
+        set(${is_supported_var} FALSE PARENT_SCOPE)
+        return()
+      endif()
+    endif()
+
+    set(${is_supported_var} TRUE PARENT_SCOPE)
+  endfunction()
+
+  is_kleidiai_supported(is_kleidiai_supported_result)
+
+  if(NOT is_kleidiai_supported_result)
+    message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
+    set(onnxruntime_USE_KLEIDIAI OFF)
   endif()
 endif()
 
@@ -605,6 +664,7 @@ else()
      message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
    endif()
   endif()
+
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
@@ -653,28 +713,6 @@ else()
   endif()
 endif()
 
-if (onnxruntime_USE_KLEIDIAI AND (
-      (onnxruntime_target_platform STREQUAL "aarch64") OR
-      (onnxruntime_target_platform STREQUAL "ARM64") OR
-      (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
-
-  # TODO Add checks for MSVC Compilation
-  if(NOT MSVC)
-    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-    if (NOT HAS_ARM64_DOTPROD)
-      message(FATAL_ERROR "The compiler doesn't support dotprod")
-    endif()
-    if (NOT HAS_ARM64_I8MM)
-      message(FATAL_ERROR "The compiler doesn't support i8mm")
-    endif()
-  else()
-    message(STATUS "Skipping -march= checks on MSVC (not supported), assuming dotprod/i8mm support manually.")
-    set(HAS_ARM64_DOTPROD TRUE)
-    set(HAS_ARM64_I8MM TRUE)
-  endif()
-endif()
-
 #names in this var must match the directory names under onnxruntime/core/providers
 #ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
@@ -695,6 +733,7 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
     set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
+    set(onnxruntime_USE_FPA_INTB_GEMM OFF)
   endif()
 
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
@@ -705,6 +744,11 @@ if (onnxruntime_USE_CUDA)
   elseif(WIN32 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
     message( STATUS "Flash-Attention unsupported in Windows with CUDA compiler version < 12.0")
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  endif()
+
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
+    message( STATUS "FpA IntB Gemm unsupported for CUDA compiler version < 12.0")
+    set(onnxruntime_USE_FPA_INTB_GEMM OFF)
   endif()
 
   if (WIN32)
@@ -734,6 +778,11 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       message( STATUS "Enable memory efficient attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+    endif()
+
+    if (onnxruntime_USE_FPA_INTB_GEMM)
+      message( STATUS "Enable FpA IntB Gemm for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
     endif()
 endif()
 
@@ -899,8 +948,8 @@ if (onnxruntime_USE_WEBGPU)
   #
   # if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (FALSE)
-    if (NOT onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=OFF")
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
     endif()
     if (onnxruntime_USE_EXTERNAL_DAWN)
       message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_USE_EXTERNAL_DAWN=ON")
@@ -921,8 +970,8 @@ if (onnxruntime_USE_WEBGPU)
     endif()
   endif()
 
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-    list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_MONOLITHIC_LIBRARY=1)
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+    list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
   endif()
   if (onnxruntime_USE_EXTERNAL_DAWN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_EXTERNAL_DAWN=1)
@@ -1016,6 +1065,10 @@ function(onnxruntime_set_compile_flags target_name)
 
     if (onnxruntime_DISABLE_FLOAT8_TYPES)
       target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
+    endif()
+
+    if (onnxruntime_DISABLE_FLOAT4_TYPES)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT4_TYPES)
     endif()
 
     if (onnxruntime_ENABLE_ATEN)
@@ -1152,7 +1205,7 @@ function(onnxruntime_configure_target target_name)
 
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
-    target_link_options(${target_name} PRIVATE "/CETCOMPAT")
+    target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>" "$<$<LINK_LANGUAGE:CUDA>:-Xlinker=/CETCOMPAT>")
   endif()
 
 endfunction()
@@ -1381,7 +1434,6 @@ configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_c
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
 if (onnxruntime_USE_CUDA)
-  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   set(CMAKE_CUDA_STANDARD 17)
   if(onnxruntime_CUDA_HOME)
     file(TO_CMAKE_PATH CUDAToolkit_ROOT ${onnxruntime_CUDA_HOME})
@@ -1401,6 +1453,14 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
+
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+    if (UNIX)
+      # Suppress deprecation errors (e.g., long4 in CUDA 13)
+      add_compile_options(-Wno-deprecated-declarations)
+    endif()
+  endif()
+
   if (NOT WIN32)
     list(APPEND CUDA_NVCC_FLAGS --compiler-options -fPIC)
   endif()
@@ -1590,7 +1650,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   endif()
 endif()
 
-
 #Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will be included in the next.
 #The order of the following targets matters. Right depends on left. If target A appears before target B. Then A.cmake can not use variables defined in B.cmake.
 set(ONNXRUNTIME_CMAKE_FILES onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME})
@@ -1606,9 +1665,6 @@ if (onnxruntime_USE_WINML)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
-if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
-  message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
-endif()
 list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
 if (onnxruntime_BUILD_JAVA)
@@ -1673,8 +1729,8 @@ if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
   endif()
 endif()
 
-foreach(target_name ${ONNXRUNTIME_CMAKE_FILES})
-  include(${target_name}.cmake)
+foreach(onnxruntime_cmake_file ${ONNXRUNTIME_CMAKE_FILES})
+  include(${onnxruntime_cmake_file}.cmake)
 endforeach()
 if (UNIX)
   option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)
@@ -1789,4 +1845,13 @@ else()
 
     include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
   endif()
+endif()
+
+if(onnxruntime_BUILD_UNIT_TESTS)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_test_pch.cmake")
+endif()
+
+# Include precompiled header configuration for providers
+if(TARGET onnxruntime_providers)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_providers_pch.cmake")
 endif()

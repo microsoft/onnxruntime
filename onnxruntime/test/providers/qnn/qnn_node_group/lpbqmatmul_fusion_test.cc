@@ -14,8 +14,8 @@
 
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -106,7 +106,12 @@ ProviderOptions GetProviderOptions() {
 
 }  // namespace
 
+#if defined(_WIN32)
+// Graph fails to compose on ARM64 Windows since QNN 2.37.0
+TEST_F(QnnHTPBackendTests, DISABLED_LPBQMatMulFusion) {
+#else
 TEST_F(QnnHTPBackendTests, LPBQMatMulFusion) {
+#endif
   ProviderOptions provider_options = GetProviderOptions();
   RunQnnModelTest(BuildLPBQMatMulTestCase(),
                   provider_options,

@@ -1266,17 +1266,16 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
   // the single operator operation mode of CANN
   if (info_.enable_cann_graph) {
     std::vector<NodeIndex>&& unsupported_nodes = SupportONNXModel(graph_viewer);
-
-    if (unsupported_nodes.empty()) {
-      auto sub_graph = GetSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-    } else {
+    if (info_.enable_cann_subgraph && !unsupported_nodes.empty()) {
       auto partitions = GetSubGraphPartition(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
       for (const auto& partition : partitions) {
         auto sub_graph = GetSubGraph(partition, graph_viewer);
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       }
+    } else {
+      auto sub_graph = GetSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
   } else {
     InlinedVector<NodeIndex> candidates;

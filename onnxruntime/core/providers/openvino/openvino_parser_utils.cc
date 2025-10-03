@@ -236,5 +236,79 @@ ov::Dimension OpenVINOParserUtils::ParseDimensionRange(const std::string& range_
   return ov::Dimension(range_start, range_end);
 }
 
+layout_t OpenVINOParserUtils::ParseLayout(const std::string& layout_definition) {
+  layout_t parsed_layout_map;
+
+  // Return empty map for empty input
+  if (layout_definition.empty()) {
+    ORT_THROW("Empty layout definition provided in layout parameter");
+  }
+
+  // Regular expression for parsing layout definitions
+  const std::regex layout_pattern(R"(([^\[\],]+)\s*\[(.*?)\])");  // e.g. "input_1[NC],data[CHW]"
+
+  // Find all tensor layout definitions using regex
+  auto layout_begin = std::sregex_iterator(
+      layout_definition.begin(),
+      layout_definition.end(),
+      layout_pattern);
+  auto layout_end = std::sregex_iterator();
+
+  // If no matches found, throw error
+  if (layout_begin == layout_end) {
+    ORT_THROW("Invalid layout definition format: " + layout_definition);
+  }
+
+  // Process each tensor definition
+  for (std::sregex_iterator i = std::move(layout_begin); i != layout_end; ++i) {
+    std::smatch layout_match = *i;
+
+    // Extract tensor name and trim whitespace
+    std::string tensor_name = layout_match[1].str();  // Group 1: tensor name e.g. "input_1"
+    tensor_name = TrimWhitespace(tensor_name);
+
+    if (tensor_name.empty()) {
+      ORT_THROW("Empty tensor name provided in layout parameter");
+    }
+
+    // Extract dimensions string
+    std::string dimensions_str = layout_match[2].str();  // Group 2: dimensions string [e.g. "NC", "CHW"]
+
+    if (!Check_Valid_Layout(dimensions_str, tensor_name)) {
+      ORT_THROW("Invalid dimensions string provided in layout parameter");
+    }
+
+    // Store parsed shape in result map
+    parsed_layout_map[tensor_name] = ov::Layout(dimensions_str);
+  }
+
+  return parsed_layout_map;
+}
+
+bool OpenVINOParserUtils::Check_Valid_Layout(const std::string& layout_str, const std::string& tensor_name) {
+  // Check if the layout string is empty
+  if (layout_str.empty()) {
+    return false;
+  }
+
+  std::unordered_set<char> seen_alphabets;
+  for (char c : layout_str) {
+    if (std::isalpha(c)) {
+      char upper_c = static_cast<char>(std::toupper(c));  // Convert to uppercase for case-insensitive comparison
+      if (seen_alphabets.find(upper_c) != seen_alphabets.end()) {
+        ORT_THROW("Repeated Dim '" + std::string(1, c) +
+                  "' found in layout dimensions for tensor '" + tensor_name + "'");
+      }
+      seen_alphabets.insert(upper_c);
+    } else if (c != '?') {
+      // Only '?' is allowed as non-alphabetic character
+      ORT_THROW("Invalid character '" + std::string(1, c) +
+                "' found in layout dimensions for tensor '" + tensor_name + "'");
+    }
+  }
+
+  return true;
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime

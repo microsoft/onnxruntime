@@ -10,7 +10,7 @@
 namespace vaip {
 using namespace onnxruntime;
 
-static gsl::span<const char> process_ext_address(const ONNX_NAMESPACE::TensorProto& tensor) {
+gsl::span<const char> process_ext_address(const ONNX_NAMESPACE::TensorProto& tensor) {
   auto tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(&tensor);
   auto file = std::string();
   uintptr_t offset = 0;

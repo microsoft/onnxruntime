@@ -30,6 +30,7 @@
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/float4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
@@ -77,6 +78,7 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_FLOAT8E5M2FNUZ = 20,
   TensorProto_DataType_UINT4 = 21,
   TensorProto_DataType_INT4 = 22,
+  TensorProto_DataType_FLOAT4E2M1 = 23,
 };
 
 enum TensorProto_DataLocation : int {
@@ -95,7 +97,8 @@ enum Version : int {
   IR_VERSION_2020_5_8 = 7,
   IR_VERSION_2021_7_31 = 8,
   IR_VERSION_2023_5_5 = 9,
-  IR_VERSION = 10
+  IR_VERSION_2024_3_25 = 10,
+  IR_VERSION = 11
 };
 
 enum OperatorStatus : int {
@@ -326,6 +329,12 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
                                                    const logging::Logger& logger);
 
 std::string GetEnvironmentVar(const std::string& var_name);
+inline std::string GetEnvironmentVar(std::string_view var_name) {
+  return GetEnvironmentVar(std::string{var_name});
+}
+inline std::string GetEnvironmentVar(const char* var_name) {
+  return GetEnvironmentVar(std::string{var_name});
+}
 
 namespace profiling {
 
@@ -388,6 +397,12 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float4E2M1x2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1; }
+#endif
+
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;

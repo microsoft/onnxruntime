@@ -40,6 +40,19 @@ parameters:
   type: string
   default: ''
 
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
 # for inference packages '', for training packages '-training'
 # used for drop-extra and c api artifacts (onnxruntime-win-* or onnxrutime-training-win-*)
 - name: artifact_name_suffix
@@ -48,7 +61,7 @@ parameters:
 
 - name: ort_build_pool_name
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
@@ -89,7 +102,7 @@ stages:
     ${{ else }}:
       buildJavaParameter: ''
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-      timeoutParameter: '--test_all_timeout 72000'
+      timeoutParameter: '--ctest_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
   jobs:
@@ -110,6 +123,11 @@ stages:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+            
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - output: pipelineArtifact
+          targetPath: $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
       # GPU build has two jobs. This is the first one.
       - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
           - output: pipelineArtifact
@@ -134,18 +152,9 @@ stages:
         clean: true
         submodules: none
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.12'
-          addToPath: true
-          architecture: ${{ parameters.buildArch }}
-
-      - template: telemetry-steps.yml
-
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
+      - template: setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
@@ -153,12 +162,6 @@ stages:
             versionSpec: "17"
             jdkArchitectureOption: ${{ parameters.buildArch }}
             jdkSourceOption: 'PreInstalled'
-
-
-      - task: NodeTool@0
-        condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-        inputs:
-          versionSpec: '22.x'
 
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
@@ -183,21 +186,15 @@ stages:
 
       # For CPU job, tests are run in the same machine as building
       - ${{ if eq(parameters.buildJava, 'true') }}:
+        - template: setup-maven.yml
         - template: make_java_win_binaries.yml
           parameters:
             msbuildPlatform: ${{ parameters.msbuildPlatform }}
             java_artifact_id: ${{ parameters.java_artifact_id }}
-            ${{ if or(contains(parameters.buildparameter, 'use_cuda'), contains(parameters.buildparameter, 'use_tensorrt')) }}:
-            # When it is a GPU build, we only assemble the java binaries, testing will be done in the later stage with GPU machine
-              buildOnly: true
-            ${{ else }}:
-              buildOnly: false
+            PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+            PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+            buildOnly: true
 
-        - task: 1ES.PublishPipelineArtifact@1
-          displayName: 'Publish Java temp binaries'
-          inputs:
-            targetPath: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-            artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
         # All GPU builds will be tested in the next stage with GPU machine
       - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
         - task: PythonScript@0

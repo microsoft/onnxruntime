@@ -191,7 +191,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
          act_dql_node_unit.OpType() == "DequantizeLinear" &&
          gemm_node_unit.OpType() == "Gemm" &&
          output_ql_node_unit.OpType() == "QuantizeLinear");
-  const auto& node_name = utils::GetNodeName(gemm_node_unit);
+  const auto& node_name = utils::GetUniqueName(gemm_node_unit);
   const NodeUnitIODef& act_dql_input_1_def = act_dql_node_unit.Inputs()[0];
   const NodeUnitIODef& w_dql_input_1_def = w_dql_node_unit.Inputs()[0];
   const NodeUnitIODef& w_ql_input_1_def = w_ql_node_unit.Inputs()[0];

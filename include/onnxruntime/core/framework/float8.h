@@ -1,11 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// IMPORTANT NOTE: Users of this file MUST include "cuda.h" before including this header
+// if they would like to leverage the CUDA implementation for the conversion routines
+// in their HOST code (code compiled by MSVC/GCC).
+// This is because there is a check on CUDA_VERSION which is a macro defined in cuda.h.
+// We can't include cuda.h in this header unconditionally because this header is also
+// included in core framework files which are CUDA-agnostic.
+// Not including "cuda.h" in GCC/MSVC will fall-back to the CPU conversion routines
+// implemented in this file.
+// For code compiled by NVCC which includes this header, this file will automatically
+// include cuda.h (based on the CUDA_CC macro).
+
 #pragma once
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 #include "endian.h"
+
+#if defined(__CUDACC__)
+// Needed for CUDA_VERSION check below
+#include <cuda.h>
+#endif
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
 #endif

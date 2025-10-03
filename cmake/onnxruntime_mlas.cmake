@@ -108,6 +108,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -131,7 +132,11 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
       )
 
-      if (onnxruntime_USE_KLEIDIAI)
+      if (onnxruntime_USE_ARM_NEON_NCHWC)
+		setup_arm_neon_nchwc()	
+	  endif()
+      
+	  if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
       endif()
     else()
@@ -286,6 +291,15 @@ function(setup_kleidiai)
   endif()
 endfunction()
 
+function (setup_arm_neon_nchwc)
+  target_sources(onnxruntime_mlas PRIVATE
+   ${MLAS_SRC_DIR}/sconv.h  
+   ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+   ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
+  )
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_ARM_NEON_NCHWC)
+endfunction ()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     file(GLOB_RECURSE mlas_platform_srcs
@@ -429,12 +443,29 @@ else()
           ${MLAS_SRC_DIR}/softmax_kernel_neon.cpp
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
         )
-        if (onnxruntime_USE_KLEIDIAI)
+        
+        # Conditionally add the SVE implementation if compiler supports it
+        if (onnxruntime_USE_SVE)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_SVE)
+        endif()
+
+        if (onnxruntime_USE_ARM_NEON_NCHWC)
+		  setup_arm_neon_nchwc()	
+		endif()
+        
+		if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp 
+				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+
         if (NOT APPLE)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
@@ -783,12 +814,6 @@ if (WIN32)
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
     target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072>")
   endif()
-endif()
-
-if (PLATFORM_NAME STREQUAL "macabi")
-  # Needed for maccatalyst C compilation
-  # i.e. the flags below add "--target=x86_64-apple-ios14.0-macabi -ffunction-sections -fdata-sections"
-  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

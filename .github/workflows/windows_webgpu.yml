@@ -34,13 +34,13 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           architecture: x64
@@ -56,12 +56,12 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20.x"
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: "17"
@@ -78,7 +78,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
@@ -101,13 +101,6 @@ jobs:
           path: ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Build and Test
         shell: pwsh
         run: |
@@ -125,31 +118,32 @@ jobs:
             --build_java `
             --use_webgpu `
             --wgsl_template ${{ matrix.wgsl_template }} `
-            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
+            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      - name: Run tests (onnxruntime_test_all) with verbose logging
+      - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
         shell: pwsh
         run: |
           $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
-          .\onnxruntime_test_all.exe 2>.\onnxruntime_test_all_stderr.log
+          .\onnxruntime_test_all.exe 2> .\onnxruntime_test_stderr.log
+          .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
       - name: Check log file
         shell: cmd
         run: |
-          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_all_stderr.log
+          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate shader keys
         uses: ./.github/actions/webgpu-validate-shader-key
         with:
-          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_all_stderr.log
+          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
@@ -162,13 +156,13 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           architecture: x64
@@ -182,13 +176,6 @@ jobs:
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
         working-directory: ${{ github.workspace }}
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Generate onnxruntime.sln
         shell: pwsh
@@ -222,13 +209,13 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           architecture: x64
@@ -244,12 +231,12 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20.x"
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: "17"
@@ -266,7 +253,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
@@ -282,13 +269,6 @@ jobs:
           nuget restore packages.config -ConfigFile NuGet.config -PackagesDirectory ${{ github.workspace }}\RelWithDebInfo
         shell: cmd
         working-directory: ${{ github.workspace }}
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Build
         shell: pwsh

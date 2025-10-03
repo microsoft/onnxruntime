@@ -26,7 +26,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"dim_inner", ProgramUniformVariableDataType::Uint32});
 
  private:
-  const Activation& activation_;
+  const Activation activation_;
   const bool has_bias_;
   const bool is_vec4_;
   const InlinedVector<int64_t> elements_per_thread_;
