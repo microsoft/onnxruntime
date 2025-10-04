@@ -312,7 +312,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Please provide the valid file path.");
         }
       } else if (key == "profiling_level") {
-        std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
+        std::set<std::string> supported_profiling_level = {"off", "basic", "detailed", "optrace"};
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
           ORT_THROW("Supported profiling_level: off, basic, detailed");
         }

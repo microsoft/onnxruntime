@@ -1108,6 +1108,74 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
                   13,
                   ExpectedEPNodeAssignment::All,
                   0.008f);
+
+  // Check that output csv file exists and is non-empty
+  std::ifstream csv_file(provider_options["profiling_file_path"], std::ifstream::binary);
+  EXPECT_TRUE(csv_file.good());
+
+  csv_file.seekg(0, csv_file.end);
+  size_t buffer_size = static_cast<size_t>(csv_file.tellg());
+  EXPECT_FALSE(0 == buffer_size);
+
+  std::remove(provider_options["profiling_file_path"].c_str());
+
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+  // Check that qnn profiling .log file exists and is non-empty
+  std::ifstream qnn_log_file("detailed_profile_qnn.log", std::ifstream::binary);
+  EXPECT_TRUE(qnn_log_file.good());
+
+  qnn_log_file.seekg(0, qnn_log_file.end);
+  buffer_size = static_cast<size_t>(qnn_log_file.tellg());
+  EXPECT_FALSE(0 == buffer_size);
+
+  std::remove("detailed_profile_qnn.log");
+#endif
+}
+
+TEST_F(QnnHTPBackendTests, OptraceTest) {
+  onnxruntime::ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["enable_htp_fp16_precision"] = "1";
+  provider_options["profiling_level"] = "optrace";
+  provider_options["profiling_file_path"] = "optrace_profile.csv";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+
+  // Check that output csv file exists and is non-empty
+  std::ifstream csv_file(provider_options["profiling_file_path"], std::ifstream::binary);
+  EXPECT_TRUE(csv_file.good());
+
+  csv_file.seekg(0, csv_file.end);
+  size_t buffer_size = static_cast<size_t>(csv_file.tellg());
+  EXPECT_FALSE(0 == buffer_size);
+
+  std::remove(provider_options["profiling_file_path"].c_str());
+
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+  // Check that qnn profiling .log file exists and is non-empty
+  std::ifstream qnn_log_file("optrace_profile_qnn.log", std::ifstream::binary);
+  EXPECT_TRUE(qnn_log_file.good());
+
+  qnn_log_file.seekg(0, qnn_log_file.end);
+  buffer_size = static_cast<size_t>(qnn_log_file.tellg());
+  EXPECT_FALSE(0 == buffer_size);
+
+  std::remove("optrace_profile_qnn.log");
+#endif
 }
 
 TEST_F(QnnHTPBackendTests, CastAddQDQU8) {
