@@ -614,7 +614,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm,
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(add_after_layer_norm, true, parent_path, edges, logger)) {
-    DEBUG_LOG("Faild to find path v");
+    DEBUG_LOG("Failed to find path v");
     return false;
   }
 
