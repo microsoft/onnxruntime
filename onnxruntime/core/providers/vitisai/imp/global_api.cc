@@ -80,6 +80,8 @@ struct OrtVitisAIEpAPI {
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v3)(
       const std::filesystem::path& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
+  std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v4)(
+      const std::filesystem::path& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func, const onnxruntime::logging::Logger& logger);
   uint32_t (*vaip_get_version)();
   void (*create_ep_context_nodes)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
@@ -126,7 +128,8 @@ struct OrtVitisAIEpAPI {
     auto status1 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_error_handling", (void**)&compile_onnx_model_vitisai_ep_with_error_handling);
     auto status2 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options", (void**)&compile_onnx_model_with_options);
     auto status3 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_v3", (void**)&compile_onnx_model_vitisai_ep_v3);
-    if ((!status1.IsOK()) && (!status2.IsOK()) && (!status3.IsOK())) {
+    auto status4 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_v4", (void**)&compile_onnx_model_vitisai_ep_v4);
+    if ((!status1.IsOK()) && (!status2.IsOK()) && (!status3.IsOK()) && (!status4.IsOK())) {
       ::onnxruntime::LogRuntimeError(0, status2, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status2);
     }
@@ -174,7 +177,15 @@ void change_status_with_error(void* status_ptr, int error_code, const char* erro
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
     const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options) {
   auto model_path = graph_viewer.ModelPath();
-  if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3) {
+  if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4) {
+    Status status = Status::OK();
+    auto status_ptr = reinterpret_cast<void*>(&status);
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error, logger));
+    if (!status.IsOK()) {
+      ORT_THROW(status);
+    }
+    return ret;
+  } else if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3) {
     Status status = Status::OK();
     auto status_ptr = reinterpret_cast<void*>(&status);
     auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error));
