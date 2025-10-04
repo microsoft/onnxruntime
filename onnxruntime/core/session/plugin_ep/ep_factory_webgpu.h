@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
 #include "core/session/plugin_ep/ep_factory_internal_impl.h"
 
 #include "core/graph/constants.h"
