@@ -8,6 +8,7 @@
 #include "core/common/status.h"
 #include "core/framework/float16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
@@ -254,12 +255,7 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
-  if constexpr (std::is_same_v<T, BFloat16>) {
-    if (sm_ < 80) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "BFloat16 MatMulNBits is not supported on cuda device with compute capability < 8.0");
-    }
-  }
+  CHECK_GPU_SUPPORT_DATA_TYPE(T, sm_);
 
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* reorder_idx = ctx->Input<Tensor>(4);
