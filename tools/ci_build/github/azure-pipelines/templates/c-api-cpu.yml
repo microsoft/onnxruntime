@@ -107,9 +107,10 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'Azure Pipelines'
-      image: 'macOS-15'
-      os: 'macOS'
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
 
     timeoutInMinutes: 300
     steps:

@@ -41,9 +41,10 @@ stages:
   jobs:
   - job: MacOS_C_API_Package_Publish
     pool:
-      name: 'Azure Pipelines'
-      image: 'macOS-14'
-      os: 'macOS'
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
     templateContext:
       inputs:
       - input: pipelineArtifact
