@@ -55,10 +55,9 @@ extends:
   parameters:
     # Update the pool with your team's 1ES hosted pool.
     pool:
-     name: AcesShared
-     os: macOS
-     demands:
-     - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+      name: "Azure Pipelines"
+      image: "macOS-14"
+      os: macOS
     sdl:
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-VS2022-Latest
