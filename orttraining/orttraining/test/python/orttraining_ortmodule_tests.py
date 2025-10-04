@@ -167,6 +167,17 @@ def run_pytorch_export_contrib_ops_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_dort_for_llama_on_gpu_test(cwd, log):
+    """Runs the tests for end-to-end llama training with DORT."""
+
+    log.debug("Running: DORT for llama on GPU")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_dort_for_llama_on_gpu.py"]
+
+    env = {"ORT_AGGRESSIVE_CPU_FALLBACK": "1"}
+    run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -208,6 +219,8 @@ def main():
     run_utils_tests(cwd, log)
 
     run_experimental_gradient_graph_tests(cwd, log)
+
+    run_dort_for_llama_on_gpu_test(cwd, log)
 
     # TODO(bmeswani): Enable this test once it can run with latest pytorch
     # run_pytorch_export_contrib_ops_tests(cwd, log)
