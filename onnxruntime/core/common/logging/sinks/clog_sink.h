@@ -12,18 +12,10 @@ namespace logging {
 /// A std::clog based ISink
 /// </summary>
 /// <seealso cref="ISink" />
-#ifdef _WIN32
-class CLogSink : public WOStreamSink {
- public:
-  CLogSink() : WOStreamSink(std::wclog, /*flush*/ true) {
-  }
-};
-#else
 class CLogSink : public OStreamSink {
  public:
-  CLogSink() : OStreamSink(std::clog, /*flush*/ true) {
+  CLogSink() : OStreamSink(stderr, /*flush*/ true) {
   }
 };
-#endif
 }  // namespace logging
 }  // namespace onnxruntime
