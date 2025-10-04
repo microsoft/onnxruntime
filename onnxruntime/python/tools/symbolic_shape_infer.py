@@ -1186,8 +1186,13 @@ class SymbolicShapeInference:
         indices_shape = self._get_shape(node, 1)
         len(indices_shape)
         last_index_dimension = indices_shape[-1]
-        assert is_literal(last_index_dimension) and last_index_dimension <= data_rank
-        new_shape = indices_shape[:-1] + data_shape[last_index_dimension:]
+        batch_dims = get_attribute(node, "batch_dims", 0)
+        assert (
+            is_literal(last_index_dimension)
+            and is_literal(batch_dims)
+            and (batch_dims + last_index_dimension) <= data_rank
+        )
+        new_shape = indices_shape[:-1] + data_shape[batch_dims + last_index_dimension :]
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
             helper.make_tensor_value_info(
