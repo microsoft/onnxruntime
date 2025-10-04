@@ -24,9 +24,10 @@ jobs:
   workspace:
     clean: all
   pool:
-    name: "Azure Pipelines"
-    image: "macOS-15"
+    name: AcesShared
     os: macOS
+    demands:
+    - ImageOverride -equals ACES_VM_SharedPool_Sequoia
   templateContext:
     outputs:
     - output: pipelineArtifact
@@ -44,7 +45,7 @@ jobs:
 
   - template: use-xcode-version.yml
     parameters:
-      xcodeVersion: '16.4.0'
+      xcodeVersion: '16.4'
 
 
   - template: setup-build-tools.yml
