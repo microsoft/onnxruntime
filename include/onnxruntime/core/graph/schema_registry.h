@@ -92,6 +92,12 @@ class OnnxRuntimeOpSchemaRegistry : public IOnnxRuntimeOpSchemaCollection {
                            const ONNX_NAMESPACE::OpSchema** latest_schema,
                            int* earliest_opset_where_unchanged) const override;
 
+  std::vector<ONNX_NAMESPACE::OpSchema> get_all_schemas_with_history();
+
+
+
+
+
   bool empty() const {
     return map_.empty();
   }
