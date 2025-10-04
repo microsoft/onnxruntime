@@ -27,9 +27,10 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '14.0'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
   pool:
-    name: "Azure Pipelines"
-    image: 'macOS-15'
-    os: macOS
+   name: AcesShared
+   os: macOS
+   demands:
+   - ImageOverride -equals ACES_VM_SharedPool_Sequoia
   timeoutInMinutes: 300
   steps:
   - checkout: self
