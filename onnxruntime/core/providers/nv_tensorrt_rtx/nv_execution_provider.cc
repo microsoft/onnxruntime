@@ -86,7 +86,7 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-Status NvExecutionProvider::InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
+Status NvExecutionProvider::InitializeGpuResources(ID3D12Fence* pFence, HANDLE sharedFenceHandle, void** extSemFence) {
   // By calling GetPerThreadContext(), we ensure that the cuda context
   // for the current thread is created if it doesn't already exist.
   // The constructor of PerThreadContext handles the context creation.
@@ -97,29 +97,31 @@ Status NvExecutionProvider::InitializeGpuResources(HANDLE sharedFenceHandle, voi
   semHandleDesc.handle.win32.handle = sharedFenceHandle;
   cuImportExternalSemaphore(&cSemFence, &semHandleDesc);
   *extSemFence = cSemFence;
+
+  ORT_UNUSED_PARAMETER(pFence);
   return Status::OK();
 }
 
-Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, const int fenceState) {
+Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpWait() called.";
 
   // make CUDA wait for the upload by DX to finish
   CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS waitParams = {};
-  waitParams.params.fence.value = fenceState;
+  waitParams.params.fence.value = fenceValue;
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
   cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
 
   return Status::OK();
 }
-Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, const int fenceState) {
+Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpSignal() called.";
 
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
 
   // make D3D12 wait for the CUDA kernel to finish
   CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signalParams = {};
-  signalParams.params.fence.value = fenceState;
+  signalParams.params.fence.value = fenceValue;
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
 

@@ -3399,7 +3399,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProviders, _In_ OrtSession* session, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence) {
+ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProvidersForD3D12Interop, _In_ OrtSession* session, _In_ ID3D12Fence* pFence, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence) {
   API_IMPL_BEGIN
   auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   if (!inference_session) {
@@ -3428,7 +3428,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProviders, _In_ OrtSession* ses
     const onnxruntime::IExecutionProvider* const_provider = execution_providers.Get(provider_type);
     if (const_provider) {
       auto* provider = const_cast<onnxruntime::IExecutionProvider*>(const_provider);
-      auto status = provider->InitializeGpuResources(sharedFenceHandle, extSemFence);
+      auto status = provider->InitializeGpuResources(pFence, sharedFenceHandle, extSemFence);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
@@ -3439,7 +3439,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProviders, _In_ OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ const int fenceState) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   if(extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
@@ -3469,7 +3469,7 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ v
       // We get a const pointer, so use const_cast as the method is non-const.
       // This is safe here as we are just triggering a setup function.
       auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
-      auto status = execution_provider->SetupInteropEpWait(extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceState);
+      auto status = execution_provider->SetupInteropEpWait(extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
@@ -3480,7 +3480,7 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ v
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ const int fenceState) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   if(extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
@@ -3510,7 +3510,7 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_
       // We get a const pointer, so use const_cast as the method is non-const.
       // This is safe here as we are just triggering a setup function.
       auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
-      auto status = execution_provider->SetupInteropEpSignal(extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceState);
+      auto status = execution_provider->SetupInteropEpSignal(extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
@@ -3710,19 +3710,19 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(SessionInitializeGpuProviders, _In_ OrtSession* session, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence) {
+ORT_API_STATUS_IMPL(SessionInitializeGpuProvidersForD3D12Interop, _In_ OrtSession* session, _In_ ID3D12Fence* pFence, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionInitializeGpuProviders is not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionInitializeGpuProvidersForD3D12Interop is not supported in a minimal build.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ const int fenceState) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpWait is not supported in a minimal build.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ const int fenceState) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpSignal is not supported in a minimal build.");
   API_IMPL_END
@@ -4352,7 +4352,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::SessionGetEpDeviceForInputs,
 
     &OrtApis::CreateSyncStreamForEpDevice,
-    &OrtApis::SessionInitializeGpuProviders,
+    &OrtApis::SessionInitializeGpuProvidersForD3D12Interop,
     &OrtApis::InteropEpWait,
     &OrtApis::InteropEpSignal,
     &OrtApis::SyncStream_GetHandle,

@@ -38,6 +38,8 @@ class GraphOptimizerRegistry;
 #include "core/framework/tuning_context.h"
 #include "core/session/onnxruntime_c_api.h"
 
+struct ID3D12Fence;
+
 struct OrtEpDevice;
 struct OrtRunOptions;
 
@@ -89,25 +91,33 @@ class IExecutionProvider {
   */
   const OrtDevice default_device_;
 
+  std::unordered_map<void*, ID3D12Fence*> pFenceMap;
+
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status InitializeGpuResources(HANDLE sharedFenceHandle, void** extSemFence) {
-    ORT_UNUSED_PARAMETER(sharedFenceHandle);
-    ORT_UNUSED_PARAMETER(extSemFence);
+  virtual Status InitializeGpuResources(ID3D12Fence* pFence, HANDLE sharedFenceHandle, void** extSemFence) {
+    *extSemFence = sharedFenceHandle;   //fall back path
+    pFenceMap[*extSemFence] = pFence;
     return Status::OK();
   }
 
-  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, const int fenceState) {
-    ORT_UNUSED_PARAMETER(extSemFence);
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
-    ORT_UNUSED_PARAMETER(fenceState);
+
+    HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    pFenceMap[extSemFence]->SetEventOnCompletion(fenceValue, hEvent);
+    WaitForSingleObject(hEvent, INFINITE);
+    CloseHandle(hEvent);
+
     return Status::OK();
   }
-  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, const int fenceState) {
+  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
-    ORT_UNUSED_PARAMETER(fenceState);
+    ORT_UNUSED_PARAMETER(fenceValue);
+
+    //to-do: check what to do here
     return Status::OK();
   }
 

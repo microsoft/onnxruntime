@@ -443,7 +443,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetEpDeviceForInputs;
 
         public IntPtr CreateSyncStreamForEpDevice;
-        public IntPtr SessionInitializeGpuProviders;
+        public IntPtr SessionInitializeGpuProvidersForD3D12Interop;
         public IntPtr InteropEpWait;
         public IntPtr InteropEpSignal;
         public IntPtr SyncStream_GetHandle;
