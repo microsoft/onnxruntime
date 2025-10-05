@@ -86,7 +86,7 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-Status NvExecutionProvider::InitializeGpuResources(ID3D12Fence* pFence, HANDLE sharedFenceHandle, void** extSemFence) {
+Status NvExecutionProvider::InitializeGpuResources(union FencePtr fencePtr, HANDLE sharedFenceHandle, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) {
   // By calling GetPerThreadContext(), we ensure that the cuda context
   // for the current thread is created if it doesn't already exist.
   // The constructor of PerThreadContext handles the context creation.
@@ -98,11 +98,12 @@ Status NvExecutionProvider::InitializeGpuResources(ID3D12Fence* pFence, HANDLE s
   cuImportExternalSemaphore(&cSemFence, &semHandleDesc);
   *extSemFence = cSemFence;
 
-  ORT_UNUSED_PARAMETER(pFence);
+  ORT_UNUSED_PARAMETER(fencePtr);
+  ORT_UNUSED_PARAMETER(extSyncPrimitive);
   return Status::OK();
 }
 
-Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
+Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpWait() called.";
 
   // make CUDA wait for the upload by DX to finish
@@ -112,9 +113,10 @@ Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, 
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
   cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
 
+  ORT_UNUSED_PARAMETER(extSyncPrimitive);
   return Status::OK();
 }
-Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue) {
+Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpSignal() called.";
 
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
@@ -125,6 +127,7 @@ Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
 
+  ORT_UNUSED_PARAMETER(extSyncPrimitive);
   return Status::OK();
 }
 

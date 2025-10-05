@@ -91,31 +91,44 @@ class IExecutionProvider {
   */
   const OrtDevice default_device_;
 
-  std::unordered_map<void*, ID3D12Fence*> pFenceMap;
+  std::unordered_map<void*, FencePtr> pFenceMap;
 
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status InitializeGpuResources(ID3D12Fence* pFence, HANDLE sharedFenceHandle, void** extSemFence) {
-    *extSemFence = sharedFenceHandle;   //fall back path
-    pFenceMap[*extSemFence] = pFence;
+  virtual Status InitializeGpuResources(union FencePtr fencePtr, HANDLE sharedFenceHandle, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) {
+
+    switch (extSyncPrimitive) {
+      case ExternalSyncPrimitive_D3D12Fence:
+        *extSemFence = sharedFenceHandle;   //fall back path
+        pFenceMap[*extSemFence] = fencePtr;
+        break;
+      default:
+        return Status::OK();
+    }
+
     return Status::OK();
   }
 
-  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
     ORT_UNUSED_PARAMETER(stream);
 
-    HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    pFenceMap[extSemFence]->SetEventOnCompletion(fenceValue, hEvent);
-    WaitForSingleObject(hEvent, INFINITE);
-    CloseHandle(hEvent);
+    switch (extSyncPrimitive) {
+      case ExternalSyncPrimitive_D3D12Fence:
+        HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        pFenceMap[extSemFence].pFence->SetEventOnCompletion(fenceValue, hEvent);
+        WaitForSingleObject(hEvent, INFINITE);
+        CloseHandle(hEvent);
+        break;
+    }
 
     return Status::OK();
   }
-  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue) {
+  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
     ORT_UNUSED_PARAMETER(fenceValue);
+    ORT_UNUSED_PARAMETER(extSyncPrimitive);
 
     //to-do: check what to do here
     return Status::OK();

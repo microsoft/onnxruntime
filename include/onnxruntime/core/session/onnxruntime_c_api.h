@@ -506,6 +506,17 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
 
+typedef enum ExternalSyncPrimitive {
+  ExternalSyncPrimitive_D3D12Fence,
+  ExternalSyncPrimitive_VulkanSemaphore,
+} ExternalSyncPrimitive;
+
+typedef union FencePtr
+{
+    ID3D12Fence* pFence;
+    // Vulkan fence here
+} FencePtr;
+
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
  * This delegate is called by the EP selection code to allow the user to provide custom device selection logic.
@@ -6487,9 +6498,9 @@ struct OrtApi {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
 
-  ORT_API2_STATUS(SessionInitializeGpuProvidersForD3D12Interop, _In_ OrtSession* session, _In_ ID3D12Fence* pFence, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence);
-  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
-  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(SessionInitializeGpuProvidersForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
 
   /** \brief Get the native handle of the sync stream.
    *
