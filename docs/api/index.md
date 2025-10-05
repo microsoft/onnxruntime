@@ -17,3 +17,4 @@ redirect_from: /docs/reference/api
 | <span class="fs-5"> [JavaScript API Docs](js/index.html){: .btn target="_blank"} </span>|
 | <span class="fs-5"> [Ruby API (Community)](https://github.com/ankane/onnxruntime-ruby){: .btn target="_blank"} </span>|
 | <span class="fs-5"> [Julia API (Community)](https://github.com/jw3126/ONNXRunTime.jl){: .btn target="_blank"} </span>|
+| <span class="fs-5"> [Rust API (Community)](https://github.com/pykeio/ort){: .btn target="_blank"} </span>|
