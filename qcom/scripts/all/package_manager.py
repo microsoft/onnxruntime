@@ -113,32 +113,39 @@ class FileCache:
                     shutil.copyfileobj(tmp_file, cache_file_stream)
 
         else:
-            logging.info(f"{url} already exists at {cache_file_path}")
+            logging.debug(f"{url} already exists at {cache_file_path}")
         return cache_file_path
 
     def prune(self) -> None:
         """Prune old entries from the cache until it's below our maximum size."""
 
-        # Collect package info into a list of tuple(name, create time, size bytes), sorted by size.
-        pkg_dirs = [
-            (d, d.stat().st_ctime, sum(f.stat().st_size for f in d.glob("*"))) for d in self.__cache_dir.glob("*")
-        ]
-        pkg_dirs.sort(key=lambda d: d[1])
+        # Prepare a list of files in the package directory sorted by access time
+        pkg_files = sorted(
+            ((pf, pf.stat().st_atime, pf.stat().st_size) for pf in self.__cache_dir.rglob("*") if pf.is_file()),
+            key=lambda f: f[1],
+        )
 
-        # Determine what we need to prune.
-        to_prune = []
-        total_size = sum(d[2] for d in pkg_dirs)
+        # Determine what we need to prune
+        to_prune: list[tuple[Path, float, int]] = []
+        total_size = sum(pf[2] for pf in pkg_files)
         logging.info(f"Cache size before pruning: {total_size / 1024.0 / 1024.0:.2f} MiB.")
-        for pkg_dir in pkg_dirs:
+        for pkg_file in pkg_files:
             if total_size <= self.__max_cache_size_bytes:
                 break
-            to_prune.append(pkg_dir)
-            total_size -= pkg_dir[2]
+            to_prune.append(pkg_file)
+            total_size -= pkg_file[2]
 
         # Prune
-        for pkg_dir in to_prune:
-            logging.debug(f"Pruning {pkg_dir[0]} to reclaim {pkg_dir[2] / 1024.0 / 1024.0:.2f} MiB.")
-            shutil.rmtree(pkg_dir[0])
+        for pkg_file in to_prune:
+            logging.debug(f"Pruning {pkg_file[0]} to reclaim {pkg_file[2] / 1024.0 / 1024.0:.2f} MiB.")
+            pkg_file[0].unlink()
+
+        # Remove empty directories
+        for pkg_dir in self.__cache_dir.iterdir():
+            if len([f for f in pkg_dir.rglob("*") if f.is_file()]) == 0:
+                logging.debug(f"Removing empty directory {pkg_dir}")
+                shutil.rmtree(pkg_dir)
+
         logging.info(f"Cache size after pruning: {total_size / 1024.0 / 1024.0:.2f} MiB.")
 
 
@@ -170,6 +177,7 @@ class PackageManager:
                 logging.debug(f"{subdir.name} is up to date")
             else:
                 cls.__uninstall(subdir)
+        FileCache().prune()
 
     def get_bindir(self, assert_exists: bool = True) -> Path:
         """
@@ -213,7 +221,7 @@ class PackageManager:
         """Ensure this package is installed."""
         pkg_rootdir = self.get_root_dir()
         if pkg_rootdir.exists():
-            logging.info(f"{pkg_rootdir} already exists.")
+            logging.debug(f"{pkg_rootdir} already exists.")
             return
         package_path = self.__fetch()
 
