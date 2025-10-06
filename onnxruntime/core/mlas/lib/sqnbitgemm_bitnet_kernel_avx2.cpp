@@ -93,7 +93,7 @@ void SQ2BitGemmPackQuantBData(
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(bits, BlkLen); // BlkLen/4 bytes
     const size_t Iterations = N; // we parallelize over N, TODO:: tune if needed
-    
+
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
@@ -189,6 +189,7 @@ void SQ2BitGemmPackQuantBData(
             }
         }
     );
+    delete[] buf;
 }
 
 size_t

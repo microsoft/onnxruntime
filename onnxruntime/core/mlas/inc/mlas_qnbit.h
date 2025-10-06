@@ -224,6 +224,22 @@ MlasQNBitGemmScalesPacked(
 );
 
 /**
+ * @brief Packs the scales and zero points into a format that the TMAC kernel expects.
+ */
+void MLASCALL
+MlasTMACPackScalesAndZeroPoints(
+    size_t N,
+    size_t K,
+    size_t BitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    float* PackedQuantBZPBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint
+);
+
+
+/**
  * @brief Determines whether the TMAC LUT optimization path is available on the current platform
  *        for the provided quantization parameters.
  *
@@ -242,7 +258,7 @@ MlasIsTMACAvailable(
  * Returns true if initialization succeeded or was unnecessary.
  */
 bool MLASCALL
-MlasTmacInitializeTable(size_t BlkLen, 
+MlasTmacInitializeTable(size_t BlkLen,
                         void* QuantBData,     // B in MLFloat16 (per your layout)
                         float* QuantBScale,        // scale(s) in float
                         int K,                           // K dimension

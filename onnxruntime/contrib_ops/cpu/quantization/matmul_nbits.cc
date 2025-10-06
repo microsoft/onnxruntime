@@ -145,6 +145,8 @@ class MatMulNBits final : public OpKernel {
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_{};
   size_t packed_b_size_{0};
+  IAllocatorUniquePtr<float> packed_scales_zp_{};
+  size_t packed_scales_zp_size_{0};
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
 
@@ -223,6 +225,23 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       is_packed = true;
     }
 #endif  // MLAS_TARGET_ARM64
+  } else if (compute_type_ == TMAC) {
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+      auto scales_ptr = tensor.Data<float>();
+      if (has_zp_input_) {
+        const Tensor* zero_points = nullptr;
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
+        auto zero_points_ptr = zero_points->Data<uint8_t>();
+
+        packed_scales_zp_size_ = N_ * K_ / block_size_ * 2;
+        packed_scales_zp_ = IAllocator::MakeUniquePtr<float>(alloc, packed_scales_zp_size_, true);
+        MlasTMACPackScalesAndZeroPoints(N_, K_, nbits_, block_size_, has_zp_input_, packed_scales_zp_.get(), scales_ptr, zero_points_ptr);
+      } else {
+        packed_scales_zp_size_ = N_ * K_ / block_size_;
+        packed_scales_zp_ = IAllocator::MakeUniquePtr<float>(alloc, packed_scales_zp_size_, true);
+        MlasTMACPackScalesAndZeroPoints(N_, K_, nbits_, block_size_,has_zp_input_, packed_scales_zp_.get(), scales_ptr, nullptr);
+      }
+    } 
   }
 
   return Status::OK();
@@ -289,6 +308,12 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
       is_packed = false;
     }
 #endif  // MLAS_TARGET_AMD64_IX86
+  } else if (compute_type_ == TMAC) {
+    //TODO:: handle fp16 scales
+    // TMAC packs scales and zero points together by interleaving them
+
+
+
   }
 
   return Status::OK();
@@ -363,7 +388,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
         scales_float = scales_copy.get();
       }
     }
-    
+
     MlasTmacInitializeTable(block_size_, 
                            packed_b_.get(), 
                            scales_float,

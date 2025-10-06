@@ -319,7 +319,7 @@ MlasQNBitGemmPackQuantBData(
             );
             return;
         }
-    } else if (BlkBitWidth == 2) {
+    } else if (BlkBitWidth == 2) {  // TODO:: might switch to for TMAC type if other 2-bit kernels like i2s are added
         if (Dispatch->SQ2BitGemmPackQuantBData != nullptr) {
             Dispatch->SQ2BitGemmPackQuantBData(
                 N,
@@ -373,6 +373,63 @@ MlasQNBitGemmScalesPacked(
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
 #endif  // MLAS_TARGET_ARM64
     return false;
+}
+
+
+void MlasTMACPackScalesAndZeroPoints(
+    size_t N,
+    size_t K,
+    size_t BitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    float* PackedQuantBZPBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint
+)
+{
+    // TODO: Need tmac config so we don't hardcode here.
+    constexpr size_t bits = 2;
+    constexpr size_t g = 4;
+    constexpr size_t ngroups_per_elem = 8 / g;  // 2
+    constexpr size_t simd_n_in = 16;
+    constexpr size_t simd_n_out = 8;
+    constexpr size_t bm = 256;      // tune as needed; must be multiple of bits and mgroup
+    constexpr size_t kfactor = 16;  // tune as needed; must divide K/g per block
+    constexpr size_t num_elem_per_byte = 8 / bits;
+
+
+    for (size_t im = 0; im < N ; im += 1) {
+        for (size_t ik = 0; ik < K; ik += BlkLen) {
+            size_t idx = (im * K + ik) / BlkLen;
+            float scale = QuantBScale[idx];
+            float zp;
+            if (HasZeroPoint) {
+                // zp are two bit packed
+                size_t elem_idx = idx % num_elem_per_byte;
+                uint8_t v = QuantBZeroPoint[idx / num_elem_per_byte] >> (elem_idx * bits) & (1 << bits) - 1;
+                zp = static_cast<float>(v);
+            }
+
+            size_t nb1 = K / BlkLen;
+            size_t nb0 = bm / BitWidth * nb1;
+            size_t new_im = idx / nb0;
+            size_t new_ibm = (idx % nb0) / nb1;
+            size_t new_ik = (idx % nb1);
+
+            if (HasZeroPoint) {
+                size_t new_isimd = new_ibm % simd_n_out;
+                size_t new_idx_outer = new_im * bm / bits * K / BlkLen / simd_n_out + new_ik * bm / bits / simd_n_out + new_ibm / simd_n_out;
+                size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
+
+                PackedQuantBZPBegin[new_idx_scale] = scale;
+                PackedQuantBZPBegin[new_idx_zero] = zp;
+            } else {
+                size_t new_idx = new_im * bm / bits * K / BlkLen + new_ik * bm / bits + new_ibm;
+                PackedQuantBZPBegin[new_idx] = scale;
+            }
+        }
+    }
 }
 
 namespace
