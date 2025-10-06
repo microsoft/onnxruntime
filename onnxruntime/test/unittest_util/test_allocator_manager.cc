@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/framework/TestAllocatorManager.h"
+#include "test/unittest_util/test_allocator_manager.h"
 
 namespace onnxruntime {
 namespace test {
 
-// Dummy Arena which just call underline device allocator directly.
+// Dummy Arena which just call underlying device allocator directly.
 class DummyArena : public IAllocator {
  public:
   explicit DummyArena(std::unique_ptr<IAllocator> resource_allocator)

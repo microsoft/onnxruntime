@@ -11,8 +11,9 @@
 #include "core/session/inference_session.h"
 #include "core/framework/float16.h"
 
+#include "test/common/random_generator.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -25,24 +26,20 @@ inline std::vector<T> random(std::vector<int64_t> shape) {
 
 template <>
 inline std::vector<int64_t> random<int64_t>(std::vector<int64_t> shape) {
-  int64_t size = 1;
-  for (auto dim : shape)
-    size *= dim;
+  const auto size = detail::SizeFromDims(shape);
 
   std::vector<int64_t> data(size);
-  for (int64_t i = 0; i < size; i++)
+  for (size_t i = 0; i < size; i++)
     data[i] = static_cast<int64_t>(rand());
   return data;
 }
 
 template <>
 inline std::vector<bool> random<bool>(std::vector<int64_t> shape) {
-  int64_t size = 1;
-  for (auto dim : shape)
-    size *= dim;
+  const auto size = detail::SizeFromDims(shape);
 
   std::vector<bool> data(size);
-  for (int64_t i = 0; i < size; i++)
+  for (size_t i = 0; i < size; i++)
     data[i] = bool(rand() % 2);
   return data;
 }
@@ -51,7 +48,7 @@ template <>
 inline std::vector<BFloat16> random<BFloat16>(std::vector<int64_t> shape) {
   auto floatdata = random<float>(shape);
   std::vector<BFloat16> data(floatdata.size());
-  for (uint64_t i = 0; i < floatdata.size(); i++)
+  for (size_t i = 0; i < floatdata.size(); i++)
     data[i] = BFloat16(floatdata[i]);
   return data;
 }
@@ -60,7 +57,7 @@ template <>
 inline std::vector<MLFloat16> random<MLFloat16>(std::vector<int64_t> shape) {
   auto floatdata = random<float>(shape);
   std::vector<MLFloat16> data(floatdata.size());
-  for (uint64_t i = 0; i < floatdata.size(); i++)
+  for (size_t i = 0; i < floatdata.size(); i++)
     data[i] = MLFloat16(floatdata[i]);
   return data;
 }

@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
           submodules: 'none'
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: x64
@@ -61,7 +61,7 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\extras\CUPTI\lib64"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8\lib"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20.x'
 
@@ -87,7 +87,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
@@ -168,12 +168,12 @@ jobs:
           name: build-artifacts
           path: ${{ runner.temp }}\build
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: x64
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20.x'
 
@@ -231,12 +231,12 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          
+
           python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py   "${{ runner.temp }}\build\RelWithDebInfo\CTestTestfile.cmake" "${{ runner.temp }}\build\RelWithDebInfo"
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          
+
           python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_tensorrt --tensorrt_home="${{ runner.temp }}\TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"             --cuda_home="${{ runner.temp }}\v12.2" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           if ($lastExitCode -ne 0) {
             exit $lastExitCode

@@ -30,14 +30,14 @@
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/optimizer/test_optimizer_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/temp_dir.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/temp_dir.h"
 
 namespace onnxruntime {
 namespace test {

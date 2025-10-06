@@ -7,7 +7,6 @@ parameters:
   default: true
 
 stages:
-
 # build binaries for Android
 - ${{ if parameters.BuildAndroidBinaries }}:
   - stage: BuildAndroidBinaries

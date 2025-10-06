@@ -7,6 +7,9 @@ vcpkg_from_github(
     SHA512 e6f7b5782a43a91783607549e4d0f0a9cbd46dfb67a602f81aaffc7bcdd8f450fe9c225f0bc314704f2923e396f0df5b03ea91af4a7887203c0b8372bc2749d0
     PATCHES
         fix-cmakelists.patch
+        # Patch changes from https://github.com/onnx/onnx/pull/7253 to avoid unnecessary rebuilding.
+        # This change should be included in ONNX 1.19.1.
+        avoid_regenerating_proto_files.patch
         fix-dependency-protobuf.patch
         binskim.patch
 )

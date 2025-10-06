@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/providers/base_tester.h"
+#include "test/unittest_util/base_tester.h"
 
 #include <csignal>
 #include "gmock/gmock.h"
@@ -13,12 +13,13 @@
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "test/framework/TestAllocatorManager.h"
-#include "test/providers/run_options_config_keys.h"
+#include "test/unittest_util/run_options_config_keys.h"
+#include "test/unittest_util/test_allocator_manager.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/test_utils.h"
 #include "test/util/include/test_environment.h"
+#include "test/util/include/test_utils.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/session/training_session.h"
@@ -39,6 +40,7 @@ void DebugTrap() {
 #endif
 }
 #endif
+
 }  // namespace
 
 BaseTester::~BaseTester() {
@@ -421,7 +423,8 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
 
 bool SetEpsForAllNodes(Graph& graph,
                        const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
-                       const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries) {
+                       const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
+                       const std::function<bool(const IExecutionProvider&)>& ep_uses_kernel_registry_fn) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelRegistry::TypeConstraintMap type_constraint_map{};
 
@@ -436,38 +439,35 @@ bool SetEpsForAllNodes(Graph& graph,
       auto provider_type = ep->Type();
 
       node.SetExecutionProviderType(provider_type);
-      if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-          provider_type == onnxruntime::kTensorrtExecutionProvider ||
-          provider_type == onnxruntime::kNnapiExecutionProvider ||
-          provider_type == onnxruntime::kVSINPUExecutionProvider ||
-          provider_type == onnxruntime::kCoreMLExecutionProvider ||
-          provider_type == onnxruntime::kDnnlExecutionProvider ||
-          provider_type == onnxruntime::kQnnExecutionProvider ||
-          provider_type == onnxruntime::kSnpeExecutionProvider) {
+
+      if (!ep_uses_kernel_registry_fn(*ep)) {
         found = true;
         break;
       }
 
-      // Check the EP has an impl for the node from builtin registry.
-      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver,
-                                              logger)) {
-        found = true;
-        break;
-      }
-
-      // check the internal NHWC domain if EP requests NHWC as it may only have a kernel registered in that domain
-      if (ep->GetPreferredLayout() == DataLayout::NHWC) {
-        const KernelCreateInfo* kci = nullptr;
-        auto status = ep->GetKernelRegistry()->TryFindKernel(ep->Type(),
-                                                             std::string_view(node.OpType()),
-                                                             std::string_view(kMSInternalNHWCDomain),
-                                                             node.SinceVersion(),
-                                                             type_constraint_map,
-                                                             logger,
-                                                             &kci);
-        if (status.IsOK() && kci != nullptr) {
+      if (std::shared_ptr<KernelRegistry> ep_kernel_registry = ep->GetKernelRegistry();
+          ep_kernel_registry != nullptr) {
+        // Check the EP has an impl for the node from builtin registry.
+        if (KernelRegistry::HasImplementationOf(*ep_kernel_registry, node, ep->Type(), kernel_type_str_resolver,
+                                                logger)) {
           found = true;
           break;
+        }
+
+        // check the internal NHWC domain if EP requests NHWC as it may only have a kernel registered in that domain
+        if (ep->GetPreferredLayout() == DataLayout::NHWC) {
+          const KernelCreateInfo* kci = nullptr;
+          auto status = ep_kernel_registry->TryFindKernel(ep->Type(),
+                                                          std::string_view(node.OpType()),
+                                                          std::string_view(kMSInternalNHWCDomain),
+                                                          node.SinceVersion(),
+                                                          type_constraint_map,
+                                                          logger,
+                                                          &kci);
+          if (status.IsOK() && kci != nullptr) {
+            found = true;
+            break;
+          }
         }
       }
 
@@ -593,9 +593,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     fetches_.clear();
 
     // IsAllowReleasedONNXOpsetsOnlySet() checks for the appropriate env var in the process (i.e.) process-wide
-    // `IsAllowReleasedONNXOpsetsOnlySetForThisTest()` is for this specific OpTester instance
-    // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and `IsAllowReleasedONNXOpsetsOnlySetForThisTest()`
-    // are both true
+    // `test_allow_released_onnx_opset_only_` is for this specific OpTester instance
+    // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and
+    // `test_allow_released_onnx_opset_only_` are both true
     auto allow_released_onnx_opset_only =
         test_allow_released_onnx_opset_only_ && model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
 
@@ -647,11 +647,11 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
-      static const std::string all_provider_types[] = {
+      static const std::vector<std::string> all_provider_types = {
           kTensorrtExecutionProvider,
       };
 #else
-      static const std::string all_provider_types[] = {
+      static const std::vector<std::string> all_provider_types = {
           kCpuExecutionProvider,
           kCudaExecutionProvider,
 #ifdef ENABLE_CUDA_NHWC_OPS
@@ -681,9 +681,25 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       }
 #endif
 
+      const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+
+      std::optional<std::vector<std::string>> provider_types_including_dynamic_plugin_ep{};
+      if (dynamic_plugin_ep_name.has_value()) {
+        ORT_ENFORCE(std::find(all_provider_types.begin(), all_provider_types.end(),
+                              *dynamic_plugin_ep_name) == all_provider_types.end(),
+                    "Dynamic plugin EP name conflicts with a known EP name: ", *dynamic_plugin_ep_name);
+        provider_types_including_dynamic_plugin_ep = all_provider_types;
+        provider_types_including_dynamic_plugin_ep->push_back(*dynamic_plugin_ep_name);
+      }
+
+      const auto all_provider_types_span =
+          provider_types_including_dynamic_plugin_ep.has_value()
+              ? gsl::span<const std::string>{*provider_types_including_dynamic_plugin_ep}
+              : gsl::span<const std::string>{all_provider_types};
+
       bool has_run = false;
 
-      for (const std::string& provider_type : all_provider_types) {
+      for (const std::string& provider_type : all_provider_types_span) {
         if (ctx_.excluded_provider_types.count(provider_type) > 0)
           continue;
 
@@ -732,6 +748,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultDmlExecutionProvider();
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
+        else if (provider_type == dynamic_plugin_ep_name) {
+          execution_provider = dynamic_plugin_ep_infra::MakeEp();
+        }
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
@@ -830,13 +849,46 @@ void BaseTester::ExecuteModelForEps(
   }
 
   ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
-  if (try_assign_ep_for_nodes && !SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries)) {
-    std::string providers;
-    for (const auto& ep : execution_providers) {
-      providers.append(ep->Type() + " ");
+  if (try_assign_ep_for_nodes) {
+    auto ep_uses_kernel_registry = [](const IExecutionProvider& ep) {
+      const auto& provider_type = ep.Type();
+
+      constexpr std::array kEpsThatDoNotUseKernelRegistry{
+          kOpenVINOExecutionProvider,
+          kTensorrtExecutionProvider,
+          kNnapiExecutionProvider,
+          kVSINPUExecutionProvider,
+          kCoreMLExecutionProvider,
+          kDnnlExecutionProvider,
+          kQnnExecutionProvider,
+          kSnpeExecutionProvider,
+      };
+
+      // check list of known EPs that do not use a kernel registry
+      if (const auto ep_it = std::find(kEpsThatDoNotUseKernelRegistry.begin(), kEpsThatDoNotUseKernelRegistry.end(),
+                                       provider_type);
+          ep_it != kEpsThatDoNotUseKernelRegistry.end()) {
+        return false;
+      }
+
+      // assume that a dynamic plugin EP which does not return a kernel registry does not use one
+      if (provider_type == dynamic_plugin_ep_infra::GetEpName() &&
+          ep.GetKernelRegistry() == nullptr) {
+        return false;
+      }
+
+      // otherwise, assume that the EP uses a kernel registry
+      return true;
+    };
+
+    if (!SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries, ep_uses_kernel_registry)) {
+      std::string providers;
+      for (const auto& ep : execution_providers) {
+        providers.append(ep->Type() + " ");
+      }
+      LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << " were unable to run the model.";
+      return;
     }
-    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << " were unable to run the model.";
-    return;
   }
 
   std::string provider_type;
@@ -875,7 +927,7 @@ void BaseTester::ExecuteModelForEps(
     *number_of_shared_pre_packed_weights_counter =
         session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
   }
-};
+}
 
 void BaseTester::AddReferenceOutputs(const std::string& model_path, float abs_error,
                                      std::unique_ptr<IExecutionProvider> ep) {
