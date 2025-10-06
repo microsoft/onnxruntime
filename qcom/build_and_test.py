@@ -34,7 +34,7 @@ from ep_build.tasks.build import (
     QdcTestsTask,
     TargetPyVersionT,
 )
-from ep_build.tasks.python import CreateVenvTask, RunLinterTask
+from ep_build.tasks.python import CreateOrtVenvTask, OrtWheelSmokeTestTask, RunLinterTask
 from ep_build.util import (
     DEFAULT_PYTHON,
     REPO_ROOT,
@@ -436,7 +436,7 @@ class TaskLibrary:
 
     @task
     def create_venv(self, plan: Plan) -> str:
-        return plan.add_step(CreateVenvTask(self.__python_executable, self.__venv_path))
+        return plan.add_step(CreateOrtVenvTask(self.__python_executable, self.__venv_path))
 
     @task
     def extract_ort_linux_x86_64(self, plan: Plan) -> str:
@@ -641,6 +641,22 @@ class TaskLibrary:
     if is_host_windows():
 
         @task
+        @depends(["build_ort_windows_arm64"])
+        def test_ort_windows_arm64_pysmoke(self, plan: Plan) -> str:
+            assert self.__target_py_version is not None
+            return plan.add_step(
+                OrtWheelSmokeTestTask(
+                    "Smoke testing ARM64 wheel",
+                    self.__venv_path,
+                    "arm64",
+                    "Release",
+                    self.__target_py_version,
+                )
+            )
+
+    if is_host_windows():
+
+        @task
         @depends(["build_ort_windows_arm64ec"])
         def test_ort_windows_arm64ec(self, plan: Plan) -> str:
             return plan.add_step(
@@ -652,6 +668,38 @@ class TaskLibrary:
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
+                )
+            )
+
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64ec"])
+        def test_ort_windows_arm64ec_pysmoke(self, plan: Plan) -> str:
+            assert self.__target_py_version is not None
+            return plan.add_step(
+                OrtWheelSmokeTestTask(
+                    "Smoke testing ARM64ec wheel",
+                    self.__venv_path,
+                    "arm64ec",
+                    "Release",
+                    self.__target_py_version,
+                )
+            )
+
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64x"])
+        def test_ort_windows_arm64x_pysmoke(self, plan: Plan) -> str:
+            assert self.__target_py_version is not None
+            return plan.add_step(
+                OrtWheelSmokeTestTask(
+                    "Smoke testing ARM64x wheel",
+                    self.__venv_path,
+                    "arm64x",
+                    "Release",
+                    self.__target_py_version,
                 )
             )
 

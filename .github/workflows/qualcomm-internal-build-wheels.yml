@@ -40,7 +40,9 @@ jobs:
       target_arch: arm64
       target_py_vsn: "3.11"
       build_runner_arch: ARM64
+      test_runner_arch: ARM64
       run_tests: false
+      test_wheel: true
       upload_test_archive: false
 
   build-windows-arm64_312:
@@ -52,7 +54,9 @@ jobs:
       target_arch: arm64
       target_py_vsn: "3.12"
       build_runner_arch: ARM64
+      test_runner_arch: ARM64
       run_tests: false
+      test_wheel: true
       upload_test_archive: false
 
   build-windows-arm64_313:
@@ -64,7 +68,9 @@ jobs:
       target_arch: arm64
       target_py_vsn: "3.13"
       build_runner_arch: ARM64
+      test_runner_arch: ARM64
       run_tests: false
+      test_wheel: true
       upload_test_archive: false
 
   build-windows-arm64x_311:
@@ -75,7 +81,9 @@ jobs:
       target_os: windows
       target_arch: arm64x
       target_py_vsn: "3.11"
+      test_runner_arch: ARM64
       run_tests: false
+      test_wheel: true
       upload_test_archive: false
 
   build-windows-arm64x_312:
@@ -86,7 +94,9 @@ jobs:
       target_os: windows
       target_arch: arm64x
       target_py_vsn: "3.12"
+      test_runner_arch: ARM64
       run_tests: false
+      test_wheel: true
       upload_test_archive: false
 
   build-windows-arm64x_313:
@@ -97,5 +107,7 @@ jobs:
       target_os: windows
       target_arch: arm64x
       target_py_vsn: "3.13"
+      test_runner_arch: ARM64
       run_tests: false
+      test_wheel: true
       upload_test_archive: false

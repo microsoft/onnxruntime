@@ -28,6 +28,9 @@ on:
       run_tests:
         default: true
         type: boolean
+      test_wheel:
+        default: false
+        type: boolean
       upload_test_archive:
         default: true
         type: boolean
@@ -66,6 +69,10 @@ on:
       run_tests:
         description: "If true, also run unit tests"
         default: true
+        type: boolean
+      test_wheel:
+        description: "If true, also run a smoke test on the wheel."
+        default: false
         type: boolean
       upload_test_archive:
         description: "If true, build a test archive and include is as an artifact."
@@ -156,3 +163,30 @@ jobs:
           name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}} Test Results
           path: |
             ${{ github.workspace }}/build/${{inputs.target_os}}-${{inputs.target_arch}}/${{ env.BUILD_CONFIG_DIR }}/*.results.xml
+
+  test-wheel:
+    name: "test-${{inputs.target_os}}-${{inputs.target_arch}}-py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}-wheel-smoke"
+    if: ${{ inputs.test_wheel }}
+    needs: [build]
+    runs-on: ["self-hosted", "${{inputs.target_os}}", "${{ inputs.test_runner_arch }}", "Build"]
+    defaults:
+      run:
+        shell: "${{ inputs.target_os == 'windows' && 'cmd' || 'bash' }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ORT ${{inputs.target_os}} ${{ inputs.target_arch }} Python ${{ inputs.target_py_vsn }} Wheel
+          path: |
+            ${{ github.workspace }}/build/${{inputs.target_os}}-${{inputs.target_arch}}/${{env.BUILD_CONFIG_DIR}}/dist
+
+      - name: Test ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}} Wheel
+        run: >
+          "${{ inputs.target_os == 'windows' && 'python.exe' || 'python3' }}"
+          qcom/build_and_test.py
+          --target-py-version ${{inputs.target_py_vsn}}
+          create_venv
+          test_ort_${{inputs.target_os}}_${{inputs.target_arch}}_pysmoke --only

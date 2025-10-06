@@ -12,6 +12,10 @@ from ..util import REPO_ROOT, git_head_sha
 from .windows import RunPowershellScriptsTask
 
 
+def get_ort_version() -> str:
+    return (REPO_ROOT / "VERSION_NUMBER").read_text().strip()
+
+
 class BuildEpLinuxTask(BashScriptsWithVenvTask):
     """Build ONNX Runtime on a Linux host."""
 
@@ -37,6 +41,7 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
         super().__init__(group_name, venv, [cmd], env=ort_build_env_vars())
 
 
+ConfigT = Literal["Debug", "Release", "RelWithDebInfo"]
 TargetArchWindowsT = Literal["arm64", "arm64ec", "x86_64"]
 TargetPyVersionT = Literal["3.10", "3.11", "3.12", "3.13"]
 
@@ -47,7 +52,7 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         group_name: str | None,
         venv: Path | None,
         target_arch: TargetArchWindowsT,
-        config: Literal["Debug", "Release", "RelWithDebInfo"],
+        config: ConfigT,
         target_py_version: TargetPyVersionT | None,
         qairt_sdk_root: Path | None,
         mode: str,

@@ -1,0 +1,4 @@
+json-with-comments
+onnx
+pytest
+onnxruntime-qnn_qcom_internal

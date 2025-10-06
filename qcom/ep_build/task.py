@@ -4,6 +4,7 @@
 import logging
 import shutil
 import tarfile
+import tempfile
 import zipfile
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping
@@ -304,3 +305,23 @@ class PyTestTask(RunExecutablesWithVenvTask):
     ):
         cmd = [["pytest", *files_or_dirs]]
         super().__init__(group_name, venv, cmd, env, cwd)
+
+
+class RunInTempDirectoryTask(Task):
+    def __init__(
+        self,
+        group_name: str | None,
+        task_factory: Callable[[Path], Task],
+        tmpdir_prefix: str | None = None,
+    ) -> None:
+        self.__tmpdir_prefix = tmpdir_prefix
+        self.__task_factory = task_factory
+        super().__init__(group_name)
+
+    def does_work(self) -> bool:
+        return True
+
+    def run_task(self) -> None:
+        with tempfile.TemporaryDirectory(prefix=self.__tmpdir_prefix) as tmpdir:
+            task = self.__task_factory(Path(tmpdir).resolve())
+            return task.run()
