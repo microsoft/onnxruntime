@@ -560,6 +560,7 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
@@ -568,6 +569,7 @@ Return Value:
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelNeon;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelNeon;
     this->NchwcBlockSize = MLAS_NEON_NCHWC_BLOCK_SIZE;
+#endif
 
     //
     // Check if the processor supports ASIMD dot product instructions.
