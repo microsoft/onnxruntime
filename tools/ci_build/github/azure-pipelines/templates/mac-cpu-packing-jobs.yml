@@ -47,8 +47,8 @@ jobs:
       jdkArchitectureOption: 'arm64'
       jdkSourceOption: AzureStorage
       azureResourceManagerEndpoint: AIInfraBuildOnnxRuntimeOSS
-      azureStorageAccountName: lotusscus
-      azureContainerName: models
+      azureStorageAccountName: lotus
+      azureContainerName: java
       azureCommonVirtualFile: 'OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.16_8.tar.gz'
       jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk17'
       cleanDestinationDirectory: false
