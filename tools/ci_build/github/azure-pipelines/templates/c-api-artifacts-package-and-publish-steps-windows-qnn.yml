@@ -30,6 +30,11 @@ parameters:
   type: boolean
   default: true
 
+- name: includeDXC
+  displayName: Include DXC and DXIL libraries?
+  type: boolean
+  default: true
+
 steps:
     - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
       - template: publish-symbolrequestprod-api.yml
@@ -73,8 +78,10 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
           # Copy WebGPU dependencies if required
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxcompiler.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxil.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          if $(includeDXC) == true (
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxcompiler.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxil.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          )
 
           # Copy QNN dependencies if required
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_qnn.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib

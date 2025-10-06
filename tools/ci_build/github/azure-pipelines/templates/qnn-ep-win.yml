@@ -102,6 +102,7 @@ stages:
           artifactName: 'onnxruntime-win-arm64x-qnn'
           artifactNameNoVersionString: 'onnxruntime-win-arm64x-qnn'
           DoEsrp: ${{ parameters.DoEsrp }}
+          includeDXC: false
 
     - task: MSBuild@1
       displayName: 'Restore NuGet Packages and create project.assets.json'
