@@ -41,11 +41,17 @@ jobs:
   - script: |
       uname -m
 
-  - task: JavaToolInstaller@0
+  - task: JavaToolInstaller@1
     inputs:
-      versionSpec: "17"
-      jdkArchitectureOption: "x64"
-      jdkSourceOption: 'PreInstalled'
+      versionSpec: '17'
+      jdkArchitectureOption: 'arm64'
+      jdkSourceOption: AzureStorage
+      azureResourceManagerEndpoint: AIInfraBuildOnnxRuntimeOSS
+      azureStorageAccountName: lotusscus
+      azureContainerName: models
+      azureCommonVirtualFile: 'OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.16_8.tar.gz'
+      jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk17'
+      cleanDestinationDirectory: false
 
   - template: use-xcode-version.yml
     parameters:
