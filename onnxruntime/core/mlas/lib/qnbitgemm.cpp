@@ -408,6 +408,12 @@ void MlasTMACPackScalesAndZeroPoints(
                 size_t elem_idx = idx % num_elem_per_byte;
                 uint8_t v = QuantBZeroPoint[idx / num_elem_per_byte] >> (elem_idx * bits) & (1 << bits) - 1;
                 zp = static_cast<float>(v);
+
+                // Note: TMAC does this during model conversion. Since, we follow ORT format, we need to do it here.
+                // This seems gptq quantization specific. 
+                // We should either use different op than matmul_nbits or add attribute to matmul_nbits to indicate this.
+                zp = zp - (1 << (bits - 1)) - 1;  // make it signed
+                zp = zp * scale;              // store scale * zp
             }
 
             size_t nb1 = K / BlkLen;
