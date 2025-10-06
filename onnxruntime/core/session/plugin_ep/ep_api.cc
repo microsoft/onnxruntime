@@ -227,6 +227,7 @@ ORT_API(void, ReleaseKernelRegistry, _Frees_ptr_opt_ OrtKernelRegistry* kernel_r
 ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_registry,
                     _In_ const OrtKernelDef* kernel_def, _In_ OrtKernelCreateFunc kernel_create_func,
                     _In_ void* kernel_create_func_state) {
+  API_IMPL_BEGIN
   if (kernel_registry == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtKernelRegistry");
   }
@@ -244,6 +245,7 @@ ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_reg
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(kernel_registry->registry->Register(std::move(kernel_create_info)));
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out) {
