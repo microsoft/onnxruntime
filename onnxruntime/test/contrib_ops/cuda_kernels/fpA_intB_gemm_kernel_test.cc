@@ -3,7 +3,7 @@
 
 // Test can be run like the following:
 //  ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.*
-
+#if USE_FPA_INTB_GEMM
 #include <cuda_profiler_api.h>
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
@@ -620,3 +620,4 @@ TEST_F(Bf16Int4GroupwiseTest, BF16_Int4_Gemm_CudaKernel) {
     }
   }
 }
+#endif
