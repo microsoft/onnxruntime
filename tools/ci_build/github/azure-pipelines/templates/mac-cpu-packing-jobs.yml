@@ -37,22 +37,6 @@ jobs:
     clean: true
     submodules: none
 
-
-  - script: |
-      uname -m
-
-  - task: JavaToolInstaller@1
-    inputs:
-      versionSpec: '17'
-      jdkArchitectureOption: 'arm64'
-      jdkSourceOption: AzureStorage
-      azureResourceManagerEndpoint: AIInfraBuildOnnxRuntimeOSS
-      azureStorageAccountName: lotus
-      azureContainerName: java
-      azureCommonVirtualFile: 'OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.16_8.tar.gz'
-      jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk17'
-      cleanDestinationDirectory: false
-
   - template: use-xcode-version.yml
     parameters:
       xcodeVersion: 16.4
@@ -73,10 +57,10 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
 
   - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
