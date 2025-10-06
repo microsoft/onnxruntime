@@ -2629,35 +2629,50 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         options_(options) {
     node_output_types_.resize(node.OutputDefs().size());
 
-    // If it's a Reshape operator, its shape input could be from another op's output and that output
-    // could be shape-inferred via ONNX Operators' type and shape inference.
-    // In following two cases, it returns TensorProto from shape input's TensorShapeProto
-    // - The shape of the shape input is [1]
-    // - The shape of the shape input has rank > 1 and the all the dimensions have value, e.g. [1, 3, 64, 64]
+    // The following code handles cases where a node needs to retrieve a ShapeTensorProto
+    // that stores the actual or inferred shape information in its NodeArg.
+    // 
+    // Focus on Reshape operator for now.
+    // 
+    // For the Reshape operator, its input shape may come from a producer node such as a Shape operator,
+    // which can store the inferred shape as a ShapeTensorProto within the NodeArg.
+    // In such cases, the Reshape operator should convert this ShapeTensorProto into a TensorProto.
+    // The resulting TensorProto will then be treated as an initializer during ONNX shape inference,
+    // allowing the real dimension values to be correctly used.
+    // See https://github.com/onnx/onnx/blob/main/onnx/defs/shape_inference.cc#L467 for details.
+    // 
+    // Note: Only certain ShapeTensorProto cases will be converted to TensorProto, specifically when:
+    //       - The shape input has shape [1], meaning the shape only has one dimension value, or
+    //       - The shape input has rank > 1 and all dimensions have known (concrete) values,
+    //         e.g., [1, 3, 64, 64].
+    //
+    // Note: The following code is placed here instead of in getInputData() because
+    //       getInputData() is a const function that returns a pointer. As a result,
+    //       we cannot create a new ShapeTensorProto and store it in this class within a const function.
     if (node_.OpType() == "Reshape") {
-      ORT_ENFORCE(node.InputDefs().size() == 2);
-      auto def = node_.InputDefs()[1];  // "shape" input
+      // Get the "shape" input.
+      auto def = node_.InputDefs()[1]; // It's safe to access, the Reshape operator is guaranteed to have two inputs
       if (def && def->Shape() && def->Shape()->dim_size() > 0) {
-        auto tensor_shape_proto = def->Shape();
+        auto tensor_shape_proto = def->GetInferredTensorShapeProto();
 
         // The shape of the "shape" input is [1]
-        if (tensor_shape_proto->dim_size() == 1 &&
-            tensor_shape_proto->dim()[0].has_dim_value() &&
-            tensor_shape_proto->dim()[0].dim_value() == 1) {
+        if (tensor_shape_proto.dim_size() == 1 &&
+            tensor_shape_proto.dim()[0].has_dim_value() &&
+            tensor_shape_proto.dim()[0].dim_value() == 1) {
           TensorProto tensor_proto;
           tensor_proto.set_data_type(TensorProto_DataType_INT64);
           tensor_proto.add_dims(1);
-          tensor_proto.add_int64_data(tensor_shape_proto->dim()[0].dim_value());
+          tensor_proto.add_int64_data(tensor_shape_proto.dim()[0].dim_value());
           tensor_proto_for_shape_.push_back(std::move(tensor_proto));
         }
 
-        // The shape of the shape input has rank > 1 and the all the dimensions have value (not symbolic)
-        if (tensor_shape_proto->dim_size() > 1) {
+        // The shape of the "shape" input has rank > 1 and the all the dimensions have value (not symbolic)
+        if (tensor_shape_proto.dim_size() > 1) {
           TensorProto tensor_proto;
           tensor_proto.set_data_type(TensorProto_DataType_INT64);
-          tensor_proto.add_dims(tensor_shape_proto->dim_size());
+          tensor_proto.add_dims(tensor_shape_proto.dim_size());
           bool all_values = true;
-          for (const auto& dim : tensor_shape_proto->dim()) {
+          for (const auto& dim : tensor_shape_proto.dim()) {
             if (dim.has_dim_value()) {
               tensor_proto.add_int64_data(dim.dim_value());
             } else {
@@ -2672,7 +2687,6 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         }
       }
     }
-
   }
 
   void RunInferencing() {
@@ -2727,11 +2741,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
       return initializer;
     }
 
-    // If it's a Reshape operator, its shape input could be from another op's output and that output
-    // could be shape-inferred via ONNX Operators' type and shape inference.
-    // In following two cases, it returns TensorProto from shape input's TensorShapeProto
-    // - The shape of the shape input is [1]
-    // - The shape of the shape input has rank > 1, e.g. [1, 3, 64, 64]
+    // If it's a Reshape operator, simply return the ShapeTensorProto 
+    // that was previously created in the InferenceContextImpl's constructor.
     if (node_.OpType() == "Reshape") {
       if (tensor_proto_for_shape_.size() == 1) {
         return &tensor_proto_for_shape_[0];
@@ -2780,6 +2791,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   const Graph::ResolveOptions& options_;
 };
 
+// An implementation of the DataPropagationContext interface optional by operator-specific
+// shape inference for onnxruntime graphs.
 class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext {
  public:
   DataPropagationContextImpl(Node& node, const Graph& graph) noexcept : node_(node), graph_(graph) {
@@ -3056,11 +3069,26 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   // returned here.
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
   InferenceContextImpl context(node, func, *this, options);
+  DataPropagationContextImpl data_propagation_context(node, *this);
 
   {
     auto status = Status::OK();
     ORT_TRY {
       context.RunInferencing();
+
+      // The following code handles cases where calling the operator-specific shape inference alone
+      // (i.e., the TypeAndShapeInferenceFunction() defined in the ONNX operator schema)
+      // is insufficient to fully infer the output shape.
+      // 
+      // Focus on Shape operator for now.
+      // 
+      // For a Shape operator, running its shape inference only determines the rank (number of dimensions)
+      // of the output tensor, not the actual dimension values. To infer those values and propagate them
+      // throughout the graph, the PartialDataPropagationFunction() defined in the ONNX operator schema
+      // must also be executed.
+      if (node.OpType() == "Shape") {
+        data_propagation_context.RunInferencing();
+      }
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -3070,58 +3098,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     ORT_RETURN_IF_ERROR(status);
   }
 
-  auto& onnx_inferred_types(context.InferredOutputTypes());
-
-  // If it's a "Shape" operator, after running "Shape" op's shape inference, only the rank of the node's output is
-  // resolved but not the real shape/dimension values.
-  // Need to run data propagation to get the shape values.
-  if (node.OpType() == "Shape") {
-    // This function should be called after executing operator's TypeAndShapeInferenceFunction() defined in ONNX OpSchema.
-    DataPropagationContextImpl data_propagation_context(node, *this);
-
-    {
-      auto status = Status::OK();
-      ORT_TRY {
-        data_propagation_context.RunInferencing();
-      }
-      ORT_CATCH(const std::exception& ex) {
-        ORT_HANDLE_EXCEPTION([&]() {
-          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node (", node.Name(), ") Op (", node.OpType(), ") ", ex.what());
-        });
-      }
-      ORT_RETURN_IF_ERROR(status);
-    }
-
-    const auto& onnx_inferred_data(data_propagation_context.InferredOutputTypes());
-
-    if (!onnx_inferred_data.empty()) {
-      ORT_ENFORCE(onnx_inferred_data.size() == onnx_inferred_types.size(), "");
-
-      for (size_t idx = 0; idx < onnx_inferred_types.size(); ++idx) {
-        auto& type_proto = onnx_inferred_types[idx];
-        auto& type_proto_with_shape_data_inferred = onnx_inferred_data[idx];
-
-        auto dim_size = type_proto_with_shape_data_inferred.tensor_type().shape().dim_size();
-        auto are_all_dimensions_have_value = (dim_size > 0) ? true : false;
-
-        for (int i = 0; i < dim_size; ++i) {
-          if (!type_proto_with_shape_data_inferred.tensor_type().shape().dim(i).has_dim_value()) {
-            are_all_dimensions_have_value = false;
-            break;
-          }
-        }
-
-        if (are_all_dimensions_have_value) {
-          type_proto.mutable_tensor_type()->clear_shape();
-
-          for (int i = 0; i < dim_size; ++i) {
-            auto value = type_proto_with_shape_data_inferred.tensor_type().shape().dim(i).dim_value();
-            type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(value);
-          }
-        }
-      }
-    }
-  }
+  const auto& onnx_inferred_types(context.InferredOutputTypes());
+  const auto& onnx_inferred_data(data_propagation_context.InferredOutputTypes());
 
   // Infer and verify node output arg type information.
   int i = -1;
@@ -3139,6 +3117,33 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     auto op_formal_parameter = op.outputs().at(operand_index);
 
     const TypeProto& onnx_inferred_type = onnx_inferred_types[i];
+
+    const TypeProto& type_proto_with_shape_data_inferred = onnx_inferred_data[i];
+
+    // If the actual dimension values are inferred after executing the operator's
+    // PartialDataPropagationFunction(), save them to the output NodeArg as a
+    // TensorShapeProto so that downstream (consumer) nodes can use them later.
+    auto save_tensor_shape_proto_with_inferred_data = [&]() -> void {
+      auto dim_size = type_proto_with_shape_data_inferred.tensor_type().shape().dim_size();
+      if (dim_size <= 0) return;
+
+      // Each dimension should have the value
+      for (int i = 0; i < dim_size; ++i) {
+        if (!type_proto_with_shape_data_inferred.tensor_type().shape().dim(i).has_dim_value()) {
+          return;
+        }
+      }
+
+      output_def->tensor_shape_proto_after_shape_inferred_.clear_dim();
+
+      for (int i = 0; i < dim_size; ++i) {
+        auto value = type_proto_with_shape_data_inferred.tensor_type().shape().dim(i).dim_value();
+        output_def->tensor_shape_proto_after_shape_inferred_.add_dim()->set_dim_value(value);
+      }
+    };
+
+    save_tensor_shape_proto_with_inferred_data();
+
     DataType existing_type = output_def->Type();
     DataType inferred_type = nullptr;
 

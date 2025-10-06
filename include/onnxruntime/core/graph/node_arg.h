@@ -107,6 +107,9 @@ class NodeArg {
   /** Gets this NodeArg as a NodeArgInfo, AKA ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 
+  /** Gets the inferred shape as a TensorShapeProto. */
+  const ONNX_NAMESPACE::TensorShapeProto& GetInferredTensorShapeProto() const noexcept { return tensor_shape_proto_after_shape_inferred_; }
+
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
@@ -127,6 +130,13 @@ class NodeArg {
 
   // Node arg name, type and shape.
   NodeArgInfo node_arg_info_;
+
+  // If this node has a Tensor type, this is the TensorShapeProto of the node's TypeProto_Tensor.
+  // Calling Op's TypeAndShapeInferenceFunction() is not enough for some operators during type and shape inference,
+  // e.g. Shape op, as it only gets the inferred rank/dimension size value.
+  // The Op's PartialDataPropagationFunction() defined in ONNX Op Schema should also be called to get the shape dimension values.
+  // The variable is used for storing that shape dimension values so that inferred shape can be correctly propagated through out the graph.
+  ONNX_NAMESPACE::TensorShapeProto tensor_shape_proto_after_shape_inferred_;
 
   // Flag indicates whether <*this> node arg exists or not.
   bool exists_;
