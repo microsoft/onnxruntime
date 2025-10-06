@@ -37,6 +37,10 @@ jobs:
     clean: true
     submodules: none
 
+
+  - script: |
+      uname -m
+
   - task: JavaToolInstaller@0
     inputs:
       versionSpec: "17"
