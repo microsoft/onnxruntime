@@ -114,8 +114,8 @@ def update_npm_packages(js_root: Path, new_version: str):
 
     # This script assumes a 'util' module is available in the search path.
     try:
-        from util import is_windows
-        from util import run as run_command
+        from util import is_windows  # noqa: PLC0415
+        from util import run as run_command  # noqa: PLC0415
     except ImportError:
         print("Error: Could not import 'is_windows' and 'run' from a 'util' module.", file=sys.stderr)
         print("Please ensure the 'util' module is in Python's search path.", file=sys.stderr)
