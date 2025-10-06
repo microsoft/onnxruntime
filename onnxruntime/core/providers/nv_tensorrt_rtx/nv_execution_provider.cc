@@ -1466,12 +1466,15 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
           fused_inputs.erase(it);
           erased.insert(output);
         }
-        // Only when output is neither in input list nor erased list, add the output to output list
+        // Only when output is neither in input list nor erased list, and the output is consumed by another node, add the output to output list
         else if (erased.find(output) == erased.end()) {
           if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
             graph_outputs_to_add[output] = output_order;
           }
-          fused_outputs[output] = output_order++;
+
+          if (graph.GetGraph().GetConsumerNodes(output->Name()).size() > 0) {
+            fused_outputs[output] = output_order++;
+          }
         }
       }
     }

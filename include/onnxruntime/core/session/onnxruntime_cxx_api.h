@@ -1063,11 +1063,25 @@ using UnownedAllocator = detail::AllocatorImpl<detail::Unowned<OrtAllocator>>;
 /** \brief Wrapper around ::OrtSyncStream
  *
  */
-struct SyncStream : detail::Base<OrtSyncStream> {
-  explicit SyncStream(std::nullptr_t) {}                             ///< Create an empty SyncStream object, must be assigned a valid one to be used
-  explicit SyncStream(OrtSyncStream* p) : Base<OrtSyncStream>{p} {}  ///< Take ownership of a pointer created by C API
-  void* GetHandle() const;                                           ///< Wraps SyncStream_GetHandle
+
+namespace detail {
+template <typename T>
+struct SyncStreamImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+  // For some reason this is not a const method on the stream
+  void* GetHandle();  ///< Wraps SyncStream_GetHandle
 };
+}  // namespace detail
+
+struct SyncStream : detail::SyncStreamImpl<OrtSyncStream> {
+  ///< Create an empty SyncStream object, must be assigned a valid one to be used
+  explicit SyncStream(std::nullptr_t) {}
+  ///< Take ownership of a pointer created by C API
+  explicit SyncStream(OrtSyncStream* p) : SyncStreamImpl<OrtSyncStream>{p} {}
+};
+
+using UnownedSyncStream = detail::SyncStreamImpl<detail::Unowned<OrtSyncStream>>;
 
 namespace detail {
 template <typename T>
@@ -1768,6 +1782,7 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
   void GetSymbolicDimensions(const char** values, size_t values_count) const;  ///< Wraps OrtApi::GetSymbolicDimensions
   std::vector<const char*> GetSymbolicDimensions() const;
 
+  bool HasShape() const;                  ///< Wraps OrtApi::TensorTypeAndShape_HasShape
   std::vector<int64_t> GetShape() const;  ///< Uses GetDimensionsCount & GetDimensions to return a std::vector of the shape
 };
 

@@ -35,26 +35,22 @@ jobs:
 
   variables:
   - name: MACOSX_DEPLOYMENT_TARGET
-    value: '13.4'
+    value: '14.0'
         
   steps:
   - checkout: self
     clean: true
     submodules: none
 
-  - task: UsePythonVersion@0
-    displayName: 'Use Python'
-    inputs:
-      versionSpec: ${{ parameters.python_version }}
-
-  - task: PipAuthenticate@1
-    displayName: 'Pip Authenticate'
-    inputs:
-      artifactFeeds: 'Lotus'
-      
   - template: use-xcode-version.yml
     parameters:
       xcodeVersion: '16.4.0'
+
+
+  - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: ${{ parameters.arch }}
+      python_version: ${{ parameters.python_version }}
 
   - script: |
       set -e -x

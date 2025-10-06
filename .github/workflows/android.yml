@@ -37,7 +37,7 @@ jobs:
         ndk-version: 28.0.13004108
 
     - name: Get Docker Image using Action
-      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.8
+      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
       id: build_docker_image_step
       with:
         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -71,8 +71,8 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1722565"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1722565"
+        echo "Binary size threshold in bytes: 1436672"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1436672"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
@@ -122,7 +122,7 @@ jobs:
           architecture: x64
 
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
