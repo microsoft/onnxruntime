@@ -54,23 +54,23 @@ onnxruntime_add_static_library(onnxruntime_mlas
 )
 
 if (onnxruntime_DISABLE_SSE4)
-  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_SSE4)
+  list(APPEND mlas_private_compile_definitions ORT_DISABLE_SSE4)
 endif()
 
 if (onnxruntime_DISABLE_AVX)
-  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX)
+  list(APPEND mlas_private_compile_definitions ORT_DISABLE_AVX)
 endif()
 
 if (onnxruntime_DISABLE_AVX2)
-  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX2)
+  list(APPEND mlas_private_compile_definitions ORT_DISABLE_AVX2)
 endif()
 
 if (onnxruntime_DISABLE_AVX512)
-  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AVX512)
+  list(APPEND mlas_private_compile_definitions ORT_DISABLE_AVX512)
 endif()
 
 if (onnxruntime_DISABLE_AMX)
-  target_compile_definitions(onnxruntime_mlas PRIVATE ORT_DISABLE_AMX)
+  list(APPEND mlas_private_compile_definitions ORT_DISABLE_AMX)
 endif()
 
 target_sources(onnxruntime_mlas PRIVATE
