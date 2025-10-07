@@ -59,7 +59,7 @@ const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'
  */
 const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? false;
 
-const USE_JSPI = args['jspi'] ?? process.env.npm_config_jspi ?? false;
+const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
 
 console.log(`USE_WEBGPU_EP=${USE_WEBGPU_EP}, USE_JSPI=${USE_JSPI}`);
 
