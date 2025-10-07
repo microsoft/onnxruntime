@@ -43,7 +43,7 @@ export class FoundryModelService {
 	// Get acceleration display name
 	getAccelerationDisplayName(acceleration: string): string {
 		const accelerationNames: Record<string, string> = {
-			'qnn': 'Qualcomm AI Runtime',
+			'qnn': 'Qualcomm QNN',
 			'vitis': 'AMD Vitis AI',
 			'openvino': 'Intel OpenVINO',
 			'trt-rtx': 'NVIDIA TensorRT RTX'
