@@ -66,6 +66,22 @@ using TimePoint = std::chrono::high_resolution_clock::time_point;
 #define ORT_ATTRIBUTE_UNUSED
 #endif
 
+// ORT_CONSTINIT
+//
+// C++20 constinit keyword ensures that a variable is initialized at compile time
+// and can be safely used in static initialization contexts
+#if defined(__cpp_constinit) && __cpp_constinit >= 201907L
+#define ORT_CONSTINIT constinit
+#elif defined(__clang__) && defined(__has_cpp_attribute)
+#if __has_cpp_attribute(clang::require_constant_initialization)
+#define ORT_CONSTINIT [[clang::require_constant_initialization]]
+#endif
+#endif
+
+#ifndef ORT_CONSTINIT
+#define ORT_CONSTINIT
+#endif
+
 #ifdef ORT_NO_EXCEPTIONS
 // Print the given final message, the message must be a null terminated char*
 // ORT will abort after printing the message.

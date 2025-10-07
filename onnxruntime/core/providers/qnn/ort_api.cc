@@ -12,7 +12,7 @@ namespace onnxruntime {
 #if BUILD_QNN_EP_STATIC_LIB
 
 namespace {
-static std::mutex run_on_unload_mutex;
+ORT_CONSTINIT static std::mutex run_on_unload_mutex;
 }  // namespace
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;

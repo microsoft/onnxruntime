@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 namespace {
-static std::mutex mutex;
+ORT_CONSTINIT static std::mutex mutex;
 }
 
 int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,

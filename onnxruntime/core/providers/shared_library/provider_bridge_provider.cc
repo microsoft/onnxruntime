@@ -83,7 +83,7 @@ void operator delete(void* p, size_t /*size*/) noexcept { return Provider_GetHos
 namespace onnxruntime {
 
 namespace {
-static std::mutex run_on_unload_mutex;
+ORT_CONSTINIT static std::mutex run_on_unload_mutex;
 }  // namespace
 
 #if defined(_MSC_VER) && !defined(__clang__)

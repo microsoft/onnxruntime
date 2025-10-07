@@ -453,7 +453,7 @@ TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
 }
 
 namespace {
-std::mutex trt_api_lock;
+ORT_CONSTINIT std::mutex trt_api_lock;
 }  // namespace
 
 std::unique_lock<std::mutex> TensorrtExecutionProvider::GetApiLock() const {

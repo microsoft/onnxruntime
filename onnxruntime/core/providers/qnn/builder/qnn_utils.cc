@@ -791,7 +791,7 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
 }
 
 namespace {
-static std::mutex counter_mutex;
+ORT_CONSTINIT static std::mutex counter_mutex;
 }  // namespace
 
 std::string GetUniqueName(const std::string& base, std::string_view suffix) {

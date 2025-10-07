@@ -64,7 +64,7 @@ LoggingManager* LoggingManager::GetDefaultInstance() {
 #pragma warning(disable : 26426)
 #endif
 
-static std::mutex default_logger_mutex;
+ORT_CONSTINIT static std::mutex default_logger_mutex;
 
 static std::mutex& DefaultLoggerMutex() noexcept {
   return default_logger_mutex;

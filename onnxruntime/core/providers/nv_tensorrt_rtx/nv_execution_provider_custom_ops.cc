@@ -23,7 +23,7 @@
 namespace onnxruntime {
 
 namespace {
-static std::mutex trt_custom_op_mutex;
+ORT_CONSTINIT static std::mutex trt_custom_op_mutex;
 }  // namespace
 
 extern TensorrtLogger& GetTensorrtLogger(bool verbose);
