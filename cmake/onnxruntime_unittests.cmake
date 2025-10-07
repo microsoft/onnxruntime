@@ -1228,6 +1228,11 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+  if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
+    # The test_main.cc includes NvInfer.h where it has many deprecated declarations
+    # simply ignore them for TensorRT EP build
+    set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+  endif()
 
   # enable dynamic plugin EP usage
   target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
@@ -1325,6 +1330,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/layer_normalization.cc)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
+    target_compile_definitions(onnxruntime_benchmark PRIVATE ${mlas_private_compile_definitions})
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
@@ -1352,6 +1358,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
     target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
+    target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE ${mlas_private_compile_definitions})
     if(WIN32)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
@@ -1649,6 +1656,7 @@ endif()
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
       )
     endif()
+    target_compile_definitions(onnxruntime_mlas_test PRIVATE ${mlas_private_compile_definitions})
     target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
             ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
