@@ -3,7 +3,7 @@
 
 # Only build libbacktrace in Debug mode (for stack trace support)
 if (NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-  option(onnxruntime_USE_LIBBACKTRACE "Build and use libbacktrace" ON)
+  cmake_dependent_option(onnxruntime_USE_LIBBACKTRACE "Build and use libbacktrace" ON "onnxruntime_USE_CUDA" OFF)
 else()
   set(onnxruntime_USE_LIBBACKTRACE OFF)
 endif()
