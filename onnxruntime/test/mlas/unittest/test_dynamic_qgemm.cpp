@@ -4,9 +4,11 @@
 // SPDX-License-Identifier: MIT
 //
 
-#include "test_util.h"
 // Currently this test only applies to KleidiAI Guard against it running in any other situation
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+
+#include "test_util.h"
+#include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
 
 class MlasDynamicQgemmTest {
  private:
