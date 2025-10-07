@@ -1024,7 +1024,7 @@ def generate_build_tree(
         cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
 
     if args.cmake_deps_mirror_dir:
-        cmake_args += [f"-DCMAKE_DEPS_MIRROR_DIR={args.cmake_deps_mirror_dir}"]
+        cmake_args += [f"-Donnxruntime_CMAKE_DEPS_MIRROR_DIR={args.cmake_deps_mirror_dir}"]
 
     if args.fuzz_testing:
         if not (

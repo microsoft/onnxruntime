@@ -426,7 +426,7 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
 endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
-set(CMAKE_DEPS_MIRROR_DIR ${REPO_ROOT}/mirror CACHE PATH "Path to the local mirror of cmake dependencies")
+set(onnxruntime_CMAKE_DEPS_MIRROR_DIR ${REPO_ROOT}/mirror CACHE PATH "Path to the local mirror of cmake dependencies")
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
 set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)

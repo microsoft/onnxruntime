@@ -4,7 +4,7 @@
 # 2. Set the cmake property COMPILE_WARNING_AS_ERROR to OFF for these external projects.
 
 function(onnxruntime_fetchcontent_declare contentName)
-    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "URL;URL_HASH;SOURCE_SUBDIR" "")
+    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "URL;SOURCE_SUBDIR" "")
     message(STATUS "Fetch ${contentName} from ${ARG_URL}")
     FetchContent_Declare(${ARGV})
     string(TOLOWER ${contentName} contentNameLower)

@@ -20,7 +20,7 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
 
     if(ONNXRUNTIME_DEP_URL MATCHES "^https://")
       # Search a local mirror folder
-      string(REGEX REPLACE "^https://" "${CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
+      string(REGEX REPLACE "^https://" "${onnxruntime_CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
 
       if(EXISTS "${LOCAL_URL}")
         cmake_path(ABSOLUTE_PATH LOCAL_URL)
