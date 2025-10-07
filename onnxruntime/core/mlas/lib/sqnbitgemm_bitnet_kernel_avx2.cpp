@@ -70,14 +70,15 @@ void SQ2BitGemmPackQuantBData(
     //decompose W into w1,... w_bits create temp buffer buf2 of size N * bits * (K/g)
 
     // T-MAC like configuration (approved):
-    // bits=2, g=4, ngroups_per_elem=8/g=2, simd_n_in=16, simd_n_out=8, bm=512, kfactor=16
-    constexpr size_t bits = 2;
-    constexpr size_t g = 4;
-    constexpr size_t ngroups_per_elem = 8 / g; // 2
-    constexpr size_t simd_n_in = 16;
-    constexpr size_t simd_n_out = 8;
-    constexpr size_t bm = 256;      // tune as needed; must be multiple of bits and mgroup
-    constexpr size_t kfactor = 16;  // tune as needed; must divide K/g per block
+    // bits=2, g=4, ngroups_per_elem=8/g=2, simd_n_in=16, simd_n_out=8, bm=256, kfactor=16
+    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(N, K, 2, BlkLen);
+    const size_t bits = 2;
+    const size_t g = tmac_params.g;
+    const size_t ngroups_per_elem = tmac_params.ngroups_per_elem;
+    const size_t simd_n_in = tmac_params.simd_n_in;
+    const size_t simd_n_out = tmac_params.simd_n_out;
+    const size_t bm = tmac_params.bm;     
+    const size_t kfactor = tmac_params.kfactor;
 
     // Basic checks
     MLAS_UNREFERENCED_PARAMETER(K);

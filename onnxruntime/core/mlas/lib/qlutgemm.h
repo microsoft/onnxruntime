@@ -6,6 +6,27 @@
 #include "mlas_qnbit.h"
 #include "mlasi.h"
 
+
+/**
+ * @brief Parameters for TMAC kernel
+ */
+struct MlasTMACKernelParams {
+    size_t g;
+    size_t ngroups_per_elem;
+    size_t q_group_size;
+    size_t act_group_size;
+
+    size_t kfactor;
+    size_t bits;
+    size_t actk;
+    size_t bm;
+    size_t simd_n_in;
+    size_t simd_n_out;
+    size_t chunk_n;
+};
+
+const MlasTMACKernelParams& GetTMACKernelParams(size_t M, size_t N, size_t nbits, size_t block_size);
+
 typedef
 void(MLAS_QNBIT_GEMM_LUT_GEN)(
 	int32_t group_size,
