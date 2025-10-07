@@ -78,7 +78,6 @@ class ConstantOfShapeBase {
     auto* t_proto_p = t_proto.get();
 #endif
     if (info.GetAttr<ONNX_NAMESPACE::TensorProto>("value", t_proto_p).IsOK()) {
-      ORT_ENFORCE(t_proto_p->has_shape(), "The value tensor of ConstantOfShape should have a shape");
       ORT_ENFORCE(
           t_proto_p->dims_size() == 0 ||
               std::accumulate(
