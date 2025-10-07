@@ -81,11 +81,11 @@ class ConstantOfShapeBase {
       ORT_ENFORCE(t_proto_p->has_shape(), "The value tensor of ConstantOfShape should have a shape");
       ORT_ENFORCE(
           t_proto_p->dims_size() == 0 ||
-              accumulate(
+              std::accumulate(
                   t_proto_p->dims().begin(),
                   t_proto_p->dims().end(),
                   1,
-                  multiplies<size_t>()) == 1,
+                  std::multiplies<size_t>()) == 1,
           "The value attribute of ConstantOfShape must be a single-element tensor");
       SetValueFromTensorProto(*t_proto_p);
     } else {
