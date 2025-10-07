@@ -879,22 +879,11 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    # Set onnxruntime_USE_KLEIDIAI based on:
-    # * Default value above is NO.
-    # * Leave disabled if "no_kleidiai" argument was specified.
-    # * Enable if the target is Android and args.android_abi contains arm64*
-    # * Enable for a Windows cross compile build if compile target is an Arm one.
-    # * Finally enable if platform.machine contains "arm64" and not a WebAssembly build. This should cover the following cases:
-    #     *  Linux on Arm
-    #     *  MacOs (case must be ignored)
-    # * TODO Delegate responsibility for Onnxruntime_USE_KLEIDIAI = ON to CMake logic
     if not args.no_kleidiai:
-        if (
-            (args.android and "arm64" in args.android_abi.lower())
-            or (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64")
-            or ("arm64" in platform.machine().lower() and not args.build_wasm)
-        ):
-            cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
+        cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
+
+    if args.enable_arm_neon_nchwc:
+        cmake_args += ["-Donnxruntime_USE_ARM_NEON_NCHWC=ON"]
 
     if not args.no_sve:
         cmake_args += ["-Donnxruntime_USE_SVE=ON"]
@@ -1749,7 +1738,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            if args.enable_transformers_tool_test and not args.disable_contrib_ops and not args.use_rocm:
+            if (
+                not args.skip_pip_install
+                and args.enable_transformers_tool_test
+                and not args.disable_contrib_ops
+                and not args.use_rocm
+            ):
                 # PyTorch is required for transformers tests, and optional for some python tests.
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
@@ -1833,21 +1827,23 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
-                        run_subprocess(
-                            [
-                                sys.executable,
-                                "-m",
-                                "pip",
-                                "install",
-                                "-r",
-                                "requirements/transformers-test/requirements.txt",
-                            ],
-                            cwd=SCRIPT_DIR,
-                        )
+                        if not args.skip_pip_install:
+                            run_subprocess(
+                                [
+                                    sys.executable,
+                                    "-m",
+                                    "pip",
+                                    "install",
+                                    "-r",
+                                    "requirements/transformers-test/requirements.txt",
+                                ],
+                                cwd=SCRIPT_DIR,
+                            )
                         run_subprocess([sys.executable, "-m", "pytest", "--durations=0", "transformers"], cwd=cwd)
-                        # Restore initial numpy/protobuf version in case other tests use it
-                        run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
-                        run_subprocess([sys.executable, "-m", "pip", "install", "protobuf==" + pb_init_version])
+                        if not args.skip_pip_install:
+                            # Restore initial numpy/protobuf version in case other tests use it
+                            run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
+                            run_subprocess([sys.executable, "-m", "pip", "install", "protobuf==" + pb_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess(
@@ -2535,7 +2531,7 @@ def main():
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-        if args.enable_pybind and is_windows():
+        if not args.skip_pip_install and args.enable_pybind and is_windows():
             run_subprocess(
                 [sys.executable, "-m", "pip", "install", "-r", "requirements/pybind/requirements.txt"],
                 cwd=SCRIPT_DIR,

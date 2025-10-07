@@ -5,6 +5,9 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
+# mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
+# use internal MLAS headers like mlasi.h.
+set(mlas_private_compile_definitions)
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -109,8 +112,6 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-        ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-        ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -134,7 +135,11 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
       )
 
-      if (onnxruntime_USE_KLEIDIAI)
+      if (onnxruntime_USE_ARM_NEON_NCHWC)
+		setup_arm_neon_nchwc()
+	  endif()
+
+	  if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
       endif()
     else()
@@ -289,6 +294,16 @@ function(setup_kleidiai)
   endif()
 endfunction()
 
+function (setup_arm_neon_nchwc)
+  target_sources(onnxruntime_mlas PRIVATE
+   ${MLAS_SRC_DIR}/sconv.h
+   ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+   ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
+  )
+  list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
+  set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+endfunction ()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     file(GLOB_RECURSE mlas_platform_srcs
@@ -433,24 +448,26 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
-          ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-          ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
         )
-        
+
         # Conditionally add the SVE implementation if compiler supports it
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
-          target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_SVE)
+          list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
-        if (onnxruntime_USE_KLEIDIAI)
+        if (onnxruntime_USE_ARM_NEON_NCHWC)
+		  setup_arm_neon_nchwc()
+		endif()
+
+		if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
-        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp 
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
 				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
 
         if (NOT APPLE)
@@ -792,6 +809,8 @@ endif()
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
     onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET})
+
+    target_compile_definitions(${mlas_target} PRIVATE ${mlas_private_compile_definitions})
 
     set_target_properties(${mlas_target} PROPERTIES FOLDER "ONNXRuntime")
 endforeach()

@@ -88,13 +88,9 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
+option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
-# iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
-if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
-    message(WARNING "Disabling KleidiAI: not supported on Apple x86_64 platforms")
-  set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
-endif()
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -257,6 +253,8 @@ option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is comp
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
 endif()
+
+include(detect_onnxruntime_target_platform.cmake)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -434,14 +432,6 @@ set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
 
 include(adjust_global_compile_flags.cmake)
 
-if (APPLE)
-  if (NOT CMAKE_OSX_ARCHITECTURES)
-    message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR} CPU ARCH")
-  endif()
-elseif (NOT WIN32 AND NOT APPLE)
-  message("Building ONNX Runtime for ${onnxruntime_target_platform} CPU ARCH")
-endif()
-
 # We need to link with libatomic on systems that do not have built-in atomics, or
 # don't have built-in support for 8 byte atomics
 # Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
@@ -510,6 +500,66 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
     endif()
   else()
     find_package(Python 3.10 COMPONENTS Interpreter)
+  endif()
+endif()
+
+if (onnxruntime_USE_ARM_NEON_NCHWC)
+  message(STATUS "Building MLAS with ARM Neon NCHWc kernels")
+endif()
+
+if(onnxruntime_USE_SVE)
+  if(LINUX AND onnxruntime_target_platform STREQUAL "aarch64")
+    check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
+    if(HAS_ARM64_SVE)
+      message(STATUS "Compiler supports SVE!")
+    else()
+      message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
+      set(onnxruntime_USE_SVE OFF)
+    endif()
+  else()
+    message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
+    set(onnxruntime_USE_SVE OFF)
+  endif()
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  function(is_kleidiai_supported is_supported_var)
+    # check for supported target platforms
+    if(NOT (onnxruntime_target_platform STREQUAL "aarch64" OR
+            onnxruntime_target_platform STREQUAL "ARM64" OR
+            onnxruntime_target_platform STREQUAL "arm64"))
+      message(WARNING "KleidiAI is not supported on this platform.")
+
+      set(${is_supported_var} FALSE PARENT_SCOPE)
+      return()
+    endif()
+
+    # check for compiler support
+    if(MSVC)
+      # TODO detect on MSVC
+    else()
+      check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+      check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+      if(NOT HAS_ARM64_DOTPROD)
+        message(WARNING "The compiler doesn't support dotprod instructions.")
+      endif()
+      if(NOT HAS_ARM64_I8MM)
+        message(WARNING "The compiler doesn't support i8mm instructions.")
+      endif()
+      if(NOT HAS_ARM64_DOTPROD OR NOT HAS_ARM64_I8MM)
+        set(${is_supported_var} FALSE PARENT_SCOPE)
+        return()
+      endif()
+    endif()
+
+    set(${is_supported_var} TRUE PARENT_SCOPE)
+  endfunction()
+
+  is_kleidiai_supported(is_kleidiai_supported_result)
+
+  if(NOT is_kleidiai_supported_result)
+    message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
+    set(onnxruntime_USE_KLEIDIAI OFF)
   endif()
 endif()
 
@@ -660,43 +710,6 @@ else()
   # enable warning(s) that may not be on by default
   if (HAS_SHORTEN_64_TO_32)
     list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
-  endif()
-endif()
-
-if(onnxruntime_USE_SVE)
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
-    if(HAS_ARM64_SVE)
-      message(STATUS "Compiler supports SVE!")
-    else()
-      message(WARNING "onnxruntime_USE_SVE was set but compiler does not support SVE. It will be disabled.")
-      set(onnxruntime_USE_SVE OFF)
-    endif()
-  else()
-    message(WARNING "onnxruntime_USE_SVE was set but it is not supported on this platform. It will be disabled.")
-    set(onnxruntime_USE_SVE OFF)
-  endif()
-endif()
-
-if (onnxruntime_USE_KLEIDIAI AND (
-      (onnxruntime_target_platform STREQUAL "aarch64") OR
-      (onnxruntime_target_platform STREQUAL "ARM64") OR
-      (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
-
-  # TODO Add checks for MSVC Compilation
-  if(NOT MSVC)
-    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-    if (NOT HAS_ARM64_DOTPROD)
-      message(FATAL_ERROR "The compiler doesn't support dotprod")
-    endif()
-    if (NOT HAS_ARM64_I8MM)
-      message(FATAL_ERROR "The compiler doesn't support i8mm")
-    endif()
-  else()
-    message(STATUS "Skipping -march= checks on MSVC (not supported), assuming dotprod/i8mm support manually.")
-    set(HAS_ARM64_DOTPROD TRUE)
-    set(HAS_ARM64_I8MM TRUE)
   endif()
 endif()
 
