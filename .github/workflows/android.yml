@@ -37,7 +37,7 @@ jobs:
         ndk-version: 28.0.13004108
 
     - name: Get Docker Image using Action
-      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.8
+      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
       id: build_docker_image_step
       with:
         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -122,7 +122,7 @@ jobs:
           architecture: x64
 
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.06.13'
           vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'

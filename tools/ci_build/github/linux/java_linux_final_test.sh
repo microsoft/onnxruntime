@@ -23,6 +23,8 @@ uname -a
 cd "$BINARY_DIR/onnxruntime-java"
 rm -f *.asc
 rm -f *.sha256
+rm -f *.sha1
+rm -f *.md5
 rm -f *.sha512
 rm -f *.pom
 ls

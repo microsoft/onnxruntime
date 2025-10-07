@@ -669,9 +669,12 @@ inline void KeyValuePairs::Remove(const char* key) {
   GetApi().RemoveKeyValuePair(this->p_, key);
 }
 
-inline void* SyncStream::GetHandle() const {
+namespace detail {
+template <typename T>
+inline void* SyncStreamImpl<T>::GetHandle() {
   return GetApi().SyncStream_GetHandle(this->p_);
 }
+}  // namespace detail
 
 namespace detail {
 template <typename T>
@@ -1582,11 +1585,13 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForInputs(
 
   auto num_inputs = GetInputCount();
   std::vector<ConstMemoryInfo> mem_infos;
-  mem_infos.resize(num_inputs);
+  if (num_inputs > 0) {
+    mem_infos.resize(num_inputs);
 
-  ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_,
-                                                      reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
-                                                      num_inputs));
+    ThrowOnError(GetApi().SessionGetMemoryInfoForInputs(this->p_,
+                                                        reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
+                                                        num_inputs));
+  }
 
   return mem_infos;
 }
@@ -1598,11 +1603,13 @@ inline std::vector<ConstMemoryInfo> ConstSessionImpl<T>::GetMemoryInfoForOutputs
 
   auto num_outputs = GetOutputCount();
   std::vector<ConstMemoryInfo> mem_infos;
-  mem_infos.resize(num_outputs);
+  if (num_outputs > 0) {
+    mem_infos.resize(num_outputs);
 
-  ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_,
-                                                       reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
-                                                       num_outputs));
+    ThrowOnError(GetApi().SessionGetMemoryInfoForOutputs(this->p_,
+                                                         reinterpret_cast<const OrtMemoryInfo**>(mem_infos.data()),
+                                                         num_outputs));
+  }
   return mem_infos;
 }
 
@@ -1631,12 +1638,12 @@ template <typename T>
 inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() const {
   auto num_inputs = GetInputCount();
   std::vector<ConstEpDevice> input_devices;
-  input_devices.resize(num_inputs);
-
-  ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_,
-                                                    reinterpret_cast<const OrtEpDevice**>(input_devices.data()),
-                                                    num_inputs));
-
+  if (num_inputs > 0) {
+    input_devices.resize(num_inputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForInputs(this->p_,
+                                                      reinterpret_cast<const OrtEpDevice**>(input_devices.data()),
+                                                      num_inputs));
+  }
   return input_devices;
 }
 
@@ -1975,7 +1982,12 @@ template <typename T>
 inline size_t TensorTypeAndShapeInfoImpl<T>::GetElementCount() const {
   size_t out;
   ThrowOnError(GetApi().GetTensorShapeElementCount(this->p_, &out));
-  return static_cast<size_t>(out);
+  return out;
+}
+
+template <typename T>
+inline bool TensorTypeAndShapeInfoImpl<T>::HasShape() const {
+  return GetApi().TensorTypeAndShape_HasShape(this->p_);
 }
 
 template <typename T>
@@ -1997,8 +2009,12 @@ inline void TensorTypeAndShapeInfoImpl<T>::GetSymbolicDimensions(const char** va
 
 template <typename T>
 inline std::vector<const char*> TensorTypeAndShapeInfoImpl<T>::GetSymbolicDimensions() const {
-  std::vector<const char*> out(GetDimensionsCount(), nullptr);
-  ThrowOnError(GetApi().GetSymbolicDimensions(this->p_, out.data(), out.size()));
+  std::vector<const char*> out;
+  size_t dim_count = GetDimensionsCount();
+  if (dim_count > 0) {
+    out.resize(dim_count, nullptr);
+    ThrowOnError(GetApi().GetSymbolicDimensions(this->p_, out.data(), out.size()));
+  }
   return out;
 }
 

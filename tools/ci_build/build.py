@@ -879,22 +879,14 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    # Set onnxruntime_USE_KLEIDIAI based on:
-    # * Default value above is NO.
-    # * Leave disabled if "no_kleidiai" argument was specified.
-    # * Enable if the target is Android and args.android_abi contains arm64*
-    # * Enable for a Windows cross compile build if compile target is an Arm one.
-    # * Finally enable if platform.machine contains "arm64" and not a WebAssembly build. This should cover the following cases:
-    #     *  Linux on Arm
-    #     *  MacOs (case must be ignored)
-    # * TODO Delegate responsibility for Onnxruntime_USE_KLEIDIAI = ON to CMake logic
     if not args.no_kleidiai:
-        if (
-            (args.android and "arm64" in args.android_abi.lower())
-            or (is_windows() and (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64")
-            or ("arm64" in platform.machine().lower() and not args.build_wasm)
-        ):
-            cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
+        cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
+
+    if args.enable_arm_neon_nchwc:
+        cmake_args += ["-Donnxruntime_USE_ARM_NEON_NCHWC=ON"]
+
+    if not args.no_sve:
+        cmake_args += ["-Donnxruntime_USE_SVE=ON"]
 
     if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.
@@ -1180,7 +1172,8 @@ def generate_build_tree(
                 if config == "Release":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
@@ -1191,7 +1184,8 @@ def generate_build_tree(
                 elif config == "RelWithDebInfo":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
@@ -1206,7 +1200,8 @@ def generate_build_tree(
                 elif config == "MinSizeRel":
                     cflags = [
                         "-DNDEBUG",
-                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-U_FORTIFY_SOURCE",
+                        "-D_FORTIFY_SOURCE=2",
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-Os",
@@ -1559,15 +1554,14 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test")
             if os.path.exists(test_data_dir):
                 adb_push(test_data_dir, device_dir + "/test", cwd=cwd)
-        adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
-        adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
-        adb_push("onnx_test_runner", device_dir, cwd=cwd)
-        adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
-        run_adb_shell(f"{device_dir}/onnxruntime_test_all")
 
-        # remove onnxruntime_test_all as it takes up a _lot_ of space and can cause insufficient storage errors
-        # when we try to copy the java app to the device.
-        adb_shell(f"rm {device_dir}/onnxruntime_test_all")
+        for test_program_name in ["onnxruntime_test_all", "onnxruntime_provider_test"]:
+            adb_push(test_program_name, device_dir, cwd=cwd)
+            adb_shell(f"chmod +x {device_dir}/{test_program_name}")
+            run_adb_shell(f"{device_dir}/{test_program_name}")
+
+            # remove test program when we are done testing to free up space
+            adb_shell(f"rm {device_dir}/{test_program_name}")
 
         if args.build_java:
             # use the gradle wrapper under <repo root>/java
@@ -1583,6 +1577,9 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 ],
                 cwd=android_test_path,
             )
+
+        adb_push("onnx_test_runner", device_dir, cwd=cwd)
+        adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
 
         if args.use_nnapi:
             run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
@@ -1636,6 +1633,7 @@ def run_ios_tests(args, source_dir, config, cwd):
 
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
+        "onnxruntime_provider_test_xc",
     ]
 
     if args.build_shared_lib:
@@ -1717,7 +1715,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path = os.pathsep.join(dll_path_list)
 
         if not ctest_path and not is_windows():
-            executables = ["onnxruntime_test_all", "onnxruntime_mlas_test"]
+            executables = ["onnxruntime_test_all", "onnxruntime_mlas_test", "onnxruntime_provider_test"]
             if args.build_shared_lib:
                 executables.append("onnxruntime_shared_lib_test")
                 executables.append("onnxruntime_global_thread_pools_test")
@@ -1726,7 +1724,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
                 run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.ctest_timeout]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
@@ -1740,7 +1738,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            if args.enable_transformers_tool_test and not args.disable_contrib_ops and not args.use_rocm:
+            if (
+                not args.skip_pip_install
+                and args.enable_transformers_tool_test
+                and not args.disable_contrib_ops
+                and not args.use_rocm
+            ):
                 # PyTorch is required for transformers tests, and optional for some python tests.
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
@@ -1824,21 +1827,23 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
-                        run_subprocess(
-                            [
-                                sys.executable,
-                                "-m",
-                                "pip",
-                                "install",
-                                "-r",
-                                "requirements/transformers-test/requirements.txt",
-                            ],
-                            cwd=SCRIPT_DIR,
-                        )
+                        if not args.skip_pip_install:
+                            run_subprocess(
+                                [
+                                    sys.executable,
+                                    "-m",
+                                    "pip",
+                                    "install",
+                                    "-r",
+                                    "requirements/transformers-test/requirements.txt",
+                                ],
+                                cwd=SCRIPT_DIR,
+                            )
                         run_subprocess([sys.executable, "-m", "pytest", "--durations=0", "transformers"], cwd=cwd)
-                        # Restore initial numpy/protobuf version in case other tests use it
-                        run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
-                        run_subprocess([sys.executable, "-m", "pip", "install", "protobuf==" + pb_init_version])
+                        if not args.skip_pip_install:
+                            # Restore initial numpy/protobuf version in case other tests use it
+                            run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
+                            run_subprocess([sys.executable, "-m", "pip", "install", "protobuf==" + pb_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess(
@@ -2338,7 +2343,7 @@ def main():
         if args.test and args.disable_wasm_exception_catching and not args.minimal_build:
             raise BuildError("WebAssembly tests need exception catching enabled to run if it's not minimal build")
         if args.test and args.enable_wasm_debug_info:
-            # With flag --enable_wasm_debug_info, onnxruntime_test_all.wasm will be very huge (>1GB). This will fail
+            # With flag --enable_wasm_debug_info, the test program .wasm file will be very huge (>1GB). This will fail
             # Node.js when trying to load the .wasm file.
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
@@ -2526,7 +2531,7 @@ def main():
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-        if args.enable_pybind and is_windows():
+        if not args.skip_pip_install and args.enable_pybind and is_windows():
             run_subprocess(
                 [sys.executable, "-m", "pip", "install", "-r", "requirements/pybind/requirements.txt"],
                 cwd=SCRIPT_DIR,

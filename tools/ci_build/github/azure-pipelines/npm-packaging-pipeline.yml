@@ -48,7 +48,7 @@ extends:
     # Update the pool with your team's 1ES hosted pool.
     sdl:
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
       codeql:
         compiled:
@@ -88,7 +88,7 @@ extends:
       - Build_web_Debug
       jobs:
       - job: Download_Node_Package_And_Publish_Validation_Script
-        pool: 'Onnxruntime-Win-CPU-2022'
+        pool: 'onnxruntime-Win-CPU-VS2022-Latest'
         variables:
           runCodesignValidationInjection: false
         timeoutInMinutes: 10

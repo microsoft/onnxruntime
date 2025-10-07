@@ -56,7 +56,7 @@ jobs:
           python-version: "3.12"
           architecture: ${{ env.buildArch }}
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.8
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.06.13'
           vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
@@ -120,7 +120,7 @@ jobs:
           path: ${{ github.workspace }}/artifacts/wasm
 
       - name: Test (Node.js) (simd + threads)
-        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        # unit tests are currently only supported in Debug builds because they require exceptions, which are disabled in Release builds.
         if: ${{ inputs.build_config == 'Debug' }}
         run: |
           python ./tools/ci_build/build.py \
@@ -130,14 +130,14 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Test (browser) (simd + threads)
-        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        # unit tests are currently only supported in Debug builds because they require exceptions, which are disabled in Release builds.
         if: ${{ inputs.build_config == 'Debug' }}
         run: |
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing \
             --wasm_run_tests_in_browser \
-            --target onnxruntime_test_all \
+            --targets onnxruntime_test_all onnxruntime_provider_test \
             --update --build --test
         working-directory: ${{ github.workspace }}
 

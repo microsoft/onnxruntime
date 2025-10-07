@@ -9,6 +9,22 @@
 #include <ciso646>
 #endif
 
+#if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+// 'fp4_interpretation' : unreferenced parameter
+#pragma warning(disable : 4100)
+#endif
+
+#include <cuda_fp4.h>
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+#endif
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
 #include "core/framework/float8.h"
@@ -101,11 +117,10 @@ class ToCudaType<Float8E5M2FNUZ> {
 #endif
 
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
-// ENABLE_FP4 is only set if CUDA SDK version is >= 12.8
 template <>
 class ToCudaType<Float4E2M1x2> {
  public:
-  typedef Float4E2M1x2::PackedCudaType MappedType;
+  typedef __nv_fp4x2_e2m1 MappedType;
 };
 #endif
 
