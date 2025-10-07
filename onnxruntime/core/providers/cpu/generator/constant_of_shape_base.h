@@ -78,7 +78,15 @@ class ConstantOfShapeBase {
     auto* t_proto_p = t_proto.get();
 #endif
     if (info.GetAttr<ONNX_NAMESPACE::TensorProto>("value", t_proto_p).IsOK()) {
-      ORT_ENFORCE(utils::GetTensorShapeFromTensorProto(t_proto).Size() == 1, "The value attribute of ConstantOfShape must be a single-element tensor");
+      ORT_ENFORCE(t_proto_p->has_shape(), "The value tensor of ConstantOfShape should have a shape");
+      ORT_ENFORCE(
+          t_proto_p->dims_size() == 0 ||
+              accumulate(
+                  t_proto_p->dims().begin(),
+                  t_proto_p->dims().end(),
+                  1,
+                  multiplies<size_t>()) == 1,
+          "The value attribute of ConstantOfShape must be a single-element tensor");
       SetValueFromTensorProto(*t_proto_p);
     } else {
       float f_value = 0.f;
