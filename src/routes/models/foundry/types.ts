@@ -9,6 +9,7 @@ export interface FoundryModel {
 	deviceSupport: string[];
 	tags: string[];
 	publisher: string;
+	acceleration?: string; // qnn, vitis, openvino, trt-rtx
 	lastModified: string;
 	createdDate: string;
 	downloadCount?: number;
@@ -37,6 +38,7 @@ export interface GroupedFoundryModel {
 	deviceSupport: string[]; // Combined devices from all variants
 	tags: string[]; // Combined tags from all variants
 	publisher: string;
+	acceleration?: string; // qnn, vitis, openvino, trt-rtx
 	lastModified: string; // Latest modified date
 	createdDate: string; // Earliest created date
 	downloadCount?: number; // Sum of all downloads

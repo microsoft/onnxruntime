@@ -8,21 +8,32 @@
 	let debouncedSearchTerm = ''; // Initialize empty for no search filter initially
 
 	// State
-	let models: GroupedFoundryModel[] = [];
+	let allModels: GroupedFoundryModel[] = []; // All models from API (fetched once)
 	let filteredModels: GroupedFoundryModel[] = [];
 	let loading = false;
 	let error = '';
+	let showCopyToast = false;
+	let copyToastTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Filter state
 	let searchTerm = '';
-	let selectedDevice = '';
+	let selectedDevices: string[] = []; // Changed to array for multi-select
 	let selectedFamily = '';
-	let selectedPublisher = '';
+	let selectedAcceleration = '';
 
 	// Available filter options
 	let availableDevices: string[] = [];
 	let availableFamilies: string[] = ['deepseek', 'mistral', 'qwen', 'phi'];
-	let availablePublishers: string[] = [];
+	let availableAccelerations: string[] = [];
+
+	// Toggle device selection
+	function toggleDevice(device: string) {
+		if (selectedDevices.includes(device)) {
+			selectedDevices = selectedDevices.filter((d) => d !== device);
+		} else {
+			selectedDevices = [...selectedDevices, device];
+		}
+	}
 
 	// Sort options
 	let sortBy = 'name';
@@ -37,40 +48,27 @@
 		currentPage * itemsPerPage
 	);
 
-	async function fetchFoundryModels() {
-		console.log('=== SVELTE COMPONENT FETCH START ===');
-		console.log('Current filter state:', {
-			selectedDevice,
-			selectedFamily,
-			selectedPublisher,
-			searchTerm,
-			debouncedSearchTerm
-		});
+	// Fetch all models from API once (no filters applied at API level)
+	async function fetchAllModels() {
+		console.log('=== FETCHING ALL MODELS FROM API (ONE TIME) ===');
 
 		loading = true;
 		error = '';
 
 		try {
-			const filters = {
-				device: selectedDevice,
-				family: selectedFamily,
-				publisher: selectedPublisher,
-				searchTerm: debouncedSearchTerm
-			};
-
-			console.log('Filters being passed to service:', filters);
-			const sortOptions = { sortBy, sortOrder };
-			console.log('Sort options being passed to service:', sortOptions);
-
+			// Fetch all models without any filters
+			// The service will cache the results
 			console.log('Calling foundryModelService.fetchGroupedModels...');
-			const fetchedModels = await foundryModelService.fetchGroupedModels(filters, sortOptions);
+			const fetchedModels = await foundryModelService.fetchGroupedModels(
+				{},
+				{ sortBy: 'name', sortOrder: 'asc' }
+			);
 			console.log('Service returned models:', fetchedModels.length);
-			console.log('Sample model:', fetchedModels.length > 0 ? fetchedModels[0] : 'none');
 
-			models = fetchedModels;
+			allModels = fetchedModels;
 			updateFilterOptions();
 			console.log('Filter options updated, available devices:', availableDevices);
-			console.log('Available publishers:', availablePublishers);
+			console.log('Available accelerations:', availableAccelerations);
 		} catch (err: any) {
 			console.error('=== SVELTE COMPONENT FETCH ERROR ===');
 			console.error('Error caught:', err);
@@ -83,13 +81,22 @@
 		}
 	}
 
+	// Refresh models (clears cache and refetches)
+	async function refreshModels() {
+		foundryModelService.clearCache();
+		await fetchAllModels();
+	}
+
 	function updateFilterOptions() {
-		availableDevices = [...new Set(models.flatMap((m) => m.deviceSupport))].sort();
-		availablePublishers = [...new Set(models.map((m) => m.publisher))].sort();
+		availableDevices = [...new Set(allModels.flatMap((m) => m.deviceSupport))].sort();
+		availableAccelerations = [
+			...new Set(allModels.map((m) => m.acceleration).filter((h): h is string => !!h))
+		].sort();
 	}
 
 	function applyFilters() {
-		filteredModels = models.filter((model) => {
+		// Filter from allModels, not models
+		filteredModels = allModels.filter((model) => {
 			const matchesSearch =
 				!debouncedSearchTerm ||
 				model.displayName.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
@@ -97,14 +104,17 @@
 				model.description.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
 				model.tags.some((tag) => tag.toLowerCase().includes(debouncedSearchTerm.toLowerCase()));
 
-			const matchesDevice = !selectedDevice || model.deviceSupport.includes(selectedDevice);
+			const matchesDevice =
+				selectedDevices.length === 0 ||
+				selectedDevices.some((device) => model.deviceSupport.includes(device));
 			const matchesFamily =
 				!selectedFamily ||
 				model.displayName.toLowerCase().includes(selectedFamily.toLowerCase()) ||
 				model.alias.toLowerCase().includes(selectedFamily.toLowerCase());
-			const matchesPublisher = !selectedPublisher || model.publisher === selectedPublisher;
+			const matchesAcceleration =
+				!selectedAcceleration || model.acceleration === selectedAcceleration;
 
-			return matchesSearch && matchesDevice && matchesFamily && matchesPublisher;
+			return matchesSearch && matchesDevice && matchesFamily && matchesAcceleration;
 		});
 
 		// Apply sorting
@@ -154,9 +164,9 @@
 	function clearFilters() {
 		searchTerm = '';
 		debouncedSearchTerm = '';
-		selectedDevice = '';
+		selectedDevices = [];
 		selectedFamily = '';
-		selectedPublisher = '';
+		selectedAcceleration = '';
 		sortBy = 'name';
 		sortOrder = 'asc';
 		currentPage = 1; // Reset pagination to first page
@@ -181,6 +191,19 @@
 		return icons[device.toLowerCase()] || '🔧';
 	}
 
+	function copyModelId(modelId: string) {
+		navigator.clipboard.writeText(modelId);
+		showCopyToast = true;
+		
+		if (copyToastTimer) {
+			clearTimeout(copyToastTimer);
+		}
+		
+		copyToastTimer = setTimeout(() => {
+			showCopyToast = false;
+		}, 3000);
+	}
+
 	// Reactive statements for automatic filtering
 
 	// Debounce search term updates
@@ -193,29 +216,32 @@
 		}, 300); // 300ms debounce
 	}
 
-	// Reactive filtering - automatically applies whenever models or filters change
+	// Reactive filtering - automatically applies whenever allModels or filters change
 	$: {
-		if (models.length > 0) {
+		if (allModels.length > 0) {
 			applyFilters();
 		} else {
 			filteredModels = [];
 		}
 		// Watch all filter dependencies
-		selectedDevice;
+		selectedDevices;
 		selectedFamily;
-		selectedPublisher;
+		selectedAcceleration;
 		debouncedSearchTerm;
 		sortBy;
 		sortOrder;
 	}
 
 	onMount(() => {
-		fetchFoundryModels();
+		fetchAllModels();
 	});
 
 	onDestroy(() => {
 		if (searchDebounceTimer) {
 			clearTimeout(searchDebounceTimer);
+		}
+		if (copyToastTimer) {
+			clearTimeout(copyToastTimer);
 		}
 	});
 
@@ -273,49 +299,57 @@
 				</div>
 			</div>
 
-			<!-- Device Filter -->
+			<!-- Execution Device Filter (Multi-select buttons) -->
+			<div class="flex flex-col">
+				<div class="block text-sm font-medium mb-2">Filter by Execution Device</div>
+				<div class="flex gap-2 flex-1" role="group" aria-label="Filter by Execution Device">
+					{#each availableDevices as device}
+						<button
+							type="button"
+							class="btn flex-1 h-full min-h-[3rem]"
+							class:btn-primary={selectedDevices.includes(device)}
+							class:btn-outline={!selectedDevices.includes(device)}
+							on:click={() => toggleDevice(device)}
+							aria-pressed={selectedDevices.includes(device)}
+						>
+							{device.toUpperCase()}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<!-- Acceleration Filter -->
 			<div>
-				<label class="block text-sm font-medium mb-2" for="device-filter">Filter by Device</label>
+				<label class="block text-sm font-medium mb-2" for="acceleration-filter"
+					>Filter by Acceleration</label
+				>
 				<select
-					id="device-filter"
-					bind:value={selectedDevice}
+					id="acceleration-filter"
+					bind:value={selectedAcceleration}
 					class="select select-bordered w-full"
 				>
-					<option value="">All Devices</option>
-					{#each availableDevices as device}
-						<option value={device}>{device.toUpperCase()}</option>
+					<option value="">All Accelerations</option>
+					{#each availableAccelerations as acceleration}
+						<option value={acceleration}
+							>{foundryModelService.getAccelerationDisplayName(acceleration)}</option
+						>
 					{/each}
 				</select>
 			</div>
 
-			<!-- Family Filter -->
+			<!-- Model Family Filter -->
 			<div>
-				<label class="block text-sm font-medium mb-2" for="family-filter">Filter by Family</label>
+				<label class="block text-sm font-medium mb-2" for="family-filter"
+					>Filter by Model Family</label
+				>
 				<select
 					id="family-filter"
 					bind:value={selectedFamily}
 					class="select select-bordered w-full"
 				>
-					<option value="">All Families</option>
+					<option value="">All Model Families</option>
 					{#each availableFamilies as family}
 						<option value={family}>{family.charAt(0).toUpperCase() + family.slice(1)}</option>
-					{/each}
-				</select>
-			</div>
-
-			<!-- Publisher Filter -->
-			<div>
-				<label class="block text-sm font-medium mb-2" for="publisher-filter"
-					>Filter by Publisher</label
-				>
-				<select
-					id="publisher-filter"
-					bind:value={selectedPublisher}
-					class="select select-bordered w-full"
-				>
-					<option value="">All Publishers</option>
-					{#each availablePublishers as publisher}
-						<option value={publisher}>{publisher}</option>
 					{/each}
 				</select>
 			</div>
@@ -329,7 +363,6 @@
 					<select id="sort-by" bind:value={sortBy} class="select select-bordered select-sm">
 						<option value="name">Name</option>
 						<option value="lastModified">Last Modified</option>
-						<option value="downloadCount">Downloads</option>
 						<option value="publisher">Publisher</option>
 					</select>
 				</div>
@@ -351,7 +384,7 @@
 						{filteredModels.length} model{filteredModels.length !== 1 ? 's' : ''} found
 					{/if}
 				</span>
-				{#if searchTerm || selectedDevice || selectedFamily || selectedPublisher}
+				{#if searchTerm || selectedDevices.length > 0 || selectedFamily || selectedAcceleration}
 					<button on:click={clearFilters} class="btn btn-outline btn-sm"> Clear Filters </button>
 				{/if}
 				<!-- Reload button is now less prominent, only for refreshing data from server -->
@@ -359,7 +392,7 @@
 					<div tabindex="0" role="button" class="btn btn-ghost btn-xs">⋯</div>
 					<ul class="dropdown-content menu bg-base-100 rounded-box z-[1] w-44 p-2 shadow">
 						<li>
-							<button on:click={fetchFoundryModels} disabled={loading}>
+							<button on:click={refreshModels} disabled={loading}>
 								{loading ? 'Loading...' : 'Refresh from server'}
 							</button>
 						</li>
@@ -395,7 +428,7 @@
 			</svg>
 			<span>{error}</span>
 			<div>
-				<button class="btn btn-sm btn-outline" on:click={fetchFoundryModels}> Retry </button>
+				<button class="btn btn-sm btn-outline" on:click={refreshModels}> Retry </button>
 			</div>
 		</div>
 	{/if}
@@ -409,39 +442,51 @@
 			>
 				{#each paginatedModels as model (model.alias)}
 					<div
-						class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow duration-200 border border-gray-200 dark:border-gray-700"
+						class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow duration-200 border border-gray-200 dark:border-gray-700 flex flex-col h-full"
 					>
-						<div class="card-body">
-							<div class="flex items-start justify-between mb-3">
-								<div class="flex-1">
-									<h3 class="card-title text-lg font-semibold mb-1">{model.displayName}</h3>
-									<p class="text-sm text-gray-500">
-										{model.publisher.charAt(0).toUpperCase() + model.publisher.slice(1)}
-									</p>
-								</div>
-								<div class="flex flex-col items-end gap-1">
-									{#each model.deviceSupport as device}
-										<span class="badge badge-primary badge-sm" title="{device} support">
-											{getDeviceIcon(device)}
-											{device.toUpperCase()}
-										</span>
-									{/each}
-								</div>
+						<div class="card-body p-5 flex flex-col">
+							<!-- Header with title and publisher -->
+							<div class="mb-3">
+								<h3 class="card-title text-lg font-semibold mb-1">{model.displayName}</h3>
+								<p class="text-sm text-gray-500">
+									{model.publisher.charAt(0).toUpperCase() + model.publisher.slice(1)}
+								</p>
 							</div>
 
-							<p class="text-sm text-gray-600 dark:text-gray-300 mb-4 line-clamp-3">
+							<!-- Description -->
+							<p class="text-sm text-gray-600 dark:text-gray-300 mb-4 line-clamp-3 flex-grow">
 								{model.description}
 							</p>
 
-							<div class="flex flex-wrap gap-1 mb-4">
+							<!-- All badges in one row -->
+							<div class="flex flex-wrap items-center gap-2 mb-4">
+								<!-- Device support badges -->
+								{#each model.deviceSupport as device, index}
+									<span class="badge badge-primary badge-sm gap-1" title="{device} support">
+										{getDeviceIcon(device)}
+										{device.toUpperCase()}
+									</span>
+								{/each}
+								
+								{#if model.deviceSupport.length > 0 && (model.taskType || model.license)}
+									<span class="text-gray-400">•</span>
+								{/if}
+								
+								<!-- Task type badge -->
 								{#if model.taskType}
 									<span class="badge badge-secondary badge-sm"
 										>{model.taskType.charAt(0).toUpperCase() + model.taskType.slice(1)}</span
 									>
 								{/if}
+								
+								{#if model.taskType && model.license}
+									<span class="text-gray-400">•</span>
+								{/if}
+								
+								<!-- License badge -->
 								{#if model.license}
-									<span class="badge badge-outline badge-sm">
-										<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+									<span class="badge badge-outline badge-sm gap-1">
+										<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
 											<path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
 											<path
 												fill-rule="evenodd"
@@ -454,15 +499,33 @@
 								{/if}
 							</div>
 
-							<div class="flex items-center justify-between text-xs text-gray-500 mb-4">
-								<span>Updated {formatDate(model.lastModified)}</span>
-								<div class="flex items-center gap-2">
-									<span class="badge badge-primary badge-sm">v{model.latestVersion}</span>
-									{#if model.totalDownloads && model.totalDownloads > 0}
+							<!-- Footer with metadata -->
+							<div class="flex flex-col gap-2 text-xs text-gray-500 pt-3 border-t border-gray-200 dark:border-gray-700">
+								<div class="flex items-center justify-between">
+									<div class="flex items-center gap-2">
+										<span class="badge badge-ghost badge-sm">v{model.latestVersion}</span>
 										<span>•</span>
-										<span>{model.totalDownloads.toLocaleString()} downloads</span>
-									{/if}
+										<span>Updated {formatDate(model.lastModified)}</span>
+									</div>
+									<button
+										class="btn btn-ghost btn-xs gap-1"
+										on:click={() => copyModelId(model.alias)}
+										aria-label="Copy model ID"
+									>
+										<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+										</svg>
+										<span class="hidden sm:inline">Copy ID</span>
+									</button>
 								</div>
+								{#if model.totalDownloads && model.totalDownloads > 0}
+									<div class="flex items-center gap-1">
+										<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+											<path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+										</svg>
+										<span>{model.totalDownloads.toLocaleString()} downloads</span>
+									</div>
+								{/if}
 							</div>
 						</div>
 					</div>
@@ -516,6 +579,18 @@
 				<button class="btn btn-primary" on:click={clearFilters}> Clear All Filters </button>
 			</div>
 		{/if}
+	{/if}
+
+	<!-- Toast notification for copy action -->
+	{#if showCopyToast}
+		<div class="toast toast-top toast-center z-50">
+			<div class="alert alert-success">
+				<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+				</svg>
+				<span>Model ID copied to clipboard!</span>
+			</div>
+		</div>
 	{/if}
 </div>
 

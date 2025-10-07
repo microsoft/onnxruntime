@@ -8,7 +8,7 @@ const FOUNDRY_API_ENDPOINT = 'https://onnxruntime-foundry-proxy-hpape7gzf2haesef
 export interface ApiFilters {
 	device?: string;
 	family?: string;
-	publisher?: string;
+	acceleration?: string;
 	searchTerm?: string;
 }
 
@@ -18,40 +18,98 @@ export interface ApiSortOptions {
 }
 
 export class FoundryModelService {
+	// Cache for all models - fetched once
+	private allModelsCache: FoundryModel[] | null = null;
+	private fetchPromise: Promise<FoundryModel[]> | null = null;
+
+	// Detect acceleration from model name
+	private detectAcceleration(modelName: string): string | undefined {
+		const nameLower = modelName.toLowerCase();
+		if (nameLower.includes('-qnn-') || nameLower.includes('qnn')) {
+			return 'qnn';
+		}
+		if (nameLower.includes('-vitis-') || nameLower.includes('vitis')) {
+			return 'vitis';
+		}
+		if (nameLower.includes('-openvino-') || nameLower.includes('openvino')) {
+			return 'openvino';
+		}
+		if (nameLower.includes('-trt-') || nameLower.includes('tensorrt') || nameLower.includes('trt-rtx')) {
+			return 'trt-rtx';
+		}
+		return undefined;
+	}
+
+	// Get acceleration display name
+	getAccelerationDisplayName(acceleration: string): string {
+		const accelerationNames: Record<string, string> = {
+			'qnn': 'Qualcomm AI Runtime',
+			'vitis': 'AMD Vitis AI',
+			'openvino': 'Intel OpenVINO',
+			'trt-rtx': 'NVIDIA TensorRT RTX'
+		};
+		return accelerationNames[acceleration] || acceleration;
+	}
+
+	// Fetch all models from API once and cache them
+	async fetchAllModels(): Promise<FoundryModel[]> {
+		// Return cached models if available
+		if (this.allModelsCache) {
+			console.log('Returning cached models:', this.allModelsCache.length);
+			return this.allModelsCache;
+		}
+
+		// If already fetching, return the existing promise
+		if (this.fetchPromise) {
+			console.log('Fetch already in progress, waiting...');
+			return this.fetchPromise;
+		}
+
+		console.log('=== FETCHING ALL MODELS FROM API (ONE TIME) ===');
+		
+		// Create fetch promise
+		this.fetchPromise = this.fetchModelsFromAPI();
+		
+		try {
+			this.allModelsCache = await this.fetchPromise;
+			console.log(`Cached ${this.allModelsCache.length} models`);
+			return this.allModelsCache;
+		} finally {
+			this.fetchPromise = null;
+		}
+	}
+
+	// Clear cache if needed (for refresh)
+	clearCache(): void {
+		console.log('Clearing model cache');
+		this.allModelsCache = null;
+		this.fetchPromise = null;
+	}
+
 	async fetchModels(filters: ApiFilters = {}, sortOptions: ApiSortOptions = { sortBy: 'name', sortOrder: 'asc' }): Promise<FoundryModel[]> {
 		console.log('=== FOUNDRY SERVICE FETCH MODELS START ===');
 		console.log('Input filters:', filters);
 		console.log('Input sort options:', sortOptions);
 		
-		// If no device filter is specified, try to get models for all common devices
-		if (!filters.device) {
-			console.log('No device filter specified, fetching for multiple devices...');
-			const allModels = await this.fetchModelsForMultipleDevices(['npu', 'gpu', 'cpu'], filters, sortOptions);
-			console.log(`Final result: ${allModels.length} models`);
-			return allModels;
-		} else {
-			console.log(`Device filter specified: ${filters.device}, fetching for single device...`);
-			const models = await this.fetchModelsForDevice(filters, sortOptions);
-			console.log(`Final result: ${models.length} models`);
-			return models;
-		}
+		// Get all models from cache or API
+		const allModels = await this.fetchAllModels();
+		
+		// Apply filters and sorting client-side
+		const filteredModels = this.applyClientSideProcessing(allModels, filters, sortOptions);
+		console.log(`Final result after filtering: ${filteredModels.length} models`);
+		
+		return filteredModels;
 	}
 	
-	private async fetchModelsForMultipleDevices(devices: string[], filters: ApiFilters, sortOptions: ApiSortOptions): Promise<FoundryModel[]> {
-		console.log('=== FETCHING FOR MULTIPLE DEVICES ===');
-		console.log('Devices to fetch:', devices);
-		console.log('Base filters:', filters);
-		
+	private async fetchModelsFromAPI(): Promise<FoundryModel[]> {
+		const devices = ['npu', 'gpu', 'cpu'];
 		const allModels: FoundryModel[] = [];
 		const seenModelIds = new Set<string>();
 		
 		for (const device of devices) {
 			try {
 				console.log(`Fetching models for device: ${device}`);
-				const deviceFilters = { ...filters, device };
-				console.log('Device-specific filters:', deviceFilters);
-				
-				const deviceModels = await this.fetchModelsForDevice(deviceFilters, sortOptions);
+				const deviceModels = await this.fetchModelsForDevice(device);
 				console.log(`Got ${deviceModels.length} models for device ${device}`);
 				
 				// Add models that we haven't seen before (avoid duplicates)
@@ -71,19 +129,15 @@ export class FoundryModelService {
 		}
 		
 		console.log(`Total unique models collected: ${allModels.length}`);
-		const finalModels = this.applyClientSideProcessing(allModels, filters, sortOptions);
-		console.log(`Final processed models: ${finalModels.length}`);
-		
-		return finalModels;
+		return allModels;
 	}
 	
-	private async fetchModelsForDevice(filters: ApiFilters, sortOptions: ApiSortOptions): Promise<FoundryModel[]> {
-		const requestBody = this.buildRequestBody(filters);
+	private async fetchModelsForDevice(device: string): Promise<FoundryModel[]> {
+		const requestBody = this.buildRequestBody(device);
 		
 		// Debug logging - client side
 		console.log('=== FOUNDRY CLIENT DEBUG ===');
-		console.log('Filters received:', filters);
-		console.log('Sort options:', sortOptions);
+		console.log('Device:', device);
 		console.log('Request body built:', JSON.stringify(requestBody, null, 2));
 		console.log('API endpoint:', FOUNDRY_API_ENDPOINT);
 		
@@ -138,11 +192,7 @@ export class FoundryModelService {
 			console.log(`Transformed ${models.length} models from API response`);
 			console.log('Sample transformed model:', models.length > 0 ? models[0] : 'none');
 			
-			// Apply client-side filtering and sorting if needed
-			const processedModels = this.applyClientSideProcessing(models, filters, sortOptions);
-			console.log(`After client-side processing: ${processedModels.length} models`);
-			
-			return processedModels;
+			return models;
 			
 		} catch (error) {
 			console.error('=== FETCH ERROR ===');
@@ -155,9 +205,9 @@ export class FoundryModelService {
 		}
 	}
 
-	private buildRequestBody(filters: ApiFilters) {
+	private buildRequestBody(device: string) {
 		console.log('=== BUILDING REQUEST BODY ===');
-		console.log('Input filters for request body:', filters);
+		console.log('Device for request body:', device);
 		
 		const baseFilters = [
 			{
@@ -169,23 +219,15 @@ export class FoundryModelService {
 				field: "kind",
 				operator: "eq",
 				values: ["Versioned"]
+			},
+			{
+				field: "properties/variantInfo/variantMetadata/device",
+				operator: "eq",
+				values: [device]
 			}
 		];
 
-		console.log('Base filters:', baseFilters);
-
-		// Add device filter if specified
-		if (filters.device) {
-			console.log(`Adding device filter for: ${filters.device}`);
-			baseFilters.push({
-				field: "properties/variantInfo/variantMetadata/device",
-				operator: "eq",
-				values: [filters.device]
-			});
-		} else {
-			console.log('No device filter specified in buildRequestBody');
-		}
-		// Note: If no device filter is specified, we'll get models for all devices
+		console.log('Filters:', baseFilters);
 
 		const requestBody = {
 			resourceIds: [
@@ -293,6 +335,9 @@ export class FoundryModelService {
 			});
 		}
 
+		// Detect acceleration from model name
+		const acceleration = this.detectAcceleration(modelName);
+
 		return {
 			id: entity.entityId || entity.id || modelName.toLowerCase().replace(/\s+/g, '-'),
 			name: modelName,
@@ -302,6 +347,7 @@ export class FoundryModelService {
 			deviceSupport: uniqueDeviceSupport,
 			tags: tags,
 			publisher: entity.annotations?.publisher || entity.owner || entity.properties?.author || entity.entityResourceName || 'Azure ML',
+			acceleration: acceleration,
 			lastModified: entity.lastModifiedDateTime || entity.properties?.lastModified || new Date().toISOString(),
 			createdDate: entity.createdDateTime || entity.properties?.created || new Date().toISOString(),
 			downloadCount: entity.properties?.downloadCount || entity.stats?.downloadCount || 0,
@@ -375,6 +421,23 @@ export class FoundryModelService {
 	private applyClientSideProcessing(models: FoundryModel[], filters: ApiFilters, sortOptions: ApiSortOptions): FoundryModel[] {
 		let filteredModels = [...models];
 
+		// Apply device filter
+		if (filters.device) {
+			const deviceFilter = filters.device;
+			filteredModels = filteredModels.filter(model => 
+				model.deviceSupport.includes(deviceFilter)
+			);
+		}
+
+		// Apply family filter (searches in model name/alias)
+		if (filters.family) {
+			const familyLower = filters.family.toLowerCase();
+			filteredModels = filteredModels.filter(model => {
+				const nameMatch = model.name.toLowerCase().includes(familyLower);
+				return nameMatch;
+			});
+		}
+
 		// Apply search filter
 		if (filters.searchTerm) {
 			const searchLower = filters.searchTerm.toLowerCase();
@@ -387,9 +450,9 @@ export class FoundryModelService {
 			});
 		}
 
-		// Apply publisher filter
-		if (filters.publisher) {
-			filteredModels = filteredModels.filter(model => model.publisher === filters.publisher);
+		// Apply acceleration filter
+		if (filters.acceleration) {
+			filteredModels = filteredModels.filter(model => model.acceleration === filters.acceleration);
 		}
 
 		// Sort models
@@ -539,6 +602,7 @@ export class FoundryModelService {
 				deviceSupport,
 				tags,
 				publisher: primaryModel.publisher,
+				acceleration: primaryModel.acceleration,
 				lastModified: latestModified,
 				createdDate: earliestCreated,
 				downloadCount: totalDownloads,
