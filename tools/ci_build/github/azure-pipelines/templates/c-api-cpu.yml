@@ -435,7 +435,6 @@ stages:
     #  - Windows arm64 (CPU, DML, WebGPU)
     #  - Linux x64 (CPU, CUDA, TensorRT, WebGPU)
     #  - Linux arm64 (CPU only)
-    #  - macOS x64 (CPU, CoreML, WebGPU)
     #  - macOS arm64 (CPU, CoreML, WebGPU)
     #
     # File manifest:
@@ -472,12 +471,6 @@ stages:
     #      - onnxruntime_binding.node
     #      - libonnxruntime.so.1
     #
-    #  - macOS x64 (CPU, CoreML, WebGPU):
-    #    dependency: MacOS_C_API_Packaging_CPU_x86_64 (drop-onnxruntime-nodejs-osx-x86_64)
-    #    files:
-    #      - onnxruntime_binding.node
-    #      - libonnxruntime.{version}.dylib
-    #
     #  - macOS arm64 (CPU, CoreML, WebGPU):
     #    dependency: MacOS_C_API_Packaging_CPU_arm64 (drop-onnxruntime-nodejs-osx-arm64)
     #    files:
@@ -504,12 +497,6 @@ stages:
       inputs:
         artifactName: 'drop-onnxruntime-nodejs-win-arm64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - Nodejs (macOS x86_64)'
-      inputs:
-        artifactName: 'drop-onnxruntime-nodejs-osx-x86_64'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/x64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (macOS arm64)'
@@ -586,16 +573,6 @@ stages:
           libonnxruntime.so.1
           *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64'
-
-    # Node.js binding darwin/x64
-    - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
-        Contents: |
-          libonnxruntime.*.dylib
-          *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64'
 
     # Node.js binding darwin/arm64
     - task: CopyFiles@2
