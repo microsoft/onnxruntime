@@ -553,7 +553,6 @@ Return Value:
 #endif // ORT_MINIMAL_BUILD
 
             }
-
 #endif // MLAS_TARGET_AMD64
 
 
