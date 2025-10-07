@@ -878,6 +878,12 @@ if (NOT onnxruntime_ORT_MINIMAL_BUILD)
   endif()
   target_link_libraries(onnxruntime_mlas_q4dq PRIVATE Threads::Threads)
 
+  if (HAVE_LIBBACKTRACE)
+    add_dependencies(onnxruntime_mlas_q4dq libbacktrace::libbacktrace)
+    target_compile_definitions(onnxruntime_mlas_q4dq PRIVATE "$<$<CONFIG:Debug>:USE_LIBBACKTRACE>")
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE "$<$<CONFIG:Debug>:libbacktrace::libbacktrace>")
+  endif()
+
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
       set_target_properties(onnxruntime_mlas_q4dq PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")

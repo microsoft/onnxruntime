@@ -32,6 +32,9 @@ endforeach()
 
 message(STATUS "Loading Dependencies ...")
 include(FetchContent)
+include(ExternalProject)
+
+include(external/libbacktrace.cmake)
 
 # ABSL should be included before protobuf because protobuf may use absl
 include(external/abseil-cpp.cmake)
