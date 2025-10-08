@@ -136,7 +136,7 @@ stages:
 
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
       pool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
     ${{ else }}:
       pool:
