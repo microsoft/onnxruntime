@@ -2740,11 +2740,11 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalDataViaSession) {
   so.session_logid = "GraphTest.ShapeInferenceWithInMemoryExternalDataViaSession";
 
   InferenceSession session_object{so, GetEnvironment()};
-  
+
   // This should succeed with the fix, fail without it
   Status load_status = session_object.Load(model_path);
   ASSERT_TRUE(load_status.IsOK()) << "Failed to load model: " << load_status.ErrorMessage();
-  
+
   Status init_status = session_object.Initialize();
   ASSERT_TRUE(init_status.IsOK()) << "Failed to initialize session: " << init_status.ErrorMessage();
 
@@ -2807,7 +2807,7 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
 
   Graph& graph = model->MainGraph();
-  
+
   // First resolve should succeed
   ASSERT_STATUS_OK(graph.Resolve());
 
@@ -2820,9 +2820,9 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   const ONNX_NAMESPACE::TensorProto* initializer_after = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor("split_sizes", initializer_after));
   ASSERT_NE(initializer_after, nullptr);
-  
+
   // Debug: verify it was externalized
-  ASSERT_TRUE(utils::HasExternalDataInMemory(*initializer_after)) 
+  ASSERT_TRUE(utils::HasExternalDataInMemory(*initializer_after))
       << "Initializer was not externalized to in-memory external data";
 
   // Mark the graph as needing resolve to force shape inference to run again

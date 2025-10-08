@@ -2678,7 +2678,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     // only return data if it's for a constant initializer. checks for outer scope initializers
     // if this is a subgraph and the name isn't found locally.
     const TensorProto* initializer = graph_.GetConstantInitializer(def->Name(), true);
-    
+
     if (initializer != nullptr) {
       // Check if this is in-memory external data (data stored in OrtValue)
       // ONNX shape inference cannot handle external data, so we need to materialize it
@@ -2691,7 +2691,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
           const Tensor& tensor = ort_value.Get<Tensor>();
           auto temp_tensor_proto = std::make_unique<ONNX_NAMESPACE::TensorProto>(
               utils::TensorToTensorProto(tensor, initializer->name(), /*use_tensor_buffer=*/false));
-          
+
           const TensorProto* result = temp_tensor_proto.get();
           // Store the temporary proto so it outlives this call
           temp_tensor_protos_.push_back(std::move(temp_tensor_proto));
@@ -2701,7 +2701,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         // This may cause shape inference to fail, but it's better than crashing
       }
     }
-    
+
     return initializer;
   }
 
