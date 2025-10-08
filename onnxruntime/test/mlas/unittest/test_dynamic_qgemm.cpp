@@ -4,9 +4,11 @@
 // SPDX-License-Identifier: MIT
 //
 
-#include "test_util.h"
 // Currently this test only applies to KleidiAI Guard against it running in any other situation
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+
+#include "test_util.h"
+#include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
 
 class MlasDynamicQgemmTest {
  private:
@@ -18,6 +20,11 @@ class MlasDynamicQgemmTest {
 
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
+    // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
+    }
+
     // Setup buffers for holding various data
 
     float* A = buffer_a.GetBuffer(M * K * BatchSize);
