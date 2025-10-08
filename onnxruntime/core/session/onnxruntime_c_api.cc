@@ -3758,7 +3758,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_23 = {
+static constexpr OrtApi ort_api_1_to_24 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4275,7 +4275,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.24.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_23;
+    return &ort_api_1_to_24;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
