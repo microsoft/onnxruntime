@@ -78,7 +78,7 @@ parameters:
   default: '11.8'
   values:
       - 11.8
-      - 12.2
+      - 12.8
 
 - name: SpecificArtifact
   displayName: Use Specific Artifact

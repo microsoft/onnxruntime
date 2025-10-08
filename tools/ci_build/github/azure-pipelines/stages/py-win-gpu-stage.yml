@@ -20,9 +20,9 @@ parameters:
   default: ''
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
   values:
-    - 12.2
+    - 12.8
 
 - name: cmake_build_type
   type: string
@@ -76,7 +76,7 @@ stages:
       - name: win_trt_folder
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
           value: ${{ variables.win_trt_folder_cuda11 }}
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        ${{ if eq(parameters.CudaVersion, '12.8') }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
       - name: trt_build_flag
         ${{ if eq(parameters.use_tensorrt, true) }}:

@@ -1,7 +1,7 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
 
 - name: QnnSdk
   displayName: QNN SDK Version
@@ -40,8 +40,8 @@ variables:
   - name: win_cuda_home
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: $(Agent.TempDirectory)\v11.8
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: $(Agent.TempDirectory)\v12.2
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: $(Agent.TempDirectory)\v12.8
 
 resources:
   repositories:

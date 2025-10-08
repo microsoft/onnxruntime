@@ -19,9 +19,9 @@ parameters:
 - name: cuda_version
   type: string
   displayName: 'CUDA version. Windows Only.'
-  default: '12.2'
+  default: '12.8'
   values:
-   - 12.2
+   - 12.8
 
 - name: PythonVersions
   type: object
