@@ -2752,5 +2752,88 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalDataViaSession) {
   std::remove(model_path.c_str());
 }
 
+// Test that explicitly triggers the in-memory externalization and then shape inference
+// This test directly reproduces the bug scenario
+TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
+  // Create a model with a Split node that depends on a constant initializer
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Create initializer directly (not as Constant node) with 128 bytes
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("split_sizes");
+  initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  initializer->add_dims(16);  // 16 * 8 = 128 bytes
+  for (int64_t i = 0; i < 16; ++i) {
+    initializer->add_int64_data(1);
+  }
+
+  // Create a Split node that uses this initializer
+  auto* split_node = graph_proto->add_node();
+  split_node->set_op_type("Split");
+  split_node->set_name("split_node");
+  split_node->add_input("input_data");
+  split_node->add_input("split_sizes");  // Uses the large initializer
+  for (int i = 0; i < 16; ++i) {
+    split_node->add_output("split_output_" + std::to_string(i));
+  }
+
+  auto* axis_attr = split_node->add_attribute();
+  axis_attr->set_name("axis");
+  axis_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  axis_attr->set_i(0);
+
+  // Add graph input
+  auto* input = graph_proto->add_input();
+  input->set_name("input_data");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(16);
+  input_type->mutable_shape()->add_dim()->set_dim_value(10);
+
+  // Add graph outputs
+  for (int i = 0; i < 16; ++i) {
+    auto* output = graph_proto->add_output();
+    output->set_name("split_output_" + std::to_string(i));
+  }
+
+  // Load model
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
+
+  Graph& graph = model->MainGraph();
+  
+  // First resolve should succeed
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Now trigger the in-memory externalization
+  // This converts initializers > 127 bytes to OrtValues with external data references
+  Status convert_status = graph.ConvertInitializersIntoOrtValues();
+  ASSERT_TRUE(convert_status.IsOK()) << "ConvertInitializersIntoOrtValues failed: " << convert_status.ErrorMessage();
+
+  // Check if the initializer was actually externalized
+  const ONNX_NAMESPACE::TensorProto* initializer_after = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("split_sizes", initializer_after));
+  ASSERT_NE(initializer_after, nullptr);
+  
+  // Debug: verify it was externalized
+  ASSERT_TRUE(utils::HasExternalDataInMemory(*initializer_after)) 
+      << "Initializer was not externalized to in-memory external data";
+
+  // Mark the graph as needing resolve to force shape inference to run again
+  graph.SetGraphResolveNeeded();
+
+  // Resolve again - this should trigger shape inference with the externalized initializer
+  // Without the fix, this will fail with "Cannot parse data from external tensors"
+  // With the fix, getInputData() materializes the external data for shape inference
+  Status second_resolve = graph.Resolve();
+  ASSERT_TRUE(second_resolve.IsOK()) << "Second resolve failed: " << second_resolve.ErrorMessage();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
