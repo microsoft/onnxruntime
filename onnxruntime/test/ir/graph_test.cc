@@ -2573,5 +2573,97 @@ TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_SubgraphGener
 
 #endif
 
+// Test for shape inference with in-memory external data (issue #26261)
+// This tests the fix for a regression where Constant nodes with large tensors (>127 bytes)
+// stored as in-memory external data would cause shape inference to fail
+TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalData) {
+  // Create a model with a Constant node that produces a tensor larger than kSmallTensorExternalDataThreshold (127 bytes)
+  // This will trigger the in-memory externalization path
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Create a Constant node with a tensor of 16 INT64 values (128 bytes, just over the 127 threshold)
+  auto* constant_node = graph_proto->add_node();
+  constant_node->set_op_type("Constant");
+  constant_node->set_name("const_node");
+  constant_node->add_output("const_output");
+
+  // Add the value attribute with a tensor
+  auto* attr = constant_node->add_attribute();
+  attr->set_name("value");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* tensor = attr->mutable_t();
+  tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  tensor->add_dims(16);  // 16 elements * 8 bytes = 128 bytes
+  // Each split will be size 1, totaling 16
+  for (int64_t i = 0; i < 16; ++i) {
+    tensor->add_int64_data(1);
+  }
+
+  // Create a Split node that uses the constant as input
+  // Split requires constant input for the 'split' parameter, which triggers shape inference
+  auto* split_node = graph_proto->add_node();
+  split_node->set_op_type("Split");
+  split_node->set_name("split_node");
+  split_node->add_input("input_data");
+  split_node->add_input("const_output");  // Use constant as split sizes
+  for (int i = 0; i < 16; ++i) {
+    split_node->add_output("split_output_" + std::to_string(i));
+  }
+
+  // Add axis attribute
+  auto* axis_attr = split_node->add_attribute();
+  axis_attr->set_name("axis");
+  axis_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  axis_attr->set_i(0);
+
+  // Add graph input
+  auto* input = graph_proto->add_input();
+  input->set_name("input_data");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(16);
+  input_type->mutable_shape()->add_dim()->set_dim_value(10);
+
+  // Add graph outputs
+  for (int i = 0; i < 16; ++i) {
+    auto* output = graph_proto->add_output();
+    output->set_name("split_output_" + std::to_string(i));
+  }
+
+  // Load the model - this should succeed with the fix
+  // Before the fix, this would fail with:
+  // "Cannot parse data from external tensors. Please load external data into raw data for tensor"
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
+
+  // Verify the graph was properly constructed
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Verify the constant node was converted to an initializer
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("const_output", initializer));
+  ASSERT_NE(initializer, nullptr);
+
+  // Verify the Split node can access the constant data during shape inference
+  const Node* split_node_ptr = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.Name() == "split_node") {
+      split_node_ptr = &node;
+      break;
+    }
+  }
+  ASSERT_NE(split_node_ptr, nullptr);
+
+  // Verify outputs are properly shaped
+  ASSERT_EQ(split_node_ptr->OutputDefs().size(), 16u);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
