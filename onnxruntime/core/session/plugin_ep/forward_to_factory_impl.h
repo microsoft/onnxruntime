@@ -82,6 +82,17 @@ struct ForwardToFactoryImpl {
     return static_cast<TFactory*>(this_ptr)->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
+  static OrtStatus* ORT_API_CALL GetAdditionalHardwareDevices(OrtEpFactory* this_ptr,
+                                                              const OrtHardwareDevice* const* found_devices,
+                                                              size_t num_found_devices,
+                                                              OrtHardwareDevice** additional_devices,
+                                                              size_t max_additional_devices,
+                                                              size_t* num_additional_devices) noexcept {
+    return static_cast<TFactory*>(this_ptr)->GetAdditionalHardwareDevices(found_devices, num_found_devices,
+                                                                          additional_devices, max_additional_devices,
+                                                                          num_additional_devices);
+  }
+
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }
