@@ -134,11 +134,8 @@ Return Value:
         const size_t sr = UseSME2 ? kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa()
                                   : kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
 
-        // Ensure size and zero the used span (only newly added elements are value-initialized by resize).
-        if (g_kai_tls.bias_zero.size() != N) {
-            g_kai_tls.bias_zero.resize(N);
-        }
-        std::fill_n(g_kai_tls.bias_zero.data(), N, 0.0f);
+        // Ensure size and zero the used span.
+        g_kai_tls.bias_zero.resize(N, 0.0f);
 
         switch (TransB) {
             case CblasNoTrans:
@@ -254,10 +251,6 @@ Return Value:
         return false;
     }
 
-    if (g_kai_tls.lhs_packed.capacity() < lhs_resize) {
-
-        g_kai_tls.lhs_packed.reserve(lhs_resize);
-    }
     g_kai_tls.lhs_packed.resize(lhs_resize);
     LhsPackedData = g_kai_tls.lhs_packed.data();
 
@@ -280,10 +273,6 @@ Return Value:
         {
             // size_t wraparound detected, exit
             return false;
-        }
-
-        if (g_kai_tls.rhs_packed.capacity() < rhs_resize) {
-            g_kai_tls.rhs_packed.reserve(rhs_resize);
         }
 
         g_kai_tls.rhs_packed.resize(rhs_resize);
@@ -369,10 +358,6 @@ Return Value:
         // Allocate temporary buffer for raw A*B result (TLS reusable buffer)
         size_t tile_elems = TileSizeM * TileSizeN;
 
-        if (g_kai_tls.output_tile.capacity() < tile_elems) {
-
-            g_kai_tls.output_tile.reserve(tile_elems);
-        }
         // resize the tile to the required size
         g_kai_tls.output_tile.resize(tile_elems);
 
