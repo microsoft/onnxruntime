@@ -208,15 +208,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
     for (int i = 0; i < tensor.float_data_size(); i++) {
       // We swap bytes so the actual value might change if we're converting endianness
       // But a double swap should restore the original value
-      if constexpr (endian::native == endian::little) {
-        EXPECT_EQ(tensor.float_data(i), expected_values[i]);
-      } else {
-        // Just verify the value is different after one swap on big-endian
-        // We can't predict the exact value without manual byte swapping
-        if (expected_values[i] != 0) {  // Skip zero values as they're invariant to byte swapping
-          EXPECT_EQ(tensor.float_data(i), expected_values[i]);
-        }
-      }
+      EXPECT_EQ(tensor.float_data(i), expected_values[i]);
     }
   }
 
@@ -225,13 +217,7 @@ class ConvertRawDataInTensorProtoTest : public ::testing::Test {
     ASSERT_EQ(tensor.int32_data_size(), static_cast<int>(expected_values.size()));
     for (int i = 0; i < tensor.int32_data_size(); i++) {
       // Same logic as float comparison
-      if constexpr (endian::native == endian::little) {
-        EXPECT_EQ(tensor.int32_data(i), expected_values[i]);
-      } else {
-        if (expected_values[i] != 0) {
-          EXPECT_EQ(tensor.int32_data(i), expected_values[i]);
-        }
-      }
+      EXPECT_EQ(tensor.int32_data(i), expected_values[i]);
     }
   }
 };

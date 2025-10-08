@@ -241,24 +241,21 @@ static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info, onnx:
 static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
 static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element_type, size_t& element_size);
 static void SwapByteOrderInplace(void* data, const size_t& data_len, const size_t& element_size);
-static constexpr bool isBigEndian();
 
-static constexpr bool isBigEndian() {
+// Below endian enum class is referenced from include/onnxruntime/core/framework/endian.h
+enum class endian {
 #if defined(_WIN32)
-  const int little = 0;
-  const int big = 1;
-  const int native = little;
+  little = 0,
+  big = 1,
+  native = little,
 #elif defined(__GNUC__) || defined(__clang__)
-  const int little = __ORDER_LITTLE_ENDIAN__;
-  const int big = __ORDER_BIG_ENDIAN__;
-  const int native = __BYTE_ORDER__;
+  little = __ORDER_LITTLE_ENDIAN__,
+  big = __ORDER_BIG_ENDIAN__,
+  native = __BYTE_ORDER__,
+#else
+#error onnxruntime::endian is not implemented in this environment.
 #endif
-  if constexpr (native == big) {
-    return true;
-  } else {
-    return false;
-  }
-}
+};
 
 Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::GraphProto& graph_proto,
@@ -467,7 +464,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       } else {
         // User wants to store data inline the TensorProto's raw_data
         tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
-        if constexpr (isBigEndian()) {
+        if constexpr (endian::native == endian::big) {
           size_t element_size = 0;
           GetTensorElementSize(initializer_elem_type, element_size);
           SwapByteOrderInplace(const_cast<void*>(data), data_bytes, element_size);
@@ -734,7 +731,7 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
         const size_t data_bytes = tensor.GetTensorSizeInBytes();
 
         // Copy the Ortvalue to TensorProto as raw data
-        if constexpr (isBigEndian()) {
+        if constexpr (endian::native == endian::big) {
           size_t element_size = 0;
           GetTensorElementSize(element_type, element_size);
           SwapByteOrderInplace(const_cast<void*>(data), data_bytes, element_size);
@@ -759,7 +756,7 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
 }
 
 Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes) {
-  if constexpr (!isBigEndian()) {
+  if constexpr (endian::native == endian::little) {
     return Ort::Status{nullptr};
   }
   std::vector<int64_t> initializer_dims;
@@ -767,9 +764,10 @@ Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size
   ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   size_t element_size = 0;
   Ort::ConstValueInfo ort_value_info{value_info};
+  bool has_shape{false};
   ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, false,
                                                                   initializer_elem_type, initializer_dims,
-                                                                  initializer_sym_dims));
+                                                                  initializer_sym_dims, has_shape));
   GetTensorElementSize(initializer_elem_type, element_size);
   if (element_size != 1) {
     SwapByteOrderInplace(data, bytes, element_size);

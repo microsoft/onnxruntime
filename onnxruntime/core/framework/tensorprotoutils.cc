@@ -399,11 +399,6 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
       case TensorProto_DataType_INT4:
       case TensorProto_DataType_UINT8:
       case TensorProto_DataType_INT8:
-        bytes = tensor.mutable_int32_data()->mutable_data();
-        num_elements = tensor.int32_data_size();
-        element_size = sizeof(uint8_t);
-        break;
-
       case TensorProto_DataType_UINT16:
       case TensorProto_DataType_INT16:
       case TensorProto_DataType_FLOAT16:
