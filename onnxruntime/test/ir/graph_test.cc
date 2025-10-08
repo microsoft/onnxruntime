@@ -2,13 +2,17 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include <fstream>
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/session/inference_session.h"
+#include "core/session/environment.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
@@ -2663,6 +2667,89 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalData) {
 
   // Verify outputs are properly shaped
   ASSERT_EQ(split_node_ptr->OutputDefs().size(), 16u);
+}
+
+// Test for shape inference with in-memory external data using InferenceSession
+// This test more accurately reproduces the issue by going through the full session initialization
+// which includes graph optimizations that trigger the in-memory externalization
+TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalDataViaSession) {
+  // Create the same model as above
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Create a Constant node with a tensor of 16 INT64 values (128 bytes)
+  auto* constant_node = graph_proto->add_node();
+  constant_node->set_op_type("Constant");
+  constant_node->set_name("const_node");
+  constant_node->add_output("const_output");
+
+  auto* attr = constant_node->add_attribute();
+  attr->set_name("value");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* tensor = attr->mutable_t();
+  tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  tensor->add_dims(16);
+  for (int64_t i = 0; i < 16; ++i) {
+    tensor->add_int64_data(1);
+  }
+
+  // Create a Split node
+  auto* split_node = graph_proto->add_node();
+  split_node->set_op_type("Split");
+  split_node->set_name("split_node");
+  split_node->add_input("input_data");
+  split_node->add_input("const_output");
+  for (int i = 0; i < 16; ++i) {
+    split_node->add_output("split_output_" + std::to_string(i));
+  }
+
+  auto* axis_attr = split_node->add_attribute();
+  axis_attr->set_name("axis");
+  axis_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  axis_attr->set_i(0);
+
+  // Add graph input
+  auto* input = graph_proto->add_input();
+  input->set_name("input_data");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(16);
+  input_type->mutable_shape()->add_dim()->set_dim_value(10);
+
+  // Add graph outputs
+  for (int i = 0; i < 16; ++i) {
+    auto* output = graph_proto->add_output();
+    output->set_name("split_output_" + std::to_string(i));
+  }
+
+  // Save to a temporary file
+  const std::string model_path = "test_in_memory_external_data.onnx";
+  std::ofstream file(model_path, std::ios::binary);
+  ASSERT_TRUE(file.is_open());
+  ASSERT_TRUE(model_proto.SerializeToOstream(&file));
+  file.close();
+
+  // Test with ORT_DISABLE_ALL optimization which should trigger the bug without the fix
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Default;  // This triggers the issue
+  so.session_logid = "GraphTest.ShapeInferenceWithInMemoryExternalDataViaSession";
+
+  InferenceSession session_object{so, GetEnvironment()};
+  
+  // This should succeed with the fix, fail without it
+  Status load_status = session_object.Load(model_path);
+  ASSERT_TRUE(load_status.IsOK()) << "Failed to load model: " << load_status.ErrorMessage();
+  
+  Status init_status = session_object.Initialize();
+  ASSERT_TRUE(init_status.IsOK()) << "Failed to initialize session: " << init_status.ErrorMessage();
+
+  // Clean up
+  std::remove(model_path.c_str());
 }
 
 }  // namespace test
