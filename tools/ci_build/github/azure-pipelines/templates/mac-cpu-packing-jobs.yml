@@ -1,10 +1,4 @@
 parameters:
-- name: MacosArch
-  type: string
-  values:
-  - 'x86_64'
-  - 'arm64'
-
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
   type: string
@@ -20,27 +14,22 @@ parameters:
   - 0
 
 jobs:
-- job: MacOS_C_API_Packaging_CPU_${{ parameters.MacosArch }}
+- job: MacOS_C_API_Packaging_CPU_arm64
   workspace:
     clean: all
   variables:
     MACOSX_DEPLOYMENT_TARGET: '14.0'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
   pool:
-    name: "Azure Pipelines"
-    image: 'macOS-15'
-    os: macOS
+   name: AcesShared
+   os: macOS
+   demands:
+   - ImageOverride -equals ACES_VM_SharedPool_Sequoia
   timeoutInMinutes: 300
   steps:
   - checkout: self
     clean: true
     submodules: none
-
-  - task: JavaToolInstaller@0
-    inputs:
-      versionSpec: "17"
-      jdkArchitectureOption: "x64"
-      jdkSourceOption: 'PreInstalled'
 
   - template: use-xcode-version.yml
     parameters:
@@ -48,7 +37,7 @@ jobs:
 
   - template: setup-build-tools.yml
     parameters:
-      host_cpu_arch: ${{ parameters.MacosArch }}
+      host_cpu_arch: arm64
 
   - template: set-version-number-variables-step.yml
 
@@ -58,14 +47,7 @@ jobs:
       export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
       python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'    
 
-  - ${{ if eq(parameters.MacosArch, 'arm64') }}:
-    - template: mac-cpu-packaging-steps.yml
-      parameters:
-        MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
-
-  - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-    - template: mac-cpu-packaging-steps.yml
-      parameters:
-        MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+  - template: mac-cpu-packaging-steps.yml
+    parameters:
+      MacosArch: arm64
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64

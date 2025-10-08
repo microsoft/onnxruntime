@@ -953,7 +953,7 @@ extern "C" {
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
-#if defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
@@ -1347,12 +1347,14 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     uint32_t NchwcBlockSize;
+#endif
 #endif
     const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 
@@ -2305,8 +2307,8 @@ MLAS_FLOAT32X4
 MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FLOAT32X4 Vector3)
 {
 #if defined(MLAS_NEON_INTRINSICS)
-#if defined(__ANDROID__) && defined(MLAS_TARGET_ARM)
-    // Android armeabi-v7a ABI doesn't have vfmaq_f32()
+#if defined(MLAS_TARGET_ARM)
+    // ARMv7 NEON doesn't have vfmaq_f32()
     return vmlaq_f32(Vector3, Vector1, Vector2);
 #else
     return vfmaq_f32(Vector3, Vector1, Vector2);
