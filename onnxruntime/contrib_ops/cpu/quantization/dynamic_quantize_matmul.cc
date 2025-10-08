@@ -229,6 +229,9 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
             break;
           }
         }
+      } else 
+      {
+        can_use_dynamic_quant_mlas_ = false;
       }
 
       // Can we use the mlas dynamic Q gemm interface supported with float output ?
