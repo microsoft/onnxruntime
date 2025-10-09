@@ -247,7 +247,7 @@ Return Value:
     size_t lhs_resize = 0;
     if(mul_overflow_size_t_builtin(LhsPackedStride, BatchSize, &lhs_resize))
     {
-        // size_t wraparound detected, exit
+        // size_t wraparound detected for LhsPackedStride, fallback to MLAS
         return false;
     }
 
@@ -271,7 +271,7 @@ Return Value:
         size_t rhs_resize = 0;
         if (mul_overflow_size_t_builtin(RhsPackedStride, BatchSize, &rhs_resize))
         {
-            // size_t wraparound detected, exit
+            // size_t wraparound detected for RhsPackedStride, fallback to MLAS
             return false;
         }
 
