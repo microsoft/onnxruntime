@@ -756,7 +756,6 @@ InlinedVector<std::unique_ptr<OrtHardwareDevice>> FilterEpHardwareDevices(
   // ORT is not required to use all hw devices provided by the EP factory.
   // This function filters out the following hw devices:
   //  - HW devices that were already found during ORT's device discovery.
-  //  - HW devices with vendor information that does not match the EP factory.
 
   if (ep_hw_devices.empty()) {
     return {};
@@ -783,6 +782,7 @@ InlinedVector<std::unique_ptr<OrtHardwareDevice>> FilterEpHardwareDevices(
       continue;  // EP library provided a NULL hw device. Skip it.
     }
 
+    // Skip hw device already found by ORT.
     if (have_ort_hw_device(candidate)) {
       LOGS_DEFAULT(VERBOSE) << "EP library registered under '" << lib_registration_name << "' with OrtEpFactory '"
                             << ep_factory_name << "' attempted to register a OrtHardwareDevice that has already been "
@@ -841,9 +841,8 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
     auto& factory = *factory_ptr;
 
     // Allow EP factory to provide additional OrtHardwareDevice instances to:
-    //  - Support offline/off-target model compilation. EP may provide a virtual OrtHardwareDevice that represents the
-    //    compilation target.
     //  - Enable EP library to provide hardware devices not discovered by ORT.
+    //  - EP may provide a virtual OrtHardwareDevice that represents a cross-compilation target.
     std::array<OrtHardwareDevice*, 8> ep_hw_devices{nullptr};
     size_t num_ep_hw_devices = 0;
 

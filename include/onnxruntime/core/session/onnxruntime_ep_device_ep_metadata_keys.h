@@ -28,10 +28,3 @@ static const char* kOrtHardwareDevice_MetadataKey_DiscoveredBy = "DiscoveredBy";
 //  - "0": OrtHardwareDevice is not virtual; represents an actual hardware device.
 //  - "1": OrtHardwareDevice is virtual.
 static const char* kOrtHardwareDevice_MetadataKey_IsVirtual = "IsVirtual";
-
-// Key to determine if a OrtHardwareDevice represents a discrete hardware device, for example,
-// a discrete GPU vs an integrated GPU.
-// Possible values:
-//  - "0": Not discrete
-//  - "1": Discrete
-static const char* kOrtHardwareDevice_MetadataKey_IsDiscrete = "Discrete";
