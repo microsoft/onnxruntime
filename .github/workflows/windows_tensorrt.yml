@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     name: Windows GPU TensorRT CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
     steps:
       - uses: actions/checkout@v5
         with:
