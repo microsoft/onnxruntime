@@ -101,10 +101,10 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
     EXPECT_TRUE(output_shape.size() == 4) << "The output shape should have 4 dimensions";
-    EXPECT_TRUE(output_shape[0] == 1) << "The first dimension should be 1";
-    EXPECT_TRUE(output_shape[1] == 3) << "The second dimension should be 3";
-    EXPECT_TRUE(output_shape[2] == 64) << "The second dimension should be 64";
-    EXPECT_TRUE(output_shape[3] == 64) << "The second dimension should be 64";
+    EXPECT_TRUE(output_shape[0] == 1) << "The first dimension should have 1 as value";
+    EXPECT_TRUE(output_shape[1] == 3) << "The second dimension should have 3 as value";
+    EXPECT_TRUE(output_shape[2] == 64) << "The second dimension should have 64 as value";
+    EXPECT_TRUE(output_shape[3] == 64) << "The second dimension should have 64 as value";
   }
 
   {
@@ -129,9 +129,9 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
     EXPECT_TRUE(output_shape.size() == 3) << "The output shape should have 3 dimensions";
-    EXPECT_TRUE(output_shape[0] == 1) << "The first dimension should be 1";
-    EXPECT_TRUE(output_shape[1] == 3) << "The second dimension should be 3";
-    EXPECT_TRUE(output_shape[2] == 4096) << "The second dimension should be 4096";
+    EXPECT_TRUE(output_shape[0] == 1) << "The first dimension should have 1 as value";
+    EXPECT_TRUE(output_shape[1] == 3) << "The second dimension should have 3 as value";
+    EXPECT_TRUE(output_shape[2] == 4096) << "The second dimension should have 4096 as value";
   }
 }
 
