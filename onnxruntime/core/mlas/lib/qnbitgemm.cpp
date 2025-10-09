@@ -1075,6 +1075,7 @@ MlasQNBitGemmBatch(
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
+    // SINGLE-THREADED IMPL
     if (ThreadPool == nullptr) {
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             const auto* Data = &DataParams[gemm_i];
