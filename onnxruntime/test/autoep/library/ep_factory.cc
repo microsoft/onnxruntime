@@ -117,7 +117,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEp
   for (size_t i = 0; i < num_found_devices; ++i) {
     const OrtHardwareDevice& device = *found_devices[i];
 
-    if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
+    if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
+        factory->ort_api.HardwareDevice_Vendor(&device) == factory->vendor_) {
       found_gpu = true;
       break;
     }
