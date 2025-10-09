@@ -21,10 +21,10 @@ static const char* const kOrtEpDevice_EpMetadataKey_LibraryPath = "library_path"
 // Possible values:
 //  - "ONNX Runtime" (devices discovered by ONNX Runtime).
 //  - <EP_NAME> (devices discovered by a plugin EP library registered with the OrtEnv).
-static const char* kOrtHardwareDevice_MetadataKey_DiscoveredBy = "DiscoveredBy";
+static const char* const kOrtHardwareDevice_MetadataKey_DiscoveredBy = "DiscoveredBy";
 
 // Key to determine if a OrtHardwareDevice represents a virtual (non-hardware) device.
 // Possible values:
 //  - "0": OrtHardwareDevice is not virtual; represents an actual hardware device.
 //  - "1": OrtHardwareDevice is virtual.
-static const char* kOrtHardwareDevice_MetadataKey_IsVirtual = "IsVirtual";
+static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "IsVirtual";
