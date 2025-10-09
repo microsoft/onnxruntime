@@ -132,6 +132,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   cparameters.input_hidden_size = parameters.batch_size;
   cparameters.hidden_size = parameters.batch_size;
   cparameters.head_size = parameters.head_size;
+  cparameters.v_head_size = parameters.v_head_size;
   cparameters.v_hidden_size = parameters.kv_num_heads * parameters.v_head_size;
   cparameters.num_heads = parameters.q_num_heads;
   cparameters.head_size = parameters.head_size;
@@ -139,6 +140,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   cparameters.scale = parameters.scale;
   cparameters.do_rotary = false;
   cparameters.is_packed_qkv = false;
+  cparameters.is_unidirectional = false;
 
   // TODO: Mask 2D does not seem to be supported by the contrib ops.
   cparameters.mask_type = attn_mask == nullptr
@@ -146,7 +148,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                               : (attn_mask->Shape().NumDimensions() == 4
                                      ? onnxruntime::contrib::AttentionMaskType::MASK_4D_MEGATRON
                                      : onnxruntime::contrib::AttentionMaskType::MASK_3D_ATTENTION);
-  cparameters.qkv_format = Q->Shape().NumDimensions() == 4
+  cparameters.qkv_format = Q->Shape().NumDimensions() == 3
                                ? onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH   // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
                                : onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH;  // for non-packed qkv, permuted
 
@@ -180,8 +182,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // const int* mask_index = nullptr;
   // gsl::span<const int64_t> mask_index_dims;
   // const T* past = nullptr;
-  data.past_key = reinterpret_cast<const CudaT*>(past_key->Data<T>());
-  data.past_value = reinterpret_cast<const CudaT*>(past_value->Data<T>());
+  data.past_key = past_key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = past_value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
+
   // const int32_t* cache_indirection = nullptr;
   // const T* attention_bias = nullptr;
 
@@ -223,32 +226,31 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // bool allow_debug_info = false;
 
   // For MultiHeadAttention only.
-  // data.kernel_type = AttentionKernelType::AttentionKernel_Default;
+  data.kernel_type = onnxruntime::contrib::AttentionKernelType::AttentionKernel_Default;
   // AllocatorPtr allocator = nullptr;
 
-  /*
-  const bool no_qkv_workspace = NoQkvWorkspace(parameters, data);
-  size_t workspace_bytes = GetAttentionWorkspaceSize(sizeof(T),
-                                                     parameters.batch_size,
-                                                     parameters.num_heads,
-                                                     parameters.head_size,
-                                                     parameters.v_head_size,
-                                                     parameters.sequence_length,
-                                                     parameters.kv_sequence_length,
-                                                     parameters.total_sequence_length,
-                                                     fused_runner,
-                                                     use_flash_attention,
-                                                     use_lean_attention,
-                                                     use_fused_cross_attention,
-                                                     use_memory_efficient_attention,
-                                                     use_cudnn_sdpa,
-                                                     no_qkv_workspace);
+  const bool no_qkv_workspace = onnxruntime::contrib::cuda::NoQkvWorkspace(cparameters, data);
+  size_t workspace_bytes = onnxruntime::contrib::cuda::GetAttentionWorkspaceSize(sizeof(T),
+                                                                                 cparameters.batch_size,
+                                                                                 cparameters.num_heads,
+                                                                                 cparameters.head_size,
+                                                                                 cparameters.v_head_size,
+                                                                                 cparameters.sequence_length,
+                                                                                 cparameters.kv_sequence_length,
+                                                                                 cparameters.total_sequence_length,
+                                                                                 false,  // fused_runner,
+                                                                                 false,  // use_flash_attention
+                                                                                 false,  // use_lean_attention,
+                                                                                 false,  // use_fused_cross_attention,
+                                                                                 false,  // use_memory_efficient_attention,
+                                                                                 false,  // use_cudnn_sdpa,
+                                                                                 no_qkv_workspace);
   auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
   data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.workspace_bytes = workspace_bytes;
-  */
+
   // QK type = T type
   typedef typename ToCudaType<T>::MappedType CudaQK;
   cublasHandle_t cublas = GetCublasHandle(context);
