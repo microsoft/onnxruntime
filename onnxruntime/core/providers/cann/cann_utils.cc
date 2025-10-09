@@ -247,11 +247,11 @@ std::string MatchFile(const std::string& file_name) {
 static bool repeat_acl_init_flag = false;
 
 bool GetRepeatInitFlag() {
-    return repeat_acl_init_flag;
+  return repeat_acl_init_flag;
 }
 
 void SetRepeatInitFlag(bool val) {
-    repeat_acl_init_flag = val;
+  repeat_acl_init_flag = val;
 }
 }  // namespace cann
 }  // namespace onnxruntime

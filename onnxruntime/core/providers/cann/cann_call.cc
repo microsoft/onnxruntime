@@ -125,7 +125,7 @@ bool CannCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
   if (retCode != successCode) {
     if (retCode == ACL_ERROR_REPEAT_INITIALIZE) {
       cann::SetRepeatInitFlag(true);
-    }else{
+    } else {
       try {
         char hostname[HOST_NAME_MAX];
         if (gethostname(hostname, HOST_NAME_MAX) != 0)
@@ -135,9 +135,9 @@ bool CannCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
         (void)aclGetRecentErrMsg();
         char str[1024];
         snprintf(str, sizeof(str), "%s failure %d: %s ; NPU=%d ; hostname=%s ; expr=%s; %s",
-                libName, static_cast<int>(retCode), CannErrString(retCode), currentCannDevice,
-                hostname,
-                exprString, msg);
+                 libName, static_cast<int>(retCode), CannErrString(retCode), currentCannDevice,
+                 hostname,
+                 exprString, msg);
         if (THRW) {
           ORT_THROW(str);
         } else {
