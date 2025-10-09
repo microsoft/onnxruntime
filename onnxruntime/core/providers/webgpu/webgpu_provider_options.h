@@ -32,6 +32,8 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
+constexpr const char* kSmallStorageBufferBindingSizeForTesting = "ep.webgpuexecutionprovider.smallStorageBufferBindingSizeForTesting";
+
 // The following are the possible values for the provider options.
 
 constexpr const char* kDawnBackendType_D3D12 = "D3D12";
