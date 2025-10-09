@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy
 import onnx
+from ml_dtypes import int4, uint4
 from onnx import TensorProto, helper, numpy_helper
 
 from onnxruntime.quantization.quant_utils import (
@@ -147,10 +148,9 @@ class TestQuantUtil(unittest.TestCase):
             with self.subTest(onnx_type=onnx_type, symmetric=symmetric):
                 zero_point, scale, data_quant = quantize_data(data_float, onnx_type, symmetric)
                 is_signed = onnx_type == onnx.TensorProto.INT4
-                np_int_type = numpy.int8 if is_signed else numpy.uint8
+                np_int_type = int4 if is_signed else uint4
                 qmin = numpy.array(-8 if is_signed else 0, dtype=np_int_type)
                 qmax = numpy.array(7 if is_signed else 15, dtype=np_int_type)
-
                 self.assertEqual(zero_point.dtype, np_int_type)
                 self.assertEqual(scale.dtype, data_float.dtype)
 

@@ -8,6 +8,7 @@
 #include <limits>
 #include <assert.h>
 #include <math.h>
+#include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
@@ -343,6 +344,9 @@ __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
 
 template <>
 __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (float)b)); }
+
+template <>
+__device__ __inline__ BFloat16 _Pow(BFloat16 a, BFloat16 b) { return BFloat16(powf((float)a, (float)b)); }
 
 #define ISNAN_HALF(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~MLFloat16::kSignMask) > MLFloat16::kPositiveInfinityBits
 

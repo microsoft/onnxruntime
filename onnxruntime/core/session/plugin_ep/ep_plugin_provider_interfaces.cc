@@ -3,6 +3,7 @@
 
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
+#include <gsl/gsl>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -117,6 +118,17 @@ static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_
   return device_memory_info != nullptr ? device_memory_info->device : OrtDevice();
 }
 
+static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
+                                                  gsl::span<const EpNode* const> ep_nodes) {
+  auto node_iter = std::find_if(ep_nodes.begin(), ep_nodes.end(),
+                                [&ep_type](const EpNode* node) -> bool {
+                                  const auto& node_ep_type = node->GetInternalNode().GetExecutionProviderType();
+                                  return !node_ep_type.empty() && node_ep_type != ep_type;
+                                });
+
+  return node_iter != ep_nodes.end() ? &(*node_iter)->GetInternalNode() : nullptr;
+}
+
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
@@ -158,9 +170,11 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
+  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
+
   std::unique_ptr<EpGraph> ep_graph = nullptr;
   if (Status status = EpGraph::Create(graph_viewer, ep_graph); !status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Failed to create OrtGraph: " << status.ToString();
+    LOGS(logger, ERROR) << "Failed to create OrtGraph for " << Type() << ": " << status.ToString();
     return {};
   }
 
@@ -168,7 +182,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   Status status = ToStatusAndRelease(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info));
 
   if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "OrtEp::GetCapability() failed with error: " << status.ToString();
+    LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " failed with error: " << status.ToString();
     return {};
   }
 
@@ -182,12 +196,39 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
+    // Skip this node grouping if any node has already been assigned to another EP.
+    if (const Node* node_for_other_ep = FindFirstNodeAssignedToOtherEP(Type(), node_grouping.nodes);
+        node_for_other_ep != nullptr) {
+      LOGS(logger, WARNING) << "OrtEp::GetCapability() specified nodes that cannot be assigned to " << Type() << ". "
+                            << "Found one or more nodes that were already assigned to a different EP named '"
+                            << node_for_other_ep->GetExecutionProviderType() << "'. Ex: "
+                            << node_for_other_ep->OpType() << " node with name '"
+                            << node_for_other_ep->Name() << "'.";
+      continue;
+    }
+
     if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
+      if (node_grouping.nodes.size() != 1) {
+        // The EpGraphSupportInfo_AddSingleNode() C API should already return an error if the EP tries to provide
+        // an invalid node. However, we check here too just in case this changes.
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " did not specify exactly one valid node "
+                            << "when calling EpGraphSupportInfo_AddSingleNode().";
+        return {};
+      }
+
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
       indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
       result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
+      if (node_grouping.nodes.empty()) {
+        // The EpGraphSupportInfo_AddNodesToFuse() C API should already return an error if the EP tries to provide
+        // an empty array of nodes from OrtEp::GetCapability(). However, we check here too just in case this changes.
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set an empty array of nodes "
+                            << "when specifying supported nodes.";
+        return {};
+      }
+
       std::unordered_set<const Node*> node_set;
       node_set.reserve(node_grouping.nodes.size());
 
@@ -207,27 +248,29 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           this->Type(), this->Type(), /*node_unit_map*/ nullptr,
           node_grouping.fusion_options.drop_constant_initializers);
 
-      if (capabilities.size() > 1) {
-        LOGS_DEFAULT(ERROR) << "OrtEp::GetCapability() set nodes that cannot be fused together. "
-                            << "Please ensure that the nodes provided to EpGraphSupportInfo_AddFusedNodes() do not "
+      if (capabilities.size() != 1) {
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set nodes that cannot be fused together. "
+                            << "Please ensure that the nodes provided to EpGraphSupportInfo_AddNodesToFuse() do not "
                             << "have an unsupported node in any path between two of the supported nodes.";
         return {};
       }
 
-      // Enforce that the nodes in node_set match the nodes in capabilities[0]
+      // Log an error if the nodes in node_set do not match the nodes in capabilities[0]. We expect this to always
+      // be true because we've already checked that the EP did not try to claim nodes already assigned to another EP.
       // TODO(adrianlizarraga): This check can be removed when we stop using utils::CreateSupportedPartitions() above.
       std::vector<NodeIndex>& capability_node_indices = capabilities[0]->sub_graph->nodes;
       std::unordered_set<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
                                                                 capability_node_indices.end());
 
-      ORT_ENFORCE(node_set.size() == capability_node_indices_set.size());
-      ORT_ENFORCE(std::all_of(node_set.begin(), node_set.end(), [&capability_node_indices_set](const Node* node) {
-        return capability_node_indices_set.count(node->Index()) != 0;
-      }));
+      if (node_set.size() != capability_node_indices_set.size()) {
+        LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type()
+                            << " set nodes that cannot all be fused together.";
+        return {};
+      }
 
       result.push_back(std::move(capabilities[0]));
     } else {
-      LOGS_DEFAULT(ERROR) << "PluginExecutionProvider::GetCapability() has invalid NodeGroupingKind: "
+      LOGS(logger, ERROR) << "PluginExecutionProvider::GetCapability() has invalid NodeGroupingKind: "
                           << static_cast<int>(node_grouping.kind);
       return {};
     }

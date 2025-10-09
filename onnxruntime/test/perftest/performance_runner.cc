@@ -69,19 +69,19 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 
   if (have_file) {
-    for (size_t runs = 0; runs < time_costs.size(); runs++) {
-      outfile << model_name << "," << time_costs[runs] << "," << peak_workingset_size << ","
+    for (size_t runs = 0; runs < time_costs_submission.size(); runs++) {
+      outfile << model_name << "," << time_costs_submission[runs] << "," << peak_workingset_size << ","
               << average_CPU_usage << "," << runs << std::endl;
     }
   } else {
     // match formatting of the initial output from PerformanceRunner::Run
     std::cout << "Avg CPU usage:" << average_CPU_usage
               << "\nPeak working set size:" << peak_workingset_size
-              << "\nRuns:" << time_costs.size() << std::endl;
+              << "\nRuns:" << time_costs_submission.size() << std::endl;
   }
 
-  if (!time_costs.empty() && f_include_statistics) {
-    std::vector<double> sorted_time = time_costs;
+  if (!time_costs_submission.empty() && f_include_statistics) {
+    std::vector<double> sorted_time = time_costs_submission;
 
     size_t total = sorted_time.size();
     size_t n50 = static_cast<size_t>(total * 0.5);
@@ -152,15 +152,21 @@ Status PerformanceRunner::Run() {
   auto first_inference_duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(initial_inference_result_.end - initial_inference_result_.start).count();
   std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
-
+  auto iterations = performance_result_.time_costs_submission.size();
+  double avg_cpu_time_ms = std::accumulate(performance_result_.time_costs_submission.begin(), performance_result_.time_costs_submission.end(), 0.0) / static_cast<double>(iterations) * 1000;
+  double avg_total_time_ms = std::accumulate(performance_result_.time_costs_total.begin(), performance_result_.time_costs_total.end(), 0.0) / static_cast<double>(iterations) * 1000;
+  std::string avg_time_string = "Average inference time cost total: " + std::to_string(avg_total_time_ms) + " ms\n";
+  if (performance_test_config_.run_config.enable_cuda_io_binding) {
+    avg_time_string += "Average inference time cost submission: " + std::to_string(avg_cpu_time_ms) + " ms\n";
+  }
   std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
             << "First inference time cost: " << first_inference_duration << " ms\n"
             << "Total inference time cost: " << performance_result_.total_time_cost << " s\n"  // sum of time taken by each request
-            << "Total inference requests: " << performance_result_.time_costs.size() << "\n"
-            << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
+            << "Total inference requests: " << iterations << "\n"
+            << avg_time_string
             // Time between start and end of run. Less than Total time cost when running requests in parallel.
             << "Total inference run time: " << inference_duration.count() << " s\n"
-            << "Number of inferences per second: " << performance_result_.time_costs.size() / inference_duration.count() << " \n"
+            << "Number of inferences per second: " << iterations / inference_duration.count() << " \n"
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
             << std::endl;

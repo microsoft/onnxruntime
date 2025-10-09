@@ -490,9 +490,61 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
+static std::pair<bool, bool> LoadAndGetInputShapePresent(const ORTCHAR_T* const model_url) {
+  Ort::Session session(*ort_env, model_url, Ort::SessionOptions{});
+  const auto input_num = session.GetInputCount();
+  EXPECT_EQ(input_num, 1U);
+  const bool input_shape_present = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().HasShape();
+  const auto output_num = session.GetOutputCount();
+  EXPECT_EQ(output_num, 1U);
+  const bool output_shape_present = session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().HasShape();
+  return {input_shape_present, output_shape_present};
+}
+
+TEST(CApiTest, OptionalShape) {
+  const ORTCHAR_T* const input_shape_model = TSTR("testdata/abs_0d_input.onnx");
+  auto result = LoadAndGetInputShapePresent(input_shape_model);
+  ASSERT_TRUE(result.first);
+  ASSERT_TRUE(result.second);
+
+  const ORTCHAR_T* const no_shape_model = TSTR("testdata/abs_0d_lostdim.onnx");
+  result = LoadAndGetInputShapePresent(no_shape_model);
+  ASSERT_FALSE(result.first);
+  ASSERT_FALSE(result.second);
+}
+
 INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                          CApiTestWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
+
+TEST(CApiTest, TestInputPassThroughToOutput) {
+  const ORTCHAR_T* model_uri = TSTR("testdata/input_propagated_to_output.onnx");
+  Ort::Session session(*ort_env, model_uri, Ort::SessionOptions{});
+  auto inputs_meminfos = session.GetMemoryInfoForInputs();
+  ASSERT_EQ(1U, inputs_meminfos.size());
+  auto inputs_epdevices = session.GetEpDeviceForInputs();
+  ASSERT_EQ(1U, inputs_epdevices.size());
+  auto outputs_meminfos = session.GetMemoryInfoForOutputs();
+  ASSERT_EQ(7U, outputs_meminfos.size());
+}
+
+TEST(CApiTest, TestDanglingInput) {
+  // Here we test an issue with segments_ids that is an input not consumed by anything
+  // This kind of model is unlikely to be used in practice but we want to make sure it works
+  const ORTCHAR_T* model_uri = TSTR("testdata/test_dangling_input_segment_ids.onnx");
+  Ort::Session session(*ort_env, model_uri, Ort::SessionOptions{});
+  auto inputs_meminfos = session.GetMemoryInfoForInputs();
+  ASSERT_EQ(2U, inputs_meminfos.size());
+  auto outputs_meminfos = session.GetMemoryInfoForOutputs();
+  ASSERT_EQ(2U, outputs_meminfos.size());
+  auto inputs_epdevices = session.GetEpDeviceForInputs();
+  ASSERT_EQ(2U, inputs_epdevices.size());
+  // One of the devices returning is null since the input is not consumed
+  // there is not a device for it.
+  const bool null_present = std::any_of(inputs_epdevices.begin(), inputs_epdevices.end(),
+                                        [](const auto& device) { return device == nullptr; });
+  ASSERT_TRUE(null_present);
+}
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(CApiTest, SparseOutputModel) {
@@ -505,7 +557,15 @@ TEST(CApiTest, SparseOutputModel) {
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
   const char* const output_names[] = {"values"};
+  // This model produces a sparse output from a constant sparse initializer
   Ort::Session session(*ort_env, SPARSE_OUTPUT_MODEL_URI, Ort::SessionOptions{});
+  auto inputs_meminfos = session.GetMemoryInfoForInputs();
+  ASSERT_TRUE(inputs_meminfos.empty());
+  auto outputs_meminfos = session.GetMemoryInfoForOutputs();
+  ASSERT_EQ(1U, outputs_meminfos.size());
+  auto inputs_epdevices = session.GetEpDeviceForInputs();
+  ASSERT_TRUE(inputs_epdevices.empty());
+
   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
                                  output_names, 1);
   ASSERT_EQ(ort_outputs.size(), 1U);
@@ -1898,14 +1958,6 @@ TEST(CApiTest, test_pyop_kwarg) {
   std::vector<float> expected_values_y = {25.0f, 50.0f, 75.0f, 100.0f};
   TestInference<float>(*ort_env, PYOP_KWARG_MODEL_URI, inputs, "Z", expected_dims_y, expected_values_y, 0,
                        nullptr, nullptr);
-}
-#endif
-
-#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
-TEST(CApiTest, create_session_without_session_option) {
-  constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  Ort::Session ret(*ort_env, model_uri, Ort::SessionOptions{nullptr});
-  ASSERT_NE(nullptr, ret);
 }
 #endif
 
