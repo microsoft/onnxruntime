@@ -222,7 +222,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();
-      if (b_shape_.NumDimensions() > 2) {
+      if (b_shape_.NumDimensions() >= 2) {
         for (size_t i = 0; i < (b_shape_.NumDimensions() - 2); ++i) {
           if (b_shape_[i] != 1) {
             can_use_dynamic_quant_mlas_ = false;
