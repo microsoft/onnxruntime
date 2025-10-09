@@ -85,20 +85,15 @@ class CuFFTPlanCache {
   std::mutex mutex;
 
   void Clear() {
-    std::lock_guard<std::mutex> lk(mutex_);
-    for (auto& kv : plan_map_) {
+    std::lock_guard<std::mutex> lk(mutex);
+    for (auto& kv : map) {
       auto& info = kv.second;
       if (info.plan != 0) {
         cufftDestroy(info.plan);
         info.plan = 0;
       }
-      if (info.ws_ptr) {
-        cudaError_t e = cudaFree(info.ws_ptr);
-        // optionally log if e != cudaSuccess
-        info.ws_ptr = nullptr;
-      }
     }
-    plan_map_.clear();
+    map.clear();
   }
 
  private:
