@@ -9,6 +9,7 @@
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 namespace onnxruntime {
 
@@ -48,6 +49,8 @@ OrtHardwareDevice DeviceDiscovery::GetCpuDeviceFromCPUIDInfo() {
   cpu_device.vendor_id = cpuid_info.GetCPUVendorId();
   cpu_device.device_id = 0;
   cpu_device.type = OrtHardwareDeviceType_CPU;
+  cpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, "ONNX Runtime");
+  cpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "0");
 
   return cpu_device;
 }

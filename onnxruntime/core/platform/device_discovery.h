@@ -9,8 +9,6 @@
 
 namespace onnxruntime {
 
-constexpr const char* kHardwareDeviceKey_DiscoveredBy = "DiscoveredBy";
-
 class DeviceDiscovery {
  public:
   static const std::unordered_set<OrtHardwareDevice>& GetDevices();

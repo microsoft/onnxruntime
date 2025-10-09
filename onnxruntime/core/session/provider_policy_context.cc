@@ -16,6 +16,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 
@@ -38,7 +39,7 @@ bool IsDiscreteDevice(const OrtEpDevice* d) {
   }
 
   const auto& entries = d->device->metadata.Entries();
-  if (auto it = entries.find("Discrete"); it != entries.end()) {
+  if (auto it = entries.find(kOrtHardwareDevice_MetadataKey_IsDiscrete); it != entries.end()) {
     return it->second == "1";
   }
 

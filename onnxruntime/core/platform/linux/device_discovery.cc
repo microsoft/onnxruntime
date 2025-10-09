@@ -12,6 +12,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 namespace fs = std::filesystem;
 
@@ -138,6 +139,10 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
     OrtHardwareDevice gpu_device{};
     ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
+
+    gpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, "ONNX Runtime");
+    gpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "0");
+
     gpu_devices.emplace_back(std::move(gpu_device));
   }
 

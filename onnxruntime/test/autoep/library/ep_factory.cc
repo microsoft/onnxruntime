@@ -5,6 +5,8 @@
 
 #include <cassert>
 
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+
 #include "ep.h"
 #include "ep_allocator.h"
 #include "ep_arena.h"
@@ -127,20 +129,20 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEp
   *num_additional_devices = 0;
 
   if (!found_gpu && max_additional_devices >= 1) {
-    // Add some hw metadata for this GPU
+    // Create a new HW device.
     OrtKeyValuePairs* hw_metadata = nullptr;
     factory->ort_api.CreateKeyValuePairs(&hw_metadata);
-    factory->ort_api.AddKeyValuePair(hw_metadata, "Discrete", "1");
-    factory->ort_api.AddKeyValuePair(hw_metadata, "CompileTargetOnly", "1");
+    factory->ort_api.AddKeyValuePair(hw_metadata, kOrtHardwareDevice_MetadataKey_DiscoveredBy,
+                                     factory->ep_name_.c_str());
+    factory->ort_api.AddKeyValuePair(hw_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
 
-    // Create a new HW device. Must have the same vendor information as this factory. Otherwise, ORT will not use it.
     OrtHardwareDevice* new_device = nullptr;
-    auto* status = factory->ort_api.GetEpApi()->CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
-                                                                     factory->vendor_id_,
-                                                                     /*device_id*/ 0,
-                                                                     factory->vendor_.c_str(),
-                                                                     hw_metadata,
-                                                                     &new_device);
+    auto* status = factory->ep_api.CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
+                                                        factory->vendor_id_,
+                                                        /*device_id*/ 0,
+                                                        factory->vendor_.c_str(),
+                                                        hw_metadata,
+                                                        &new_device);
     factory->ort_api.ReleaseKeyValuePairs(hw_metadata);  // Release since ORT makes a copy.
 
     if (status != nullptr) {

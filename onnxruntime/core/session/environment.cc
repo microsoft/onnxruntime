@@ -16,6 +16,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
@@ -776,33 +777,38 @@ InlinedVector<std::unique_ptr<OrtHardwareDevice>> FilterEpHardwareDevices(
 
   const char* ep_factory_name = ep_factory.GetName(&ep_factory);
   const uint32_t ep_vendor_id = ep_factory.GetVendorId(&ep_factory);
-  const std::string ep_vendor = ep_factory.GetVendor(&ep_factory);
 
   for (OrtHardwareDevice* candidate : ep_hw_devices) {
     if (candidate == nullptr) {
       continue;  // EP library provided a NULL hw device. Skip it.
     }
 
-    if (candidate->vendor_id != ep_vendor_id ||
-        candidate->vendor != ep_vendor) {
-      LOGS_DEFAULT(WARNING) << "EP library registered under '" << lib_registration_name << "' with OrtEpFactory '"
-                            << ep_factory_name << "' attempted to register a OrtHardwareDevice with non-matching "
-                            << "vendor information. Expected " << ep_vendor << "(" << ep_vendor_id << ") but got "
-                            << candidate->vendor << "(" << candidate->vendor_id << ").";
-      devices_to_discard.emplace_back(candidate);  // take ownership to discard on function return
-      continue;
-    }
-
     if (have_ort_hw_device(candidate)) {
       LOGS_DEFAULT(VERBOSE) << "EP library registered under '" << lib_registration_name << "' with OrtEpFactory '"
                             << ep_factory_name << "' attempted to register a OrtHardwareDevice that has already been "
                             << "found by ONNX Runtime. OrtHardwareDevice info: vendor_id=" << ep_vendor_id
-                            << ", device_id=" << candidate->device_id << ", type=" << candidate->type;
+                            << ", device_id=" << candidate->device_id << ", type=" << candidate->type << ". "
+                            << "ORT will not use this device.";
       devices_to_discard.emplace_back(candidate);  // take ownership to discard on function return
       continue;
     }
 
-    candidate->metadata.Add(kHardwareDeviceKey_DiscoveredBy, ep_factory_name);
+    const std::map<std::string, std::string>& metadata = candidate->metadata.Entries();
+
+    // Always set the "DiscoveredBy" metadata entry to the EP name.
+    if (auto discovered_by_iter = metadata.find(kOrtHardwareDevice_MetadataKey_DiscoveredBy);
+        discovered_by_iter == metadata.end()) {
+      candidate->metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, ep_factory_name);
+    } else if (discovered_by_iter->second != ep_factory_name) {
+      LOGS_DEFAULT(WARNING) << "EP library registered under '" << lib_registration_name << "' with OrtEpFactory '"
+                            << ep_factory_name << "' attempted to register a OrtHardwareDevice with an invalid entry "
+                            << "for metadata key '" << kOrtHardwareDevice_MetadataKey_DiscoveredBy << "'. "
+                            << "Expected '" << ep_factory_name << "' but got '" << discovered_by_iter->second << "'. "
+                            << "ORT will use the device but overwrite the metadata entry to the expected value.";
+
+      candidate->metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, ep_factory_name);  // overwrite
+    }
+
     result.emplace_back(candidate);
   }
 
