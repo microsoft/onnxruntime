@@ -11,6 +11,8 @@ from ..task import BashScriptsWithVenvTask, RunExecutablesWithVenvTask
 from ..util import REPO_ROOT, git_head_sha
 from .windows import RunPowershellScriptsTask
 
+BuildConfigT = Literal["Debug", "RelWithDebInfo", "Release"]
+
 
 def get_ort_version() -> str:
     return (REPO_ROOT / "VERSION_NUMBER").read_text().strip()
@@ -25,6 +27,7 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
         venv: Path | None,
         target_platform: Literal["android", "linux"],
         target_arch: Literal["aarch64", "aarch64-oe-gcc11.2", "x86_64"],
+        config: BuildConfigT,
         qairt_sdk_root: Path | None,
         mode: str,
     ) -> None:
@@ -32,6 +35,7 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
             str(REPO_ROOT / "qcom" / "scripts" / "linux" / "build.sh"),
             f"--target-arch={target_arch}",
             f"--target-platform={target_platform}",
+            f"--config={config}",
             f"--mode={mode}",
         ]
 

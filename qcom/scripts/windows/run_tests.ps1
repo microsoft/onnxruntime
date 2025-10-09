@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 param(
+    [Parameter(HelpMessage = "The build config")]
+    [ValidateSet("Debug", "Release", "RelWithDebInfo")]
+    [string]$Config = "Release",
     [Parameter(HelpMessage = "Path to onnx/models models")]
     $OnnxModelsRoot = $null
 )
@@ -12,7 +15,6 @@ if (-not $OnnxModelsRoot) {
     $OnnxModelsRoot = (Join-Path $RootDir (Join-Path "model_tests" "onnx_models"))
 }
 
-$Config = "Release"
 $TimeoutSec = 60 * 60
 
 $CTestExe = (Join-Path $RootDir "ctest.exe")

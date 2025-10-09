@@ -10,8 +10,11 @@ source "${REPO_ROOT}/qcom/scripts/linux/tools.sh"
 set_strict_mode
 
 function update_needed() {
-  if [ -f "${qairt_sdk_file_path}" ]; then
-    if [ "$(cat ${qairt_sdk_file_path})" != "${1}" ]; then
+  if [ ! -f "${1}/build.ninja" ]; then
+    log_debug "${1}/build.ninja does not exist"
+    echo "1"
+  elif [ -f "${qairt_sdk_file_path}" ]; then
+    if [ "$(cat ${qairt_sdk_file_path})" != "${2}" ]; then
       log_debug "New QAIRT SDK detected"
       echo "1"
     else
@@ -74,7 +77,7 @@ export PATH="${cmake_bindir}:$(get_ccache_bindir):$(get_ninja_bindir):${PATH}"
 mkdir -p "${build_dir}/${config}"
 
 build_is_dirty=
-if [ $(update_needed "${qairt_sdk_root}") ]; then
+if [ $(update_needed "${build_dir}/${config}" "${qairt_sdk_root}") ]; then
   build_is_dirty=1
   save_qairt_sdk_path "${qairt_sdk_root}"
 fi

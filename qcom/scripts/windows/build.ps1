@@ -276,7 +276,7 @@ else {
 
         Push-Location (Join-Path $BuildDir $Config)
         $OnnxModelsRoot = (Get-OnnxModelsRoot)
-        & .\run_tests.ps1 -OnnxModelsRoot $OnnxModelsRoot
+        & .\run_tests.ps1 -Config $Config -OnnxModelsRoot $OnnxModelsRoot
 
         if (-not $?) {
             $failed = $true

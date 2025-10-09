@@ -8,6 +8,7 @@ import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import get_args
 
 from ep_build import self_test
 from ep_build.logging import initialize_logging
@@ -31,6 +32,7 @@ from ep_build.task import (
 from ep_build.tasks.build import (
     BuildEpLinuxTask,
     BuildEpWindowsTask,
+    ConfigT,
     QdcTestsTask,
     TargetPyVersionT,
 )
@@ -95,6 +97,8 @@ Environment variables
         help='Task(s) to run. Specify "list" to show all tasks.',
     )
 
+    parser.add_argument("--config", choices=get_args(ConfigT), default="Release", help="The configuration to build.")
+
     parser.add_argument("--dry-run", action="store_true", help="Print the plan, rather than running it.")
     parser.add_argument(
         "--only",
@@ -135,11 +139,13 @@ class TaskLibrary:
         self,
         python_executable: Path,
         venv_path: Path,
+        config: ConfigT,
         target_py_version: TargetPyVersionT | None,
         qairt_sdk_root: Path | None,
     ) -> None:
         self.__python_executable = python_executable
         self.__venv_path = venv_path
+        self.__config: ConfigT = config
         # pylance somehow cannot correctly deduce the type of self.__target_py_version
         self.__target_py_version: TargetPyVersionT | None = target_py_version
         self.__qairt_sdk_root = qairt_sdk_root
@@ -178,6 +184,7 @@ class TaskLibrary:
                         self.__venv_path,
                         "android",
                         "aarch64",
+                        self.__config,
                         self.__qairt_sdk_root,
                         "archive",
                     )
@@ -196,6 +203,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "linux",
                     "x86_64",
+                    self.__config,
                     self.__qairt_sdk_root,
                     "archive",
                 )
@@ -211,7 +219,7 @@ class TaskLibrary:
                     "Archiving ONNX Runtime for Windows on ARM64",
                     self.__venv_path,
                     "arm64",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
@@ -228,7 +236,7 @@ class TaskLibrary:
                     "Archiving ONNX Runtime for Windows on ARM64ec",
                     self.__venv_path,
                     "arm64ec",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
@@ -245,7 +253,7 @@ class TaskLibrary:
                     "Archiving ONNX Runtime for Windows on ARM64x",
                     self.__venv_path,
                     "arm64ec",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
@@ -263,7 +271,7 @@ class TaskLibrary:
                     "Archiving ONNX Runtime for Windows on x86_64",
                     self.__venv_path,
                     "x86_64",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
@@ -292,6 +300,7 @@ class TaskLibrary:
                         self.__venv_path,
                         "android",
                         "aarch64",
+                        self.__config,
                         self.__qairt_sdk_root,
                         "build",
                     )
@@ -310,6 +319,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "linux",
                     "aarch64-oe-gcc11.2",
+                    self.__config,
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -333,6 +343,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "linux",
                     "x86_64",
+                    self.__config,
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -348,7 +359,7 @@ class TaskLibrary:
                     "Building ONNX Runtime for Windows on ARM64",
                     self.__venv_path,
                     "arm64",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
@@ -365,7 +376,7 @@ class TaskLibrary:
                     "Building ONNX Runtime for Windows on ARM64EC",
                     self.__venv_path,
                     "arm64ec",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
@@ -385,7 +396,7 @@ class TaskLibrary:
                             "Building ARM64 slice of ONNX Runtime for Windows on ARM64x",
                             self.__venv_path,
                             "arm64",
-                            "Release",
+                            self.__config,
                             None,  # Never build the arm64 slice against Python
                             self.__qairt_sdk_root,
                             "build",
@@ -395,7 +406,7 @@ class TaskLibrary:
                             "Building ARM64ec slice of ONNX Runtime for Windows on ARM64x",
                             self.__venv_path,
                             "arm64ec",
-                            "Release",
+                            self.__config,
                             self.__target_py_version,
                             self.__qairt_sdk_root,
                             "build",
@@ -427,7 +438,7 @@ class TaskLibrary:
                     "Building ONNX Runtime for Windows on x86_64",
                     self.__venv_path,
                     "x86_64",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
@@ -444,7 +455,7 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Linux",
                 REPO_ROOT / "build" / "onnxruntime-tests-linux-x86_64.tar.bz2",
-                REPO_ROOT / "build" / "linux-x86_64" / "Release",
+                REPO_ROOT / "build" / "linux-x86_64" / self.__config,
             )
         )
 
@@ -454,7 +465,7 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Windows on ARM64",
                 REPO_ROOT / "build" / "onnxruntime-tests-windows-arm64.zip",
-                REPO_ROOT / "build" / "windows-arm64" / "Release",
+                REPO_ROOT / "build" / "windows-arm64" / self.__config,
             )
         )
 
@@ -464,7 +475,7 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Windows on x86_64",
                 REPO_ROOT / "build" / "onnxruntime-tests-windows-x86_64.zip",
-                REPO_ROOT / "build" / "windows-x86_64" / "Release",
+                REPO_ROOT / "build" / "windows-x86_64" / self.__config,
             )
         )
 
@@ -538,6 +549,7 @@ class TaskLibrary:
                     self.__venv_path,
                     "linux",
                     "x86_64",
+                    self.__config,
                     self.__qairt_sdk_root,
                     "test",
                 )
@@ -631,7 +643,7 @@ class TaskLibrary:
                     "Testing ONNX Runtime for Windows on ARM64",
                     self.__venv_path,
                     "arm64",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
@@ -649,7 +661,7 @@ class TaskLibrary:
                     "Smoke testing ARM64 wheel",
                     self.__venv_path,
                     "arm64",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                 )
             )
@@ -664,7 +676,7 @@ class TaskLibrary:
                     "Testing ONNX Runtime for Windows on ARM64EC",
                     self.__venv_path,
                     "arm64ec",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
@@ -682,7 +694,7 @@ class TaskLibrary:
                     "Smoke testing ARM64ec wheel",
                     self.__venv_path,
                     "arm64ec",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                 )
             )
@@ -698,7 +710,7 @@ class TaskLibrary:
                     "Smoke testing ARM64x wheel",
                     self.__venv_path,
                     "arm64x",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                 )
             )
@@ -713,7 +725,7 @@ class TaskLibrary:
                     "Testing ONNX Runtime for Windows on x86_64",
                     self.__venv_path,
                     "x86_64",
-                    "Release",
+                    self.__config,
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
@@ -745,6 +757,7 @@ def plan_from_dependencies(
     main_tasks: list[str],
     python_executable: Path,
     venv_path: Path,
+    config: ConfigT,
     target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
 ) -> Plan:
@@ -752,7 +765,7 @@ def plan_from_dependencies(
     Uses a work list algorithm to create a Plan to build the given tasks and their
     dependencies in a valid order. This is the default planner.
     """
-    task_library = TaskLibrary(python_executable, venv_path, target_py_version, qairt_sdk_root)
+    task_library = TaskLibrary(python_executable, venv_path, config, target_py_version, qairt_sdk_root)
     plan = Plan()
 
     # We always run summarizers, which perform conditional work on the output
@@ -798,6 +811,7 @@ def plan_from_task_list(
     tasks: list[str],
     python_executable: Path,
     venv_path: Path,
+    config: ConfigT,
     target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
 ) -> Plan:
@@ -805,7 +819,7 @@ def plan_from_task_list(
     Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.
     Used by --only.
     """
-    task_library = TaskLibrary(python_executable, venv_path, target_py_version, qairt_sdk_root)
+    task_library = TaskLibrary(python_executable, venv_path, config, target_py_version, qairt_sdk_root)
     plan = Plan()
     for task_name in tasks:
         # add task_name to plan
@@ -829,7 +843,7 @@ def build_and_test():
 
     if len(args.task) > 0:
         planner = plan_from_task_list if args.only else plan_from_dependencies
-        plan = planner(args.task, DEFAULT_PYTHON, VENV_PATH, args.target_py_version, qairt_sdk_root)
+        plan = planner(args.task, DEFAULT_PYTHON, VENV_PATH, args.config, args.target_py_version, qairt_sdk_root)
 
     if args.skip is not None:
         for skip in args.skip:
