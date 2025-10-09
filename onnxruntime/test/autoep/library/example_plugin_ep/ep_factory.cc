@@ -21,7 +21,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   GetVendorId = GetVendorIdImpl;
   GetVersion = GetVersionImpl;
 
-  GetAdditionalHardwareDevices = GetAdditionalHardwareDevicesImpl;
+  GetAdditionalHardwareDevices = GetAdditionalHardwareDevicesImpl;  // optional. can be null.
   GetSupportedDevices = GetSupportedDevicesImpl;
 
   CreateEp = CreateEpImpl;
@@ -107,7 +107,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEp
                                                                            OrtHardwareDevice** /*additional_devices*/,
                                                                            size_t /*max_additional_devices*/,
                                                                            size_t* num_additional_devices) noexcept {
-  // EP factory can provide ORT with additional hardware devices that ORT did not find, or more likely, that are not
+  // EP factory can provide ORT with additional hardware devices that ORT did not find, or that are not
   // available on the target machine but could serve as compilation targets.
 
   // This example EP does not provide any additional hardware devices.

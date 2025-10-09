@@ -15,6 +15,7 @@
 
 /// <summary>
 /// Example implementation of ONNX Add. Does not handle many things like broadcasting.
+/// Used as the implementation of a compiled subgraph with a single Add node.
 /// </summary>
 struct AddImpl {
   AddImpl(const OrtApi& ort_api, const OrtLogger& logger) : ort_api(ort_api), logger(logger) {}
@@ -87,8 +88,8 @@ struct AddImpl {
 /// <summary>
 /// Example OrtNodeComputeInfo that represents the computation function for a compiled OrtGraph.
 /// </summary>
-struct ExampleNodeComputeInfo : OrtNodeComputeInfo {
-  explicit ExampleNodeComputeInfo(EpVirtualGpu& ep);
+struct AddNodeComputeInfo : OrtNodeComputeInfo {
+  explicit AddNodeComputeInfo(EpVirtualGpu& ep);
 
   static OrtStatus* ORT_API_CALL CreateStateImpl(OrtNodeComputeInfo* this_ptr,
                                                  OrtNodeComputeContext* compute_context,
@@ -254,7 +255,7 @@ OrtStatus* ORT_API_CALL EpVirtualGpu::CompileImpl(_In_ OrtEp* this_ptr, _In_ con
                                     std::make_unique<AddImpl>(ep->ort_api_, ep->logger_));
 
     // Update the OrtNodeComputeInfo associated with the graph.
-    auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
+    auto node_compute_info = std::make_unique<AddNodeComputeInfo>(*ep);
     node_compute_infos[0] = node_compute_info.release();
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
@@ -278,19 +279,19 @@ void ORT_API_CALL EpVirtualGpu::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
 }
 
 //
-// Implementation of ExampleNodeComputeInfo
+// Implementation of AddNodeComputeInfo
 //
-ExampleNodeComputeInfo::ExampleNodeComputeInfo(EpVirtualGpu& ep) : ep(ep) {
+AddNodeComputeInfo::AddNodeComputeInfo(EpVirtualGpu& ep) : ep(ep) {
   ort_version_supported = ORT_API_VERSION;
   CreateState = CreateStateImpl;
   Compute = ComputeImpl;
   ReleaseState = ReleaseStateImpl;
 }
 
-OrtStatus* ExampleNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
-                                                   OrtNodeComputeContext* compute_context,
-                                                   void** compute_state) {
-  auto* node_compute_info = static_cast<ExampleNodeComputeInfo*>(this_ptr);
+OrtStatus* AddNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
+                                               OrtNodeComputeContext* compute_context,
+                                               void** compute_state) {
+  auto* node_compute_info = static_cast<AddNodeComputeInfo*>(this_ptr);
   EpVirtualGpu& ep = node_compute_info->ep;
 
   std::string fused_node_name = ep.GetEpApi().NodeComputeContext_NodeName(compute_context);
@@ -305,14 +306,14 @@ OrtStatus* ExampleNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
   return nullptr;
 }
 
-OrtStatus* ExampleNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
-                                               OrtKernelContext* kernel_context) {
+OrtStatus* AddNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
+                                           OrtKernelContext* kernel_context) {
   (void)this_ptr;
   AddImpl& add_impl = *reinterpret_cast<AddImpl*>(compute_state);
   return add_impl.Compute(kernel_context);
 }
 
-void ExampleNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
+void AddNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
   (void)this_ptr;
   AddImpl& add_impl = *reinterpret_cast<AddImpl*>(compute_state);
   (void)add_impl;
