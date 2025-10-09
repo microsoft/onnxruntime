@@ -289,9 +289,9 @@ class NvExecutionProvider : public IExecutionProvider {
   //  explicit NvExecutionProvider(const ProviderOptions& provider_options_map, const ConfigOptions* config_options);
   virtual ~NvExecutionProvider();
 
-  virtual Status InitializeGpuResources(union FencePtr fencePtr, HANDLE sharedFenceHandle, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) override;
+  virtual Status GetExtSemaphore(union FencePtr fencePtr, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) override;
   virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) override;
-  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) override;
+  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) override;
 
   cublasHandle_t PerThreadDefaultCublasHandle() {
     return GetPerThreadContext().CublasHandle();

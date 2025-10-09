@@ -38,8 +38,6 @@ class GraphOptimizerRegistry;
 #include "core/framework/tuning_context.h"
 #include "core/session/onnxruntime_c_api.h"
 
-struct ID3D12Fence;
-
 struct OrtEpDevice;
 struct OrtRunOptions;
 
@@ -91,22 +89,13 @@ class IExecutionProvider {
   */
   const OrtDevice default_device_;
 
-  std::unordered_map<void*, FencePtr> pFenceMap;
-
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status InitializeGpuResources(union FencePtr fencePtr, HANDLE sharedFenceHandle, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) {
+  virtual Status GetExtSemaphore(union FencePtr fencePtr, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) {
 
-    switch (extSyncPrimitive) {
-      case ExternalSyncPrimitive_D3D12Fence:
-        *extSemFence = sharedFenceHandle;   //fall back path
-        pFenceMap[*extSemFence] = fencePtr;
-        break;
-      default:
-        return Status::OK();
-    }
-
+    *extSemFence = (void*)&fencePtr;   //fall back path
+    ORT_UNUSED_PARAMETER(extSyncPrimitive);
     return Status::OK();
   }
 
@@ -116,21 +105,31 @@ class IExecutionProvider {
     switch (extSyncPrimitive) {
       case ExternalSyncPrimitive_D3D12Fence:
         HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        pFenceMap[extSemFence].pFence->SetEventOnCompletion(fenceValue, hEvent);
+        ((union FencePtr*)extSemFence)->pFence->SetEventOnCompletion(fenceValue, hEvent);
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
         break;
+      // case ExternalSyncPrimitive_VulkanSemaphore:
+      //   VkFence fence = ((union FencePtr*)extSemFence)->pFence;
+      //   vkWaitForFences(device, 1, &fence, VK_TRUE, fenceValue);
+      //   break;
     }
 
     return Status::OK();
   }
-  virtual Status SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
+  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
     ORT_UNUSED_PARAMETER(fenceValue);
     ORT_UNUSED_PARAMETER(extSyncPrimitive);
 
-    //to-do: check what to do here
+    const OrtSyncStreamImpl* streamImpl;
+    OrtSyncNotificationImpl* streamNotification;
+    streamImpl = ortEpApi->SyncStream_GetImpl(static_cast<OrtSyncStream*>(stream));
+    streamImpl->CreateNotification(const_cast<OrtSyncStreamImpl*>(streamImpl), &streamNotification);
+
+    streamNotification->Activate(streamNotification);
+    streamNotification->WaitOnHost(streamNotification);
     return Status::OK();
   }
 

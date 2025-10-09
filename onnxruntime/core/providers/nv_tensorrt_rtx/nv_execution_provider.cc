@@ -86,20 +86,27 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-Status NvExecutionProvider::InitializeGpuResources(union FencePtr fencePtr, HANDLE sharedFenceHandle, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) {
+Status NvExecutionProvider::GetExtSemaphore(union FencePtr fencePtr, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) {
   // By calling GetPerThreadContext(), we ensure that the cuda context
   // for the current thread is created if it doesn't already exist.
   // The constructor of PerThreadContext handles the context creation.
   (void)GetPerThreadContext();
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC semHandleDesc = {};
-  semHandleDesc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
-  semHandleDesc.handle.win32.handle = sharedFenceHandle;
+  HANDLE sharedFenceHandle = nullptr;
+
+  switch (extSyncPrimitive) {
+    case ExternalSyncPrimitive_D3D12Fence:
+      semHandleDesc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+      ID3D12Device* pDevice = nullptr;
+      fencePtr.pFence->GetDevice(IID_PPV_ARGS(&pDevice));
+      pDevice->CreateSharedHandle(fencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle);
+      semHandleDesc.handle.win32.handle = sharedFenceHandle;
+      break;
+  }
   cuImportExternalSemaphore(&cSemFence, &semHandleDesc);
   *extSemFence = cSemFence;
 
-  ORT_UNUSED_PARAMETER(fencePtr);
-  ORT_UNUSED_PARAMETER(extSyncPrimitive);
   return Status::OK();
 }
 
@@ -116,7 +123,7 @@ Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, 
   ORT_UNUSED_PARAMETER(extSyncPrimitive);
   return Status::OK();
 }
-Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
+Status NvExecutionProvider::SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
   LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpSignal() called.";
 
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
@@ -127,6 +134,7 @@ Status NvExecutionProvider::SetupInteropEpSignal(void* extSemFence, void* stream
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
 
+  ORT_UNUSED_PARAMETER(ortEpApi);
   ORT_UNUSED_PARAMETER(extSyncPrimitive);
   return Status::OK();
 }

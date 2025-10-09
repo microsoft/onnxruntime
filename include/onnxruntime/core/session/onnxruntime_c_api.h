@@ -6498,7 +6498,7 @@ struct OrtApi {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
 
-  ORT_API2_STATUS(SessionInitializeGpuProvidersForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
+  ORT_API2_STATUS(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
   ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
   ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
 

@@ -3399,7 +3399,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProvidersForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive) {
   API_IMPL_BEGIN
   auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   if (!inference_session) {
@@ -3423,12 +3423,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionInitializeGpuProvidersForD3D12Interop, _In_ 
     }
   }
 
-  // Call InitializeGpuResources only for the providers that are actively being used.
+  // Call GetExtSemaphore only for the providers that are actively being used.
   for (const auto& provider_type : active_provider_types) {
     const onnxruntime::IExecutionProvider* const_provider = execution_providers.Get(provider_type);
     if (const_provider) {
       auto* provider = const_cast<onnxruntime::IExecutionProvider*>(const_provider);
-      auto status = provider->InitializeGpuResources(fencePtr, sharedFenceHandle, extSemFence, extSyncPrimitive);
+      auto status = provider->GetExtSemaphore(fencePtr, extSemFence, extSyncPrimitive);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
@@ -3510,7 +3510,7 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_
       // We get a const pointer, so use const_cast as the method is non-const.
       // This is safe here as we are just triggering a setup function.
       auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
-      auto status = execution_provider->SetupInteropEpSignal(extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue, extSyncPrimitive);
+      auto status = execution_provider->SetupInteropEpSignal(OrtApis::GetEpApi(), extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue, extSyncPrimitive);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
@@ -3710,9 +3710,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(SessionInitializeGpuProvidersForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ HANDLE sharedFenceHandle, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive) {
+ORT_API_STATUS_IMPL(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionInitializeGpuProvidersForD3D12Interop is not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForD3D12Interop is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4352,7 +4352,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::SessionGetEpDeviceForInputs,
 
     &OrtApis::CreateSyncStreamForEpDevice,
-    &OrtApis::SessionInitializeGpuProvidersForD3D12Interop,
+    &OrtApis::GetOrtFenceForD3D12Interop,
     &OrtApis::InteropEpWait,
     &OrtApis::InteropEpSignal,
     &OrtApis::SyncStream_GetHandle,
