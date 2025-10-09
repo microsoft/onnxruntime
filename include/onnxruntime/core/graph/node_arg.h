@@ -138,7 +138,7 @@ class NodeArg {
   // The Op's PartialDataPropagationFunction() defined in ONNX Op Schema should also be called to get the shape dimension values.
   // The variable is used for storing that shape dimension values so that inferred shape values can be correctly propagated through out the graph.
   ONNX_NAMESPACE::TensorShapeProto tensor_shape_proto_after_data_propagation_;
-  int64_t scalar_value_after_data_propagation_; 
+  int64_t scalar_value_after_data_propagation_ = std::numeric_limits<int64_t>::min(); 
 
   // Flag indicates whether <*this> node arg exists or not.
   bool exists_;
