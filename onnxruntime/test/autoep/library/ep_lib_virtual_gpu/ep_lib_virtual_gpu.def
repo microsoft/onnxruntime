@@ -1,0 +1,5 @@
+LIBRARY "ep_lib_virtual_gpu.dll"
+EXPORTS
+ CreateEpFactories @1
+ ReleaseEpFactory @2
+ 

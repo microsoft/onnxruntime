@@ -101,59 +101,17 @@ const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* th
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEpFactory* this_ptr,
-                                                                           const OrtHardwareDevice* const* found_devices,
-                                                                           size_t num_found_devices,
-                                                                           OrtHardwareDevice** additional_devices,
-                                                                           size_t max_additional_devices,
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEpFactory* /*this_ptr*/,
+                                                                           const OrtHardwareDevice* const* /*found_devices*/,
+                                                                           size_t /*num_found_devices*/,
+                                                                           OrtHardwareDevice** /*additional_devices*/,
+                                                                           size_t /*max_additional_devices*/,
                                                                            size_t* num_additional_devices) noexcept {
   // EP factory can provide ORT with additional hardware devices that ORT did not find, or more likely, that are not
   // available on the target machine but could serve as compilation targets.
 
-  // As an example, this example EP factory will first look for a GPU device among the devices found by ORT. If there
-  // is no GPU available, then this EP will create a virtual GPU device that the application can use a compilation target.
-
-  auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
-  bool found_gpu = false;
-
-  for (size_t i = 0; i < num_found_devices; ++i) {
-    const OrtHardwareDevice& device = *found_devices[i];
-
-    if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
-        factory->ort_api.HardwareDevice_Vendor(&device) == factory->vendor_) {
-      found_gpu = true;
-      break;
-    }
-  }
-
+  // This example EP does not provide any additional hardware devices.
   *num_additional_devices = 0;
-
-  if (!found_gpu && max_additional_devices >= 1) {
-    // Create a new HW device.
-    OrtKeyValuePairs* hw_metadata = nullptr;
-    factory->ort_api.CreateKeyValuePairs(&hw_metadata);
-    factory->ort_api.AddKeyValuePair(hw_metadata, kOrtHardwareDevice_MetadataKey_DiscoveredBy,
-                                     factory->ep_name_.c_str());
-    factory->ort_api.AddKeyValuePair(hw_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
-
-    OrtHardwareDevice* new_device = nullptr;
-    auto* status = factory->ep_api.CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
-                                                        factory->vendor_id_,
-                                                        /*device_id*/ 0,
-                                                        factory->vendor_.c_str(),
-                                                        hw_metadata,
-                                                        &new_device);
-    factory->ort_api.ReleaseKeyValuePairs(hw_metadata);  // Release since ORT makes a copy.
-
-    if (status != nullptr) {
-      return status;
-    }
-
-    // ORT will take ownership of the new HW device.
-    additional_devices[0] = new_device;
-    *num_additional_devices = 1;
-  }
-
   return nullptr;
 }
 
@@ -250,8 +208,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
   std::string ep_context_enable;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(factory->ort_api, *session_options,
-                                                 "ep.context_enable", "0", ep_context_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.context_enable", "0", ep_context_enable));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
