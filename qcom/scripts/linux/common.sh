@@ -79,5 +79,6 @@ function set_xtrace() {
 #
 function set_strict_mode() {
     set -euo pipefail
+    shopt -s inherit_errexit
     set_xtrace
 }

@@ -72,7 +72,7 @@ if [ -z "${qairt_sdk_root}" ]; then
 fi
 
 cmake_bindir="$(get_cmake_bindir)"
-export PATH="${cmake_bindir}:$(get_ccache_bindir):$(get_ninja_bindir):${PATH}"
+PATH="${cmake_bindir}:$(get_ccache_bindir):$(get_ninja_bindir):${PATH}"
 
 mkdir -p "${build_dir}/${config}"
 
@@ -143,7 +143,7 @@ case "${target_platform}" in
       rm -fr "${build_dir}/${config}"
     fi
 
-    export PATH="$(get_java_bindir):${PATH}"
+    PATH="$(get_java_bindir):${PATH}"
 
     if [ -n "${ANDROID_HOME:-}" -a -n "${ANDROID_NDK_HOME:-}" ]; then
       android_sdk_path="${ANDROID_HOME}"
