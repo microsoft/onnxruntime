@@ -2630,46 +2630,28 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         options_(options) {
     node_output_types_.resize(node.OutputDefs().size());
 
-    // The following code handles cases where a node needs to retrieve a ShapeTensorProto
-    // that stores the inferred shape values in its NodeArg.
+    // The following code handles cases where a node stores the previously inferred shape values in its NodeArg.
     //
-    // Focus on Reshape operator for now.
+    // For example, the Reshape operator, its input shape may come from a producer node such as a Shape operator,
+    // and the inferred shape value is already stored as a ShapeTensorProto in corresponding NodeArg.
     //
-    // For the Reshape operator, its input shape may come from a producer node such as a Shape operator,
-    // which can store the inferred shape as a ShapeTensorProto within the NodeArg.
     // In such cases, the Reshape operator should convert this ShapeTensorProto into a TensorProto.
     // The resulting TensorProto will then be treated as an initializer during ONNX shape inference,
     // allowing the real dimension values to be correctly used.
     // See https://github.com/onnx/onnx/blob/main/onnx/defs/shape_inference.cc#L467 for details.
     //
-    // Note: Only certain ShapeTensorProto cases will be converted to TensorProto, specifically when:
-    //       - The shape input has shape [1], meaning the shape only has one dimension value, or
-    //       - The shape input has rank > 1 and all dimensions have known (concrete) values,
-    //         e.g., [1, 3, 64, 64].
-    //
     // Note: The following code is placed here instead of in getInputData() because
-    //       getInputData() is a const function that returns a pointer. As a result,
-    //       we cannot create a new ShapeTensorProto and store it in this class within a const function.
+    //       getInputData() is a const function. As a result, we cannot create a new ShapeTensorProto
+    //       and store it in this class within a const function.
     for (const NodeArg* def : node_.InputDefs()) {
       // Skip initializer as it will be handled in getInputData()
       if (graph_.GetConstantInitializer(def->Name(), true)) {
         continue;
       }
 
-      const auto& tensor_shape_proto = def->GetInferredTensorShapeProto();
+      const auto& tensor_shape_proto = def->GetValuesAfterDataPropagation();
 
-      // The shape of the "shape" input is [1]
-      if (tensor_shape_proto.dim_size() == 1 &&
-          tensor_shape_proto.dim()[0].has_dim_value() &&
-          tensor_shape_proto.dim()[0].dim_value() == 1) {
-        TensorProto tensor_proto;
-        tensor_proto.set_data_type(TensorProto_DataType_INT64);
-        tensor_proto.add_dims(1);
-        tensor_proto.add_int64_data(tensor_shape_proto.dim()[0].dim_value());
-        tensor_proto_for_shape_[def->Name()] = std::move(tensor_proto);
-      }
-
-      // The shape of the "shape" input has rank > 1 and the all the dimensions have value (not symbolic)
+      // The inferred data has rank > 1 and the all the dimensions have values (not symbolic)
       if (tensor_shape_proto.dim_size() > 1) {
         TensorProto tensor_proto;
         tensor_proto.set_data_type(TensorProto_DataType_INT64);
@@ -2755,7 +2737,6 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
 
   // ORT does not implement partial data propagation yet so just return nullptr.
   const TensorShapeProto* getSymbolicInput(size_t) const override {
-    //TODO:// Add symbolic input
     return nullptr;
   }
 
@@ -2849,12 +2830,12 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
     if (!def)
       return nullptr;
 
-    // Try to get the previously inferred shape values that stored in NodeArg's tensor_shape_proto_after_shape_inferred_
+    // Try to get the previously inferred shape values that stored in NodeArg's values_after_data_propagation_
 
     const TensorShapeProto* tensor_shape_proto = nullptr;
 
     auto has_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> bool {
-      // The TensorShapeProto (inferred shape values) should have rank > 0 and the all the dimensions have value (not symbolic)
+      // The TensorShapeProto (inferred shape values) should have rank > 0 and the all the dimensions have values (not symbolic)
       if (tensor_shape_proto.dim_size() > 0) {
         for (const auto& dim : tensor_shape_proto.dim()) {
           if (!dim.has_dim_value()) {
@@ -2867,8 +2848,8 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
       return false;
     };
 
-    // Get NodeArg's tensor_shape_proto_after_shape_inferred_ if any
-    tensor_shape_proto = &def->GetInferredTensorShapeProto();
+    // Get NodeArg's values_after_data_propagation_ if applicable
+    tensor_shape_proto = &def->GetValuesAfterDataPropagation();
     if (has_shape_values(*tensor_shape_proto)) {
       return tensor_shape_proto;
     }
@@ -2898,73 +2879,91 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
   std::vector<TypeProto> node_output_types_;
 };
 
-// If the dimension values are inferred after executing the operator's
-// PartialDataPropagationFunction(), save them to the output NodeArg as a
-// TensorShapeProto so that downstream (consumer) nodes can use them later.
 Status Graph::SaveValuesFromDataPropagation(Node& node,
                                             NodeArg& output_def,
-                                            const TypeProto& propagated_value_as_type_proto) {
+                                            const TypeProto& onnx_inferred_types_after_data_propagation) const {
+  auto dim_size = onnx_inferred_types_after_data_propagation.tensor_type().shape().dim_size();
 
-  auto dim_size = propagated_value_as_type_proto.tensor_type().shape().dim_size();
-  if (dim_size < 0) return Status::OK();
+  if (dim_size < 0) {
+    return Status::OK();
+  }
 
-  // If dim size is 0, it means one of the cases:
-  //   1. Inferred output is a scalar.
-  //   2. Node's input is a scalar and Op's PartialDataPropagationFunction() can't handle.
-  // 
-  // In other words, some operators' PartialDataPropagationFunction() don't handle the case where the input or output is a scalar. 
-  // Try to do data propagation and save the inferred scalar value if needed.
+  // If the dimension size is 0, it indicates one of the following cases:
+  //   1. The inferred output is a scalar.
+  //   2. The node's input is a scalar, and the operator's PartialDataPropagationFunction() cannot handle it.
+  //
+  // In other words, some operators' PartialDataPropagationFunction() implementations do not support
+  // scalar inputs or outputs. In such cases, attempt data propagation manually and store the inferred
+  // scalar value in the NodeArg if applicable.
   if (dim_size == 0) {
-      if (node.OpType() == "Gather") {
-        // Try to get the "data" input
-        const auto* input_0 = node.GetDefinitions().input_defs[0];
-        auto& tensor_shape_proto = input_0->tensor_shape_proto_after_data_propagation_;
+    if (node.OpType() == "Gather") {
+      // Following code extracts an element from a 1D array.
+      // e.g.
+      // shape data is [1, 3, 64, 64] -> gets 64 if the index is 2.
+      // shape data is [1, 3, 64, 64] -> gets 3 if the index is 1.
 
-        // Try to get the "indices" input as an initializer
-        // Note: The "indices" input should be a scalar, otherwise, if it's a tensor with dimension size > 0,
-        //       the operator's type and shape inference should have inferred the output shape value.
-        const auto* input_1 = node.GetDefinitions().input_defs[1];
-        const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
-        int64_t dim_index = -1;
+      // Try to get the "data" input
+      // Note: The "data" input should be a one dimension array in this case.
+      const auto* input_0 = node.GetDefinitions().input_defs[0];
 
+      // Try to get the "indices" input
+      // Note: The "indices" input should be a scalar, otherwise, if it's a tensor with dimension size > 0,
+      //       the operator's type and shape inference should have inferred the output shape value.
+      const auto* input_1 = node.GetDefinitions().input_defs[1];
+
+      // The "indices" should be an initializer because it's a scalar in this case.
+      const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
+      int64_t index = std::numeric_limits<int64_t>::min();
+
+      if (initializer) {
         if (utils::HasRawData(*initializer)) {
           const std::string& raw = initializer->raw_data();
           const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
-          dim_index = *data;
+          index = *data;
         } else {
           if (initializer->data_type() == TensorProto_DataType_INT32) {
             std::vector<int32_t> values;
             values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
             if (values.size() == 1) {
-              dim_index = static_cast<int64_t>(values[0]);
+              index = static_cast<int64_t>(values[0]);
             }
           } else if (initializer->data_type() == TensorProto_DataType_INT64) {
             std::vector<int64_t> values;
             values.assign(initializer->int64_data().begin(), initializer->int64_data().end());
             if (values.size() == 1) {
-              dim_index = values[0];
+              index = values[0];
             }
-
           }
         }
+      }
 
-        if (dim_index >= 0 && (dim_index < tensor_shape_proto.dim_size())) {
-          auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(dim_index));
-          if (dim.has_dim_value()) {
-            output_def.scalar_value_after_data_propagation_ = dim.dim_value();
-          }
+      // Get the previously inferred dimension values
+      auto& tensor_shape_proto = input_0->values_after_data_propagation_;
+
+      // Save the dimension value in the NodeArg
+      if (index != std::numeric_limits<int64_t>::min() && (index < tensor_shape_proto.dim_size())) {
+        auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(index));
+        if (dim.has_dim_value()) {
+          output_def.scalar_value_after_data_propagation_ = dim.dim_value();
         }
-      } else if (node.OpType() == "Unsqueeze") {
-        // Try to get the "data" input
-        const auto* input_0 = node.GetDefinitions().input_defs[0];
+      }
 
-        // Only handle the "data" input is a scalar
-        if (input_0->scalar_value_after_data_propagation_ > 0) {
-          // Try to get the "Axes" input as an initializer
-          const auto* input_1 = node.GetDefinitions().input_defs[1];
-          const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
-          int64_t axis = -1;
+    } else if (node.OpType() == "Unsqueeze") {
+      // Following code expends the dimension of a scalr to one dimension.
+      // e.g.
+      // shape data is 64 -> gets [64]
 
+      // Try to get the "data" input
+      const auto* input_0 = node.GetDefinitions().input_defs[0];
+
+      // Only handle the "data" input is previously inferred from data propagation and is a scalar
+      if (input_0->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min()) {
+        // Try to get the "Axes" input as an initializer
+        const auto* input_1 = node.GetDefinitions().input_defs[1];
+        const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
+        int64_t axis = -1;
+
+        if (initializer) {
           if (utils::HasRawData(*initializer)) {
             const std::string& raw = initializer->raw_data();
             const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
@@ -2984,39 +2983,38 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
               }
             }
           }
-
-          if (axis == 0) {
-            output_def.tensor_shape_proto_after_data_propagation_.clear_dim();
-            output_def.tensor_shape_proto_after_data_propagation_.add_dim()->set_dim_value(input_0->scalar_value_after_data_propagation_);
-          }
         }
-      } else if (node.OpType() == "Mul") {
-        // Try to get the "A" input
-        const auto* input_0 = node.GetDefinitions().input_defs[0];
-        // Try to get the "B" input
-        const auto* input_1 = node.GetDefinitions().input_defs[1];
 
-        if (input_0->scalar_value_after_data_propagation_ > 0 &&
-            input_1->scalar_value_after_data_propagation_ > 0) {
-          output_def.scalar_value_after_data_propagation_ = input_0->scalar_value_after_data_propagation_ * input_1->scalar_value_after_data_propagation_;
+        if (axis == 0) {
+          output_def.values_after_data_propagation_.clear_dim();
+          output_def.values_after_data_propagation_.add_dim()->set_dim_value(input_0->scalar_value_after_data_propagation_);
         }
       }
-  } 
-  // If dim size > 0, only saves inferred output if one of the conditions is true:
-  // 1. The shape of the inferred output is 1D (rank = 0) with only one element, e.g. inferred output is [2], [3], ....
-  // 2. The shape of the inferred output has rank > 1 and the all the dimensions have value (not symbolic)
+    } else if (node.OpType() == "Mul") {
+      // Try to get the "A" input
+      const auto* input_0 = node.GetDefinitions().input_defs[0];
+      // Try to get the "B" input
+      const auto* input_1 = node.GetDefinitions().input_defs[1];
+
+      if (input_0->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min() &&
+          input_1->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min()) {
+        output_def.scalar_value_after_data_propagation_ = input_0->scalar_value_after_data_propagation_ * input_1->scalar_value_after_data_propagation_;
+      }
+    }
+  }
+  // If the dimension size is greater than 0, only save the inferred data from data propagation
+  // when the data has rank > 1 and all dimensions have concrete (non-symbolic) values.
   else if (dim_size > 0) {
-  
     for (int i = 0; i < dim_size; ++i) {
-      if (!propagated_value_as_type_proto.tensor_type().shape().dim(i).has_dim_value()) {
+      if (!onnx_inferred_types_after_data_propagation.tensor_type().shape().dim(i).has_dim_value()) {
         return Status::OK();
       }
     }
 
-    output_def.tensor_shape_proto_after_data_propagation_.clear_dim();
+    output_def.values_after_data_propagation_.clear_dim();
     for (int i = 0; i < dim_size; ++i) {
-      auto value = propagated_value_as_type_proto.tensor_type().shape().dim(i).dim_value();
-      output_def.tensor_shape_proto_after_data_propagation_.add_dim()->set_dim_value(value);
+      auto value = onnx_inferred_types_after_data_propagation.tensor_type().shape().dim(i).dim_value();
+      output_def.values_after_data_propagation_.add_dim()->set_dim_value(value);
     }
   }
 
@@ -3216,35 +3214,17 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   InferenceContextImpl context(node, func, *this, options);
   DataPropagationContextImpl data_propagation_context(node, *this);
 
-  if (node.OpType() == "Reshape") {
-    std::cout << "Reshape" << std::endl;
-  }
-
   {
     auto status = Status::OK();
     ORT_TRY {
       context.RunInferencing();
 
-      // The following code handles cases where calling the operator-specific shape inference alone
-      // (i.e., the TypeAndShapeInferenceFunction() defined in the ONNX operator schema)
-      // is insufficient to fully infer the output shape.
-      //
-      // Focus on tensor replated operators.
-      //
-      // For exmaple, for a Shape operator, running its shape inference only determines the rank (number of dimensions)
-      // of the output tensor, not the actual dimension values. To infer those values and propagate them
-      // throughout the graph, the PartialDataPropagationFunction() defined in the ONNX operator schema
-      // must also be executed.
-      /*
-      if (node.OpType() == "Shape" ||
-          node.OpType() == "Unsqueeze" ||
-          node.OpType() == "Squeeze" ||
-          node.OpType() == "Gather" ||
-          node.OpType() == "Slice" ||
-          node.OpType() == "Concat") {
-        data_propagation_context.RunInferencing();
-      }
-      */
+      // Calling an operator's TypeAndShapeInferenceFunction() alone is sometimes insufficient
+      // for complete shape inference. For example, the Shape operator only provides the
+      // output's rank (1-dimensional) but not its actual dimension values.
+      // The PartialDataPropagationFunction(), defined in the ONNX operator schema, must also
+      // be executed to obtain the concrete output shape values, allowing accurate propagation
+      // of shape information throughout the graph.
       data_propagation_context.RunInferencing();
     }
     ORT_CATCH(const std::exception& ex) {
@@ -3256,7 +3236,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   }
 
   const auto& onnx_inferred_types(context.InferredOutputTypes());
-  const auto& onnx_inferred_data(data_propagation_context.InferredOutputTypes());
+
+  const auto& onnx_inferred_types_after_data_propagation(data_propagation_context.InferredOutputTypes());
 
   // Infer and verify node output arg type information.
   int i = -1;
@@ -3275,9 +3256,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 
     const TypeProto& onnx_inferred_type = onnx_inferred_types[i];
 
-    const TypeProto& type_proto_with_shape_data_inferred = onnx_inferred_data[i];
-
-    ORT_RETURN_IF_ERROR(SaveValuesFromDataPropagation(node, *output_def, type_proto_with_shape_data_inferred));
+    ORT_RETURN_IF_ERROR(SaveValuesFromDataPropagation(node, *output_def, onnx_inferred_types_after_data_propagation[i]));
 
     DataType existing_type = output_def->Type();
     DataType inferred_type = nullptr;
