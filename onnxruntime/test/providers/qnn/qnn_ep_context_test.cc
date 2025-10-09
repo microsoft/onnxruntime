@@ -2011,7 +2011,7 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
   }
 }
 
-TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
+TEST_F(QnnHTPBackendTests, QnnEpDynamicOptionsWorkloadTypes) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -2051,6 +2051,8 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
   const char* const workload_type[] = {"ep.dynamic.workload_type"};
   const char* const efficient_type[] = {"Efficient"};
   const char* const default_type[] = {"Default"};
+  const char* const foreground_type[] = {"Foreground"};
+  const char* const background_type[] = {"Background"};
 
   // Test Efficient & Default options
   session.SetEpDynamicOptions(workload_type, efficient_type, 1);
@@ -2058,6 +2060,15 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
                            output_names_c.data(), 1);
 
   session.SetEpDynamicOptions(workload_type, default_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  // Test Foreground & Background options
+  session.SetEpDynamicOptions(workload_type, foreground_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  session.SetEpDynamicOptions(workload_type, background_type, 1);
   ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
                            output_names_c.data(), 1);
 
@@ -2091,6 +2102,113 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
   session.SetEpDynamicOptions(htp_perf_mode_type, shp_type, 1);
   ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
                            output_names_c.data(), 1);
+}
+
+TEST_F(QnnHTPBackendTests, QnnEpDynamicOptionsPerfModes) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", provider_options);
+  so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
+
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx", input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run sessions
+  // prepare input
+  std::vector<int64_t> input_dim{3, 4};
+  std::vector<float> input_value(3 * 4, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  auto ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                output_names_c.data(), 1);
+
+  const char* const workload_type[] = {"ep.dynamic.workload_type"};
+  const char* const def_mode[] = {"performance_mode:default"};
+  const char* const shp_mode[] = {"performance_mode:sustained_high_performance"};
+  const char* const burst_mode[] = {"performance_mode:burst"};
+  const char* const hp_mode[] = {"performance_mode:high_performance"};
+  const char* const ps_mode[] = {"performance_mode:power_saver"};
+  const char* const lps_mode[] = {"performance_mode:low_power_saver"};
+  const char* const hps_mode[] = {"performance_mode:high_power_saver"};
+  const char* const lbal_mode[] = {"performance_mode:low_balanced"};
+  const char* const hbal_mode[] = {"performance_mode:high_balanced"};
+  const char* const eps_mode[] = {"performance_mode:extreme_power_saver"};
+
+  // Test valid options
+  session.SetEpDynamicOptions(workload_type, def_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, shp_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, burst_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, hp_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, ps_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, lps_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, hps_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, lbal_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, hbal_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+  session.SetEpDynamicOptions(workload_type, eps_mode, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  // Test invalid EP performance_modes
+  const char* const invalid_mode[] = {"performance_mode:invalid"};
+  const char* const empty_mode[] = {"performance_mode:"};
+  const char* const just_performance[] = {"performance_mode"};
+  try {
+    session.SetEpDynamicOptions(workload_type, invalid_mode, 1);
+    FAIL() << "Expected exception to be thrown for workload type DNE but was set successfully";
+  } catch (const std::exception& e) {
+    EXPECT_STREQ("Invalid performance profile 255", e.what());
+  }
+
+  try {
+    session.SetEpDynamicOptions(workload_type, empty_mode, 1);
+    FAIL() << "Expected exception to be thrown for dynamic option DNE but was set successfully";
+  } catch (const std::exception& e) {
+    EXPECT_STREQ("Invalid performance profile 255", e.what());
+  }
+
+  try {
+    session.SetEpDynamicOptions(workload_type, just_performance, 1);
+    FAIL() << "Expected exception to be thrown for dynamic option DNE but was set successfully";
+  } catch (const std::exception& e) {
+    EXPECT_STREQ("Invalid EP Workload Type.", e.what());
+  }
 }
 
 // Implementation of OrtOutStreamWriteFunc that writes the compiled model to a file.
