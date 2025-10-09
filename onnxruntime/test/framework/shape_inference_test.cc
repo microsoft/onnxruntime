@@ -16,6 +16,8 @@
 
 using namespace ONNX_NAMESPACE;
 
+extern std::unique_ptr<Ort::Env> ort_env;
+
 namespace onnxruntime {
 namespace test {
 
@@ -74,6 +76,63 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   Shape expected_shape({1, 50, 100});
   CheckShapeEquality(OutputShape(node), &expected_shape.value);
   CheckShapeEquality(InputShape(node), OutputShape(node));
+}
+
+TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
+  {
+    auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_with_shape_related_nodes.onnx");
+
+    Ort::SessionOptions session_options{};
+    session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "batch", 1) == nullptr);
+    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "width", 64) == nullptr);
+    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "height", 64) == nullptr);
+
+    // Even though all graph optimizations are disabled, the free dimension override is still enabled by default.
+    // The shape of graph's output should be correctly inferred by shape inference and data propagation.
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    // This graph only has one output
+    ORT_ENFORCE(session.GetOutputCount() == 1);
+
+    Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> output_shape = tensor_info.GetShape();
+    EXPECT_TRUE(output_shape.size() == 4) << "The output shape should have 4 dimensions";
+    EXPECT_TRUE(output_shape[0] == 1) << "The first dimension should be 1";
+    EXPECT_TRUE(output_shape[1] == 3) << "The second dimension should be 3";
+    EXPECT_TRUE(output_shape[2] == 64) << "The second dimension should be 64";
+    EXPECT_TRUE(output_shape[3] == 64) << "The second dimension should be 64";
+  }
+
+  {
+    auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_with_shape_related_nodes_v2.onnx");
+
+    Ort::SessionOptions session_options{};
+    session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "batch", 1) == nullptr);
+    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "width", 64) == nullptr);
+    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "height", 64) == nullptr);
+
+    // Even though all graph optimizations are disabled, the free dimension override is still enabled by default.
+    // The shape of graph's output should be correctly inferred by shape inference and data propagation.
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    // This graph only has one output
+    ORT_ENFORCE(session.GetOutputCount() == 1);
+
+    Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> output_shape = tensor_info.GetShape();
+    EXPECT_TRUE(output_shape.size() == 3) << "The output shape should have 3 dimensions";
+    EXPECT_TRUE(output_shape[0] == 1) << "The first dimension should be 1";
+    EXPECT_TRUE(output_shape[1] == 3) << "The second dimension should be 3";
+    EXPECT_TRUE(output_shape[2] == 4096) << "The second dimension should be 4096";
+  }
 }
 
 namespace {

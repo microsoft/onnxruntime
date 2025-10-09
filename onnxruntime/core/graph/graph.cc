@@ -2990,6 +2990,26 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
           output_def.values_after_data_propagation_.add_dim()->set_dim_value(input_0->scalar_value_after_data_propagation_);
         }
       }
+    } else if (node.OpType() == "Add") {
+      // Try to get the "A" input
+      const auto* input_0 = node.GetDefinitions().input_defs[0];
+      // Try to get the "B" input
+      const auto* input_1 = node.GetDefinitions().input_defs[1];
+
+      if (input_0->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min() &&
+          input_1->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min()) {
+        output_def.scalar_value_after_data_propagation_ = input_0->scalar_value_after_data_propagation_ + input_1->scalar_value_after_data_propagation_;
+      }
+    } else if (node.OpType() == "Sub") {
+      // Try to get the "A" input
+      const auto* input_0 = node.GetDefinitions().input_defs[0];
+      // Try to get the "B" input
+      const auto* input_1 = node.GetDefinitions().input_defs[1];
+
+      if (input_0->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min() &&
+          input_1->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min()) {
+        output_def.scalar_value_after_data_propagation_ = input_0->scalar_value_after_data_propagation_ - input_1->scalar_value_after_data_propagation_;
+      }
     } else if (node.OpType() == "Mul") {
       // Try to get the "A" input
       const auto* input_0 = node.GetDefinitions().input_defs[0];
@@ -2999,6 +3019,16 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
       if (input_0->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min() &&
           input_1->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min()) {
         output_def.scalar_value_after_data_propagation_ = input_0->scalar_value_after_data_propagation_ * input_1->scalar_value_after_data_propagation_;
+      }
+    } else if (node.OpType() == "Div") {
+      // Try to get the "A" input
+      const auto* input_0 = node.GetDefinitions().input_defs[0];
+      // Try to get the "B" input
+      const auto* input_1 = node.GetDefinitions().input_defs[1];
+
+      if (input_0->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min() &&
+          input_1->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min()) {
+        output_def.scalar_value_after_data_propagation_ = input_0->scalar_value_after_data_propagation_ / input_1->scalar_value_after_data_propagation_;
       }
     }
   }
