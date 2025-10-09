@@ -10,7 +10,7 @@
 #endif
 
 #if !defined(__wasm__)
-#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
@@ -41,30 +41,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
   std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
     if (device_ == nullptr) {
       // Create wgpu::Adapter
-#if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
-      // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
-      //
-      // Dawn will try to load them later, but if they are in the different directory to the executable, it may fail to find them.
-      // To avoid this issue, we try to load them from the same directory as current module (usually onnxruntime.dll).
-      auto runtime_path = Env::Default().GetRuntimePath();
-      if (!runtime_path.empty()) {
-        Status status;
-        void* module_handle = nullptr;
-
-        PathString dxil_path = runtime_path + ToPathString(L"dxil.dll");
-        status = Env::Default().LoadDynamicLibrary(dxil_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxil_path, module_handle);
-        }
-
-        PathString dxcompiler_path = runtime_path + ToPathString(L"dxcompiler.dll");
-        status = Env::Default().LoadDynamicLibrary(dxcompiler_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxcompiler_path, module_handle);
-        }
-      }
-#endif
-
       wgpu::RequestAdapterOptions req_adapter_options = {};
       req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
       req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
@@ -162,6 +138,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                buffer_cache_config.uniform.mode,
                                                buffer_cache_config.query_resolve.mode);
 
+    // create initializer buffer manager. cache is always disabled for initializer buffer manager
+    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled);
+
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
 
@@ -210,7 +192,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All inputs must be tensors on WebGPU buffers.");
 
@@ -219,7 +201,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All outputs must be tensors on WebGPU buffers.");
   }
@@ -273,7 +255,14 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   uint32_t x = program.DispatchGroupSizeX();
   uint32_t y = program.DispatchGroupSizeY();
   uint32_t z = program.DispatchGroupSizeZ();
-  ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+
+  // Skip normalization for indirect dispatch since dimensions are determined by the indirect buffer
+  if (program.IndirectDispatchTensor() == nullptr) {
+    ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+  } else {
+    ORT_ENFORCE(x == 0 && y == 0 && z == 0,
+                "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
+  }
 
   bool is_1d_dispatch = (y == 1 && z == 1);
 
@@ -373,26 +362,57 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       continue;
     }
 
-    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
-
-    size_t element_size = ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)];
+    // Calculate the size and alignment of the uniform variable.
+    //
     // https://www.w3.org/TR/WGSL/#alignof
-    size_t base_alignment = is_f16
-                                ? (length > 4 ? 16 : length > 2 ? 8
-                                                                : length * element_size)
-                                : (length > 2 ? 16 : length * element_size);
-    size_t struct_size = is_f16 && length <= 4 ? length * element_size : 16;
+    //
+    // For f16:
+    // - length > 8      : array<vec4<u32>, N>   (align 16) (size 16 * N, N = ceil(length / 8))
+    // - length == 7 or 8: vec4<u32>             (align 16) (size 16)
+    // - length == 5 or 6: vec3<u32>             (align 16) (size 12)
+    // - length == 3 or 4: vec2<u32>             (align 8)  (size 8)
+    // - length == 1 or 2: u32                   (align 4)  (size 4)
+    //
+    // For other types (i32, u32, f32):
+    // - length > 4      : array<vec4<T>, N>     (align 16) (size 16 * N, N = ceil(length / 4))
+    // - length == 4     : vec4<T>               (align 16) (size 16)
+    // - length == 3     : vec3<T>               (align 16) (size 12)
+    // - length == 2     : vec2<T>               (align 8)  (size 8)
+    // - length == 1     : T                     (align 4)  (size 4)
+    //
 
-    current_offset = (current_offset + base_alignment - 1) / base_alignment * base_alignment;
+    const bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
+
+    size_t variable_alignment = 4;  // default alignment for scalar types
+    size_t variable_size = 4;       // default size for scalar types
+
+    if (is_f16) {
+      if (length > 6) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 7) / 8);
+      } else if (length > 4) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 2) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    } else {
+      if (length > 3) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 3) / 4);
+      } else if (length > 2) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 1) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    }
+    current_offset = (current_offset + variable_alignment - 1) / variable_alignment * variable_alignment;
     uniform_and_offsets.emplace_back(uniform, current_offset);
 
-    // For non-float16 type, when length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
-    // N = ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N * SizeOf(vec4<i32|u32|f32>).
-    // For float16 type, when length > 4, the uniform variable is of type array<mat2x4<f16>,N>, where
-    // N = ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte length is N * SizeOf(mat2x4<f16>).
-    size_t element_per_struct = is_f16 ? 8 : 4;
-    current_offset +=
-        length > 4 ? (length + element_per_struct - 1) / element_per_struct * struct_size : length * element_size;
+    current_offset += variable_size;
   }
 
   // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
@@ -429,7 +449,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     bind_buffers.push_back(uniform_buffer);
   }
 
-  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z, program.IndirectDispatchTensor());
   if (uniform_buffer) {
     buffer_mgr.Release(uniform_buffer);
   }
@@ -709,7 +729,8 @@ void WebGpuContext::OnRunEnd() {
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                                           const std::vector<WGPUBuffer>& bind_buffers,
                                           const ProgramArtifact& program_artifact,
-                                          uint32_t x, uint32_t y, uint32_t z) {
+                                          uint32_t x, uint32_t y, uint32_t z,
+                                          const Tensor* indirect_dispatch_tensor) {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
   for (WGPUBuffer buffer : bind_buffers) {
@@ -725,14 +746,27 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
 
   auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
   if (graph_capture_state_ == GraphCaptureState::Capturing) {
+    WGPUBuffer indirect_buffer = nullptr;
+    if (indirect_dispatch_tensor != nullptr) {
+      indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
+    }
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
                                             bind_group_layout,
-                                            {x, y, z}});
+                                            {x, y, z},
+                                            indirect_buffer});
   } else {
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
-    compute_pass_encoder.DispatchWorkgroups(x, y, z);
+
+    if (indirect_dispatch_tensor != nullptr) {
+      // Use indirect dispatch
+      WGPUBuffer indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
+      compute_pass_encoder.DispatchWorkgroupsIndirect(indirect_buffer, 0);
+    } else {
+      // Use direct dispatch
+      compute_pass_encoder.DispatchWorkgroups(x, y, z);
+    }
 
     wgpuBindGroupRelease(bind_group);
     wgpuBindGroupLayoutRelease(bind_group_layout);
@@ -768,7 +802,15 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     WriteTimestamp(num_pending_dispatches_ * 2);
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
-    compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
+
+    if (command.indirect_buffer != nullptr) {
+      // Use indirect dispatch
+      compute_pass_encoder.DispatchWorkgroupsIndirect(command.indirect_buffer, 0);
+    } else {
+      // Use direct dispatch
+      compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
+    }
+
     WriteTimestamp(num_pending_dispatches_ * 2 + 1);
     ++num_pending_dispatches_;
     if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
@@ -829,7 +871,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
 #else
 #if !defined(USE_EXTERNAL_DAWN)
@@ -844,8 +886,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 
     // Step.2 - Create wgpu::Instance
+    wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
-    instance_desc.capabilities.timedWaitAnyEnable = true;
+    instance_desc.requiredFeatures = required_instance_features;
+    instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
     default_instance_ = wgpu::CreateInstance(&instance_desc);
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");

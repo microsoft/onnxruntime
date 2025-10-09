@@ -52,12 +52,10 @@ void DestroyStrings(void* p_data, int64_t elements);
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
-// EP used for internal testing. We define it here as it's used in ProviderIsCpuBased, but we don't want
-// it to be in the public header include/onnxruntime/core/graph/constants.h as it's purely internal.
-constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecutionProvider";
-
 // return true if the execution provider is CPU based (meaning no copies to device are required)
-bool ProviderIsCpuBased(const std::string& provider_type);
+bool ProviderIsCpuBased(const IExecutionProvider& provider);
+
+bool IsMemcpyNode(const Node& node);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
@@ -228,6 +226,13 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
 }
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float4E2M1x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1;
+}
+#endif
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 

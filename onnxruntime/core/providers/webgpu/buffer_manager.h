@@ -70,11 +70,8 @@ class BufferManager {
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
   void Upload(void* src, WGPUBuffer dst, size_t size) const;
   void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
-  // Create a buffer mapped for writing.
-  WGPUBuffer CreateUMA(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
-  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
-  bool SupportsUMA() const;
+  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage) const;
+  bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   void Release(WGPUBuffer buffer) const;
   void Download(WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(GraphCaptureState graph_capture_state) const;

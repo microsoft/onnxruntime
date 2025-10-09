@@ -1,0 +1,82 @@
+name: Windows x64 QNN CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build_test_qnn_ep:
+    name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    timeout-minutes: 120
+    strategy:
+      matrix: 
+        QnnLibKind: [shared_lib, static_lib]
+    env:
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Download QNN SDK
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v2.38.0.250901 .
+          dir
+        shell: pwsh
+            
+      - name: Set QNN_SDK_ROOT environment variable
+        shell: pwsh
+        run: |
+          $qnn_sdk_path = Join-Path $env:RUNNER_TEMP "qnn-v2.38.0.250901"
+          echo "QNN_SDK_ROOT=$qnn_sdk_path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "QNN SDK Root: $qnn_sdk_path"
+          dir $qnn_sdk_path
+
+      - name: Build and Test
+        shell: cmd
+        run: |
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --cmake_generator "Visual Studio 17 2022" --build_java --build_shared_lib --use_qnn ${{ matrix.QnnLibKind }} --qnn_home %QNN_SDK_ROOT% --use_binskim_compliant_compile_flags --update --build --test --enable_onnx_tests --parallel
+
+      - name: Run ONNX Tests
+        shell: cmd
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        run: |
+          .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ github.workspace }}\cmake\external\onnx\onnx\backend\test\data\node
+
+      - name: Run float32 model tests
+        shell: cmd
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        run: |
+          rem This step assumes the model data exists at C:\data\float32_models on the runner
+          if exist C:\data\float32_models (
+            .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" C:\data\float32_models
+          ) else (
+            echo "Skipping float32 model tests: C:\data\float32_models not found."
+          )

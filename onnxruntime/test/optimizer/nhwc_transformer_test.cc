@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "graph_transform_test_builder.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/graph.h"
 #include "test/common/dnnl_op_test_utils.h"

@@ -20,6 +20,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
+#include "core/graph/model.h"
 
 namespace onnxruntime {
 
@@ -326,6 +327,9 @@ static Status GetInputIndices(const EpNode& consumer_node,
       [&found, &value_info_name, &indices](gsl::span<const EpValueInfo* const> input_value_infos,
                                            bool is_implicit) -> void {
     for (size_t i = 0; i < input_value_infos.size(); i++) {
+      if (input_value_infos[i] == nullptr) {  // input_value_info == nullptr means the input is optional
+        continue;
+      }
       if (input_value_infos[i]->GetName() == value_info_name) {
         indices.push_back(is_implicit ? -1 : static_cast<int64_t>(i));
         found = true;
@@ -676,9 +680,11 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   }
 
   // Iterate through nodes again and update the map of NodeIndex to EpNode*
-  index_to_ep_node.Resize(min_node_index, max_node_index);
-  for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
-    index_to_ep_node.SetEpNode(ep_node->GetInternalNode().Index(), ep_node.get());
+  if (!ep_nodes.empty()) {
+    index_to_ep_node.Resize(min_node_index, max_node_index);
+    for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
+      index_to_ep_node.SetEpNode(ep_node->GetInternalNode().Index(), ep_node.get());
+    }
   }
 
   // If this is a subgraph, add the OrtValueInfo and OrtValue objects that come from the outer scope.
@@ -742,6 +748,25 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
 }
 
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
+
+std::unique_ptr<ModelMetadata> EpGraph::GetModelMetadata() const {
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto& model = graph_viewer_.GetGraph().GetModel();
+  auto model_metadata = std::make_unique<ModelMetadata>();
+
+  model_metadata->producer_name = model.ProducerName();
+  model_metadata->producer_version = model.ProducerVersion();
+  model_metadata->description = model.DocString();
+  model_metadata->graph_description = model.GraphDocString();
+  model_metadata->domain = model.Domain();
+  model_metadata->version = model.ModelVersion();
+  model_metadata->custom_metadata_map = model.MetaData();
+  model_metadata->graph_name = model.MainGraph().Name();
+  return model_metadata;
+#else
+  return nullptr;
+#endif
+}
 
 const ORTCHAR_T* EpGraph::GetModelPath() const {
   return graph_viewer_.ModelPath().c_str();

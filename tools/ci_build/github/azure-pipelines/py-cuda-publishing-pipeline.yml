@@ -32,7 +32,7 @@ extends:
   parameters:
     sdl:
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
     stages:
     - template: stages/py-cuda-publishing-stage.yml

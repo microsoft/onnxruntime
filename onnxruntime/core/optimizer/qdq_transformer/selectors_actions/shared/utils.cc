@@ -155,6 +155,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetCumSumOpVersionsMap() {
   return {{"CumSum", {}}};
 }
 
+static const OpVersionsAndSelector::OpVersionsMap GetScatterElementsOpVersionsMap() {
+  return {{"ScatterElements", {}}};
+}
+
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
   /* register selectors for miscellaneous ops */
@@ -290,6 +294,13 @@ void RegisterCumSumSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterScatterElementsSelector(Selectors& qdq_selectors) {
+  /* register selector for cumsum op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ScatterElementsNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetScatterElementsOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -310,6 +321,7 @@ void SelectorManager::CreateSelectors() {
   RegisterPadSelectors(qdq_selectors_);
   RegisterTopKSelector(qdq_selectors_);
   RegisterCumSumSelector(qdq_selectors_);
+  RegisterScatterElementsSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

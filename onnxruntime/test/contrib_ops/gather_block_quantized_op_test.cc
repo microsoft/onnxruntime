@@ -10,6 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -102,6 +103,7 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const std::vector<int64_t>& output_shape,
                              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                              bool touch_on_device_data = false) {
+  (void)touch_on_device_data;
   CheckDataAndShape<T1>(data, data_shape, "data in RunGatherBlockQuantized");
   CheckDataAndShape<Tind>(indices, indices_shape, "indices in RunGatherBlockQuantized");
   CheckDataAndShape<T2>(scales, scales_shape, "scales in RunGatherBlockQuantized");
@@ -127,12 +129,15 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
 
     test.AddOutput<T2>("output", output_shape, output);
 
-    if (touch_on_device_data) {
-      // test would need to see data on device
-      test.Run(expect_result, "", {kWebGpuExecutionProvider}, nullptr);
+    bool enable_cuda = HasCudaEnvironment(0);
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    if (enable_cuda) {
+      eps.push_back(DefaultCudaExecutionProvider());
     } else {
-      test.Run(expect_result, "");
+      eps.push_back(DefaultCpuExecutionProvider());
     }
+
+    test.Run(expect_result, "", {}, nullptr, &eps);
   };
 
   run_test(false);
@@ -156,15 +161,17 @@ ToType(const std::vector<T2>& vec) {
 template <typename T>
 typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
 ToType(const std::vector<int>& vec) {
+  using UnpackedType = typename T::UnpackedType;
+
   // UInt4x2 and Int4x2 uses global packing instead of per-row packing.
   size_t i = 0;
-  constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
+  constexpr UnpackedType offset = std::is_same<T, Int4x2>::value ? 0 : 8;
   std::vector<T> result;
   for (i = 0; i + 1 < vec.size(); i += 2) {
-    result.push_back(T(vec[i] + offset, vec[i + 1] + offset));
+    result.push_back(T(static_cast<UnpackedType>(vec[i] + offset), static_cast<UnpackedType>(vec[i + 1] + offset)));
   }
   if (i < vec.size()) {
-    result.push_back(T(vec[i] + offset, 0 + offset));
+    result.push_back(T(static_cast<UnpackedType>(vec[i] + offset), static_cast<UnpackedType>(0 + offset)));
   }
   return result;
 }
@@ -275,6 +282,7 @@ void Test_Fail_WithZeroPoints(int64_t gather_axis,
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, false);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
   Test_Fail_WithZeroPoints<int8_t, float, int32_t>(0, 2, 16);
   Test_Fail_WithZeroPoints<int16_t, float, int32_t>(0, 2, 16);
@@ -289,6 +297,7 @@ TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
   Test_Fail_WithZeroPoints<Int4x2, BFloat16, int32_t>(0, 2, 16);
   Test_Fail_WithZeroPoints<uint8_t, float, int16_t>(0, 2, 16);
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
@@ -317,6 +326,7 @@ void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, false);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, UnsupportedUInt8DataType) {
   // Gather on axis other than 0 is not supported with uint8_t
   Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(1, 2, 16);
@@ -349,6 +359,7 @@ TEST(GatherBlockQuantizedOpTest, NotSupportedBits) {
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 6);
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 7);
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_ShapeMismatch_WithZeroPoints() {
@@ -377,11 +388,13 @@ void Test_ShapeMismatch_WithZeroPoints() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, false);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, ShapeMismatch) {
   Test_ShapeMismatch_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_ShapeMismatch_WithZeroPoints<Int4x2, float, int32_t>();
   Test_ShapeMismatch_WithZeroPoints<uint8_t, float, int32_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_InvalidIndices_WithZeroPoints() {
@@ -410,11 +423,13 @@ void Test_InvalidIndices_WithZeroPoints() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, false, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis0_WithZeroPoints(int bits = 4) {
@@ -447,6 +462,7 @@ void Test_GatherAxis0_WithZeroPoints(int bits = 4) {
                                 -3, -1, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints) {
   Test_GatherAxis0_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_GatherAxis0_WithZeroPoints<Int4x2, float, int32_t>();
@@ -457,6 +473,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints) {
   Test_GatherAxis0_WithZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis0_WithZeroPoints<Int4x2, MLFloat16, int64_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis0_WithZeroPoints_Uint8(int bits = 4) {
@@ -490,6 +507,7 @@ void Test_GatherAxis0_WithZeroPoints_Uint8(int bits = 4) {
                                 -3, -1, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_4Bits) {
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, float, int32_t>();
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, MLFloat16, int64_t>();
@@ -499,6 +517,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_8Bits) {
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, float, int32_t>(8);
   Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, MLFloat16, int64_t>(8);
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis0_NoZeroPoints(int bits = 4) {
@@ -533,6 +552,7 @@ void Test_GatherAxis0_NoZeroPoints(int bits = 4) {
                                 -3, -1, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints) {
   Test_GatherAxis0_NoZeroPoints<Int4x2, float, int32_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int32_t>();
@@ -551,6 +571,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis1_WithZeroPoints() {
@@ -585,6 +606,7 @@ void Test_GatherAxis1_WithZeroPoints() {
                                 -2, -2, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis1) {
   Test_GatherAxis1_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_GatherAxis1_WithZeroPoints<Int4x2, float, int32_t>();
@@ -595,6 +617,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis1) {
   Test_GatherAxis1_WithZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis1_WithZeroPoints<Int4x2, MLFloat16, int64_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis2_WithZeroPoints() {
@@ -629,6 +652,7 @@ void Test_GatherAxis2_WithZeroPoints() {
                                 -1, -3, block_size, bits, output, output_shape, true);
 }
 
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis2) {
   Test_GatherAxis2_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_GatherAxis2_WithZeroPoints<Int4x2, float, int32_t>();
@@ -639,6 +663,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis2) {
   Test_GatherAxis2_WithZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis2_WithZeroPoints<Int4x2, MLFloat16, int64_t>();
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

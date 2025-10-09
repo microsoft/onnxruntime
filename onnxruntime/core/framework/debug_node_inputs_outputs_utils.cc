@@ -667,6 +667,13 @@ void DumpNodeOutputs(
             const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
             PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
+            // For MemcpyToHost, the memory copy has not been syncronized so the data is not ready to read yet.
+            // Here we skip it since it is just a copy of input tensor (or output of previous node) which has been dumped.
+            if (node.OpType() == "MemcpyToHost") {
+              std::cout << " is same as input.\n";
+              continue;
+            }
+
             if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0 || check_half_overflow) {
               tensor_metadata.name = output_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;

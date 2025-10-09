@@ -43,12 +43,6 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
   // This varies across implementations and is obtained via the WebNN's opSupportLimits() function.
   // https://www.w3.org/TR/webnn/#api-mlcontext-opsupportlimits
   wnn_limits_ = wnn_context_.call<emscripten::val>("opSupportLimits");
-
-  if (wnn_limits_["preferredInputLayout"].as<std::string>().compare("nhwc") == 0) {
-    preferred_layout_ = DataLayout::NHWC;
-  } else {
-    preferred_layout_ = DataLayout::NCHW;
-  }
 }
 
 WebNNExecutionProvider::~WebNNExecutionProvider() {}
@@ -178,8 +172,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
-                                preferred_layout_, wnn_device_type_, wnn_limits_);
+    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_, wnn_device_type_, wnn_limits_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
 

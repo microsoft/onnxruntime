@@ -21,7 +21,7 @@ namespace onnxruntime {
 #define REGISTER_ONNX_KERNEL_TYPED(T)                                 \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
       Attention,                                                      \
-      23,                                                             \
+      24,                                                             \
       T,                                                              \
       KernelDefBuilder()                                              \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())     \
@@ -31,6 +31,21 @@ namespace onnxruntime {
 
 REGISTER_ONNX_KERNEL_TYPED(float)
 REGISTER_ONNX_KERNEL_TYPED(MLFloat16)
+
+#define REGISTER_ONNX_KERNEL_VERSIONED_TYPED(T)                       \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
+      Attention,                                                      \
+      23,                                                             \
+      23,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("U", BuildKernelDefConstraints<bool, T>()), \
+      Attention<T>);
+
+REGISTER_ONNX_KERNEL_VERSIONED_TYPED(float)
+REGISTER_ONNX_KERNEL_VERSIONED_TYPED(MLFloat16)
 
 template <typename T, typename U>
 void make_copy(T* mask_data, const U* mask_index, size_t size);
@@ -48,14 +63,14 @@ void make_copy<MLFloat16, MLFloat16>(MLFloat16* mask_data, const MLFloat16* mask
 template <>
 void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? 0.0f : std::numeric_limits<float>::lowest();
+    mask_data[i] = mask_index[i] ? 0.0f : negative_infinity<float>();
   }
 }
 
 template <>
 void make_copy<MLFloat16, bool>(MLFloat16* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? MLFloat16(0.f) : std::numeric_limits<MLFloat16>::lowest();
+    mask_data[i] = mask_index[i] ? MLFloat16(0.f) : negative_infinity<MLFloat16>();
   }
 }
 
@@ -237,7 +252,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       mask_data = static_cast<T*>(allocated_ptr);
       for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
         for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
-          mask_data[s_i * parameters.total_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+          mask_data[s_i * parameters.total_sequence_length + m_i] = negative_infinity<T>();
         }
       }
       delete_mask_data = true;
@@ -263,7 +278,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       for (int i = 0; i < n_iter; ++i) {
         for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
           for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
-            mask_data[s_i * parameters.total_sequence_length + m_i + probs_matrix_size * i] = std::numeric_limits<T>::lowest();
+            mask_data[s_i * parameters.total_sequence_length + m_i + probs_matrix_size * i] = negative_infinity<T>();
           }
         }
       }
@@ -318,7 +333,8 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       }
 
       // handling GQA
-      std::ptrdiff_t ki = batch_i * parameters.kv_num_heads + head_i % parameters.kv_num_heads;
+      std::ptrdiff_t head_ki = head_i * parameters.kv_num_heads / parameters.q_num_heads;
+      std::ptrdiff_t ki = batch_i * parameters.kv_num_heads + head_ki;
       const T* k = K + k_input_chunk_length * ki;
 
       if (nullptr != present_key) {
@@ -348,7 +364,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                       alpha,
                                       Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size,
                                       parameters.head_size * parameters.q_num_heads,  // lda
-                                      transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + head_i * parameters.head_size : k,
+                                      transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + head_ki * parameters.head_size : k,
                                       transposed_k ? parameters.head_size * parameters.kv_num_heads : parameters.head_size,  // ldb
                                       beta,
                                       output,
@@ -380,9 +396,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                    parameters.transpose_output
                        ? parameters.head_size * parameters.q_num_heads
                        : static_cast<int>(parameters.head_size),  // lda
-                   transposed_k
-                       ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + head_i * parameters.head_size
-                       : k,
+                   transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + (head_i % parameters.kv_num_heads) * parameters.head_size : k,
                    transposed_k
                        ? parameters.head_size * parameters.kv_num_heads
                        : static_cast<int>(parameters.head_size),  // ldb
@@ -399,7 +413,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                         MLFloat16(alpha),
                                         Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size,
                                         parameters.head_size * parameters.q_num_heads,  // lda
-                                        transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + head_i * parameters.head_size : k,
+                                        transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + (head_i % parameters.kv_num_heads) * parameters.head_size : k,
                                         transposed_k ? parameters.head_size * parameters.kv_num_heads : parameters.head_size,  // ldb
                                         MLFloat16(beta),
                                         output,
@@ -556,7 +570,8 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
           // handling GQA
           std::ptrdiff_t batch_i = i / num_heads;
           std::ptrdiff_t head_i = i % num_heads;
-          std::ptrdiff_t vi = batch_i * kv_num_heads + head_i % kv_num_heads;
+          std::ptrdiff_t head_vi = head_i * kv_num_heads / num_heads;
+          std::ptrdiff_t vi = batch_i * kv_num_heads + head_vi;
           const T* v = V + v_input_chunk_length * vi;
 
           if (nullptr != present_value) {
@@ -580,15 +595,15 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
               // V is transposed but not QK. We use GemmEx with a different value for ldb.
               math::GemmEx<T, ThreadPool>(CblasNoTrans,
                                           CblasNoTrans,
-                                          sequence_length,                                                                              // M
-                                          v_head_size,                                                                                  // N
-                                          total_sequence_length,                                                                        // K
-                                          1.f,                                                                                          // alpha
-                                          attention_probs + attention_probs_offset,                                                     // QK
-                                          total_sequence_length,                                                                        // lda
-                                          transposed_v ? V + head_i * v_head_size + v_input_chunk_length * kv_num_heads * batch_i : v,  // V
-                                          transposed_v ? v_head_size * kv_num_heads : v_head_size,                                      // ldb
-                                          0.f,                                                                                          // beta
+                                          sequence_length,                                                                               // M
+                                          v_head_size,                                                                                   // N
+                                          total_sequence_length,                                                                         // K
+                                          1.f,                                                                                           // alpha
+                                          attention_probs + attention_probs_offset,                                                      // QK
+                                          total_sequence_length,                                                                         // lda
+                                          transposed_v ? V + head_vi * v_head_size + v_input_chunk_length * kv_num_heads * batch_i : v,  // V
+                                          transposed_v ? v_head_size * kv_num_heads : v_head_size,                                       // ldb
+                                          0.f,                                                                                           // beta
                                           output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
                                           v_head_size * num_heads,  // ldc
                                           nullptr);

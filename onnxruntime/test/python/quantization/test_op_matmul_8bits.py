@@ -141,7 +141,7 @@ class TestOpMatMul8Bits(unittest.TestCase):
                 quant_axes=quant_axes,
             )
 
-        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, algo_config=quant_config)
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, bits=8, algo_config=quant_config)
         quant.process()
         quant.model.save_model_to_file(model_int8_path, False)
 

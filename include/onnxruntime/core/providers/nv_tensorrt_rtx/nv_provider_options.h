@@ -31,10 +31,10 @@ constexpr const char* kDetailedBuildLog = "nv_detailed_build_log";
 constexpr const char* kProfilesMinShapes = "nv_profile_min_shapes";
 constexpr const char* kProfilesMaxShapes = "nv_profile_max_shapes";
 constexpr const char* kProfilesOptShapes = "nv_profile_opt_shapes";
-constexpr const char* kCudaGraphEnable = "nv_cuda_graph_enable";
-constexpr const char* kONNXBytestream = "nv_onnx_bytestream";
-constexpr const char* kONNXBytestreamSize = "nv_onnx_bytestream_size";
+constexpr const char* kCudaGraphEnable = "enable_cuda_graph";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
+constexpr const char* kUseExternalDataInitializer = "nv_use_external_data_initializer";
+constexpr const char* kRuntimeCacheFile = "nv_runtime_cache_path";
 
 }  // namespace provider_option_names
 namespace run_option_names {

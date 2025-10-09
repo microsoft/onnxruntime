@@ -12,11 +12,10 @@ namespace webgpu {
 
 class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
  public:
-  GemmNaiveProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul)
+  GemmNaiveProgram(bool transA, bool transB, bool need_handle_bias, bool need_handle_matmul)
       : Program{"GemmNaive"},
         transA_{transA},
         transB_{transB},
-        alpha_{alpha},
         need_handle_bias_{need_handle_bias},
         need_handle_matmul_{need_handle_matmul} {}
 
@@ -33,7 +32,6 @@ class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
  private:
   bool transA_;
   bool transB_;
-  float alpha_;
   bool need_handle_bias_;
   bool need_handle_matmul_;
 };

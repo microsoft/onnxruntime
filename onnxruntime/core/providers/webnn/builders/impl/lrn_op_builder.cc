@@ -52,10 +52,10 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   /**
       WebNN doesn't support LRN. So decompose it into a series of ops:
-      X --> Pow --> (Transpose)--> Pad --> AveragePool--> (Transpose) --> Mul --> Add --> Pow --> Div
-             ^           ^                      ^               ^          ^       ^       ^       ^
-             |           |                      |               |          |       |       |       |
-            Y:2      (0,2,3,1)           Kernel:(1,size)     (0,3,1,2)   B:alpha  B:bias B:beta  A:input
+      X --> Pow --> Transpose --> Pad --> AveragePool--> Transpose --> Mul --> Add --> Pow --> Div
+             ^          ^                      ^             ^          ^       ^       ^       ^
+             |          |                      |             |          |       |       |       |
+            Y:2     (0,2,3,1)           Kernel:(1,size)  (0,3,1,2)   B:alpha  B:bias B:beta  A:input
       */
   //
   // pow(input, 2)
@@ -64,15 +64,11 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val pow1_output = wnn_builder.call<emscripten::val>("pow", input, pow1_constant, label_options);
 
   // transpose(pow1_output, permutation=[0, 2, 3, 1])
-  // LRN is one of NHWC layout sensitive ops. When preferred layout is NCHW, move dimension 1 to dimension 3 (rightmost).
-  if (model_builder.GetPreferredLayout() == DataLayout::NCHW) {
-    std::vector<uint32_t> perm{0, 2, 3, 1};
-    emscripten::val transpose_options = emscripten::val::object();
-    transpose_options.set("label", node_name + "_transpose_rightmost");
-    transpose_options.set("permutation", emscripten::val::array(perm));
-    pow1_output =
-        wnn_builder.call<emscripten::val>("transpose", pow1_output, transpose_options);
-  }
+  std::vector<uint32_t> perm{0, 2, 3, 1};
+  emscripten::val transpose_options = emscripten::val::object();
+  transpose_options.set("label", node_name + "_transpose_rightmost");
+  transpose_options.set("permutation", emscripten::val::array(perm));
+  pow1_output = wnn_builder.call<emscripten::val>("transpose", pow1_output, transpose_options);
 
   // pad(pow1_output, beginning_padding = {0, 0, 0, leading_padding}, ending_padding = {0, 0, 0, trailing_padding})
   // Adding a Pad before averagePool2d and calling AveragePool with pads as 0's.
@@ -95,14 +91,10 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // transpose(pool_output, permutation=[0, 3, 1, 2])
   // Move dimension 3 back to dimension 1.
-  if (model_builder.GetPreferredLayout() == DataLayout::NCHW) {
-    std::vector<uint32_t> perm{0, 3, 1, 2};
-    emscripten::val transpose_options = emscripten::val::object();
-    transpose_options.set("label", node_name + "_transpose_inverse");
-    transpose_options.set("permutation", emscripten::val::array(perm));
-    pool_output =
-        wnn_builder.call<emscripten::val>("transpose", pool_output, transpose_options);
-  }
+  perm = {0, 3, 1, 2};
+  transpose_options.set("label", node_name + "_transpose_inverse");
+  transpose_options.set("permutation", emscripten::val::array(perm));
+  pool_output = wnn_builder.call<emscripten::val>("transpose", pool_output, transpose_options);
 
   // mul(pool_output, alpha_constant)
   label_options.set("label", node_name + "_mul");

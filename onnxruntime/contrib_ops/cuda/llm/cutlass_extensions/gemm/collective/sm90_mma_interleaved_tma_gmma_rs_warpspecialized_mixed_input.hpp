@@ -49,7 +49,6 @@
 #include "cute/atom/copy_traits_sm90_tma.hpp"
 #include "cute/atom/mma_atom.hpp"
 #include "cute/numeric/arithmetic_tuple.hpp"
-#include "cute/tensor_predicate.hpp"
 #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

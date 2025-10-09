@@ -53,6 +53,8 @@
 #include "cutlass_heuristic.h"
 #include "moe_gemm_kernels.h"
 
+#include <cuda_bf16.h>
+
 #include <limits>
 #include <math.h>
 #include <sstream>
@@ -66,8 +68,8 @@ void generic_moe_gemm_kernelLauncher(const T* A, const WeightType* B, const T* w
                                      int64_t* total_rows_before_expert, int64_t gemm_n, int64_t gemm_k, int num_experts,
                                      CutlassGemmConfig gemm_config, const int multi_processor_count,
                                      cudaStream_t stream, int* kernel_occupancy = nullptr) {
-  static_assert(cutlass::platform::is_same<T, half>::value || cutlass::platform::is_same<T, float>::value,
-                "Specialized for half, float");
+  static_assert(cutlass::platform::is_same<T, half>::value || cutlass::platform::is_same<T, float>::value || cutlass::platform::is_same<T, __nv_bfloat16>::value,
+                "Specialized for half, float, bfloat16");
 
   static_assert(cutlass::platform::is_same<T, WeightType>::value ||
                     cutlass::platform::is_same<WeightType, uint8_t>::value ||
@@ -76,12 +78,11 @@ void generic_moe_gemm_kernelLauncher(const T* A, const WeightType* B, const T* w
 
   // The cutlass type for the input elements. This is needed to convert to cutlass::half_t if necessary.
   using ElementType_ =
-      typename cutlass::platform::conditional<cutlass::platform::is_same<T, half>::value, cutlass::half_t, T>::type;
+      typename cutlass::platform::conditional<cutlass::platform::is_same<T, half>::value, cutlass::half_t, typename cutlass::platform::conditional<cutlass::platform::is_same<T, __nv_bfloat16>::value, cutlass::bfloat16_t, T>::type>::type;
   using ElementType = ElementType_;
 
   using CutlassWeightType_ =
-      typename cutlass::platform::conditional<cutlass::platform::is_same<WeightType, half>::value, cutlass::half_t,
-                                              WeightType>::type;
+      typename cutlass::platform::conditional<cutlass::platform::is_same<WeightType, half>::value, cutlass::half_t, typename cutlass::platform::conditional<cutlass::platform::is_same<WeightType, __nv_bfloat16>::value, cutlass::bfloat16_t, WeightType>::type>::type;
 
   using CutlassWeightType = CutlassWeightType_;
 

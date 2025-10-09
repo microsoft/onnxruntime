@@ -122,7 +122,21 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Use parallel build. Optional value specifies max jobs (0=num CPUs).",
     )
-    parser.add_argument("--target", help="Build a specific CMake target (e.g., winml_dll).")
+    parser.add_argument(
+        "--target",
+        nargs=1,
+        action="extend",
+        metavar="TARGET",
+        dest="targets",
+        help="Build a specific CMake target (e.g., winml_dll).",
+    )
+    parser.add_argument(
+        "--targets",
+        nargs="+",
+        action="extend",
+        default=[],
+        help="Build one or more specific CMake targets.",
+    )
     parser.add_argument(
         "--compile_no_warning_as_error",
         action="store_true",
@@ -146,7 +160,8 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--cmake_extra_defines",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra CMake definitions (-D<key>=<value>). Provide as <key>=<value>.",
     )
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake executable.")
@@ -171,6 +186,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
+    parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
 
 def add_testing_args(parser: argparse.ArgumentParser) -> None:
@@ -197,7 +213,7 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--skip_onnx_tests", action="store_true", help="Explicitly disable ONNX related tests.")
     parser.add_argument("--skip_winml_tests", action="store_true", help="Explicitly disable WinML related tests.")
     parser.add_argument("--skip_nodejs_tests", action="store_true", help="Explicitly disable Node.js binding tests.")
-    parser.add_argument("--test_all_timeout", default="10800", help="Timeout for onnxruntime_test_all (seconds).")
+    parser.add_argument("--ctest_timeout", default="10800", help="Timeout provided to CTest --timeout (seconds).")
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test.")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
@@ -366,7 +382,8 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--emscripten_settings",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra emscripten settings (-s <key>=<value>). Provide as <key>=<value>.",
     )
 
@@ -517,7 +534,7 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float8", "optional", "sparsetensor"],
+        choices=["float4", "float8", "optional", "sparsetensor"],
         help="Disable selected data types.",
     )
     parser.add_argument(
@@ -562,7 +579,8 @@ def add_csharp_binding_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--msbuild_extra_options",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra MSBuild properties (/p:key=value). Provide as key=value.",
     )
 
@@ -610,6 +628,19 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--enable_cuda_profiling",
         action="store_true",
         help="Enable CUDA kernel profiling (requires CUPTI in PATH).",
+    )
+
+    # --- CPU ---
+    cpu_group = parser.add_argument_group("CPU Execution Provider")
+    cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
+    # The following enables building ORT with NCHWc Neon ARM kernels.
+    # At the time of writing, it is turned OFF by default because its performance relative to "regular" NCHW kernels
+    # is not good at smaller thread counts. But its speed-up is non-negligible with higher thread counts on supporting
+    # ARM platforms.
+    # Once the gap is closed for smaller thread counts, it can be turned on by default.
+    # See https://github.com/microsoft/onnxruntime/pull/25580#issuecomment-3335056846 for benchmarking details.
+    cpu_group.add_argument(
+        "--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels."
     )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---

@@ -1,79 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-  <Type Name="absl::lts_20250512::InlinedVector&lt;*&gt;">
-    <Intrinsic Name="_size" Expression="storage_.metadata_.value >> 1"/>
-    <Intrinsic Name="_is_allocated" Expression="(storage_.metadata_.value &amp; 1) == 1"/>
+  <!-- 2-parameter form: InlinedVector<T, N> (allocator defaulted) -->
+  <Type Name="absl::lts_20250512::InlinedVector&lt;*,*&gt;">
+    <!-- Metadata layout:
+         metadata_.value stores (size << 1) | is_allocated_bit -->
+    <Intrinsic Name="_meta_value" Expression="storage_.metadata_.value"/>
+    <Intrinsic Name="_size" Expression="_meta_value() >> 1"/>
+    <Intrinsic Name="_is_allocated" Expression="(_meta_value() &amp; 1) == 1"/>
+    <Intrinsic Name="_inline_capacity" Expression="$T2"/>
     <Intrinsic Name="_inlined_data" Expression="($T1*)storage_.data_.inlined.inlined_data"/>
     <Intrinsic Name="_allocated_data" Expression="storage_.data_.allocated.allocated_data"/>
-    <DisplayString>{{ size={ _size() }}}</DisplayString>
+    <Intrinsic Name="_heap_capacity" Expression="storage_.data_.allocated.allocated_capacity"/>
+    <Intrinsic Name="_capacity" Expression="_is_allocated() ? _heap_capacity() : _inline_capacity()"/>
+    <Intrinsic Name="_data" Expression="_is_allocated() ? _allocated_data() : _inlined_data()"/>
+
+    <!-- Distinct quick summaries -->
+    <DisplayString Condition="_is_allocated()">size={_size()} cap={_capacity()} (heap)</DisplayString>
+    <DisplayString Condition="!_is_allocated()">size={_size()} cap={_capacity()} (inline)</DisplayString>
+
     <Expand>
-      <Item Name="[capacity]" ExcludeView="simple" Condition="!_is_allocated()">$T2</Item>
-      <Item Name="[capacity]" ExcludeView="simple" Condition="_is_allocated()">storage_.data_.allocated.allocated_capacity</Item>
-      <Item Name="[N]" ExcludeView="simple">$T2</Item>
+      <!-- Diagnostics / metadata -->
       <Item Name="[size]" ExcludeView="simple">_size()</Item>
-      <Item Name="[is_allocated]" ExcludeView="simple">_is_allocated()</Item>
-      <Item Name="[allocator]" ExcludeView="simple" Condition="_is_allocated()">storage_.metadata_</Item>
-      <IndexListItems Condition="!_is_allocated()">
+      <Item Name="[capacity]" ExcludeView="simple">_capacity()</Item>
+      <Item Name="[inline_capacity]" ExcludeView="simple">_inline_capacity()</Item>
+      <Item Name="[storage_kind]" Condition="_is_allocated()" ExcludeView="simple">"heap"</Item>
+      <Item Name="[storage_kind]" Condition="!_is_allocated()" ExcludeView="simple">"inline"</Item>
+      <Item Name="[data]" Condition="_size() == 0" ExcludeView="simple">"empty"</Item>
+      <Item Name="[data]" ExcludeView="simple">_data()</Item>
+      <Item Name="[front]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[0]</Item>
+      <Item Name="[back]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[_size()-1]</Item>
+      <Item Name="[WARNING]" Condition="_size() &gt; _capacity()" ExcludeView="simple">"CORRUPT: size &gt; capacity"</Item>
+
+      <!-- Elements -->
+      <IndexListItems>
         <Size>_size()</Size>
-        <ValueNode>_inlined_data()[$i]</ValueNode>
+        <ValueNode>_data()[$i]</ValueNode>
       </IndexListItems>
-      <IndexListItems Condition="_is_allocated()">
+    </Expand>
+  </Type>
+
+  <!-- 3-parameter form: InlinedVector<T, N, A> -->
+  <Type Name="absl::lts_20250512::InlinedVector&lt;*,*,*&gt;">
+    <Intrinsic Name="_meta_value" Expression="storage_.metadata_.value"/>
+    <Intrinsic Name="_size" Expression="_meta_value() >> 1"/>
+    <Intrinsic Name="_is_allocated" Expression="(_meta_value() &amp; 1) == 1"/>
+    <Intrinsic Name="_inline_capacity" Expression="$T2"/>
+    <Intrinsic Name="_inlined_data" Expression="($T1*)storage_.data_.inlined.inlined_data"/>
+    <Intrinsic Name="_allocated_data" Expression="storage_.data_.allocated.allocated_data"/>
+    <Intrinsic Name="_heap_capacity" Expression="storage_.data_.allocated.allocated_capacity"/>
+    <Intrinsic Name="_capacity" Expression="_is_allocated() ? _heap_capacity() : _inline_capacity()"/>
+    <Intrinsic Name="_data" Expression="_is_allocated() ? _allocated_data() : _inlined_data()"/>
+
+    <DisplayString Condition="_is_allocated()">size={_size()} cap={_capacity()} (heap)</DisplayString>
+    <DisplayString Condition="!_is_allocated()">size={_size()} cap={_capacity()} (inline)</DisplayString>
+
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">_size()</Item>
+      <Item Name="[capacity]" ExcludeView="simple">_capacity()</Item>
+      <Item Name="[inline_capacity]" ExcludeView="simple">_inline_capacity()</Item>
+      <!-- Replaced ternary expression with conditional items to avoid literal-in-expression error -->
+      <Item Name="[storage_kind]" Condition="_is_allocated()" ExcludeView="simple">"heap"</Item>
+      <Item Name="[storage_kind]" Condition="!_is_allocated()" ExcludeView="simple">"inline"</Item>
+      <Item Name="[data]" Condition="_size() == 0" ExcludeView="simple">"empty"</Item>
+      <Item Name="[data]" Condition="_size() &gt; 0" ExcludeView="simple">_data()</Item>
+      <Item Name="[front]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[0]</Item>
+      <Item Name="[back]" Condition="_size() &gt; 0" ExcludeView="simple">_data()[_size()-1]</Item>
+      <Item Name="[WARNING]" Condition="_size() &gt; _capacity()" ExcludeView="simple">"CORRUPT: size &gt; capacity"</Item>
+      <!-- (Allocator object access intentionally omitted: internal layout is unstable) -->
+
+      <IndexListItems>
         <Size>_size()</Size>
-        <ValueNode>_allocated_data()[$i]</ValueNode>
+        <ValueNode>_data()[$i]</ValueNode>
       </IndexListItems>
-    </Expand>
-  </Type>
-  <!-- Should handle both flat hash_set and hash_map -->
-  <Type Name="absl::lts_20250512::container_internal::raw_hash_set&lt;*&gt;">
-    <Intrinsic Name="_commonfields" Expression="settings_.value"/>
-    <Intrinsic Name="_size" Expression="settings_.value.compressed_tuple_.value"/>
-    <Intrinsic Name="_capacity" Expression="_commonfields().capacity_"/>
-    <Intrinsic Name="_control" Expression="_commonfields().control_"/>
-    <Intrinsic Name="_slots" Expression="(slot_type*)(_commonfields().slots_)"/>
-    <DisplayString IncludeView="noparens">size={ _size() }</DisplayString>
-    <DisplayString ExcludeView="noparens">size=({_size()})</DisplayString>
-    <Expand>
-      <Item Name="[Size]">_size()</Item>
-      <Item Name="[Capacity]" ExcludeView="noparens">_capacity()</Item>
-      <CustomListItems MaxItemsPerView="100">
-        <Variable Name="nslot" InitialValue="0" />
-        <Size>_size()</Size>
-        <Loop>
-          <!-- bool IsFull(ctrl_t c) const { return c >= 0; } -->
-          <If Condition="_control()[nslot] &gt;= 0">
-            <Item>_slots()[nslot]</Item>
-          </If>
-          <Exec>nslot++</Exec>
-          <Break Condition="nslot == _capacity()" />
-        </Loop>
-      </CustomListItems>
-    </Expand>
-  </Type>
-
-  <!-- Primitive types stored as a value -->
-  <Type Name="absl::lts_20250512::container_internal::Storage&lt;*,*,0&gt;">
-    <DisplayString IncludeView="noparens">*($T1 *){value}</DisplayString>
-    <DisplayString ExcludeView="noparens">(*($T1 *){value})</DisplayString>
-    <Expand>
-      <ExpandedItem>*($T1 *){value}</ExpandedItem>
-    </Expand>
-  </Type>
-
-  <!-- For storage inherited from the type -->
-  <Type Name="absl::lts_20250512::container_internal::Storage&lt;*,*,1&gt;">
-    <DisplayString IncludeView="noparens">*($T1 *)this</DisplayString>
-    <DisplayString ExcludeView="noparens">(*($T1 *)this)</DisplayString>
-    <Expand>
-      <ExpandedItem>*($T1 *)this</ExpandedItem>
-    </Expand>
-  </Type>
-
-  <Type Name="absl::lts_20250512::container_internal::map_slot_type&lt;*&gt;">
-    <DisplayString IncludeView="noparens">{value.first}, {value.second}</DisplayString>
-    <DisplayString ExcludeView="noparens">({value.first}, {value.second})</DisplayString>
-    <Expand>
-      <Item Name="first" ExcludeView="simple">value.first</Item>
-      <Item Name="second" ExcludeView="simple">value.second</Item>
     </Expand>
   </Type>
 </AutoVisualizer>

@@ -60,15 +60,6 @@ Status TopKOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const N
   if (!qnn_model_wrapper.IsConstantInput(input_1)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The number of top elements to retrieve must be specified as constant input.");
   }
-  NodeAttrHelper node_helper(node_unit);
-  auto largest = node_helper.Get("largest", 1);
-  auto sorted = node_helper.Get("sorted", 1);
-  if (0 == sorted) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN TopK output is always sorted");
-  }
-  if (0 == largest) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN TopK output is always largest values");
-  }
 
   return Status::OK();
 }
@@ -96,7 +87,7 @@ Status TopKOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   // Add Transpose to permute axis to the last.
-  std::string transpose_output_name = input_names[0] + "_ort_qnn_ep_transpose";
+  const std::string transpose_output_name = utils::GetUniqueName(input_names[0], "_transpose");
   std::vector<uint32_t> transpose_perm;
   ORT_RETURN_IF_ERROR(utils::GetPermToLastAxis(static_cast<uint32_t>(axis),
                                                static_cast<uint32_t>(input_rank),
@@ -147,6 +138,16 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   qnn_model_wrapper.AddParamWrapper(std::move(k_param));
   std::vector<std::string> param_tensor_names{k_param_name};
 
+  // Add largest to TopK attr
+  uint8_t largest = static_cast<uint8_t>(NodeAttrHelper(node_unit).Get("largest", 1));
+  Qnn_Scalar_t qnn_largest_k = QNN_SCALAR_INIT;
+  qnn_largest_k.dataType = QNN_DATATYPE_BOOL_8;
+  qnn_largest_k.bool8Value = largest;
+  QnnParamWrapper k_largest(node_unit.Index(), node_unit.Name(), QNN_OP_TOP_K_PARAM_LARGEST, qnn_largest_k);
+  std::string k_largest_name = k_largest.GetParamTensorName();
+  qnn_model_wrapper.AddParamWrapper(std::move(k_largest));
+  param_tensor_names.push_back(k_largest_name);
+
   // HTP only supports TopK at the last axis, and thus check whether extra Transpose is required.
   TensorInfo input_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
@@ -175,7 +176,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     // Since user may not be aware of the additional Transpose, the original output name of TopK node must be used by
     // the additional Transpose node which has the same output as original TopK node.
     const std::string& output_name = output.node_arg.Name();
-    std::string transpose_input_name = output_name + "_ort_qnn_ep_transpose";
+    const std::string transpose_input_name = utils::GetUniqueName(output_name, "_transpose");
     transpose_input_names.push_back(std::move(transpose_input_name));
 
     // Since the input of TopK node is permuted, its output shape must be manually calculated.
@@ -197,7 +198,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   }
 
   // Add TopK node.
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
@@ -228,7 +229,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     bool is_cast_required = output_idx == 1 && output_info.qnn_data_type == QNN_DATATYPE_INT_64 && is_graph_output;
     std::string cast_input_name = "";
     if (is_cast_required) {
-      cast_input_name = transpose_output_name + "_ort_qnn_ep_cast";
+      cast_input_name = utils::GetUniqueName(transpose_output_name, "_cast");
       // For the same reason described above, the original output name is now used by this Cast.
       transpose_output_name = cast_input_name;
       // Since additional Cast is added, below Transpose is no longer graph output.
@@ -255,9 +256,9 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                  std::vector<uint32_t>(output_info.shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output_tensorwrapper)),
                         "Failed to add tensor.");
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_input_name,
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_CAST),
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                        "Cast",
+                                                        QNN_OP_CAST,
                                                         {cast_input_name},
                                                         {output_name},
                                                         {}),

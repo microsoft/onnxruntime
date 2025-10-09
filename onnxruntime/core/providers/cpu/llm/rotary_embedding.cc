@@ -30,10 +30,6 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);  // Turn 0/1 into bool
-
-  if (rotary_embedding_dim > 0) {
-    ORT_ENFORCE(num_heads > 0, "num_heads must be provided if rotary_embedding_dim is specified");
-  }
 }
 
 // TODO: rotary embedding in place
@@ -110,6 +106,15 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const Tensor* sin_cache = context->Input<Tensor>(2);
   // Optional position_ids input, can be nullptr
   const Tensor* position_ids = context->Input<Tensor>(3);
+
+  // If rotary_embedding_dim is set (>0) and num_heads attribute not provided (==0),
+  // we can only proceed if input is 4D (B, num_heads, S, head_size) so num_heads can be inferred.
+  if (rotary_embedding_dim > 0 && num_heads <= 0) {
+    const auto& dims = X->Shape().GetDims();
+    ORT_ENFORCE(dims.size() == 4,
+                "Attribute 'num_heads' must be provided when 'rotary_embedding_dim' is specified "
+                "and input is not rank-4 (batch, num_heads, sequence, head).");
+  }
 
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_helper::CheckInputs<Tensor>(X,

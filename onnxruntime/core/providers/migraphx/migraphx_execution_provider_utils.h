@@ -3,23 +3,27 @@
 
 #pragma once
 
-#include <fstream>
-#include <unordered_map>
-#include <string>
-#include <iostream>
+#include <algorithm>
+#include <charconv>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 #include "flatbuffers/idl.h"
 #include "core/providers/migraphx/ort_trt_int8_cal_table.fbs.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/common/path_string.h"
+#include "core/framework/murmurhash3.h"
 
 namespace fs = std::filesystem;
 
 namespace onnxruntime {
 
-bool IsGraphInput(const GraphViewer& graph, const std::string& name) {
+inline bool IsGraphInput(const GraphViewer& graph, const std::string& name) {
   const auto& graph_inputs = graph.GetInputs();
   std::vector<std::string> input_names(graph_inputs.size());
   std::transform(graph_inputs.begin(), graph_inputs.end(), input_names.begin(), [](auto in) {
@@ -28,12 +32,12 @@ bool IsGraphInput(const GraphViewer& graph, const std::string& name) {
   return (std::find(input_names.begin(), input_names.end(), name) != input_names.end());
 }
 
-bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, [[maybe_unused]] bool check_outer_scope = true) {
+inline bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, [[maybe_unused]] bool check_outer_scope = true) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   return graph.GetInitializedTensor(name, initializer);
 }
 
-const Node* GetInputNode(const Node& node, int arg_index) {
+inline const Node* GetInputNode(const Node& node, int arg_index) {
   int index = 0;
   for (auto nit = node.InputNodesBegin(); nit != node.InputNodesEnd(); ++nit, ++index) {
     if (index == arg_index) {
@@ -44,7 +48,7 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return nullptr;
 }
 
-std::size_t getNodeInputNum(const Node& node) {
+inline std::size_t getNodeInputNum(const Node& node) {
   std::size_t node_num = 0;
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     node_num++;
@@ -53,14 +57,14 @@ std::size_t getNodeInputNum(const Node& node) {
   return node_num;
 }
 
-bool isInputNode(const Node* node, const std::string& name) {
+inline bool isInputNode(const Node* node, const std::string& name) {
   auto outputs = node->OutputDefs();
   return std::any_of(outputs.begin(), outputs.end(), [&](auto out) {
     return (out->Name() == name);
   });
 }
 
-bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector<NodeIndex>& input_nodes) {
+inline bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector<NodeIndex>& input_nodes) {
   if (node == nullptr) {
     return false;
   }
@@ -113,10 +117,10 @@ bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector
   return true;
 }
 
-bool canEvalNodeArgument(const GraphViewer& graph,
-                         const Node* node,
-                         std::vector<std::size_t> indices,
-                         std::vector<NodeIndex>& input_nodes) {
+inline bool canEvalNodeArgument(const GraphViewer& graph,
+                                const Node* node,
+                                std::vector<std::size_t> indices,
+                                std::vector<NodeIndex>& input_nodes) {
   input_nodes.clear();
   std::vector<const Node*> in_nodes;
   for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit) {
@@ -152,7 +156,7 @@ bool canEvalNodeArgument(const GraphViewer& graph,
   return true;
 }
 
-float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
+inline float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
   int p = -1;
@@ -184,12 +188,12 @@ float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
  * Taken from the tensorRT EP to allow MIGraphX EP to reuse calibration tables for existing models
  *
  */
-bool ReadDynamicRange(const std::string file_name,
-                      const bool is_calibration_table,
-                      std::unordered_map<std::string,
-                                         float>& dynamic_range_map) {
-  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
-  if (!infile) {
+inline bool ReadDynamicRange(const std::filesystem::path& filename,
+                             const bool is_calibration_table,
+                             std::unordered_map<std::string,
+                                                float>& dynamic_range_map) {
+  std::ifstream infile{filename, std::ios::binary | std::ios::in};
+  if (!infile.good()) {
     return false;
   }
 
@@ -215,7 +219,7 @@ bool ReadDynamicRange(const std::string file_name,
           dynamic_range_map[tensor_name] = dynamic_range;
         }
       } else {
-        throw std::runtime_error("This is not a TensorRT generated calibration table " + file_name);
+        throw std::runtime_error("This is not a TensorRT generated calibration table " + filename.string());
       }
     }
   } else {
@@ -240,14 +244,111 @@ bool ReadDynamicRange(const std::string file_name,
  * Get cache by name
  *
  */
-std::string GetCachePath(const std::string& root, const std::string& name) {
-  if (root.empty()) {
-    return name;
-  } else {
-    fs::path path = root;
-    path.append(name);
-    return path.string();
+inline std::filesystem::path GetCachePath(const std::filesystem::path& root, std::string_view name) {
+  return root.empty() ? std::filesystem::path{ToPathString(name)} : root / ToPathString(name);
+}
+
+inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
+  HashValue model_hash;
+
+  // find the top level graph
+  const Graph* cur_graph = &graph_viewer.GetGraph();
+  while (cur_graph->IsSubgraph()) {
+    cur_graph = cur_graph->ParentGraph();
   }
+
+  const Graph& main_graph = *cur_graph;
+  uint32_t hash[4] = {0, 0, 0, 0};
+
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  // Use the model's file name instead of the entire path to avoid cache regeneration if a path changes
+  const fs::path path{main_graph.ModelPath()};
+
+  if (path.has_filename()) {
+    const auto model_name = path.filename().string();
+
+    LOGS_DEFAULT(INFO) << "Model name is '" << model_name << "'";
+    // Ensure enough characters are hashed in case model names are too short
+    const size_t model_name_length = model_name.length();
+    constexpr size_t hash_string_length = 500;
+    std::string repeat_model_name = model_name;
+    for (size_t i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+      repeat_model_name += model_name;
+    }
+    hash_str(repeat_model_name);
+  } else {
+    LOGS_DEFAULT(INFO) << "Model path is empty";
+  }
+
+  // fingerprint current graph by hashing graph inputs
+  for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
+    hash_str(node_arg->Name());
+  }
+
+  // hashing outputs, inputs and inputs shapes of each node
+  const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph_viewer.GetNode(node_index[index]);
+    for (const auto* node_arg : node->OutputDefs()) {
+      if (node_arg != nullptr && node_arg->Exists()) {
+        hash_str(node_arg->Name());
+      }
+    }
+    for (const auto* node_arg : node->InputDefs()) {
+      if (node_arg != nullptr && node_arg->Exists()) {
+        hash_str(node_arg->Name());
+        if (node_arg->Shape() == nullptr) {
+          continue;
+        }
+        int dim_size = node_arg->Shape()->dim_size();
+        for (int i = 0; i < dim_size; i++) {
+          hash_str(std::to_string(node_arg->Shape()->dim(i).dim_value()));
+        }
+      }
+    }
+  }
+
+#ifdef __linux__
+  hash_str("LINUX");
+#elif defined(_WIN32)
+  hash_str("WINDOWS");
+#endif
+
+  model_hash = hash[0] | static_cast<uint64_t>(hash[1]) << 32;
+
+  std::array<char, sizeof(HashValue) << 1> s{};
+  auto [ptr, ec] = std::to_chars(s.data(), s.data() + s.size(), model_hash, 16);
+  return std::string{s.data(), ptr};
+}
+
+inline std::string_view TrimLeft(std::string_view sv, int (*fn)(int) = std::isspace) {
+  return sv.substr(0, sv.end() - std::find_if(sv.begin(), sv.end(), [fn](int ch) {
+                        return fn(ch);
+                      }));
+}
+
+inline std::string_view TrimRight(std::string_view sv, int (*fn)(int) = std::isspace) {
+  return sv.substr(sv.end() - std::find_if(sv.rbegin(), sv.rend(), [fn](int ch) {
+                                return fn(ch);
+                              }).base());
+}
+
+inline std::string_view Trim(std::string_view sv, int (*fn)(int) = std::isspace) {
+  return TrimRight(TrimLeft(sv, fn), fn);
+}
+
+inline int ToInteger(const std::string_view sv) {
+  int result = 0;
+  if (auto [_, ec] = std::from_chars(sv.data(), sv.data() + sv.length(), result); ec == std::errc()) {
+    return result;
+  }
+  ORT_THROW("invalid input for conversion to integer");
 }
 
 }  // namespace onnxruntime
