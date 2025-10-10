@@ -274,6 +274,8 @@ else()
     if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
       target_link_options(onnxruntime_webassembly PRIVATE
         "SHELL:-s JSPI=1"
+        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
       )
     else()
       # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
@@ -328,8 +330,12 @@ else()
     endif()
   endif()
 
-  # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+    # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s DISABLE_EXCEPTION_THROWING=0"
+    )
+  endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)

@@ -101,6 +101,7 @@ echo "Calling $ROOT_DIR/build.sh to build WebAssembly..."
     --use_webnn \
     --use_webgpu \
     --enable_wasm_jspi \
+    --cmake_generator "Ninja" \
     --build_dir "$BUILD_DIR"
 
 # The 'set -e' command at the beginning of the script ensures that the script will exit
