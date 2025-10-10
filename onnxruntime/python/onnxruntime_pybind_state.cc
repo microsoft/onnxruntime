@@ -749,6 +749,14 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_weight_stripped_engine_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "use_tf32") {
+            if (option.second == "True" || option.second == "true" || option.second == "1") {
+              params.trt_use_tf32 = 1;
+            } else if (option.second == "False" || option.second == "false" || option.second == "0") {
+              params.trt_use_tf32 = 0;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'use_tf32' should be 'True'/'False' or '1'/'0'. Default is 'True'.\n");
+            }
           } else if (option.first == "trt_onnx_model_folder_path") {
             if (!option.second.empty()) {
               onnx_model_folder_path = option.second;

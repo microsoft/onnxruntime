@@ -323,6 +323,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int max_partition_iterations_ = 1000;
   size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 0;
+  bool use_tf32_ = true;
   bool fp16_enable_ = false;
   bool bf16_enable_ = false;
   bool int8_enable_ = false;
