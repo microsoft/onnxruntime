@@ -83,6 +83,10 @@ BackendManager::BackendManager(SessionContext& session_context,
 
   subgraph_context_.subgraph_name = fused_node.Name();
 
+  if (ModelHasSymbolicInputDims(subgraph)) {
+      subgraph_context_.has_dynamic_input_shape = true;
+  }
+
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
@@ -119,8 +123,7 @@ BackendManager::BackendManager(SessionContext& session_context,
     backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
   }
 
-  if (ModelHasSymbolicInputDims(subgraph)) {
-    subgraph_context_.has_dynamic_input_shape = true;
+  if (subgraph_context_.has_dynamic_input_shape) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if ((!session_context_.disable_dynamic_shapes &&
          (session_context_.device_type.find("CPU") != std::string::npos ||
@@ -609,7 +612,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     std::unordered_map<std::string, std::pair<size_t, size_t>> external_initializers_offset_and_length;
     std::string tempLocation;
     size_t extInitializerTotalSize = 0;
-    if (session_context_.has_external_weights) {
+    if (session_context_.has_external_weights && !subgraph_context_.has_dynamic_input_shape) {
       auto allInitializers = subgraph.GetAllInitializedTensors();
       for (auto& [name, tp] : allInitializers) {
         if (utils::HasExternalDataInMemory(*tp)) {
