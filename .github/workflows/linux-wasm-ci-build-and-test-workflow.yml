@@ -97,6 +97,19 @@ jobs:
             --skip_tests
         working-directory: ${{ github.workspace }}
 
+      - name: Build (simd + threads + WebGPU experimental, JSPI)
+        if: ${{ inputs.build_webgpu == true }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi \
+            --use_webgpu \
+            --use_webnn \
+            --enable_wasm_jspi \
+            --target onnxruntime_webassembly \
+            --skip_tests
+        working-directory: ${{ github.workspace }}
+
       - name: Create Artifacts
         if: ${{ inputs.skip_publish != true }}
         run: |
@@ -110,6 +123,10 @@ jobs:
           if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu ]; then
             cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.wasm ${{ github.workspace }}/artifacts/wasm/
             cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.mjs ${{ github.workspace }}/artifacts/wasm/
+          fi
+          if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi ]; then
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.wasm ${{ github.workspace }}/artifacts/wasm/
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.mjs ${{ github.workspace }}/artifacts/wasm/
           fi
 
       - name: Upload WASM artifacts

@@ -59,6 +59,14 @@ const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'
  */
 const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? false;
 
+/**
+ * --jspi
+ * --no-jspi (default)
+ *
+ * Enable or disable the use of JSPI. If enabled, JSPI will be used instead of ASYNCIFY.
+ *
+ * (temporary) This flag is used to test the JSPI integration. It will be removed in the future.
+ */
 const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
 
 console.log(`USE_WEBGPU_EP=${USE_WEBGPU_EP}, USE_JSPI=${USE_JSPI}`);
@@ -648,6 +656,32 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
+      },
+    });
+
+    // ort.jspi[.min].[m]js
+    await addAllWebBuildTasks({
+      outputName: 'ort.jspi',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.ENABLE_JSPI': 'true',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
+    });
+    // ort.jspi.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.jspi.bundle',
+      format: 'esm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.ENABLE_JSPI': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
