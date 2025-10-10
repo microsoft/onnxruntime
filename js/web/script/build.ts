@@ -5,7 +5,6 @@ import * as esbuild from 'esbuild';
 import minimist from 'minimist';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { inspect } from 'node:util';
 import { SourceMapConsumer, SourceMapGenerator } from 'source-map';
 
 console.time('BUILD');
@@ -15,8 +14,6 @@ console.time('BUILD');
  */
 
 const args = minimist(process.argv.slice(2));
-
-console.log(inspect(args));
 
 /**
  * --bundle-mode=prod (default)
@@ -68,8 +65,6 @@ const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? f
  * (temporary) This flag is used to test the JSPI integration. It will be removed in the future.
  */
 const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
-
-console.log(`USE_WEBGPU_EP=${USE_WEBGPU_EP}, USE_JSPI=${USE_JSPI}`);
 
 /**
  * Root folder of the source code: `<ORT_ROOT>/js/`
