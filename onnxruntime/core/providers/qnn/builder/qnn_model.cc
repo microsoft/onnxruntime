@@ -116,12 +116,12 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   bool rt = true;
 
   qnn::profile::ProfilingInfo profiling_info;
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   if (qnn_backend_manager_->ProfilingEnabled()) {
     profiling_info.graph_name = graph_name;
-#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     profiling_info.start_time = qnn::utils::GetTimeStampInUs();
-#endif
   }
+#endif
 
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
 

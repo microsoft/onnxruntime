@@ -660,7 +660,7 @@ Status QnnBackendManager::InitializeProfiling() {
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile! Error: ", QnnErrorHandleToString(result));
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
-  use_system_profiling_api_ = true;
+  profiling_enabled_ = true;
   ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
 
   if (enable_optrace) {
@@ -1681,25 +1681,22 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
     profiling_info.qnn_system_interface = qnn_sys_interface_;
 #endif
 
-    auto profile_writer = std::make_unique<profile::Serializer>(profiling_info);
+    profile::Serializer profile_writer(profiling_info);
     if (!profiling_file_path_.empty()) {
-      ORT_RETURN_IF_ERROR(profile_writer->InitFile());
+      ORT_RETURN_IF_ERROR(profile_writer.InitFile());
     }
 
     for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", profile_writer.get(),
+          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", profile_writer,
                                 backendSupportsExtendedEventData));
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingSubEvents(*(profile_events + event_idx), profile_writer.get(),
+          ExtractProfilingSubEvents(*(profile_events + event_idx), profile_writer,
                                     backendSupportsExtendedEventData));
     }
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
-    if (profile_writer) {
-      ORT_RETURN_IF_ERROR(profile_writer->SerializeEvents());
-    }
+    ORT_RETURN_IF_ERROR(profile_writer.SerializeEvents());
 #endif
-    profile_writer.reset();
 
     if (!profiling_file_path_.empty()) {
       LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to file ("
@@ -1716,7 +1713,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
 
 Status QnnBackendManager::ExtractProfilingSubEvents(
     QnnProfile_EventId_t profile_event_id,
-    profile::Serializer* profile_writer,
+    profile::Serializer& profile_writer,
     bool useExtendedEventData) {
   const QnnProfile_EventId_t* profile_sub_events{nullptr};
   uint32_t num_sub_events{0};
@@ -1728,12 +1725,10 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     QnnSystemProfile_ProfileEventV1_t* parent_system_event = nullptr;
-    if (profile_writer) {
-      parent_system_event = profile_writer->GetParentSystemEvent(profile_event_id);
-      if (parent_system_event == nullptr) {
-        parent_system_event = profile_writer->GetSystemEventPointer(profile_event_id);
-        profile_writer->AddSubEventList(num_sub_events, parent_system_event);
-      }
+    parent_system_event = profile_writer.GetParentSystemEvent(profile_event_id);
+    if (parent_system_event == nullptr) {
+      parent_system_event = profile_writer.GetSystemEventPointer(profile_event_id);
+      profile_writer.AddSubEventList(num_sub_events, parent_system_event);
     }
 #endif
 
@@ -1741,9 +1736,9 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
       QnnProfile_EventId_t subevent_id = *(profile_sub_events + sub_event_idx);
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
-      if (profile_writer) {
-        ORT_RETURN_IF_ERROR(profile_writer->SetParentSystemEvent(subevent_id, parent_system_event));
-      }
+
+      ORT_RETURN_IF_ERROR(profile_writer.SetParentSystemEvent(subevent_id, parent_system_event));
+
 #endif
 
       ORT_RETURN_IF_ERROR(
@@ -1761,7 +1756,7 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
 Status QnnBackendManager::ExtractProfilingEvent(
     QnnProfile_EventId_t profile_event_id,
     const std::string& event_level,
-    profile::Serializer* profile_writer,
+    profile::Serializer& profile_writer,
     bool useExtendedEventData) {
   if (useExtendedEventData) {
     return ExtractProfilingEventExtended(profile_event_id, event_level, profile_writer);
@@ -1773,15 +1768,13 @@ Status QnnBackendManager::ExtractProfilingEvent(
 Status QnnBackendManager::ExtractProfilingEventBasic(
     QnnProfile_EventId_t profile_event_id,
     const std::string& event_level,
-    profile::Serializer* profile_writer) {
+    profile::Serializer& profile_writer) {
   QnnProfile_EventData_t event_data;
   Qnn_ErrorHandle_t result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(result & 0xFFFF);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
-  if (profile_writer) {
-    ORT_RETURN_IF_ERROR(profile_writer->ProcessEvent(profile_event_id, event_level, event_data));
-  }
+  ORT_RETURN_IF_ERROR(profile_writer.ProcessEvent(profile_event_id, event_level, event_data));
 
   return Status::OK();
 }
@@ -1789,13 +1782,13 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
 Status QnnBackendManager::ExtractProfilingEventExtended(
     QnnProfile_EventId_t profile_event_id,
     const std::string& event_level,
-    profile::Serializer* profile_writer) {
+    profile::Serializer& profile_writer) {
   QnnProfile_ExtendedEventData_t event_data_extended;
   auto resultGetExtendedEventData = qnn_interface_.profileGetExtendedEventData(profile_event_id, &event_data_extended);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(resultGetExtendedEventData & 0xFFFF);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != errorCode, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
-  ORT_RETURN_IF_ERROR(profile_writer->ProcessExtendedEvent(profile_event_id, event_level, event_data_extended));
+  ORT_RETURN_IF_ERROR(profile_writer.ProcessExtendedEvent(profile_event_id, event_level, event_data_extended));
 
   return Status::OK();
 }

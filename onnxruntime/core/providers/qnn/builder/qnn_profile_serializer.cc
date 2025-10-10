@@ -4,9 +4,9 @@
 #include "qnn_profile_serializer.h"
 #include "core/providers/qnn/qnn_telemetry.h"
 
-using namespace onnxruntime;
-using namespace qnn;
-using namespace profile;
+namespace onnxruntime {
+namespace qnn {
+namespace profile {
 
 const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap() {
   static const std::unordered_map<QnnProfile_EventUnit_t, std::string> unitStringMap = {
@@ -266,6 +266,21 @@ QnnSystemProfile_MethodType_t ParseMethodType(ProfilingMethodType method_type) {
   }
 }
 
+std::string GetSystemProfileErrorString(Qnn_ErrorHandle_t error) {
+  switch (error) {
+    case QNN_SYSTEM_PROFILE_ERROR_UNSUPPORTED_FEATURE:
+      return "Unsupported Feature";
+    case QNN_SYSTEM_PROFILE_ERROR_INVALID_HANDLE:
+      return "Invalid Handle";
+    case QNN_SYSTEM_PROFILE_ERROR_INVALID_ARGUMENT:
+      return "Invalid Argument";
+    case QNN_SYSTEM_PROFILE_ERROR_MEM_ALLOC:
+      return "Memory Allocation Error";
+    default:
+      return "Unknown";
+  }
+}
+
 Serializer::Serializer(const ProfilingInfo& profiling_info)
     : qnn_system_interface_(profiling_info.qnn_system_interface),
       profiling_info_(profiling_info),
@@ -273,7 +288,7 @@ Serializer::Serializer(const ProfilingInfo& profiling_info)
   std::filesystem::path output_fs_filepath(profiling_info.output_filepath);
   qnn_log_filename_ = output_fs_filepath.filename().string();
   // Remove extension (assumed to be ".csv") then add "_qnn.log"
-  size_t extension_start_idx = qnn_log_filename_.find(".");
+  size_t extension_start_idx = qnn_log_filename_.rfind(".");
   qnn_log_filename_ = qnn_log_filename_.substr(0, extension_start_idx);
   qnn_log_filename_.append("_qnn.log");
 
@@ -346,7 +361,10 @@ Status Serializer::SerializeEvents() {
 
   auto status = qnn_system_interface_.systemProfileCreateSerializationTarget(serialization_target, &config, 1,
                                                                              &serialization_target_handle);
-  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to create serialization target handle");
+  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to create serialization target handle: ",
+                GetSystemProfileErrorString(status));
+
+  ManagedSerializationTargetHandle managed_target_handle(serialization_target_handle, qnn_system_interface_);
 
   // Set subevent data pointers for all event data
   // Must be done here as underlying array ptrs can change as vectors are resized
@@ -370,15 +388,13 @@ Status Serializer::SerializeEvents() {
                                                                  system_profile_data_list.data(),
                                                                  1);
 
-  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to create serialize optrace data");
+  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to serialize QNN profiling data: ",
+                GetSystemProfileErrorString(status));
 
-  status = qnn_system_interface_.systemProfileFreeSerializationTarget(serialization_target_handle);
-  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to free serialization target");
+  status = managed_target_handle.FreeHandle();
+  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to free serialization target: ",
+                GetSystemProfileErrorString(status));
 
-  // explicitly call clear on objs so they are not optimized out prematurely during compilation
-  system_profile_data_list.clear();
-  app_version.clear();
-  backend_version.clear();
   return Status::OK();
 }
 
@@ -390,11 +406,12 @@ void Serializer::AddSubEventList(const uint32_t num_sub_events, QnnSystemProfile
 }
 
 QnnSystemProfile_ProfileEventV1_t* Serializer::GetSystemEventPointer(QnnProfile_EventId_t event_id) {
-  if (event_profile_id_lookup_map_.find(event_id) == event_profile_id_lookup_map_.end()) {
+  auto it = event_profile_id_lookup_map_.find(event_id);
+  if (it == event_profile_id_lookup_map_.end()) {
     return nullptr;
   }
 
-  return event_profile_id_lookup_map_.at(event_id);
+  return it->second;
 }
 
 Status Serializer::SetParentSystemEvent(
@@ -442,4 +459,8 @@ QnnSystemProfile_ProfileEventV1_t* Serializer::CreateSystemExtendedEvent(std::ve
 
   return system_event;
 }
-#endif
+#endif  // QNN_SYSTEM_PROFILE_API_ENABLED
+
+}  // namespace profile
+}  // namespace qnn
+}  // namespace onnxruntime

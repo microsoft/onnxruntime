@@ -192,11 +192,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ExtractBackendProfilingInfo(qnn::profile::ProfilingInfo& profiling_info);
 
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, profile::Serializer* profile_writer,
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, profile::Serializer& profile_writer,
                                    bool backendSupportsExtendedEventData);
 
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                               profile::Serializer* profile_writer, bool backendSupportsExtendedEventData);
+                               profile::Serializer& profile_writer, bool backendSupportsExtendedEventData);
 
   Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
@@ -233,7 +233,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Resets the context priority to the session default as defined by context_priority_
   Status ResetContextPriority();
 
-  bool ProfilingEnabled() { return use_system_profiling_api_; }
+  bool ProfilingEnabled() { return profiling_enabled_; }
 
  private:
   Status LoadBackend();
@@ -317,10 +317,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   }
 
   Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                    profile::Serializer* profile_writer);
+                                    profile::Serializer& profile_writer);
 
   Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                       profile::Serializer* profile_writer);
+                                       profile::Serializer& profile_writer);
 
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
   std::string QnnErrorHandleToString(Qnn_ErrorHandle_t error);
@@ -436,7 +436,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
   bool system_lib_loaded_ = false;
-  bool use_system_profiling_api_ = false;
+  bool profiling_enabled_ = false;
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;

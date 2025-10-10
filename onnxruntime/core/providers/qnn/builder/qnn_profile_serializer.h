@@ -4,6 +4,9 @@
 #pragma once
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include <System/QnnSystemInterface.h>
 
@@ -21,8 +24,6 @@
 #endif
 
 namespace onnxruntime {
-
-using namespace common;
 
 namespace qnn {
 namespace profile {
@@ -69,8 +70,6 @@ class Serializer {
   // Keeps code clean, any performance impacts can be ignored when profiling is enabled
  public:
   ~Serializer() {
-    cleanup();
-
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     event_data_list_.clear();
     system_parent_event_lookup_map_.clear();
@@ -80,13 +79,6 @@ class Serializer {
   }
 
   Status InitFile();
-
- private:
-  void cleanup() {
-    if (outfile_.is_open()) {
-      outfile_.close();
-    }
-  }
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
  public:
@@ -102,6 +94,26 @@ class Serializer {
                               QnnSystemProfile_ProfileEventV1_t* const system_parent_event);
 
  private:
+  class ManagedSerializationTargetHandle {
+   public:
+    ManagedSerializationTargetHandle(const QnnSystemProfile_SerializationTargetHandle_t& raw_handle,
+                                     QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface) : qnn_system_interface_(qnn_system_interface),
+                                                                                           handle_(raw_handle) {}
+
+    ~ManagedSerializationTargetHandle() {
+      auto status = FreeHandle();
+      ORT_UNUSED_PARAMETER(status);
+    }
+
+    Qnn_ErrorHandle_t FreeHandle() {
+      return qnn_system_interface_.systemProfileFreeSerializationTarget(handle_);
+    }
+
+   private:
+    QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface_;
+    QnnSystemProfile_SerializationTargetHandle_t handle_;
+  };  // ManagedSerializationTargetHandle
+
   QnnSystemProfile_ProfileEventV1_t* AddEvent(const QnnProfile_EventId_t event_Id,
                                               const QnnProfile_EventData_t event);
 
@@ -132,7 +144,7 @@ class Serializer {
   std::unordered_map<QnnSystemProfile_ProfileEventV1_t*, std::vector<QnnSystemProfile_ProfileEventV1_t> > sub_event_data_map_;
 
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface_;
-#endif
+#endif  // QNN_SYSTEM_PROFILE_API_ENABLED
   const ProfilingInfo profiling_info_;
   bool tracelogging_provider_ep_enabled_ = false;
   std::ofstream outfile_;
