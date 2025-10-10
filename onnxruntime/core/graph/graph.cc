@@ -2651,8 +2651,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
 
       const auto& tensor_shape_proto = def->GetValuesAfterDataPropagation();
 
-      // The inferred data has rank > 1 and the all the dimensions have values (not symbolic)
-      if (tensor_shape_proto.dim_size() > 1) {
+      // The inferred data has rank > 0 and the all the dimensions have values (not symbolic)
+      if (tensor_shape_proto.dim_size() > 0) {
         TensorProto tensor_proto;
         tensor_proto.set_data_type(TensorProto_DataType_INT64);
         tensor_proto.add_dims(tensor_shape_proto.dim_size());
@@ -2778,7 +2778,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
 // shape inference for onnxruntime graphs.
 class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext {
  public:
-  DataPropagationContextImpl(Node& node, const Graph& graph) noexcept : node_(node), graph_(graph) {
+  DataPropagationContextImpl(Node& node) noexcept : node_(node) {
     node_output_types_.resize(node.OutputDefs().size());
   }
 
@@ -2857,7 +2857,7 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
     return nullptr;
   }
 
-  void addOutputData(size_t index, TensorShapeProto&& tsp) {
+  void addOutputData(size_t index, TensorShapeProto&& tsp) override {
     if (index >= node_output_types_.size()) return;
 
     TypeProto& type_proto = node_output_types_[index];
@@ -2875,7 +2875,6 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
 
  private:
   Node& node_;
-  const Graph& graph_;
   std::vector<TypeProto> node_output_types_;
 };
 
@@ -3242,7 +3241,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   // returned here.
   SubgraphInferencingFunc func(Graph::InferAndVerifySubgraphTypes);
   InferenceContextImpl context(node, func, *this, options);
-  DataPropagationContextImpl data_propagation_context(node, *this);
+  DataPropagationContextImpl data_propagation_context(node);
 
   {
     auto status = Status::OK();
