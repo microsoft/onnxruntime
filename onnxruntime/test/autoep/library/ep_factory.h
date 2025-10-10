@@ -9,12 +9,15 @@
 #include "ep_data_transfer.h"
 #include "example_plugin_ep_utils.h"
 
+class ExampleEp;
+
 /// <summary>
 /// Example EP factory that can create an OrtEp and return information about the supported hardware devices.
 /// </summary>
 class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
   ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger);
+  ~ExampleEpFactory();
 
   OrtDataTransferImpl* GetDataTransfer() const {
     return data_transfer_impl_.get();
@@ -24,6 +27,9 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   ArenaAllocator* GetArenaAllocator() const {
     return arena_allocator_.get();
   }
+
+  // Called by child OrtEp instances to retrieve the cached kernel registry for that EP.
+  OrtStatus* GetKernelRegistryForEp(ExampleEp& ep, /*out*/ const OrtKernelRegistry** kernel_registry);
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -84,4 +90,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
+
+  // Cached kernel registry used by all OrtEp instances created by this factory. Refer to OrtEp::GetKernelRegistry.
+  //
+  // Note: If this factory instead created EP instances that each supported different hardware configurations, then
+  // the factory could cache a different kernel registry per EP configuration.
+  OrtKernelRegistry* kernel_registry_ = nullptr;
 };

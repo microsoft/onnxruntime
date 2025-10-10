@@ -3430,53 +3430,14 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments provided to CopyTensors.");
   }
 
-  const OrtMemoryInfo* src_memory_info = nullptr;
-  const OrtMemoryInfo* dst_memory_info = nullptr;
-
-  const auto validate_and_get_mem_info =
-      [](const OrtValue* const* values, size_t num_values, const OrtMemoryInfo*& mem_info) -> OrtStatus* {
-    for (size_t i = 0; i < num_values; ++i) {
-      const OrtValue* value = values[i];
-      if (value == nullptr || !value->IsTensor() || !value->IsAllocated()) {
-        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue must contain Tensor with data.");
-      }
-
-      if (i == 0) {
-        mem_info = &value->Get<Tensor>().Location();
-      } else if (*mem_info != value->Get<Tensor>().Location()) {
-        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "All OrtValue instances must have the same OrtMemoryInfo");
-      }
-    }
-
-    return nullptr;
-  };
-
-  ORT_API_RETURN_IF_ERROR(validate_and_get_mem_info(src_tensors, num_tensors, src_memory_info));
-  ORT_API_RETURN_IF_ERROR(validate_and_get_mem_info(const_cast<const OrtValue**>(dst_tensors), num_tensors,
-                                                    dst_memory_info));
-
   auto& data_transfer_mgr = env->GetEnvironment().GetDataTransferManager();
-  const auto* data_transfer = data_transfer_mgr.GetDataTransfer(src_memory_info->device, dst_memory_info->device);
 
-  if (data_transfer == nullptr) {
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
-                                 "Data transfer implementation between source and destination device was not found.");
-  }
-
-  std::vector<IDataTransfer::SrcDstPair> pairs;
-  pairs.reserve(num_tensors);
-  for (size_t i = 0; i < num_tensors; ++i) {
-    pairs.push_back({
-        src_tensors[i]->Get<Tensor>(),
-        *dst_tensors[i]->GetMutable<Tensor>(),
-        stream,
-    });
-  }
-
-  ORT_API_RETURN_IF_STATUS_NOT_OK(data_transfer->CopyTensors(pairs));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyTensors(data_transfer_mgr,
+                                              gsl::span<const OrtValue* const>(src_tensors, num_tensors),
+                                              gsl::span<OrtValue* const>(dst_tensors, num_tensors),
+                                              stream));
 
   return nullptr;
-
   API_IMPL_END
 }
 
