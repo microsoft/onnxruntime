@@ -622,6 +622,7 @@ def generate_build_tree(
                 build_dir,
                 configs,
                 emscripten_root_path,
+                args.enable_wasm_jspi,
                 not args.disable_rtti,
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,

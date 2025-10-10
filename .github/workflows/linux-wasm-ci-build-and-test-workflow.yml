@@ -37,7 +37,15 @@ jobs:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     env:
       buildArch: x64
-      common_build_args: --parallel ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} --config ${{ inputs.build_config }} --skip_submodule_sync --build_wasm --enable_wasm_simd ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }} ${{ inputs.extra_build_args }}
+      common_build_args: >-
+        --parallel
+        ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
+        --config ${{ inputs.build_config }}
+        --skip_submodule_sync
+        --build_wasm
+        --enable_wasm_simd
+        ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }}
+        ${{ inputs.extra_build_args }}
 
     steps:
       - name: Checkout code
@@ -70,6 +78,7 @@ jobs:
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -82,6 +91,7 @@ jobs:
             --use_jsep \
             --use_webnn \
             --target onnxruntime_webassembly \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -94,6 +104,7 @@ jobs:
             --use_webgpu \
             --use_webnn \
             --target onnxruntime_webassembly \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
