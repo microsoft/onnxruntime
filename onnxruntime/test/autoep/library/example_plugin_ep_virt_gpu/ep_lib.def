@@ -1,4 +1,4 @@
-LIBRARY "ep_lib_virtual_gpu.dll"
+LIBRARY "example_plugin_ep_virt_gpu.dll"
 EXPORTS
  CreateEpFactories @1
  ReleaseEpFactory @2

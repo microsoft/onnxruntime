@@ -12,7 +12,7 @@ struct AddImpl;
 
 /// <summary>
 /// Example EP for a virtual GPU OrtHardwareDevice that was created by the EP factory itself (not ORT).
-/// Does not currently execute any nodes. Only used to test that an EP can provide ORT additional hardware devices.
+/// Can only compile/execute a single Add node. Only used to test that an EP can provide additional hardware devices.
 /// </summary>
 class EpVirtualGpu : public OrtEp {
  public:

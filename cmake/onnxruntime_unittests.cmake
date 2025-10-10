@@ -2013,37 +2013,37 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
   source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_library_src})
 
   #
-  # ep_lib_virtual_gpu
+  # example_plugin_ep_virt_gpu
   #
-  set(onnxruntime_autoep_test_ep_lib_virtual_gpu_src
+  set(onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src
           "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h"
-          "${TEST_SRC_DIR}/autoep/library/ep_lib_virtual_gpu/ep_lib_virtual_gpu.cc"
-          "${TEST_SRC_DIR}/autoep/library/ep_lib_virtual_gpu/ep_factory.h"
-          "${TEST_SRC_DIR}/autoep/library/ep_lib_virtual_gpu/ep_factory.cc"
-          "${TEST_SRC_DIR}/autoep/library/ep_lib_virtual_gpu/ep.h"
-          "${TEST_SRC_DIR}/autoep/library/ep_lib_virtual_gpu/ep.cc")
-  onnxruntime_add_shared_library_module(ep_lib_virtual_gpu ${onnxruntime_autoep_test_ep_lib_virtual_gpu_src})
-  target_include_directories(ep_lib_virtual_gpu PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(ep_lib_virtual_gpu PRIVATE onnxruntime)
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_lib_entry.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_factory.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_factory.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep.cc")
+  onnxruntime_add_shared_library_module(example_plugin_ep_virt_gpu ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
+  target_include_directories(example_plugin_ep_virt_gpu PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_plugin_ep_virt_gpu PRIVATE onnxruntime)
 
   if(UNIX)
     if (APPLE)
 	    set(ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG "-Xlinker -dead_strip")
     elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       string(CONCAT ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG
-             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/ep_lib_virtual_gpu/ep_lib_virtual_gpu.lds "
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_lib.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
     endif()
   else()
     set(ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG
-        "-DEF:${TEST_SRC_DIR}/autoep/library/ep_lib_virtual_gpu/ep_lib_virtual_gpu.def")
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_lib.def")
   endif()
 
-  set_property(TARGET ep_lib_virtual_gpu APPEND_STRING PROPERTY LINK_FLAGS
+  set_property(TARGET example_plugin_ep_virt_gpu APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG})
 
-  set_target_properties(ep_lib_virtual_gpu PROPERTIES FOLDER "ONNXRuntimeTest")
-  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_ep_lib_virtual_gpu_src})
+  set_target_properties(example_plugin_ep_virt_gpu PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
 
   #
   # test library
@@ -2080,7 +2080,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
           TARGET onnxruntime_autoep_test
           SOURCES ${onnxruntime_autoep_test_SRC} ${onnxruntime_unittest_main_src}
           LIBS ${onnxruntime_autoep_test_LIBS}
-          DEPENDS ${all_dependencies} example_plugin_ep ep_lib_virtual_gpu
+          DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu
   )
 endif()
 

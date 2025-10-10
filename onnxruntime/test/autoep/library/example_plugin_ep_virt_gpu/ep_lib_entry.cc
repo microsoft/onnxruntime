@@ -27,7 +27,6 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   // Manual init for the C++ API
   Ort::InitApi(ort_api);
 
-  // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<EpFactoryVirtualGpu>(*ort_api, *ep_api,
                                                                                 *default_logger);
 
