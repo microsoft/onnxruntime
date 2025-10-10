@@ -28,6 +28,21 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block);
 
+template <typename T, typename T_QUANT, typename T_SCALE>
+Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
+                          const T_QUANT* quantized_data, const T_SCALE* scale,
+                          const int* seqlens, int batch_size, int num_heads,
+                          int past_sequence_length, int sequence_length,
+                          int head_size, bool is_past, int bit_width,
+                          KVQuantizationType quant_type);
+
+template <typename T, typename T_QUANT, typename T_SCALE>
+Status LaunchQuantizeKV(cudaStream_t stream, T_QUANT* quantized_data,
+                        T* dequantized_data, const T_SCALE* scale,
+                        const int* seqlens, int batch_size, int num_heads,
+                        int sequence_length, int head_size, int bit_width,
+                        KVQuantizationType quant_type);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
