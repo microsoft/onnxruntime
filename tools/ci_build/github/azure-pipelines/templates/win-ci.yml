@@ -78,7 +78,7 @@ parameters:
   default: '11.8'
   values:
       - 11.8
-      - 12.2
+      - 12.8
 
 - name: SpecificArtifact
   displayName: Use Specific Artifact
@@ -136,7 +136,7 @@ stages:
 
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
       pool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
     ${{ else }}:
       pool:

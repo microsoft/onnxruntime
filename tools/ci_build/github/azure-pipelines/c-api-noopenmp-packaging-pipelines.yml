@@ -73,12 +73,12 @@ variables:
 - name: ReleaseVersionSuffix
   value: ''
 - name: win_trt_version
-  value: 12.2
+  value: 12.8
 
 - name: win_trt_home
   value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
 - name: win_cuda_home
-  value: $(Agent.TempDirectory)\v12.2
+  value: $(Agent.TempDirectory)\v12.8
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.
@@ -142,7 +142,7 @@ extends:
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
-        CudaVersion: 12.2
+        CudaVersion: 12.8
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
         win_trt_home: ${{ variables.win_trt_home }}

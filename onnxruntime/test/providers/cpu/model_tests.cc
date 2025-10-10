@@ -678,6 +678,9 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                      ORT_TSTR("fp16_coreml_FNS-Candy"),
                                                      ORT_TSTR("fp16_test_tiny_yolov2"),
                                                      ORT_TSTR("fp16_test_shufflenet"),
+                                                     ORT_TSTR("yolov3"),            // cuDNN frontend no valid engine, #26274
+                                                     ORT_TSTR("yolov4"),            // cuDNN frontend no valid engine, #26274
+                                                     ORT_TSTR("ssd_mobilenet_v1"),  // cuDNN frontend no valid engine, #26274
                                                      ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
   // For ROCm EP, also disable the following tests due to flakiness,
   // mainly with precision issue and random memory access fault.
