@@ -92,36 +92,36 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status GetExtSemaphore(union FencePtr fencePtr, void** extSemFence, enum ExternalSyncPrimitive extSyncPrimitive) {
+  virtual Status GetExtSemaphore(struct FenceParams fenceParams, void** extSemFence) {
 
-    *extSemFence = (void*)&fencePtr;   //fall back path
-    ORT_UNUSED_PARAMETER(extSyncPrimitive);
+    *extSemFence = (void*)&fenceParams;   //fall back path
     return Status::OK();
   }
 
-  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
 
+    HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    ExternalSyncPrimitive extSyncPrimitive = ((struct FenceParams*)extSemFence)->extSyncPrimitive;
     switch (extSyncPrimitive) {
       case ExternalSyncPrimitive_D3D12Fence:
-        HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        ((union FencePtr*)extSemFence)->pFence->SetEventOnCompletion(fenceValue, hEvent);
+        ((struct FenceParams*)extSemFence)->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
         break;
       // case ExternalSyncPrimitive_VulkanSemaphore:
-      //   VkFence fence = ((union FencePtr*)extSemFence)->pFence;
-      //   vkWaitForFences(device, 1, &fence, VK_TRUE, fenceValue);
+      //   VkFence fence = ((struct FenceParams*)extSemFence)->FencePtr.pFenceVulkan;
+      //   fence = nullptr;
+      //   // vkWaitForFences(device, 1, &fence, VK_TRUE, fenceValue);
       //   break;
     }
 
     return Status::OK();
   }
-  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue, enum ExternalSyncPrimitive extSyncPrimitive) {
+  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(extSemFence);
     ORT_UNUSED_PARAMETER(stream);
     ORT_UNUSED_PARAMETER(fenceValue);
-    ORT_UNUSED_PARAMETER(extSyncPrimitive);
 
     const OrtSyncStreamImpl* streamImpl;
     OrtSyncNotificationImpl* streamNotification;

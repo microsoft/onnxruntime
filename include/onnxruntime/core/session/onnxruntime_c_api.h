@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <d3d12.h>
+// #include <vulkan/vulkan.h>
 
 /** \brief The API version defined in this header
  *
@@ -511,11 +512,15 @@ typedef enum ExternalSyncPrimitive {
   ExternalSyncPrimitive_VulkanSemaphore,
 } ExternalSyncPrimitive;
 
-typedef union FencePtr
+typedef struct FenceParams
 {
-    ID3D12Fence* pFence;
-    // Vulkan fence here
-} FencePtr;
+  ExternalSyncPrimitive extSyncPrimitive;
+  union FencePtr
+  {
+      ID3D12Fence* pFence;
+      // VkFence pFenceVulkan;    // Vulkan fence here
+  } FencePtr;
+} FenceParams;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
@@ -6498,9 +6503,9 @@ struct OrtApi {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
 
-  ORT_API2_STATUS(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union FencePtr fencePtr, _In_ void** extSemFence, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
-  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
-  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue, _In_ enum ExternalSyncPrimitive extSyncPrimitive);
+  ORT_API2_STATUS(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ struct FenceParams fenceParams, _In_ void** extSemFence);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /** \brief Get the native handle of the sync stream.
    *
