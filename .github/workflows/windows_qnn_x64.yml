@@ -47,14 +47,14 @@ jobs:
       - name: Download QNN SDK
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v2.38.0.250901 .
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v2.39.0.250926 .
           dir
         shell: pwsh
             
       - name: Set QNN_SDK_ROOT environment variable
         shell: pwsh
         run: |
-          $qnn_sdk_path = Join-Path $env:RUNNER_TEMP "qnn-v2.38.0.250901"
+          $qnn_sdk_path = Join-Path $env:RUNNER_TEMP "qnn-v2.39.0.250926"
           echo "QNN_SDK_ROOT=$qnn_sdk_path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "QNN SDK Root: $qnn_sdk_path"
           dir $qnn_sdk_path

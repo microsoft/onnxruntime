@@ -26,7 +26,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.38.0.250901
+  default: 2.39.0.250926
   
 - name: is1ES
   displayName: 'Whether the pipeline is running in 1ES'
