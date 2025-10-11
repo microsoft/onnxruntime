@@ -871,22 +871,12 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 }
 
 std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() const {
-  // Use different registries based on graph capture configuration
-  static std::shared_ptr<KernelRegistry> registry_with_graph_capture;
-  static std::shared_ptr<KernelRegistry> registry_without_graph_capture;
-  static std::once_flag init_flag_with_graph_capture;
-  static std::once_flag init_flag_without_graph_capture;
-
   if (enable_graph_capture_) {
-    std::call_once(init_flag_with_graph_capture, []() {
-      registry_with_graph_capture = webgpu::RegisterKernels(true);
-    });
-    return registry_with_graph_capture;
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(true);
+    return registry;
   } else {
-    std::call_once(init_flag_without_graph_capture, []() {
-      registry_without_graph_capture = webgpu::RegisterKernels(false);
-    });
-    return registry_without_graph_capture;
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(false);
+    return registry;
   }
 }
 
