@@ -879,12 +879,12 @@ std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() con
 
   if (enable_graph_capture_) {
     std::call_once(init_flag_with_graph_capture, []() {
-      registry_with_graph_capture = webgpu::RegisterKernels(true);  // with int64 support
+      registry_with_graph_capture = webgpu::RegisterKernels(true);
     });
     return registry_with_graph_capture;
   } else {
     std::call_once(init_flag_without_graph_capture, []() {
-      registry_without_graph_capture = webgpu::RegisterKernels(false);  // without int64 support
+      registry_without_graph_capture = webgpu::RegisterKernels(false);
     });
     return registry_without_graph_capture;
   }
