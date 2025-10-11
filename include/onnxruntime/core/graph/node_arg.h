@@ -107,6 +107,9 @@ class NodeArg {
   /** Gets this NodeArg as a NodeArgInfo, AKA ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 
+  /** Gets the inferred shape as a TensorShapeProto. */
+  const ONNX_NAMESPACE::TensorShapeProto& GetValuesAfterDataPropagation() const noexcept { return values_after_data_propagation_; }
+
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
@@ -127,6 +130,22 @@ class NodeArg {
 
   // Node arg name, type and shape.
   NodeArgInfo node_arg_info_;
+
+  // This variable stores the inferred shape data as a TensorShapeProto after executing
+  // the ONNX operator's PartialDataPropagationFunction().
+  //
+  // Calling an operator's TypeAndShapeInferenceFunction() alone is sometimes insufficient
+  // for complete shape inference. For example, the Shape operator only provides the
+  // output's rank (1-dimensional) but not its actual dimension values.
+  // The PartialDataPropagationFunction(), defined in the ONNX operator schema, must also
+  // be executed to obtain the concrete output shape values, allowing accurate propagation
+  // of shape information throughout the graph.
+  ONNX_NAMESPACE::TensorShapeProto values_after_data_propagation_;
+
+  // This variable stores the inferred scalar output.
+  // It is also used for shape inference and data propagation to ensure consistent shape and
+  // value information throughout the graph.
+  int64_t scalar_value_after_data_propagation_ = std::numeric_limits<int64_t>::min();
 
   // Flag indicates whether <*this> node arg exists or not.
   bool exists_;
