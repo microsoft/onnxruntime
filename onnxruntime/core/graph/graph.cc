@@ -2887,7 +2887,7 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
     return Status::OK();
   }
 
-  // If the dimension size is 0, it indicates one of the following cases:
+  // If the dimension size is 0, it could indicate one of the following cases:
   //   1. The inferred output is a scalar.
   //   2. The node's input is a scalar, and the operator's PartialDataPropagationFunction() cannot handle it.
   //
@@ -2896,7 +2896,7 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
   // scalar value in the NodeArg if applicable.
   if (dim_size == 0) {
     if (node.OpType() == "Gather") {
-      // Following code extracts an element from a 1D array.
+      // Following code extracts an element from a 1D array if all conditions are met.
       // e.g.
       // shape data is [1, 3, 64, 64] -> gets 64 if the index is 2.
       // shape data is [1, 3, 64, 64] -> gets 3 if the index is 1.
@@ -2948,42 +2948,58 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
       }
 
     } else if (node.OpType() == "Unsqueeze") {
-      // Following code expends the dimension of a scalr to one dimension.
-      // e.g.
-      // shape data is 64 -> gets [64]
+      // Following code expands a scalr to one dimension array if all conditions are met.
+      // e.g. shape data is 64 -> it becomes [64]
 
       // Try to get the "data" input
       const auto* input_0 = node.GetDefinitions().input_defs[0];
 
-      // Only handle the "data" input is previously inferred from data propagation and is a scalar
+      // Only handle the "data" input which is previously inferred from data propagation and is a scalar
       if (input_0->scalar_value_after_data_propagation_ != std::numeric_limits<int64_t>::min()) {
-        // Try to get the "Axes" input as an initializer
-        const auto* input_1 = node.GetDefinitions().input_defs[1];
-        const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
+        // Try to get the "axes" value
         int64_t axis = -1;
 
-        if (initializer) {
-          if (utils::HasRawData(*initializer)) {
-            const std::string& raw = initializer->raw_data();
-            const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
-            axis = *data;
-          } else {
-            if (initializer->data_type() == TensorProto_DataType_INT32) {
-              std::vector<int32_t> values;
-              values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
-              if (values.size() == 1) {
-                axis = static_cast<int64_t>(values[0]);
-              }
-            } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-              std::vector<int64_t> values;
-              values.assign(initializer->int64_data().begin(), initializer->int64_data().end());
-              if (values.size() == 1) {
-                axis = values[0];
+        // Note: Starting from opset 13, "axes" is provided as a second input to the Unsqueeze operator.
+        //       In opset 11 and earlier, "axes" is defined as a node attribute instead.
+        if (node.GetDefinitions().input_defs.size() > 1) {
+          const auto* input_1 = node.GetDefinitions().input_defs[1];
+          // Only check the case that "axes" input is an initializer
+          const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
+
+          if (initializer && initializer->dims_size() == 1) {
+            if (utils::HasRawData(*initializer)) {
+              const std::string& raw = initializer->raw_data();
+              const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
+              axis = *data;
+            } else {
+              if (initializer->data_type() == TensorProto_DataType_INT32) {
+                std::vector<int32_t> values;
+                values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
+                if (values.size() == 1) {
+                  axis = static_cast<int64_t>(values[0]);
+                }
+              } else if (initializer->data_type() == TensorProto_DataType_INT64) {
+                std::vector<int64_t> values;
+                values.assign(initializer->int64_data().begin(), initializer->int64_data().end());
+                if (values.size() == 1) {
+                  axis = values[0];
+                }
               }
             }
           }
         }
 
+        const ONNX_NAMESPACE::AttributeProto* axes_attr = node.GetAttributes().count("axes")
+                                                              ? &node.GetAttributes().at("axes")
+                                                              : nullptr;
+        if (axes_attr) {
+          for (auto v : axes_attr->ints()) {
+            axis = v;
+            break;
+          }
+        }
+
+        // In this case, the axis should be 0
         if (axis == 0) {
           output_def.values_after_data_propagation_.clear_dim();
           output_def.values_after_data_propagation_.add_dim()->set_dim_value(input_0->scalar_value_after_data_propagation_);
