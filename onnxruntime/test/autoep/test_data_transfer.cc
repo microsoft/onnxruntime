@@ -24,7 +24,7 @@ namespace test {
 
 TEST(OrtEpLibrary, DataTransfer) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
   Ort::ConstEpDevice ep_device(example_ep.get());
 
   auto device_memory_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);

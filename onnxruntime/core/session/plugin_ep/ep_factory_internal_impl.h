@@ -83,6 +83,17 @@ class EpFactoryInternalImpl {
                                  "CreateSyncStreamForDevice is not implemented for this EP factory.");
   }
 
+  virtual OrtStatus* GetAdditionalHardwareDevices(
+      _In_reads_(num_found_devices) const OrtHardwareDevice* const* /*found_devices*/,
+      _In_ size_t /*num_found_devices*/,
+      _Inout_ OrtHardwareDevice** /*additional_devices*/,
+      _In_ size_t /*max_additional_devices*/,
+      _Out_ size_t* num_additional_devices) noexcept {
+    // Default implementation does not return any additional hw devices.
+    *num_additional_devices = 0;
+    return nullptr;
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 
