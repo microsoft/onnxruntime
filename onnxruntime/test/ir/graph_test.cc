@@ -2729,10 +2729,11 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalDataViaSession) {
 
   // Save to a temporary file
   const std::string model_path = "test_in_memory_external_data.onnx";
-  std::ofstream file(model_path, std::ios::binary);
-  ASSERT_TRUE(file.is_open());
-  ASSERT_TRUE(model_proto.SerializeToOstream(&file));
-  file.close();
+  {
+    std::ofstream file(model_path, std::ios::binary);
+    ASSERT_TRUE(file.is_open());
+    ASSERT_TRUE(model_proto.SerializeToOstream(&file));
+  }
 
   // Test with ORT_DISABLE_ALL optimization which should trigger the bug without the fix
   SessionOptions so;
@@ -2742,11 +2743,8 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalDataViaSession) {
   InferenceSession session_object{so, GetEnvironment()};
 
   // This should succeed with the fix, fail without it
-  Status load_status = session_object.Load(model_path);
-  ASSERT_TRUE(load_status.IsOK()) << "Failed to load model: " << load_status.ErrorMessage();
-
-  Status init_status = session_object.Initialize();
-  ASSERT_TRUE(init_status.IsOK()) << "Failed to initialize session: " << init_status.ErrorMessage();
+  ASSERT_STATUS_OK(session_object.Load(model_path));
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // Clean up
   std::remove(model_path.c_str());
@@ -2807,7 +2805,6 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
 
   Graph& graph = model->MainGraph();
-
   // First resolve should succeed
   ASSERT_STATUS_OK(graph.Resolve());
 
@@ -2820,7 +2817,6 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   const ONNX_NAMESPACE::TensorProto* initializer_after = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor("split_sizes", initializer_after));
   ASSERT_NE(initializer_after, nullptr);
-
   // Debug: verify it was externalized
   ASSERT_TRUE(utils::HasExternalDataInMemory(*initializer_after))
       << "Initializer was not externalized to in-memory external data";
