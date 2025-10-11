@@ -54,7 +54,7 @@ class TestInferenceSession(unittest.TestCase):
         input_name = session_object.get_inputs()[0].name
         res = session_object.run([], {input_name: x}, run_options=run_options)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def run_model_with_input(self, session_object, input_name, input_value, iter_num, queue):
         for _ in range(iter_num):
@@ -714,7 +714,7 @@ class TestInferenceSession(unittest.TestCase):
 
         res = sess.run([outputs[0].name], {inputs[0].name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_async(self):
         event = threading.Event()
@@ -733,7 +733,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(len(err), 0)
             self.assertEqual(len(res), 1)
             self.assertEqual(data.get_id(), 123456)
-            np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+            np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
             event.set()
 
         so = onnxrt.SessionOptions()
@@ -762,7 +762,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 2])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2(self):
         sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
@@ -777,7 +777,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2_contiguous(self):
         sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
@@ -792,10 +792,10 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
         xcontiguous = np.ascontiguousarray(x)
         rescontiguous = sess.run([output_name], {input_name: xcontiguous})
-        np.testing.assert_allclose(output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(rescontiguous[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model_multiple_threads(self):
         # Skip this test for a "pure" DML onnxruntime python wheel.
@@ -860,14 +860,14 @@ class TestInferenceSession(unittest.TestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x.tolist()})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_string_list_as_input(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], dtype=str).reshape((2, 2))
         x_name = sess.get_inputs()[0].name
         res = sess.run([], {x_name: x.tolist()})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_run_device(self):
         device = onnxrt.get_device()
@@ -888,7 +888,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, ["None", 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_boolean_inputs(self):
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=available_providers)
@@ -920,7 +920,7 @@ class TestInferenceSession(unittest.TestCase):
 
         output_expected = np.array([[True, False], [False, False]], dtype=bool)
         res = sess.run([output_name], {a_name: a, b_name: b})
-        np.testing.assert_equal(output_expected, res[0])
+        np.testing.assert_equal(res[0], output_expected)
 
     def test_string_input1(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -941,7 +941,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_string_input2(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -962,7 +962,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_input_bytes(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -983,7 +983,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0].astype("|S8"))
+        np.testing.assert_equal(res[0].astype("|S8"), x)
 
     def test_input_object(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -1004,7 +1004,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_input_void(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -1029,7 +1029,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
 
         expr = np.array([["must", "have"], ["same", "size"]], dtype=object)
-        np.testing.assert_equal(expr, res[0])
+        np.testing.assert_equal(res[0], expr)
 
     def test_raise_wrong_num_inputs(self):
         with self.assertRaises(ValueError) as context:
@@ -1164,7 +1164,7 @@ class TestInferenceSession(unittest.TestCase):
             },
         )
 
-        np.testing.assert_array_equal(output_expected, res[0])
+        np.testing.assert_array_equal(res[0], output_expected)
 
     def test_sequence_insert(self):
         opt = onnxrt.SessionOptions()
@@ -1194,7 +1194,7 @@ class TestInferenceSession(unittest.TestCase):
                 "input_seq": [],
             },
         )
-        np.testing.assert_array_equal(output_expected, res[0])
+        np.testing.assert_array_equal(res[0], output_expected)
 
     def test_ort_execution_mode(self):
         opt = onnxrt.SessionOptions()
@@ -1375,7 +1375,7 @@ class TestInferenceSession(unittest.TestCase):
         input_1 = np.zeros((3, 5)).astype(np.float32)
         res = sess1.run([output_name], {input_name_0: input_0, input_name_1: input_1})
         output_expected = np.ones((3, 5)).astype(np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         # Create an alias of SessionOptions instance
         # We will use this alias to construct another InferenceSession
@@ -1969,7 +1969,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(value.is_tensor())
             self.assertEqual(expected_val.element_type(), value.element_type())
             self.assertEqual(expected_val.shape(), value.shape())
-            np.testing.assert_allclose(expected_val.numpy(), value.numpy())
+            np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
     def test_run_with_adapter(self):
         model_path = get_name("lora/two_params_lora_model.onnx")
