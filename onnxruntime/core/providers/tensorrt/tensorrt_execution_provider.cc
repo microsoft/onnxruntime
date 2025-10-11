@@ -3976,6 +3976,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
       trt_state->context->reset();
       trt_state->engine->reset();
+
+      // Clear dds output allocator map since the engine and context will be recreated.
+      dds_output_allocator_map.clear();
+
       auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
       if (max_workspace_size_ > 0) {
         trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
