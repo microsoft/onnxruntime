@@ -872,16 +872,22 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 
 std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() const {
   // Use different registries based on graph capture configuration
-  static std::shared_ptr<KernelRegistry> registry_with_int64;
-  static std::shared_ptr<KernelRegistry> registry_without_int64;
-  static std::once_flag init_flag;
+  static std::shared_ptr<KernelRegistry> registry_with_graph_capture;
+  static std::shared_ptr<KernelRegistry> registry_without_graph_capture;
+  static std::once_flag init_flag_with_graph_capture;
+  static std::once_flag init_flag_without_graph_capture;
 
-  std::call_once(init_flag, []() {
-    registry_with_int64 = webgpu::RegisterKernels(true);      // with int64 support
-    registry_without_int64 = webgpu::RegisterKernels(false);  // without int64 support
-  });
-
-  return enable_graph_capture_ ? registry_with_int64 : registry_without_int64;
+  if (enable_graph_capture_) {
+    std::call_once(init_flag_with_graph_capture, []() {
+      registry_with_graph_capture = webgpu::RegisterKernels(true);  // with int64 support
+    });
+    return registry_with_graph_capture;
+  } else {
+    std::call_once(init_flag_without_graph_capture, []() {
+      registry_without_graph_capture = webgpu::RegisterKernels(false);  // without int64 support
+    });
+    return registry_without_graph_capture;
+  }
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
