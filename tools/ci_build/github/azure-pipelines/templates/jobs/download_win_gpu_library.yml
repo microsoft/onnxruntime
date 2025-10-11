@@ -7,10 +7,10 @@ parameters:
     default: false
   - name: CudaVersion
     type: string
-    default: '12.2'
+    default: '12.8'
     values:
       - 11.8
-      - 12.2
+      - 12.8
   - name: TrtVersion
     type: string
     default: '10.9.0.34'
@@ -46,11 +46,11 @@ steps:
         - powershell: |
             Write-Host "##vso[task.setvariable variable=trtCudaVersion;]11.8"
           displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
+    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
         - powershell: |
             Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.0"
           displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '10.9.0.34')) }}:
+    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '10.9.0.34')) }}:
         - powershell: |
             Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.8"
           displayName: Set trtCudaVersion

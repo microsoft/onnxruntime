@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build_test_qnn_ep:
     name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
     timeout-minutes: 120
     strategy:
       matrix: 
