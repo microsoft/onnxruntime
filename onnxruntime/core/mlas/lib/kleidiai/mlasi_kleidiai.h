@@ -17,24 +17,24 @@
 #endif
 
 // Logging macros.
-#ifndef KLEIDIAI_DEBUG
-#define KLEIDIAI_DEBUG 0
+#ifndef onnxruntime_KLEIDIAI_DEBUG_LOGGING
+#define onnxruntime_KLEIDIAI_DEBUG_LOGGING 0
 #endif
-#ifndef KLEIDIAI_KERNEL
-#define KLEIDIAI_KERNEL 0
+#ifndef onnxruntime_KLEIDIAI_KERNEL_LOGGING
+#define onnxruntime_KLEIDIAI_KERNEL_LOGGING 0
 #endif
 
 // General logging. "tag" is expected to quality the type of message.
 #define KLEIDIAI_LOG(tag, msg) std::cout << "[KLEIDIAI " << tag << "]: " << msg << std::endl;
 
-#if KLEIDIAI_DEBUG
+#if onnxruntime_KLEIDIAI_DEBUG_LOGGING
     // General debug messages.
     #define KLEIDIAI_DEBUG_LOG(msg) KLEIDIAI_LOG("DEBUG", msg)
 #else
     #define KLEIDIAI_DEBUG_LOG(msg)
 #endif
 
-#if KLEIDIAI_KERNEL
+#if onnxruntime_KLEIDIAI_KERNEL_LOGGING
     // Messages specifically written before a call to kai_run.
     // Note: In cases where a kernel is called in multiple threads, for example MlasTrySimpleParallel,
     // the output order can be inconsistient. The solution is to set the intra-node thread size to 1.
