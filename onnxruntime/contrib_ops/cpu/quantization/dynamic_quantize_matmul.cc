@@ -229,8 +229,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
             break;
           }
         }
-      }
-      else {
+      }else {
         can_use_dynamic_quant_mlas_ = false;
       }
 
