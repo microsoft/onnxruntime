@@ -19,9 +19,9 @@ parameters:
 - name: cuda_version
   type: string
   displayName: 'CUDA version. Windows Only.'
-  default: '12.2'
+  default: '12.8'
   values:
-   - 12.2
+   - 12.8
 
 - name: PythonVersions
   type: object
@@ -38,7 +38,7 @@ stages:
           PYTHON_VERSION: ${{ python_version }}
           EP_NAME: gpu
           CudaVersion: ${{ parameters.cuda_version }}
-          EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90a-virtual"
+          EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
           use_tensorrt: True
 
     - template: py-linux-gpu-stage.yml
@@ -48,4 +48,4 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20251008.2

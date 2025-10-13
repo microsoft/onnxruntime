@@ -186,6 +186,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
+    parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
 
 def add_testing_args(parser: argparse.ArgumentParser) -> None:
@@ -203,6 +204,7 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
         help="Run onnx_test_runner against test data. Only used in ONNX Runtime's CI pipelines",
     )
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc executable.")
+    parser.add_argument("--cmake_deps_mirror_dir", help="Path to the local mirror of cmake dependencies.")
     parser.add_argument("--fuzz_testing", action="store_true", help="Enable Fuzz testing.")
     parser.add_argument(
         "--enable_symbolic_shape_infer_tests",
