@@ -750,7 +750,7 @@ MlasConvExpandThenGemmSegmentedThreaded(
     size_t BatchGroupStart;
     size_t BatchGroupEnd;
 
-    if (uint32_t(Index) < BatchGroupCountExtra) {
+    if (static_cast<uint32_t>(Index) < BatchGroupCountExtra) {
         BatchGroupStart = (BatchGroupCountPerThread + 1) * Index;
         BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread + 1;
     } else {
@@ -765,8 +765,6 @@ MlasConvExpandThenGemmSegmentedThreaded(
     const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
     const size_t OutputGroupSize = FilterCount * OutputSize;
     const size_t FilterGroupSize = FilterCount * K;
-
-    // std::cout << "Address of WorkBlock->WorkingBuffer" << WorkBlock->WorkingBuffer << std::endl;
 
     for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
         size_t group = bg % GroupCount;
@@ -978,11 +976,9 @@ Return Value:
         const size_t BatchGroupCount = BatchCount * GroupCount;
 
         ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
-        // TargetThreadCount = 16;
-
 
         if (size_t(TargetThreadCount) >= BatchGroupCount) {
-            TargetThreadCount = int32_t(BatchGroupCount);
+            TargetThreadCount = ptrdiff_t(BatchGroupCount);
         }
 
         MLAS_CONV_WORK_BLOCK WorkBlock;
@@ -1392,12 +1388,12 @@ Return Value:
 
 	    if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
-            size_t WorkingBufferSizePreThread = std::max(Parameters->OutputSize * Parameters->K, std::max(Parameters->FilterCount * Parameters->OutputSize, static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)));
+            size_t WorkingBufferSizePerThread = std::max(Parameters->OutputSize * Parameters->K, std::max(Parameters->FilterCount * Parameters->OutputSize, static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)));
             TargetThreadCount = MaximumThreadCount;
             if (size_t(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
                 TargetThreadCount = int32_t(Parameters->BatchCount * Parameters->GroupCount);
             }
-            *WorkingBufferSize = TargetThreadCount * WorkingBufferSizePreThread;
+            *WorkingBufferSize = TargetThreadCount * WorkingBufferSizePerThread;
         }
     }
 }
