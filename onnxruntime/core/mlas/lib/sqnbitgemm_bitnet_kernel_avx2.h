@@ -28,25 +28,27 @@ Q2BitGemmPerGemmWorkspaceSize(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
-size_t
-SQ2BitGemmKernel_CompInt8_avx2(
-    size_t BlkLen,
-    const std::byte* QuantA,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    float* C,
-    size_t CountM,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockCountK,
-    size_t ldc,
-    const float* Bias
+void
+GenerateLUT_avx2(
+    int32_t group_size,
+    int8_t lut,
+    const float* b,
+    float* scales,
+    float* biases,
+    int K
 );
 
-void QuantizeARow_CompInt8(
-    size_t BlkLen,
-    const float* A,
-    size_t CountK,
-    std::byte* QuantA
+void
+TMACComputeGemm_avx2(
+    const void* A,
+    const void* a_scales,
+    const void* LUT,
+    const void* LUT_Scales,
+    const void* LUT_Biases,
+    void* C,
+    int bm,
+    int K,
+    int M,                
+    int N,
+    size_t BlkLen
 );

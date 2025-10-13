@@ -348,8 +348,6 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
   auto* y_data = y->MutableData<T1>();
 
-  IAllocatorUniquePtr<std::byte> lut{};
-
   const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
@@ -359,41 +357,8 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   // 2 bits + acc level 4 = use look up table but in the future adapt so that we use a mamtulnbits attr to decide
   // if we want to do lut generation
   if (compute_type_ == TMAC) {
-    // call lut gen somehow
-    // Create a mutable copy of scales since MlasTmacInitializeTable modifies the scales
-    float* scales_float = nullptr;
-    IAllocatorUniquePtr<float> scales_copy;
-    
-    if (std::is_same<T1, float>::value) {
-      // For float scales, create a copy
-      const auto* float_scales = reinterpret_cast<const float*>(scales_data);
-      size_t scales_size = static_cast<size_t>(scales->Shape().Size());
-      scales_copy = IAllocator::MakeUniquePtr<float>(allocator, scales_size, false);
-      std::copy(float_scales, float_scales + scales_size, scales_copy.get());
-      scales_float = scales_copy.get();
-    } else {
-      // For MLFloat16, use pre-converted scales if available, otherwise convert
-      if (scales_fp32_) {
-        // Create a copy of the pre-converted scales
-        size_t scales_size = static_cast<size_t>(scales->Shape().Size());
-        scales_copy = IAllocator::MakeUniquePtr<float>(allocator, scales_size, false);
-        std::copy(scales_fp32_.get(), scales_fp32_.get() + scales_size, scales_copy.get());
-        scales_float = scales_copy.get();
-      } else {
-        // Convert MLFloat16 to float
-        const auto* half_scales = reinterpret_cast<const MLFloat16*>(scales_data);
-        size_t scales_size = static_cast<size_t>(scales->Shape().Size());
-        scales_copy = IAllocator::MakeUniquePtr<float>(allocator, scales_size, false);
-        MlasConvertHalfToFloatBuffer(half_scales, scales_copy.get(), scales_size);
-        scales_float = scales_copy.get();
-      }
-    }
-
-    MlasTmacInitializeTable(block_size_, 
-                           packed_b_.get(), 
-                           scales_float,
-                           static_cast<int>(K), 
-                           lut.get());
+    MlasTmac(a_data, block_size_, packed_b_.get(), scales_data, y_data, K, M, N, thread_pool);
+    return Status::OK();
   }
   const size_t lda = helper.Lda(false);
 
