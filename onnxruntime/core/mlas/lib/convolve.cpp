@@ -1386,7 +1386,7 @@ Return Value:
 
         *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
 
-	    if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
+        if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
             size_t WorkingBufferSizePerThread = std::max(Parameters->OutputSize * Parameters->K, std::max(Parameters->FilterCount * Parameters->OutputSize, static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)));
             TargetThreadCount = MaximumThreadCount;
