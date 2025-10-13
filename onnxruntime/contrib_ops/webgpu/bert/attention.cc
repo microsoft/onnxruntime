@@ -250,7 +250,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_sliding_window) {
     // Sliding window
     shader.MainFunctionBody()
-        << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > uniforms.local_window_size + 1;\n"
+        << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > uniforms.local_window_size;\n"
         << "let start_offset = select(0, seq_causal_length - uniforms.local_window_size, should_apply_local_window);\n"
         << "let effective_seq_length = select(seq_causal_length, uniforms.local_window_size, should_apply_local_window);\n";
   } else {
