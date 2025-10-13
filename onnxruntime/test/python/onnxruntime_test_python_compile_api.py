@@ -428,7 +428,7 @@ class TestCompileApi(AutoEpTestCase):
         if "QNNExecutionProvider" not in available_providers:
             self.skipTest("Skipping test because it needs to run on a compiling EP")
 
-        input_model_path = get_name("mul_1.onnx")
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
 
         session_options = onnxrt.SessionOptions()
         session_options.add_session_config_entry("session.disable_model_compile", "1")  # Disable JIT model compilation!
