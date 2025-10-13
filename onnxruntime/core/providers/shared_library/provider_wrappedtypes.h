@@ -78,6 +78,8 @@ struct int64s final {
   const int64_t* data() const { return g_host->int64s__data(this); }
   const int64_t& operator[](int index) const { return Get(index); }
   void Reserve(int size) { g_host->int64s__Reserve(this, size); }
+  const int64_t* begin() const { return data(); }
+  const int64_t* end() const { return data() + size(); }
   PROVIDER_DISALLOW_ALL(int64s)
 };
 

@@ -258,6 +258,15 @@ duk_ret_t ShaderVariable_SetByOffset(duk_context* ctx) {
   return 1;
 }
 
+/** @brief JavaScript binding for ShaderVariableHelper::GetByOffset */
+duk_ret_t ShaderVariable_GetByOffset(duk_context* ctx) {
+  const char* offset_expr = duk_require_string(ctx, 0);
+  const ShaderVariableHelper* helper = GetHelperFromFunction<const ShaderVariableHelper>(ctx);
+  std::string result = helper->GetByOffset(offset_expr);
+  duk_push_string(ctx, result.c_str());
+  return 1;
+}
+
 /** @brief JavaScript binding for ShaderVariableHelper::Rank */
 duk_ret_t ShaderVariable_Rank(duk_context* ctx) {
   const ShaderVariableHelper* helper = GetHelperFromFunction<const ShaderVariableHelper>(ctx);
@@ -363,6 +372,7 @@ Status ApplyTemplateDynamic(ShaderHelper& shader_helper,
 
         CreateShaderVariableMethod(ctx, "OffsetToIndices", ShaderVariable_OffsetToIndices, 1, var_helper);
         CreateShaderVariableMethod(ctx, "SetByOffset", ShaderVariable_SetByOffset, 2, var_helper);
+        CreateShaderVariableMethod(ctx, "GetByOffset", ShaderVariable_GetByOffset, 1, var_helper);
         CreateShaderVariableMethod(ctx, "Rank", ShaderVariable_Rank, 0, var_helper);
         duk_put_prop_string(ctx, -2, arg.name.c_str());
       }
