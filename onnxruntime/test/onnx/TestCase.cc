@@ -1130,6 +1130,11 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
 #else
     broken_tests->insert({"bidaf", "this test should be recovered when multi-gpu pipeline deprecates NV12", {"opset9"}});
 #endif
+    // broken_tests->insert({"YOLOv3", "Temporarily disabled pending investigation", {}});
+    // broken_tests->insert({"YOLOv3-12", "Temporarily disabled pending investigation", {}});
+    // broken_tests->insert({"YOLOv4", "Temporarily disabled pending investigation", {}});
+    // broken_tests->insert({"SSD-MobilenetV1", "Temporarily disabled pending investigation", {}});
+    // broken_tests->insert({"SSD-MobilenetV1-12", "Temporarily disabled pending investigation", {}});
   }
 
   if (provider_name == "nnapi") {

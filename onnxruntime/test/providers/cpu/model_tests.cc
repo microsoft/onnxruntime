@@ -663,46 +663,30 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("operator_pow"),
   };
 
-  static const ORTCHAR_T* cuda_rocm_flaky_tests[] = {ORT_TSTR("fp16_inception_v1"),
-                                                     ORT_TSTR("fp16_shufflenet"),
-                                                     ORT_TSTR("fp16_tiny_yolov2"),
-                                                     ORT_TSTR("candy"),
-                                                     ORT_TSTR("tinyyolov3"),
-                                                     ORT_TSTR("mlperf_ssd_mobilenet_300"),
-                                                     ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                     ORT_TSTR("tf_inception_v1"),
-                                                     ORT_TSTR("faster_rcnn"),
-                                                     ORT_TSTR("split_zero_size_splits"),
-                                                     ORT_TSTR("convtranspose_3d"),
-                                                     ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
-                                                     ORT_TSTR("fp16_coreml_FNS-Candy"),
-                                                     ORT_TSTR("fp16_test_tiny_yolov2"),
-                                                     ORT_TSTR("fp16_test_shufflenet"),
-                                                     ORT_TSTR("keras2coreml_SimpleRNN_ImageNet"),
-                                                     // models from model zoo. #26274: cuDNN frontend no valid engine
-                                                     ORT_TSTR("YOLOv3"),
-                                                     ORT_TSTR("YOLOv3-12"),
-                                                     ORT_TSTR("YOLOv4"),
-                                                     ORT_TSTR("SSD-MobilenetV1"),
-                                                     ORT_TSTR("SSD-MobilenetV1-12")};
+  static const ORTCHAR_T* cuda_disabled_tests[] = {
+      ORT_TSTR("fp16_inception_v1"),
+      ORT_TSTR("fp16_shufflenet"),
+      ORT_TSTR("fp16_tiny_yolov2"),
+      ORT_TSTR("candy"),
+      ORT_TSTR("tinyyolov3"),
+      ORT_TSTR("mlperf_ssd_mobilenet_300"),
+      ORT_TSTR("mlperf_ssd_resnet34_1200"),
+      ORT_TSTR("tf_inception_v1"),
+      ORT_TSTR("faster_rcnn"),
+      ORT_TSTR("split_zero_size_splits"),
+      ORT_TSTR("convtranspose_3d"),
+      ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
+      ORT_TSTR("fp16_test_shufflenet"),
+      ORT_TSTR("keras2coreml_SimpleRNN_ImageNet"),
+      // models from model zoo
+      ORT_TSTR("YOLOv3"),
+      ORT_TSTR("YOLOv3-12"),
+      ORT_TSTR("YOLOv4"),
+      ORT_TSTR("SSD-MobilenetV1"),
+      ORT_TSTR("SSD-MobilenetV1-12")};
 
-  // For ROCm EP, also disable the following tests due to flakiness,
-  // mainly with precision issue and random memory access fault.
-  static const ORTCHAR_T* rocm_disabled_tests[] = {ORT_TSTR("bvlc_alexnet"),
-                                                   ORT_TSTR("bvlc_reference_caffenet"),
-                                                   ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
-                                                   ORT_TSTR("coreml_Resnet50_ImageNet"),
-                                                   ORT_TSTR("mlperf_resnet"),
-                                                   ORT_TSTR("mobilenetv2-1.0"),
-                                                   ORT_TSTR("shufflenet"),
-                                                   // models from model zoo
-                                                   ORT_TSTR("AlexNet"),
-                                                   ORT_TSTR("CaffeNet"),
-                                                   ORT_TSTR("MobileNet v2-7"),
-                                                   ORT_TSTR("R-CNN ILSVRC13"),
-                                                   ORT_TSTR("ShuffleNet-v1"),
-                                                   ORT_TSTR("version-RFB-320"),
-                                                   ORT_TSTR("version-RFB-640")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {
       ORT_TSTR("tf_mobilenet_v1_1.0_224"),
       ORT_TSTR("bertsquad"),
@@ -827,13 +811,8 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
-    bool provider_cuda_or_rocm = provider_name == provider_name_cuda;
-    if (provider_name == provider_name_rocm) {
-      provider_cuda_or_rocm = true;
-      all_disabled_tests.insert(std::begin(rocm_disabled_tests), std::end(rocm_disabled_tests));
-    }
-    if (provider_cuda_or_rocm) {
-      all_disabled_tests.insert(std::begin(cuda_rocm_flaky_tests), std::end(cuda_rocm_flaky_tests));
+    if (provider_name == provider_name_cuda) {
+      all_disabled_tests.insert(std::begin(cuda_disabled_tests), std::end(cuda_disabled_tests));
     } else if (provider_name == provider_name_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     } else if (provider_name == provider_name_dnnl) {
@@ -915,6 +894,8 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
         if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
           continue;
+
+        printf("Adding test_case_name: %s with provider %s\n", model_name_str.c_str(), ToUTF8String(provider_name).c_str());
 
 #ifdef DISABLE_ML_OPS
         auto starts_with = [](const std::basic_string<PATH_CHAR_TYPE>& find_in,
