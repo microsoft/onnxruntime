@@ -212,6 +212,13 @@ class GradientBuilderBase {
     return node_->GetAttributes();
   }
 
+  Graph Subgraph(const std::string &name) const {
+	  ONNX_NAMESPACE::GraphProto subgraph(node_->GetAttributes().at(name).g());
+	  return Graph(*graph_, *node_, subgraph);
+  }
+
+  ONNX_NAMESPACE::GraphProto SubgraphGradient(const std::string &name, std::unordered_set<std::string>& y_node_arg_names, std::unordered_set<std::string>& x_node_arg_names) const;
+
   const std::string& SrcNodeOpType() const {
     return node_->OpType();
   }

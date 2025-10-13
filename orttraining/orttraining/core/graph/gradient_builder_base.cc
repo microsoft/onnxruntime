@@ -7,6 +7,7 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include "core/framework/tensorprotoutils.h"
+#include "orttraining/core/framework/gradient_graph_builder.h"
 
 namespace onnxruntime {
 namespace training {
@@ -172,6 +173,16 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
       NodeDef(OpDef{"BroadcastGradientArgs", kMSDomain, 1},
               {a_shape, b_shape},
               {a_op, b_op}));
+}
+
+ONNX_NAMESPACE::GraphProto GradientBuilderBase::SubgraphGradient(const std::string &name, std::unordered_set<std::string>& y_node_arg_names, std::unordered_set<std::string>& x_node_arg_names) const
+{
+  Graph g = Subgraph(name);
+  auto config = GradientGraphConfiguration(gradient_graph_config_);
+  config.set_gradients_as_graph_outputs = true;
+  GradientGraphBuilder builder(&g, y_node_arg_names, x_node_arg_names, "", config, logger_);
+  ORT_THROW_IF_ERROR(builder.Build());
+  return g.ToGraphProto();
 }
 
 void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,

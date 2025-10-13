@@ -74,6 +74,7 @@
 #include "orttraining/core/optimizer/pythonop_rewriter.h"
 #endif
 #include "orttraining/core/optimizer/conv1d_replacement.h"
+#include "orttraining/core/optimizer/scan_replacement.h"
 
 namespace onnxruntime {
 namespace training {
@@ -115,6 +116,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PythonOpRewriter>()));
 #endif
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ScanReplacement>()));
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes consume different initializers with same value, by default,

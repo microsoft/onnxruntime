@@ -2317,5 +2317,65 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
+	std::vector<NodeDef> result;
+	auto attributes = SrcNodeAttributes();
+	std::vector<ONNX_NAMESPACE::AttributeProto> grad_attributes;
+
+	std::vector<ArgDef> inputs;
+	std::unordered_set<std::string> x;
+	std::unordered_set<std::string> y;
+	std::vector<ArgDef> outputs;
+	size_t input_size = GetSrcNodeInputSize();
+	size_t output_size = GetSrcNodeOutputSize();
+	size_t n_carries = (input_size - attributes.at("num_scan_inputs").i());
+	size_t n_inputs = input_size - n_carries;
+	size_t n_outputs = GetSrcNodeOutputSize() - (n_carries * 2);
+
+	// forward graph input: carries, inputs
+	// forward graph output: carries, outputs, all_timestep_carries
+	// backward graph input: carries, inputs, carries_grad, outputs_grad
+	// backward graph output: carries_grad, inputs_grad
+
+	for (size_t i = 0; i < n_carries; i++)
+	{
+		ArgDef out = O(n_carries + n_outputs + i);
+		inputs.push_back(out);
+		outputs.push_back(GI(i));
+
+		x.insert(out.name);
+		y.insert(I(i).name);
+	}
+
+	for (size_t i = 0; i < n_inputs; i++)
+	{
+		ArgDef in = I(n_carries + i);
+		inputs.push_back(in);
+		outputs.push_back(GI(n_carries + i));
+
+		x.insert(in.name);
+		y.insert(I(n_carries + i).name);
+	}
+
+	for (size_t i = 0; i < n_carries; i++)
+	{
+		ArgDef out = GO(n_carries + n_outputs + i);
+		inputs.push_back(out);
+		x.insert(out.name);
+	}
+
+	for (size_t i = 0; i < n_outputs; i++)
+	{
+		ArgDef out = GO(n_carries + i);
+		inputs.push_back(out);
+		x.insert(out.name);
+	}
+
+	grad_attributes.push_back(MakeAttribute("body", SubgraphGradient("body", y, x)));
+	result.push_back(NodeDef("Scan", inputs, outputs, grad_attributes));
+
+	return result;
+}
+
 }  // namespace training
 }  // namespace onnxruntime
