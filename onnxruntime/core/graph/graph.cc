@@ -2940,7 +2940,13 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
       auto& tensor_shape_proto = input_0->values_after_data_propagation_;
 
       // Save the dimension value in the NodeArg
-      if (index != std::numeric_limits<int64_t>::min() && (index < tensor_shape_proto.dim_size())) {
+      // Index value is expected to be within bounds [-s, s-1] along axis of size s
+      if (index != std::numeric_limits<int64_t>::min() &&
+          index < tensor_shape_proto.dim_size() && index >= -tensor_shape_proto.dim_size()) {
+        if (index < 0) {
+          index = tensor_shape_proto.dim_size() + index;
+        }
+
         auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(index));
         if (dim.has_dim_value()) {
           output_def.scalar_value_after_data_propagation_ = dim.dim_value();
