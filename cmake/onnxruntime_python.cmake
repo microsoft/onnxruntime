@@ -964,7 +964,9 @@ endif()
 if (onnxruntime_USE_NV)
   if (WIN32 OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
       file(GLOB NV_LIB_FILES LIST_DIRECTORIES false "${TENSORRT_RTX_ROOT}/lib/tensorrt_*.dll"
-                                             "${TENSORRT_RTX_ROOT}/lib/libtensorrt_*.so.*")
+                                             "${TENSORRT_RTX_ROOT}/bin/tensorrt_*.dll"
+                                             "${TENSORRT_RTX_ROOT}/lib/libtensorrt_*.so.*"
+                                             "${TENSORRT_RTX_ROOT}/bin/libtensorrt_*.so.*")
     message(STATUS "NV lib files: " ${NV_LIB_FILES})
   endif()
   add_custom_command(
