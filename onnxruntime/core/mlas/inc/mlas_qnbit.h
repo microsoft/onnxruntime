@@ -241,10 +241,15 @@ MlasIsTMACAvailable(
  *
  * Returns true if initialization succeeded or was unnecessary.
  */
-bool MLASCALL
-MlasTmacInitializeTable(size_t BlkLen, 
-                        void* QuantBData,     // B in MLFloat16 (per your layout)
-                        float* QuantBScale,        // scale(s) in float
-                        int K,                           // K dimension
-                        void* qlut                       // destination LUT buffer (int8 data)
+void MLASCALL
+MlasTmac(
+    const void* A,
+    size_t BlkLen,
+    const void* QuantBData,     
+    const float* QuantBScale,   
+    void* C,
+    int K,
+    int M,                
+    int N,
+    MLAS_THREADPOOL* threadpool
 );

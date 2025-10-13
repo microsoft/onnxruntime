@@ -15,12 +15,15 @@ Abstract:
 
 --*/
 
+#include <cstddef>  // For std::byte (C++17)
+#include <vector>
+#include <type_traits>
+// AVX2 intrinsics
+#include <immintrin.h>
+
 #include "qnbitgemm.h"
 #include "qlutgemm.h"
 #include "sqnbitgemm_q8_block.h"
-#include <vector>
-// AVX2 intrinsics
-#include <immintrin.h>
 
 static inline float _mm256_addv_ps(const __m256 v) {
     __m128 res = _mm256_extractf128_ps(v, 1);
@@ -36,6 +39,134 @@ static inline float _mm256_addv_ps(const __m256 v) {
 #else
 #define PRAGMA_UNROLL
 #endif
+
+// Helper macros for extracting and widening vectors
+#define extract_low_epi8_epi16(v) _mm256_cvtepi8_epi16(_mm256_castsi256_si128(v))
+#define extract_high_epi8_epi16(v) _mm256_cvtepi8_epi16(_mm256_extracti128_si256(v, 1))
+#define extract_low_epi16_epi32(v) _mm256_cvtepi16_epi32(_mm256_castsi256_si128(v))
+#define extract_high_epi16_epi32(v) _mm256_cvtepi16_epi32(_mm256_extracti128_si256(v, 1))
+
+// Template classes for accumulation
+template <int N>
+struct SignedHalvingAdder {
+    SignedHalvingAdder<N / 2> adder;
+    __m256i lhs = _mm256_setzero_si256();
+
+    inline void push(__m256i v, int k) {
+        if (k < N / 2) {
+            adder.push(v, k);
+            if (k == N / 2 - 1) {
+                lhs = adder.get();
+            }
+        } else {
+            adder.push(v, k - N / 2);
+            if (k == N - 1) {
+                lhs = _mm256_avg_epu8(lhs, adder.get());
+            }
+        }
+    }
+
+    inline __m256i get() {
+        return lhs;
+    }
+
+    inline __m256i get_low() {
+        return extract_low_epi8_epi16(lhs);
+    }
+
+    inline __m256i get_high() {
+        return extract_high_epi8_epi16(lhs);
+    }
+};
+
+template <>
+struct SignedHalvingAdder<2> {
+    __m256i lhs = _mm256_setzero_si256();
+
+    inline void push(__m256i v, int k) {
+        if (k == 0) {
+            lhs = v;
+        } else {
+            lhs = _mm256_avg_epu8(lhs, v);
+        }
+    }
+
+    inline __m256i get() {
+        return lhs;
+    }
+
+    inline __m256i get_low() {
+        return extract_low_epi8_epi16(lhs);
+    }
+
+    inline __m256i get_high() {
+        return extract_high_epi8_epi16(lhs);
+    }
+};
+
+template <int N>
+struct SignedWideningAdder {
+    __m256i lhs_low = _mm256_setzero_si256();
+    __m256i lhs_high = _mm256_setzero_si256();
+
+    inline void push(__m256i v, int k) {
+        if (k == 0) {
+            lhs_low = extract_low_epi8_epi16(v);
+            lhs_high = extract_high_epi8_epi16(v);
+        } else {
+            lhs_low = _mm256_add_epi16(lhs_low, extract_low_epi8_epi16(v));
+            lhs_high = _mm256_add_epi16(lhs_high, extract_high_epi8_epi16(v));
+        }
+    }
+
+    inline __m256i get_low() {
+        return lhs_low;
+    }
+
+    inline __m256i get_high() {
+        return lhs_high;
+    }
+};
+
+template <bool FastAggregation, int ActK>
+using SignedAdder = typename std::conditional<FastAggregation, SignedHalvingAdder<ActK>, SignedWideningAdder<ActK>>::type;
+
+// Template for computing log2 at compile time
+template <int K>
+struct mylog2 {
+    enum {
+        value = 1 + mylog2<K / 2>::value
+    };
+};
+
+template <>
+struct mylog2<0> {
+    enum {
+        value = -1
+    };
+};
+
+// Template for computing bias scale at compile time
+template<int bits>
+constexpr int get_bias_scale() {
+    // The bias scale will be added to the first bit
+    // 15 = (1/2 + 1 + 2 + 4) / (1/2)
+    // 7 = (1/2 + 1 + 2) / (1/2)
+    // 3 = (1/2 + 1) / (1/2)
+    // 1 = (1/2) / (1/2)
+    // if constexpr (bits == 4) {
+    //     return 15;
+    // } else if constexpr (bits == 3) {
+    //     return 7;
+    // } else if constexpr (bits == 2) {
+    //     return 3;
+    // } else if constexpr (bits == 1) {
+    //     return 1;
+    // } else {
+    //     return 0;
+    // }
+    return 3;
+}
 
 size_t
 Q2BitGemmPackQuantBDataSize(
@@ -111,7 +242,7 @@ void SQ2BitGemmPackQuantBData(
             for (int im = 0; im < m_block; ++im) {
                 const size_t n_col = tile_idx * static_cast<size_t>(m_block) + static_cast<size_t>(im);
                 const size_t src_block_offset = n_col * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
-                const std::byte* src_block = QuantBDataBegin + src_block_offset;
+                const uint8_t* src_block = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + src_block_offset;
 
                 for (int ik = 0; ik < static_cast<int>(BlkLen); ++ik) {
                     const int byte_idx = ik >> 2;                 // ik/4
@@ -187,11 +318,11 @@ void SQ2BitGemmPackQuantBData(
             }
 
             // Store the tile chunk into destination
-            std::byte* dst_block_base = PackedQuantBDataBegin + k_blk * (N * BlkDataSize);
-            std::byte* tile_dest = dst_block_base + tile_idx * tile_chunk_bytes;
+            uint8_t* dst_block_base = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin) + k_blk * (N * BlkDataSize);
+            uint8_t* tile_dest = dst_block_base + tile_idx * tile_chunk_bytes;
             // copy bytes
             for (size_t i = 0; i < tile_chunk_bytes; ++i) {
-                tile_dest[i] = static_cast<std::byte>(tilechunk[i]);
+                tile_dest[i] = static_cast<uint8_t>(tilechunk[i]);
             }
         }
     );
@@ -222,7 +353,7 @@ Q2BitGemmPerGemmWorkspaceSize(
     }
 }
 
-void partial_max_g4_int8_k8(float* lut_scales, float* b) {
+void partial_max_g4_int8_k8(float* lut_scales, const float* b) {
     const __m256i vec_bi = _mm256_set_epi32(112, 96, 80, 64, 48, 32, 16, 0);
     __m256 vec_b0 = _mm256_i32gather_ps(b + 0, vec_bi, 1);
     __m256 vec_b1 = _mm256_i32gather_ps(b + 1, vec_bi, 1);
@@ -244,7 +375,7 @@ void partial_max_g4_int8_k8(float* lut_scales, float* b) {
 void lut_ctor_g4_int8_impl(
     int32_t group_size,
     int8_t* qlut,
-    float* b,
+    const float* b,
     float* lut_scales,
     float* lut_biases
 ) {
@@ -356,7 +487,7 @@ void
 GenerateLUT_avx2(
 	int32_t group_size,
 	int8_t* lut,
-	float* b,
+	const float* b,
 	float* scales,
 	float* biases,
     int K
@@ -377,11 +508,6 @@ GenerateLUT_avx2(
 
 }
 
-int32_t tbl_int32_reset(int32_t m, int32_t* c) {
-    memset(c, 0, m * sizeof(int32_t));
-    return 0;
-}
-
 inline void tbl_g4_int8_float_gather_bit2_impl(int32_t m, float* C_global, float* CBits, float* C) {
     constexpr int32_t bits = 2;
 
@@ -389,17 +515,17 @@ inline void tbl_g4_int8_float_gather_bit2_impl(int32_t m, float* C_global, float
     for (int32_t m_c_outer = 0; m_c_outer < m_c_outer_max; ++m_c_outer) {
         int32_t cse_var_2 = (m_c_outer * 32 * bits);
         int32_t cse_var_1 = (m_c_outer * 32);
-        #pragma unroll
+        PRAGMA_UNROLL
         for (int32_t m_c_inner = 0; m_c_inner < 32; ++m_c_inner) {
             int32_t bit_offset_0 = (m_c_inner / 8) * 8 * bits + (m_c_inner % 8);
             int32_t bit_offset_1 = (m_c_inner / 8) * 8 * bits + (m_c_inner % 8) + 8;
-            C_global[cse_var_1 + m_c_inner] = (CBits[cse_var_2 + bit_offset_0] * (tmac_float_type)5.000000e-01f)
+            C_global[cse_var_1 + m_c_inner] = (CBits[cse_var_2 + bit_offset_0] * (float)5.000000e-01f)
                                             + (CBits[cse_var_2 + bit_offset_1]);
         }
     }
 
     for (int32_t m_inner_outer = 0; m_inner_outer < m_c_outer_max; ++m_inner_outer) {
-        #pragma unroll
+        PRAGMA_UNROLL
         for (int32_t m_inner = 0; m_inner < 32; ++m_inner) {
             int offset = m_inner_outer * 32 + m_inner;
             C[offset] = C_global[offset];
@@ -410,26 +536,26 @@ inline void tbl_g4_int8_float_gather_bit2_impl(int32_t m, float* C_global, float
 // When FastAggregation is enabled, FastAggregationK = ActK
 // zero_points is merged into scales to maintain API
 template <bool has_scale, int K, int Bits, int ActK, bool FastAggregation, bool ZeroPoint, bool OneScale>
-inline int32_t tbl_g4_int8_float_update_impl(int32_t m, float* c, int8_t* lut, uint8_t* a, float* scales, float* lut_scales, float* lut_biases) {
+inline int32_t tbl_g4_int8_float_update_impl(int32_t m, float* c, const int8_t* lut, const uint8_t* a, const float* scales, const float* lut_scales, const float* lut_biases) {
     const __m128i vec_mask = _mm_set1_epi8(0x0f);
     __m128i vec_lut[K];
 
-#pragma unroll
+    PRAGMA_UNROLL
     for (int k = 0; k < K; k++) {
-        vec_lut[k] = _mm_loadu_si128(reinterpret_cast<__m128i*>(lut + k * 16));
+        vec_lut[k] = _mm_loadu_si128(reinterpret_cast<const __m128i*>(lut + k * 16));
     }
 
     SignedAdder<FastAggregation, ActK> adder;
     for (int i = 0; i < m / 2; i += 16) {
         __m256 vec_c0, vec_c1, vec_c2, vec_c3;
 
-        tmac_float_type partial_sum = (tmac_float_type)-0.0f;
-#pragma unroll
+        float partial_sum = -0.0f;
+        PRAGMA_UNROLL
         for (int kk = 0; kk < K; kk += ActK) {
-#pragma unroll
+            PRAGMA_UNROLL
             for (int k = 0; k < ActK; k++) {
                 // (M // bm, KK / K / 4, bm / 16 / 2, K * 16)
-                __m128i vec_as = _mm_loadu_si128(reinterpret_cast<__m128i*>(a + i * K + (kk + k) * 16));
+                __m128i vec_as = _mm_loadu_si128(reinterpret_cast<const __m128i*>(a + i * K + (kk + k) * 16));
                 __m128i vec_a_bot = _mm_and_si128(vec_as, vec_mask);
                 __m128i vec_a_top = _mm_and_si128(_mm_srli_epi16(vec_as, 4), vec_mask);
 
@@ -443,9 +569,9 @@ inline int32_t tbl_g4_int8_float_update_impl(int32_t m, float* c, int8_t* lut, u
             __m256 vec_v_low_high = _mm256_cvtepi32_ps(extract_high_epi16_epi32(adder.get_low()));
             __m256 vec_v_high_low = _mm256_cvtepi32_ps(extract_low_epi16_epi32(adder.get_high()));
             __m256 vec_v_high_high = _mm256_cvtepi32_ps(extract_high_epi16_epi32(adder.get_high()));
-        
-            tmac_float_type lut_s = lut_scales[kk / ActK];
-            tmac_float_type lut_b = lut_biases[kk / ActK];
+
+            float lut_s = lut_scales[kk / ActK];
+            float lut_b = lut_biases[kk / ActK];
 
             partial_sum += lut_b;
 
@@ -494,7 +620,7 @@ inline int32_t tbl_g4_int8_float_update_impl(int32_t m, float* c, int8_t* lut, u
             _mm256_storeu_ps(c + i * 2 + 24, add_zero(vec_c3, vec_z3, (i / 4 + 3)));
 #undef add_zero
         } else if (OneScale) {
-            tmac_float_type single_scale = scales[0];
+            float single_scale = scales[0];
             __m256 vec_s = _mm256_set1_ps(single_scale);
             _mm256_storeu_ps(c + i * 2,      _mm256_fmadd_ps(vec_c0, vec_s, _mm256_loadu_ps(c + i * 2)));
             _mm256_storeu_ps(c + i * 2 + 8,  _mm256_fmadd_ps(vec_c1, vec_s, _mm256_loadu_ps(c + i * 2 + 8)));
@@ -515,18 +641,24 @@ inline int32_t tbl_g4_int8_float_update_impl(int32_t m, float* c, int8_t* lut, u
     return 0;
 }
 
+int32_t tbl_int32_reset(int32_t m, int32_t* c) {
+    memset(c, 0, m * sizeof(int32_t));
+    return 0;
+}
+
 // based on qgemm_lut_int8_g4
 // Simplified version with hardcoded configuration for 2-bit quantization
 void TMACComputeGemm_avx2(
-            void* A,            // Quantized packed weights
-            void* Scales,       // Weight scales (and optionally zero-points)
-            void* LUT,          // Pre-computed quantized lookup table
-            void* LUT_Scales,   // LUT scales from activation quantization
-            void* LUT_Biases,   // LUT biases from activation quantization
+            const void* A,            // Quantized packed weights
+            const void* Scales,       // Weight scales (and optionally zero-points)
+            const void* LUT,          // Pre-computed quantized lookup table
+            const void* LUT_Scales,   // LUT scales from activation quantization
+            const void* LUT_Biases,   // LUT biases from activation quantization
             void* C,            // Output buffer
             int bm,             // Bit-rows tile size (typically 512 for 2-bit)
-            int K,              // K dimension (inner dimension)
-            int N,              // Batch size (must be 1 for now)
+            int K,              
+            int m,
+            int N,              
             size_t BlkLen      // Weight quantization group size (q_group_size)
             ) {
     // Validate batch size
@@ -548,7 +680,6 @@ void TMACComputeGemm_avx2(
     const int q_group_size = static_cast<int>(BlkLen);  // Weight quant group size
     const int act_group_size = static_cast<int>(BlkLen); // Activation group size (same as weight)
     const int actk = act_group_size / g;  // CRITICAL: = 16 for BlkLen=64, NOT BlkLen!
-    const int m = bm / bits;              // Actual number of output rows
     
     // Validate configuration
     assert(bm % bits == 0);
@@ -562,7 +693,6 @@ void TMACComputeGemm_avx2(
 
     // ==================== ALLOCATE BUFFERS ====================
     // Use float for now (can be changed to _Float16 if needed)
-    using tmac_float_type = float;
     
     float* CBits = new float[bm];
     float* C_global = new float[m];
@@ -594,20 +724,20 @@ void TMACComputeGemm_avx2(
     // ==================== MAIN COMPUTATION LOOP ====================
     for (int32_t k_outer = 0; k_outer < k_outer_max; k_outer++) {
         // Calculate pointers for this K-outer iteration
-        uint8_t* a = reinterpret_cast<uint8_t*>(A) + k_outer * bm * kfactor / ngroups_per_elem;
+        const uint8_t* a = reinterpret_cast<const uint8_t*>(A) + k_outer * bm * kfactor / ngroups_per_elem;
         
         // Calculate scales pointer based on configuration
-        tmac_float_type* scales = one_scale ? 
-            reinterpret_cast<tmac_float_type*>(Scales) :  // Single global scale
+        const float* scales = one_scale ? 
+            reinterpret_cast<const float*>(Scales) :  // Single global scale
             (has_zero_point ? 
-                reinterpret_cast<tmac_float_type*>(Scales) + (k_outer >> scale_idx_shfr) * m * 2 :  // Scale + zero_point pairs
-                reinterpret_cast<tmac_float_type*>(Scales) + (k_outer >> scale_idx_shfr) * m);       // Scales only
-        
+                reinterpret_cast<const float*>(Scales) + (k_outer >> scale_idx_shfr) * m * 2 :  // Scale + zero_point pairs
+                reinterpret_cast<const float*>(Scales) + (k_outer >> scale_idx_shfr) * m);       // Scales only
+
         // Calculate LUT pointers
-        int8_t* lut = reinterpret_cast<int8_t*>(LUT) + k_outer * kfactor * (1 << g);  // 2^g = 16 for g=4
-        tmac_float_type* lut_scales = reinterpret_cast<tmac_float_type*>(LUT_Scales) + 
+        const int8_t* lut = reinterpret_cast<const int8_t*>(LUT) + k_outer * kfactor * (1 << g);  // 2^g = 16 for g=4
+        const float* lut_scales = reinterpret_cast<const float*>(LUT_Scales) + 
                                       (k_outer * kfactor * g / act_group_size);
-        tmac_float_type* lut_biases = reinterpret_cast<tmac_float_type*>(LUT_Biases) + 
+        const float* lut_biases = reinterpret_cast<const float*>(LUT_Biases) + 
                                       (k_outer * kfactor * g / act_group_size);
 
         // Select appropriate kernel template based on configuration
@@ -635,8 +765,6 @@ void TMACComputeGemm_avx2(
         }
         // kfactor == 8 variants
         else if (has_scale && kfactor == 8 && bits == 2 && actk == 8 && has_zero_point && !one_scale) {
-        // kfactor == 8 variants
-        else if (has_scale && kfactor == 8 && bits == 2 && actk == 8 && has_zero_point && !one_scale) {
             tbl_g4_int8_float_update_impl<true, 8, 2, 8, false, true, false>(
                 static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases);
         } else if (has_scale && kfactor == 8 && bits == 2 && actk == 8 && !has_zero_point && !one_scale) {
@@ -647,9 +775,9 @@ void TMACComputeGemm_avx2(
                 static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases);
         } else {
             // No matching kernel template found
-            fprintf(stderr, "No matching kernel: has_scale=%d, kfactor=%d, bits=%d, actk=%d, has_zero_point=%d, one_scale=%d\n",
-                    has_scale, kfactor, bits, actk, has_zero_point, one_scale);
-            throw std::runtime_error("No matching T-MAC kernel template found for configuration");
+            // ORT_THROW("No matching kernel: has_scale=%d, kfactor=%d, bits=%d, actk=%d, has_zero_point=%d, one_scale=%d\n",
+            //         has_scale, kfactor, bits, actk, has_zero_point, one_scale);
+            ORT_THROW("Reached else case");
         }
     }
 
@@ -680,5 +808,6 @@ QuantizeARow_CompInt8(
 const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLUTGenKernelAvx2 = []() {
     MLAS_QNBIT_LUT_GEMM_DISPATCH d;
     d.GenerateLUT = GenerateLUT_avx2;
+    d.ComputeGemm = TMACComputeGemm_avx2;
     return d;
 }();

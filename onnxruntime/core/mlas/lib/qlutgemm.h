@@ -10,10 +10,25 @@ typedef
 void(MLAS_QNBIT_GEMM_LUT_GEN)(
 	int32_t group_size,
 	int8_t* lut,
-	float* b,
+	const float* b,
 	float* scales,
 	float* biases,
 	int K
+);
+
+typedef
+void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
+	const void* A,
+	const void* a_scales,
+	const void* LUT,
+	const void* LUT_Scales,
+	const void* LUT_Biases,
+	void* C,
+	int bm,
+	int K,
+	int M,                // batch size (number of rows in activation)
+	int N,
+	size_t BlkLen
 );
 
 
@@ -26,5 +41,7 @@ void(MLAS_QNBIT_GEMM_LUT_GEN)(
 struct MLAS_QNBIT_LUT_GEMM_DISPATCH {
 	// Intentionally empty placeholder; add members as needed.
 	MLAS_QNBIT_GEMM_LUT_GEN* GenerateLUT = nullptr;
+
+	MLAS_QNBIT_LUT_GEMM_COMPUTE* ComputeGemm = nullptr;
 
 };

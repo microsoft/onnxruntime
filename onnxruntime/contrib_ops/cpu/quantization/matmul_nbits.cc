@@ -332,7 +332,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   // 2 bits + acc level 4 = use look up table but in the future adapt so that we use a mamtulnbits attr to decide
   // if we want to do lut generation
   if (compute_type_ == TMAC) {
-    MlasTmac(a, scales, zero_points, bias, y, packed_b_.get(), helper, block_size_, allocator, thread_pool);
+    MlasTmac(a_data, block_size_, packed_b_.get(), scales_data, y_data, K, M, N, thread_pool);
     return Status::OK();
   }
   const size_t lda = helper.Lda(false);
