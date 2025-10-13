@@ -741,7 +741,7 @@ ORT_API_STATUS_IMPL(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_devi
                     _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** stream);
 
-ORT_API_STATUS_IMPL(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ struct FenceParams fenceParams, _In_ void** extSemFence);
+ORT_API_STATUS_IMPL(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union DeviceParams deviceParams, _In_ struct FenceParams fenceParams, _In_ void** extSemFence);
 ORT_API_STATUS_IMPL(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 ORT_API_STATUS_IMPL(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 

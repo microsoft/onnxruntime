@@ -34,6 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <d3d12.h>
+
+// #define VK_USE_PLATFORM_WIN32_KHR
 // #include <vulkan/vulkan.h>
 
 /** \brief The API version defined in this header
@@ -511,6 +513,12 @@ typedef enum ExternalSyncPrimitive {
   ExternalSyncPrimitive_D3D12Fence,
   ExternalSyncPrimitive_VulkanSemaphore,
 } ExternalSyncPrimitive;
+
+typedef union DeviceParams
+{
+  ID3D12Device* pDevice;
+  // VkDevice pVkDevice;
+}DeviceParams;
 
 typedef struct FenceParams
 {
@@ -6503,7 +6511,7 @@ struct OrtApi {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
 
-  ORT_API2_STATUS(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ struct FenceParams fenceParams, _In_ void** extSemFence);
+  ORT_API2_STATUS(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union DeviceParams deviceParams, _In_ struct FenceParams fenceParams, _In_ void** extSemFence);
   ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
   ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 

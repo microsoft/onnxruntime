@@ -92,8 +92,9 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status GetExtSemaphore(struct FenceParams fenceParams, void** extSemFence) {
+  virtual Status GetExtSemaphore(union DeviceParams deviceParams, struct FenceParams fenceParams, void** extSemFence) {
 
+    ORT_UNUSED_PARAMETER(deviceParams);
     *extSemFence = (void*)&fenceParams;   //fall back path
     return Status::OK();
   }
