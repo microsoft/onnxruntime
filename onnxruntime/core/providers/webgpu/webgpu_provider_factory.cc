@@ -155,6 +155,19 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
     }
   }
 
+  std::string small_storage_buffer_binding_size_for_testing_str;
+  bool small_storage_buffer_binding_size_for_testing = false;
+  if (config_options.TryGetConfigEntry(kSmallStorageBufferBindingSizeForTesting, small_storage_buffer_binding_size_for_testing_str)) {
+    if (small_storage_buffer_binding_size_for_testing_str == "1" || small_storage_buffer_binding_size_for_testing_str == "true") {
+      small_storage_buffer_binding_size_for_testing = true;
+    } else if (small_storage_buffer_binding_size_for_testing_str == "0" || small_storage_buffer_binding_size_for_testing_str == "false") {
+      small_storage_buffer_binding_size_for_testing = false;
+    } else {
+      ORT_THROW("Invalid small storage buffer binding size for testing: ", small_storage_buffer_binding_size_for_testing_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP small storage buffer binding size for testing: " << small_storage_buffer_binding_size_for_testing;
+
   webgpu::WebGpuContextConfig context_config{
       context_id,
       reinterpret_cast<WGPUInstance>(webgpu_instance),
@@ -162,6 +175,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       reinterpret_cast<const void*>(dawn_proc_table),
       validation_mode,
       preserve_device,
+      small_storage_buffer_binding_size_for_testing,
   };
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << context_id;
