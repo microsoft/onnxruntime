@@ -2629,48 +2629,6 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         graph_(graph),
         options_(options) {
     node_output_types_.resize(node.OutputDefs().size());
-
-    // The following code handles cases where a node stores the previously inferred shape values in its NodeArg.
-    //
-    // For example, the Reshape operator, its input shape may come from a producer node such as a Shape operator,
-    // and the inferred shape value is already stored as a ShapeTensorProto in corresponding NodeArg.
-    //
-    // In such cases, the Reshape operator should convert this ShapeTensorProto into a TensorProto.
-    // The resulting TensorProto will then be treated as an initializer during ONNX shape inference,
-    // allowing the real dimension values to be correctly used.
-    // See https://github.com/onnx/onnx/blob/main/onnx/defs/shape_inference.cc#L467 for details.
-    //
-    // Note: The following code is placed here instead of in getInputData() because
-    //       getInputData() is a const function. As a result, we cannot create a new ShapeTensorProto
-    //       and store it in this class within a const function.
-    for (const NodeArg* def : node_.InputDefs()) {
-      // Skip initializer as it will be handled in getInputData()
-      if (graph_.GetConstantInitializer(def->Name(), true)) {
-        continue;
-      }
-
-      const auto& tensor_shape_proto = def->GetValuesAfterDataPropagation();
-
-      // The inferred data has rank > 0 and the all the dimensions have values (not symbolic)
-      if (tensor_shape_proto.dim_size() > 0) {
-        TensorProto tensor_proto;
-        tensor_proto.set_data_type(TensorProto_DataType_INT64);
-        tensor_proto.add_dims(tensor_shape_proto.dim_size());
-        bool all_values = true;
-        for (const auto& dim : tensor_shape_proto.dim()) {
-          if (dim.has_dim_value()) {
-            tensor_proto.add_int64_data(dim.dim_value());
-          } else {
-            all_values = false;
-            break;
-          }
-        }
-
-        if (all_values) {
-          tensor_proto_for_shape_[def->Name()] = std::move(tensor_proto);
-        }
-      }
-    }
   }
 
   void RunInferencing() {
@@ -2725,11 +2683,38 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
       return initializer;
     }
 
-    // Return the ShapeTensorProto that was previously created in
-    // the InferenceContextImpl's constructor if there is any.
-    auto tensor_proto_for_shape = tensor_proto_for_shape_.find(def->Name());
-    if (tensor_proto_for_shape != tensor_proto_for_shape_.end()) {
-      return &tensor_proto_for_shape->second;
+    // The following code handles cases where a node stores the previously inferred output shape values in its NodeArg.
+    //
+    // For example, the Reshape operator, its shape input may come from a producer node such as a Shape operator,
+    // and the inferred output shape value is already stored as a TensorShapeProto in corresponding NodeArg.
+    //
+    // In such cases, the Reshape operator should convert this TensorShapeProto into a TensorProto.
+    // The resulting TensorProto will then be treated as an initializer during ONNX shape inference,
+    // allowing the real dimension values to be correctly used.
+    // See https://github.com/onnx/onnx/blob/main/onnx/defs/shape_inference.cc#L467 for details.
+
+    const auto& tensor_shape_proto = def->GetValuesAfterDataPropagation();
+
+    // Make sure the returning shape tensor as a TensorProto has rank > 0 and all the dimensions
+    // have values (not symbolic)
+    if (tensor_shape_proto.dim_size() > 0) {
+      TensorProto tensor_proto;
+      tensor_proto.set_data_type(TensorProto_DataType_INT64);
+      tensor_proto.add_dims(tensor_shape_proto.dim_size());
+      bool all_values = true;
+      for (const auto& dim : tensor_shape_proto.dim()) {
+        if (dim.has_dim_value()) {
+          tensor_proto.add_int64_data(dim.dim_value());
+        } else {
+          all_values = false;
+          break;
+        }
+      }
+
+      if (all_values) {
+        tensor_proto_for_shape_.push_back(std::make_unique<TensorProto>(std::move(tensor_proto)));
+        return tensor_proto_for_shape_.back().get();
+      }
     }
 
     return nullptr;
@@ -2767,7 +2752,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   Node& node_;
   // node_output_types_ will be populated by the operator-specific shape inference.
   std::vector<TypeProto> node_output_types_;
-  std::unordered_map<std::string, TensorProto> tensor_proto_for_shape_;
+  mutable InlinedVector<std::unique_ptr<TensorProto>> tensor_proto_for_shape_;
   SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
   const Graph& graph_;
