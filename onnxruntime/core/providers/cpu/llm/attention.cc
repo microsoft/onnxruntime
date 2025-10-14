@@ -199,6 +199,13 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              T* output_qk,                           // Q*K output
                                              ThreadPool* tp,
                                              AllocatorPtr allocator) const {
+  // The case past_key != nullptr and present_key == nullptr is not supported.
+  // We use the fact present_key is requested to avoid any extra allocation.
+  // However, if present_key is not requested, we should avoid allocated more memory than needed but that mean
+  // allocating one buffer per thread. That's why the implementation is not done.
+  // The user should define a model with a present_key even if not used if past_key is not null.
+  ORT_ENFORCE(!((past_key != nullptr) && (present_key == nullptr)),
+              "The implementation does not support past_key provided and present_key being null.");
   const size_t past_chunk_length = static_cast<size_t>(parameters.past_sequence_length) * parameters.head_size;   // P x H
   const size_t q_input_chunk_length = static_cast<size_t>(parameters.q_sequence_length) * parameters.head_size;   // S x H
   const size_t k_input_chunk_length = static_cast<size_t>(parameters.kv_sequence_length) * parameters.head_size;  // L x H
