@@ -1,18 +1,13 @@
-# create an onnx model with DDS output:
-
 import onnx
-from onnx import helper, TensorProto
+from onnx import TensorProto, helper
 
+# Create a simple ONNX model with DDS output
 input = helper.make_tensor_value_info("data", TensorProto.FLOAT, ["d1", "d2"])
 output = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["nzr"])
 
 nonzeros_node = helper.make_node("NonZero", ["data"], ["nonzeros"], "nonzeros_node")
-transpose_node = helper.make_node(
-    "Transpose", ["nonzeros"], ["nonzeros_t"], "transpose_node"
-)
-gathernd_node = helper.make_node(
-    "GatherND", ["data", "nonzeros_t"], ["output"], "gathernd_node"
-)
+transpose_node = helper.make_node("Transpose", ["nonzeros"], ["nonzeros_t"], "transpose_node")
+gathernd_node = helper.make_node("GatherND", ["data", "nonzeros_t"], ["output"], "gathernd_node")
 
 value_info = [
     helper.make_tensor_value_info("nonzeros", TensorProto.INT64, [2, "nzr"]),
