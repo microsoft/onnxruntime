@@ -2711,7 +2711,6 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     // In such cases, the Reshape operator should convert this TensorShapeProto into a TensorProto.
     // The resulting TensorProto will then be treated as an initializer during ONNX shape inference,
     // allowing the real dimension values to be correctly used.
-    // See https://github.com/onnx/onnx/blob/main/onnx/defs/shape_inference.cc#L467 for details.
     const auto& tensor_shape_proto = def->GetInferredShapeValues();
 
     // Make sure the returning shape tensor as a TensorProto has rank > 0 and all the dimensions
@@ -2731,8 +2730,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
       }
 
       if (all_values) {
-        tensor_proto_for_shape_.push_back(std::make_unique<TensorProto>(std::move(tensor_proto)));
-        return tensor_proto_for_shape_.back().get();
+        temp_tensor_protos_.push_back(std::make_unique<TensorProto>(std::move(tensor_proto)));
+        return temp_tensor_protos_.back().get();
       }
     }
 
@@ -2771,7 +2770,6 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   Node& node_;
   // node_output_types_ will be populated by the operator-specific shape inference.
   std::vector<TypeProto> node_output_types_;
-  mutable InlinedVector<std::unique_ptr<TensorProto>> tensor_proto_for_shape_;
   SubgraphInferencingFunc subgraph_inferencing_func_;
   std::vector<std::unique_ptr<GraphInferencerImpl>> graph_inferencers_;
   const Graph& graph_;
@@ -2780,11 +2778,14 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   // These need to outlive the shape inference call, so we store them here
   // Inference is per node and the instance of this context is on the stack,
   // so this is safe.
+  // It can also be used to temporarily save the inferred shape values as a TensorProto.
   mutable InlinedVector<std::unique_ptr<ONNX_NAMESPACE::TensorProto>> temp_tensor_protos_;
 };
 
 // An implementation of the DataPropagationContext interface optional by operator-specific
 // shape inference for onnxruntime graphs.
+// Please see the description and usage of ONNX's data propagation here:
+// https://github.com/onnx/onnx/blob/main/onnx/defs/shape_inference.h#L117-L127
 class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext {
  public:
   DataPropagationContextImpl(Node& node) noexcept : node_(node) {

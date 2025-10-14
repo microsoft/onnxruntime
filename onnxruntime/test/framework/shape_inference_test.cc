@@ -80,6 +80,7 @@ TEST_F(ShapeInferenceTest, BasicTest) {
 
 TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
   {
+    // This model contains "Shape" and "Reshape" operators.
     auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_with_shape_related_nodes.onnx");
 
     Ort::SessionOptions session_options{};
@@ -108,6 +109,7 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
   }
 
   {
+    // This model contains "Shape", "Reshape", "Gather" and "Unsqueeze" operators.
     auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_with_shape_related_nodes_v2.onnx");
 
     Ort::SessionOptions session_options{};
