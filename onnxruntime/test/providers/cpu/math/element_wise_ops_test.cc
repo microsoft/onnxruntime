@@ -3924,6 +3924,14 @@ TEST(MathOpTest, Erf) {
   test.Run();
 }
 
+TEST(MathOpTest, Erf_f16) {
+  OpTester test("Erf", 9);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<MLFloat16>("A", dims, MakeMLFloat16({0.5f, 1.0f, 0.7f, 2.0f}));
+  test.AddOutput<MLFloat16>("B", dims, MakeMLFloat16({0.5204999f, 0.8427008f, 0.6778012f, 0.9953223f}));
+  test.Run();
+}
+
 TEST(MathOpTest, ErfMoreData) {
   OpTester test("Erf", 9);
   std::vector<float> inputs{

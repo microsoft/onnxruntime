@@ -101,9 +101,9 @@ void ComputeJob(
     U* mean_data,
     U* inv_std_dev_data,
     AllocatorPtr alloc) {
-  ORT_UNUSED_PARAMETER(scale_data);
-  ORT_UNUSED_PARAMETER(bias_data);
-  ORT_UNUSED_PARAMETER(alloc);
+  ORT_UNUSED_PARAMETER(scale_data);  // only used in float/double overload
+  ORT_UNUSED_PARAMETER(bias_data);   // only used in float/double overload
+  ORT_UNUSED_PARAMETER(alloc);       // only required to create temporary float buffers
 
   // reinterpret input/output MLFloat16* as Eigen::half*
   const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(X_data + task_idx * norm_size);
@@ -151,6 +151,7 @@ void ComputeJob(
   }
 
   if (mean_data != nullptr) {
+    // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
     mean_data[task_idx] = MLFloat16(mean);
   }
 
