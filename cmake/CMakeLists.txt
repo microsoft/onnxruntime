@@ -1453,7 +1453,7 @@ if (onnxruntime_USE_CUDA)
     message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
   endif()
 
-  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all -compress-mode=size")
   else()
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")
