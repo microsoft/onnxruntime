@@ -85,16 +85,12 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
   }
 
-  if (axes_data.empty()) {
-    // When axes is not provided or is empty, check the 'noop_with_empty_axes' attribute:
-    // - If it is false, perform reduction over all dimensions.
-    //   (In WebNN, this means the 'axes' option is not set.)
-    // - If it is true, no reduction is applied, but other operations are still performed.
-    //   (In WebNN, this requires setting 'axes' to an empty array.)
-    if (helper.Get("noop_with_empty_axes", 0) == 1) {
-      options.set("axes", emscripten::val::array());
-    }
-  } else {
+  // When axes is not provided or is empty, check the 'noop_with_empty_axes' attribute:
+  // - If it is false, perform reduction over all dimensions.
+  //   (In WebNN, this means the 'axes' option is not set.)
+  // - If it is true, no reduction is applied, but other operations are still performed.
+  //   (In WebNN, this requires setting 'axes' to an empty array.)
+  if (!axes_data.empty() || helper.Get("noop_with_empty_axes", 0) == 1) {
     options.set("axes", emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(axes_data)));
   }
 
