@@ -3039,6 +3039,9 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
 
         // In this case, the axis should be 0
         if (axis == 0) {
+          if (!output_def.inferred_shape_values_.has_value()) {
+            output_def.inferred_shape_values_.emplace();
+          }
           output_def.inferred_shape_values_->clear_dim();
           output_def.inferred_shape_values_->add_dim()->set_dim_value(*input_0->inferred_scalar_value_);
         }
@@ -3088,6 +3091,10 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       if (!onnx_inferred_types_after_data_propagation.tensor_type().shape().dim(i).has_dim_value()) {
         return Status::OK();
       }
+    }
+
+    if (!output_def.inferred_shape_values_.has_value()) {
+      output_def.inferred_shape_values_.emplace();
     }
 
     output_def.inferred_shape_values_->clear_dim();

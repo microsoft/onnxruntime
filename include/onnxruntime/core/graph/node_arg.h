@@ -108,7 +108,7 @@ class NodeArg {
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 
   /** Gets the inferred shape values as a TensorShapeProto. */
-  const std::optional<ONNX_NAMESPACE::TensorShapeProto> GetInferredShapeValues() const noexcept { return inferred_shape_values_; }
+  const std::optional<ONNX_NAMESPACE::TensorShapeProto>& GetInferredShapeValues() const noexcept { return inferred_shape_values_; }
 
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
