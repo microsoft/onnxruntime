@@ -26,6 +26,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <filesystem>
 #if !defined(_AIX)
 #include <sys/syscall.h>
 #endif
@@ -590,6 +591,31 @@ class PosixEnv : public Env {
   std::string GetEnvironmentVar(const std::string& var_name) const override {
     char* val = getenv(var_name.c_str());
     return val == NULL ? std::string() : std::string(val);
+  }
+
+  // Return the path of the executable/shared library for the current running code. This is to make it
+  // possible to load other shared libraries installed next to our core runtime code.
+  PathString GetRuntimePath() const override {
+    Dl_info dl_info{};
+    // Must be one of the symbols exported in libonnxruntime.{so,dynlib}.
+    void* symbol_from_this_library = dlsym(RTLD_DEFAULT, "OrtGetApiBase");
+    PathString runtime_path;
+    // We will find OrtGetApiBase if onnxruntime is loaded as a shared library
+    if (dladdr(symbol_from_this_library, &dl_info) && dl_info.dli_fname) {
+      // Converting to absolute path since running a program with and without gdb attached can make a difference whether
+      // dli_fname will be absolute or relative. Converting to absolute for consistent result
+      runtime_path = PathString(std::filesystem::absolute(std::filesystem::path(dl_info.dli_fname).parent_path().string())) + "/";
+    } else {
+      // else use path of current executable to mirror Windows behavior
+#if __linux__
+      runtime_path = PathString(std::filesystem::absolute(std::filesystem::read_symlink(std::filesystem::path("/proc/self/exe")).parent_path())) + "/";
+#else
+      // TODO: MacOS could use _NSGetExecutablePath, but this needs to be tested!
+      runtime_path = PathString();
+#endif
+    }
+    LOGS_DEFAULT(VERBOSE) << "Determined PosixEnv runtime path as \"" << runtime_path << "\"";
+    return runtime_path;
   }
 
  private:
