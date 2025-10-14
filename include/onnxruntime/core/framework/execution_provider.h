@@ -92,6 +92,47 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
+  virtual Status GetExtSemaphore(struct GraphicsInteropParams graphicsInteropParams, void** extSemFence) {
+
+    *extSemFence = (void*)&graphicsInteropParams;   //fall back path
+    return Status::OK();
+  }
+
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
+    ORT_UNUSED_PARAMETER(stream);
+
+    HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    ExternalSyncPrimitive extSyncPrimitive = ((struct GraphicsInteropParams*)extSemFence)->extSyncPrimitive;
+    switch (extSyncPrimitive) {
+      case ExternalSyncPrimitive_D3D12Fence:
+        ((struct GraphicsInteropParams*)extSemFence)->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
+        WaitForSingleObject(hEvent, INFINITE);
+        CloseHandle(hEvent);
+        break;
+      // case ExternalSyncPrimitive_VulkanSemaphore:
+      //   VkFence fence = ((struct FenceParams*)extSemFence)->FencePtr.pFenceVulkan;
+      //   fence = nullptr;
+      //   // vkWaitForFences(device, 1, &fence, VK_TRUE, fenceValue);
+      //   break;
+    }
+
+    return Status::OK();
+  }
+  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) {
+    ORT_UNUSED_PARAMETER(extSemFence);
+    ORT_UNUSED_PARAMETER(stream);
+    ORT_UNUSED_PARAMETER(fenceValue);
+
+    const OrtSyncStreamImpl* streamImpl;
+    OrtSyncNotificationImpl* streamNotification;
+    streamImpl = ortEpApi->SyncStream_GetImpl(static_cast<OrtSyncStream*>(stream));
+    streamImpl->CreateNotification(const_cast<OrtSyncStreamImpl*>(streamImpl), &streamNotification);
+
+    streamNotification->Activate(streamNotification);
+    streamNotification->WaitOnHost(streamNotification);
+    return Status::OK();
+  }
+
   /**
    * Returns a data transfer object that implements methods to copy to and
    * from this device.

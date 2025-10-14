@@ -443,6 +443,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetEpDeviceForInputs;
 
         public IntPtr CreateSyncStreamForEpDevice;
+        public IntPtr GetOrtFenceForGraphicsInterop;
+        public IntPtr InteropEpWait;
+        public IntPtr InteropEpSignal;
         public IntPtr SyncStream_GetHandle;
         public IntPtr ReleaseSyncStream;
 
@@ -500,7 +503,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateEnvWithGlobalThreadPools = (DOrtCreateEnvWithGlobalThreadPools)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithGlobalThreadPools, typeof(DOrtCreateEnvWithGlobalThreadPools));
             OrtCreateEnvWithCustomLoggerAndGlobalThreadPools = (DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools)Marshal.GetDelegateForFunctionPointer(api_.CreateEnvWithCustomLoggerAndGlobalThreadPools, typeof(DOrtCreateEnvWithCustomLoggerAndGlobalThreadPools));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
-            
+
             OrtEnableTelemetryEvents = (DOrtEnableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.EnableTelemetryEvents, typeof(DOrtEnableTelemetryEvents));
             OrtDisableTelemetryEvents = (DOrtDisableTelemetryEvents)Marshal.GetDelegateForFunctionPointer(api_.DisableTelemetryEvents, typeof(DOrtDisableTelemetryEvents));
 
@@ -759,12 +762,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtEpDevice_Device = (DOrtEpDevice_Device)Marshal.GetDelegateForFunctionPointer(
                 api_.EpDevice_Device, typeof(DOrtEpDevice_Device));
 
-            OrtRegisterExecutionProviderLibrary = 
+            OrtRegisterExecutionProviderLibrary =
                 (DOrtRegisterExecutionProviderLibrary)Marshal.GetDelegateForFunctionPointer(
                     api_.RegisterExecutionProviderLibrary,
                     typeof(DOrtRegisterExecutionProviderLibrary));
 
-            OrtUnregisterExecutionProviderLibrary = 
+            OrtUnregisterExecutionProviderLibrary =
                 (DOrtUnregisterExecutionProviderLibrary)Marshal.GetDelegateForFunctionPointer(
                     api_.UnregisterExecutionProviderLibrary,
                     typeof(DOrtUnregisterExecutionProviderLibrary));
@@ -773,12 +776,12 @@ namespace Microsoft.ML.OnnxRuntime
                 api_.GetEpDevices,
                 typeof(DOrtGetEpDevices));
 
-            OrtSessionOptionsAppendExecutionProvider_V2 = 
+            OrtSessionOptionsAppendExecutionProvider_V2 =
                 (DOrtSessionOptionsAppendExecutionProvider_V2)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsAppendExecutionProvider_V2,
                     typeof(DOrtSessionOptionsAppendExecutionProvider_V2));
 
-            OrtSessionOptionsSetEpSelectionPolicy = 
+            OrtSessionOptionsSetEpSelectionPolicy =
                 (DSessionOptionsSetEpSelectionPolicy)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsSetEpSelectionPolicy,
                     typeof(DSessionOptionsSetEpSelectionPolicy));
@@ -1054,7 +1057,7 @@ namespace Microsoft.ML.OnnxRuntime
 #region InferenceSession API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtCreateStatus(
-            uint /* OrtErrorCode */ code, 
+            uint /* OrtErrorCode */ code,
             byte[] /* const char* */ msg);
         public static DOrtCreateStatus OrtCreateStatus;
 
@@ -2494,7 +2497,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                  byte[] /* const char* */ value);
 
         /// <summary>
-        /// Get the value for the provided key. 
+        /// Get the value for the provided key.
         /// </summary>
         /// <returns>Value. Returns IntPtr.Zero if key was not found.</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -2593,7 +2596,7 @@ namespace Microsoft.ML.OnnxRuntime
         // Auto Selection EP registration and selection customization
 
         /// <summary>
-        /// Register an execution provider library. 
+        /// Register an execution provider library.
         /// The library must implement CreateEpFactories and ReleaseEpFactory.
         /// </summary>
         /// <param name="env">Environment to add the EP library to.</param>
