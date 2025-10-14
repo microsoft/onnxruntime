@@ -2830,8 +2830,6 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
     if (!def)
       return nullptr;
 
-    // Try to get the previously inferred shape values that stored in NodeArg's values_after_data_propagation_
-
     const TensorShapeProto* tensor_shape_proto = nullptr;
 
     auto has_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> bool {
@@ -2848,6 +2846,7 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
       return false;
     };
 
+    // Try to get the previously inferred shape values that stored in NodeArg's values_after_data_propagation_
     // Get NodeArg's values_after_data_propagation_ if applicable
     tensor_shape_proto = &def->GetValuesAfterDataPropagation();
     if (has_shape_values(*tensor_shape_proto)) {
@@ -2884,6 +2883,30 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
   auto dim_size = onnx_inferred_types_after_data_propagation.tensor_type().shape().dim_size();
 
   if (dim_size < 0) {
+    return Status::OK();
+  }
+
+  // Size operator generates a scalar output and a scalar has 0 rank.
+  // But its PartialDataPropagationFunction() has the chance to generate a shape data with rank > 0.
+  // So, handle it here.
+  if (node.OpType() == "Size") {
+    const auto* input_0 = node.GetDefinitions().input_defs[0];
+    auto& tensor_shape_proto = input_0->values_after_data_propagation_;
+    auto get_num_elements = [&](const TensorShapeProto& tensor_shape_proto) -> void {
+      int64_t num_elements = 1;
+      // The TensorShapeProto (inferred shape values) should have rank > 0 and the all the dimensions have values (not symbolic)
+      if (tensor_shape_proto.dim_size() > 0) {
+        for (const auto& dim : tensor_shape_proto.dim()) {
+          if (!dim.has_dim_value()) {
+            return;
+          }
+          num_elements *= dim.dim_value();
+        }
+        output_def.scalar_value_after_data_propagation_ = num_elements;
+      }
+    };
+    get_num_elements(tensor_shape_proto);
+
     return Status::OK();
   }
 
@@ -3054,7 +3077,7 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
     }
   }
   // If the dimension size is greater than 0, only save the inferred data from data propagation
-  // when the data has rank > 1 and all dimensions have concrete (non-symbolic) values.
+  // when the data has rank > 0 and all dimensions have concrete (non-symbolic) values.
   else if (dim_size > 0) {
     for (int i = 0; i < dim_size; ++i) {
       if (!onnx_inferred_types_after_data_propagation.tensor_type().shape().dim(i).has_dim_value()) {
