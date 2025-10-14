@@ -20,7 +20,7 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
 
     if(ONNXRUNTIME_DEP_URL MATCHES "^https://")
       # Search a local mirror folder
-      string(REGEX REPLACE "^https://" "${REPO_ROOT}/mirror/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
+      string(REGEX REPLACE "^https://" "${onnxruntime_CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
 
       if(EXISTS "${LOCAL_URL}")
         cmake_path(ABSOLUTE_PATH LOCAL_URL)
@@ -498,13 +498,7 @@ else()
 endif()
 
 if(Patch_FOUND)
-  set(ONNXRUNTIME_ONNX_PATCH_COMMAND
-      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch &&
-      # Patch changes from https://github.com/onnx/onnx/pull/7253 to avoid unnecessary rebuilding.
-      # This change should be included in ONNX 1.19.1.
-      ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
-          ${PROJECT_SOURCE_DIR}/patches/onnx/avoid_regenerating_proto_files.patch
-      )
+  set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
 else()
   set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
 endif()

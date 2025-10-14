@@ -71,16 +71,22 @@ struct OrtShapeInferContext {
     auto num_inputs = ctx_.getNumInputs();
     for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
       const auto* input_type = ctx_.getInputType(ith_input);
-      const auto& value_case = input_type->value_case();
-      ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType,
-                  "shape inference not yet supported for non-tensor types");
-      const auto& shape_proto = input_type->tensor_type().shape();
-      const auto& type_proto = input_type->tensor_type();
-      auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
-      auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
-      auto symbolic_dims = GetSymbolicDims(shape_proto);
-      input_type_shapes_.emplace_back(
-          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, &tensor_shape, &symbolic_dims));
+      if (input_type != nullptr) {
+        const auto& value_case = input_type->value_case();
+        ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType,
+                    "shape inference not yet supported for non-tensor types");
+        const auto& shape_proto = input_type->tensor_type().shape();
+        const auto& type_proto = input_type->tensor_type();
+        auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
+        auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
+        auto symbolic_dims = GetSymbolicDims(shape_proto);
+        input_type_shapes_.emplace_back(
+            OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, &tensor_shape, &symbolic_dims));
+      } else {
+        input_type_shapes_.emplace_back(
+            OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(
+                ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, nullptr, nullptr));
+      }
     }
   }
 

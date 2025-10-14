@@ -1,7 +1,7 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
 - name: buildJava
   type: boolean
 - name: buildNodejs
@@ -22,7 +22,7 @@ stages:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
@@ -74,14 +74,14 @@ stages:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
     - name: linux_trt_version
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: ${{ variables.linux_trt_version_cuda11 }}
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self
@@ -140,12 +140,12 @@ stages:
     - name: CUDA_VERSION_MAJOR
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: '12'
     - name: linux_trt_version
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
         value: ${{ variables.linux_trt_version_cuda11 }}
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
