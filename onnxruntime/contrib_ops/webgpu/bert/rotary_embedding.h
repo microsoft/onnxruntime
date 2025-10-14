@@ -29,6 +29,30 @@ class RotaryEmbeddingProgram final : public Program<RotaryEmbeddingProgram> {
   const bool interleaved_;
 };
 
+class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddingProgram> {
+ public:
+  FusedQKRotaryEmbeddingProgram(bool interleaved) : Program{"FusedQKRotaryEmbedding"}, interleaved_{interleaved} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  // q_* describes query rotation domain (same definition as existing program)
+  // k_* describes key rotation domain
+  // q_domain_size, k_domain_size let shader decide which branch to execute
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"scale", ProgramUniformVariableDataType::Float32},
+      {"q_global_shape", ProgramUniformVariableDataType::Uint32},
+      {"q_global_stride", ProgramUniformVariableDataType::Uint32},
+      {"q_input_output_stride", ProgramUniformVariableDataType::Uint32},
+      {"k_global_shape", ProgramUniformVariableDataType::Uint32},
+      {"k_global_stride", ProgramUniformVariableDataType::Uint32},
+      {"k_input_output_stride", ProgramUniformVariableDataType::Uint32},
+      {"q_domain_size", ProgramUniformVariableDataType::Uint32},
+      {"k_domain_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const bool interleaved_;
+};
+
 class RotaryEmbedding final : public WebGpuKernel {
  public:
   RotaryEmbedding(const OpKernelInfo& info);
