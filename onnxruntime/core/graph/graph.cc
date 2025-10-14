@@ -2947,7 +2947,20 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       int64_t index = std::numeric_limits<int64_t>::min();
 
       if (initializer) {
-        if (utils::HasRawData(*initializer)) {
+        // Check if this is in-memory external data (data stored in OrtValue)
+        if (utils::HasExternalDataInMemory(*initializer)) {
+          // Try to get the OrtValue for this initializer
+          OrtValue ort_value;
+          if (this->GetOrtValueInitializer(input_1->Name(), ort_value, true)) {
+            const Tensor& tensor = ort_value.Get<Tensor>();
+            const int64_t* data = tensor.Data<int64_t>();
+            index = *data;
+          } else {
+            // If we can't get the OrtValue, it is a bug
+            ORT_THROW("Initializer ", input_1->Name(),
+                      " has in-memory external data but cannot get OrtValue during shape inference");
+          }
+        } else if (utils::HasRawData(*initializer)) {
           const std::string& raw = initializer->raw_data();
           const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
           index = *data;
@@ -3007,7 +3020,20 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
 
           if (initializer && initializer->dims_size() == 1) {
-            if (utils::HasRawData(*initializer)) {
+            // Check if this is in-memory external data (data stored in OrtValue)
+            if (utils::HasExternalDataInMemory(*initializer)) {
+              // Try to get the OrtValue for this initializer
+              OrtValue ort_value;
+              if (this->GetOrtValueInitializer(input_1->Name(), ort_value, true)) {
+                const Tensor& tensor = ort_value.Get<Tensor>();
+                const int64_t* data = tensor.Data<int64_t>();
+                axis = *data;
+              } else {
+                // If we can't get the OrtValue, it is a bug
+                ORT_THROW("Initializer ", input_1->Name(),
+                          " has in-memory external data but cannot get OrtValue during shape inference");
+              }
+            } else if (utils::HasRawData(*initializer)) {
               const std::string& raw = initializer->raw_data();
               const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
               axis = *data;
