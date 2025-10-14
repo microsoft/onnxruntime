@@ -3019,9 +3019,8 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
           auto it = attrs.find("axes");
           if (it != attrs.end()) {
             const auto& axes_attr = it->second;
-            for (auto v : axes_attr.ints()) {
-              axis = v;
-              break;  // get first value
+            if (axes_attr.ints_size()) {
+              axis = axes_attr.ints()[0];
             }
           }
         }
