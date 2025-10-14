@@ -734,6 +734,29 @@ MlasConvExpandThenGemmSegmentedThreaded(
     void* Context,
     ptrdiff_t Index
 )
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    convolution operation.
+
+    If using this, the entire convolution operation is parallelized on the
+    (batch size * group count) parameter and this routine has logic to
+    perform a specific thread's shard of the entire Convolution operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    Index - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+
 {
     MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
 
@@ -944,7 +967,7 @@ Return Value:
         ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
         if (size_t(TargetThreadCount) >= BatchGroupCount) {
-            TargetThreadCount = ptrdiff_t(BatchGroupCount);
+            TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
         }
 
         MLAS_CONV_WORK_BLOCK WorkBlock;
@@ -978,7 +1001,7 @@ Return Value:
         ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
         if (size_t(TargetThreadCount) >= BatchGroupCount) {
-            TargetThreadCount = ptrdiff_t(BatchGroupCount);
+            TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
         }
 
         MLAS_CONV_WORK_BLOCK WorkBlock;
@@ -1388,10 +1411,12 @@ Return Value:
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
-            size_t WorkingBufferSizePerThread = std::max(Parameters->OutputSize * Parameters->K, std::max(Parameters->FilterCount * Parameters->OutputSize, static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)));
+            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K, 
+                                                          Parameters->FilterCount * Parameters->OutputSize, 
+                                                          static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
             TargetThreadCount = MaximumThreadCount;
-            if (size_t(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
-                TargetThreadCount = int32_t(Parameters->BatchCount * Parameters->GroupCount);
+            if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
+                TargetThreadCount = static_cast<ptrdiff_t>(Parameters->BatchCount * Parameters->GroupCount);
             }
             *WorkingBufferSize = TargetThreadCount * WorkingBufferSizePerThread;
         }
