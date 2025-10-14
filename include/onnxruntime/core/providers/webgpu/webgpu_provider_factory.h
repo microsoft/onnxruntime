@@ -20,18 +20,18 @@
 
 // Define export macros without including onnxruntime_c_api.h to avoid conflicts
 #if defined(_WIN32)
-  #ifdef ORT_DLL_EXPORT
-    #define ORT_WEBGPU_EXPORT __declspec(dllexport)
-  #else
-    #define ORT_WEBGPU_EXPORT __declspec(dllimport)
-  #endif
-  #define ORT_WEBGPU_API_CALL __stdcall
-#elif defined(__APPLE__) || defined(__linux__)
-  #define ORT_WEBGPU_EXPORT __attribute__((visibility("default")))
-  #define ORT_WEBGPU_API_CALL
+#ifdef ORT_DLL_EXPORT
+#define ORT_WEBGPU_EXPORT __declspec(dllexport)
 #else
-  #define ORT_WEBGPU_EXPORT
-  #define ORT_WEBGPU_API_CALL
+#define ORT_WEBGPU_EXPORT __declspec(dllimport)
+#endif
+#define ORT_WEBGPU_API_CALL __stdcall
+#elif defined(__APPLE__) || defined(__linux__)
+#define ORT_WEBGPU_EXPORT __attribute__((visibility("default")))
+#define ORT_WEBGPU_API_CALL
+#else
+#define ORT_WEBGPU_EXPORT
+#define ORT_WEBGPU_API_CALL
 #endif
 
 #ifdef __cplusplus

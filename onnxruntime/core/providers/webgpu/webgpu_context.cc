@@ -946,6 +946,9 @@ void WebGpuContextFactory::ReleaseContext(int context_id) {
   ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   if (--it->second.ref_count == 0 && !it->second.context->preserve_device_) {
+    // TODO: Investigate why memory leak is triggered if we don't explicitly destroy the device.
+    // It seems that memory leak deletection is triggered before the device is destroyed.
+    it->second.context->Device().Destroy();
     contexts_.erase(it);
   }
 }
