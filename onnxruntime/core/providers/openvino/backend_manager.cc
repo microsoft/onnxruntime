@@ -7,6 +7,7 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -170,7 +171,10 @@ BackendManager::BackendManager(SessionContext& session_context,
           exception_str.find("intel_npu") != std::string::npos) {
         // Handle NPU device related errors
 #ifndef NDEBUG
-        ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
+        std::string suffix = session_context_.so_disable_cpu_ep_fallback ?
+          "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" :
+          "\nModel needs to be recompiled\n";
+        ORT_THROW(exception_str + suffix);
 #else
         std::string error_message = "UNKNOWN NPU ERROR";
         std::string error_code = "code 0x0";
@@ -183,7 +187,10 @@ BackendManager::BackendManager(SessionContext& session_context,
         if (std::regex_search(exception_str, matches, error_code_pattern)) {
           error_code = matches[0];
         }
-        throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
+        std::string suffix = session_context_.so_disable_cpu_ep_fallback ?
+          "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" :
+          "\nModel needs to be recompiled\n";
+        throw std::runtime_error(error_message + ", " + error_code + suffix);
 #endif
       } else {
         ORT_THROW(exception_str);
@@ -631,8 +638,8 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     // proto is limited to 2GB, but let's use 32MB as threshold to be conservative and still gain some memory reductions.
 #if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2025))
     constexpr size_t MAX_EMBEDDED_INITIALIZER_SIZE = 1024 * 1024 * 32;
-    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights && 
-                                                     external_initializers_offset_and_length.size() > 1 && 
+    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights &&
+                                                     external_initializers_offset_and_length.size() > 1 &&
                                                      extInitializerTotalSize >= MAX_EMBEDDED_INITIALIZER_SIZE);
 #else
     const bool include_initializer_data_in_proto = true;
@@ -642,7 +649,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/true, 
+    subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/true,
                      /*include_outer_scope_args*/true, /*execution_order*/0, /*include_initializer_data*/include_initializer_data_in_proto);
 
     print_model_proto_duration();
@@ -881,7 +888,25 @@ void BackendManager::Compute(OrtKernelContext* context) {
             ORT_THROW(msg);
           }
         } else {
-          ORT_THROW(ex.what());
+          std::string exception_str = ex.what();
+          if (session_context_.so_disable_cpu_ep_fallback){
+            std::string error_message = "UNKNOWN NPU ERROR";
+            std::string error_code = "code 0x0";
+            std::regex error_message_pattern(R"(\bZE_\w*\b)");
+            std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
+            std::smatch matches;
+            if (std::regex_search(exception_str, matches, error_message_pattern)) {
+              error_message = matches[0];
+            }
+            if (std::regex_search(exception_str, matches, error_code_pattern)) {
+              error_code = matches[0];
+            }
+            std::string suffix = "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" ;
+            throw std::runtime_error(error_message + ", " + error_code + suffix);
+          }
+          else{
+            ORT_THROW(exception_str);
+          }
         }
 #endif
       }
