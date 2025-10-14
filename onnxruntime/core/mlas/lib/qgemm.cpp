@@ -210,8 +210,8 @@ MlasDynamicQGemmBatch (
     MLAS_THREADPOOL* ThreadPool
 ) {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //No fallback and putting in guards. This implementation is SME2 specific.
-    if(ArmKleidiAI::UseSME2){
+    //No fallback and putting in guards
+    if(ArmKleidiAI::SMEInfo::CanUseSME2){
         ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
     }
 #endif
@@ -336,7 +336,7 @@ MlasDynamicQgemmPackBSize(
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback available
     //TODO: Insert Override
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
+    if(ArmKleidiAI::SMEInfo::CanUseSME2){//Still require this since no override
         bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
     }
 #endif

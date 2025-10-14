@@ -51,8 +51,20 @@
 
 namespace ArmKleidiAI {
 
+struct SMEInfo {
+    static const bool CanUseSME2;
+    static const bool CanUseSME;
+    static const bool IsSMEAvailable;
+};
+
+// Boolean condition to determine if we can use SME2
 // By default we should try for SME2 first before falling back to SME.
-inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+inline const bool SMEInfo::CanUseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+// Boolean condition to determine if we can use SME
+inline const bool SMEInfo::CanUseSME  = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+// Boolean condition to tell us if SME is enabled on this system
+inline const bool SMEInfo::IsSMEAvailable = SMEInfo::CanUseSME2 || SMEInfo::CanUseSME;
+
 
 // Buffer packing routines.
 //
@@ -76,6 +88,19 @@ MlasGemmPackB(
     size_t ldb,
     void* PackedB
     );
+
+bool
+MLASCALL
+MlasFp32Gemv(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize
+    );
+
 
 bool
 MLASCALL
