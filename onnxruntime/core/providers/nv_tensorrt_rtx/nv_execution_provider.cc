@@ -86,7 +86,7 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-Status NvExecutionProvider::GetExtSemaphore(union DeviceParams deviceParams, struct FenceParams fenceParams, void** extSemFence) {
+Status NvExecutionProvider::GetExtSemaphore(struct GraphicsInteropParams graphicsInteropParams, void** extSemFence) {
   // By calling GetPerThreadContext(), we ensure that the cuda context
   // for the current thread is created if it doesn't already exist.
   // The constructor of PerThreadContext handles the context creation.
@@ -94,12 +94,12 @@ Status NvExecutionProvider::GetExtSemaphore(union DeviceParams deviceParams, str
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC semHandleDesc = {};
   HANDLE sharedFenceHandle = nullptr;
-  ExternalSyncPrimitive extSyncPrimitive = fenceParams.extSyncPrimitive;
+  ExternalSyncPrimitive extSyncPrimitive = graphicsInteropParams.extSyncPrimitive;
 
   switch (extSyncPrimitive) {
     case ExternalSyncPrimitive_D3D12Fence:
       semHandleDesc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
-      deviceParams.pDevice->CreateSharedHandle(fenceParams.FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle);
+      graphicsInteropParams.DevicePtr.pDevice->CreateSharedHandle(graphicsInteropParams.FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle);
       semHandleDesc.handle.win32.handle = sharedFenceHandle;
       break;
       case ExternalSyncPrimitive_VulkanSemaphore:
@@ -109,8 +109,8 @@ Status NvExecutionProvider::GetExtSemaphore(union DeviceParams deviceParams, str
         // handleInfo.fence = fenceParams.FencePtr.pFenceVulkan;
         // handleInfo.handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 
-        // PFN_vkGetFenceWin32HandleKHR pfn_vkGetFenceWin32HandleKHR_ = (PFN_vkGetFenceWin32HandleKHR)vkGetDeviceProcAddr(deviceParams.pVkDevice, "vkGetFenceWin32HandleKHR");
-        // if (pfn_vkGetFenceWin32HandleKHR_(deviceParams.pVkDevice, &handleInfo, &sharedFenceHandle) != VK_SUCCESS) {
+        // PFN_vkGetFenceWin32HandleKHR pfn_vkGetFenceWin32HandleKHR_ = (PFN_vkGetFenceWin32HandleKHR)vkGetDeviceProcAddr(graphicsInteropParams.DevicePtr.pVkDevice, "vkGetFenceWin32HandleKHR");
+        // if (pfn_vkGetFenceWin32HandleKHR_(graphicsInteropParams.DevicePtr.pVkDevice, &handleInfo, &sharedFenceHandle) != VK_SUCCESS) {
         //   return Status::OK();
         // }
         // semHandleDesc.handle.win32.handle = sharedFenceHandle;

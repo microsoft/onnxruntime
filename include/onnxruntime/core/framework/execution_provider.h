@@ -92,10 +92,9 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status GetExtSemaphore(union DeviceParams deviceParams, struct FenceParams fenceParams, void** extSemFence) {
+  virtual Status GetExtSemaphore(struct GraphicsInteropParams graphicsInteropParams, void** extSemFence) {
 
-    ORT_UNUSED_PARAMETER(deviceParams);
-    *extSemFence = (void*)&fenceParams;   //fall back path
+    *extSemFence = (void*)&graphicsInteropParams;   //fall back path
     return Status::OK();
   }
 
@@ -103,10 +102,10 @@ class IExecutionProvider {
     ORT_UNUSED_PARAMETER(stream);
 
     HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    ExternalSyncPrimitive extSyncPrimitive = ((struct FenceParams*)extSemFence)->extSyncPrimitive;
+    ExternalSyncPrimitive extSyncPrimitive = ((struct GraphicsInteropParams*)extSemFence)->extSyncPrimitive;
     switch (extSyncPrimitive) {
       case ExternalSyncPrimitive_D3D12Fence:
-        ((struct FenceParams*)extSemFence)->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
+        ((struct GraphicsInteropParams*)extSemFence)->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
         break;

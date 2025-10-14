@@ -514,13 +514,7 @@ typedef enum ExternalSyncPrimitive {
   ExternalSyncPrimitive_VulkanSemaphore,
 } ExternalSyncPrimitive;
 
-typedef union DeviceParams
-{
-  ID3D12Device* pDevice;
-  // VkDevice pVkDevice;
-}DeviceParams;
-
-typedef struct FenceParams
+typedef struct GraphicsInteropParams
 {
   ExternalSyncPrimitive extSyncPrimitive;
   union FencePtr
@@ -528,7 +522,13 @@ typedef struct FenceParams
       ID3D12Fence* pFence;
       // VkFence pFenceVulkan;    // Vulkan fence here
   } FencePtr;
-} FenceParams;
+
+  union DevicePtr
+  {
+    ID3D12Device* pDevice;
+    // VkDevice pVkDevice;
+  } DevicePtr;
+} GraphicsInteropParams;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
@@ -6511,7 +6511,7 @@ struct OrtApi {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
 
-  ORT_API2_STATUS(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union DeviceParams deviceParams, _In_ struct FenceParams fenceParams, _In_ void** extSemFence);
+  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence);
   ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
   ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 

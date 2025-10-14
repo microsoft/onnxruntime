@@ -3399,7 +3399,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union DeviceParams deviceParams, _In_ struct FenceParams fenceParams, _In_ void** extSemFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence) {
   API_IMPL_BEGIN
   auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   if (!inference_session) {
@@ -3428,7 +3428,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForD3D12Interop, _In_ OrtSession* sessio
     const onnxruntime::IExecutionProvider* const_provider = execution_providers.Get(provider_type);
     if (const_provider) {
       auto* provider = const_cast<onnxruntime::IExecutionProvider*>(const_provider);
-      auto status = provider->GetExtSemaphore(deviceParams, fenceParams, extSemFence);
+      auto status = provider->GetExtSemaphore(graphicsInteropParams, extSemFence);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
@@ -3710,9 +3710,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(GetOrtFenceForD3D12Interop, _In_ OrtSession* session, _In_ union DeviceParams deviceParams, _In_ struct FenceParams fenceParams, _In_ void** extSemFence) {
+ORT_API_STATUS_IMPL(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForD3D12Interop is not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForGraphicsInterop is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4352,7 +4352,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::SessionGetEpDeviceForInputs,
 
     &OrtApis::CreateSyncStreamForEpDevice,
-    &OrtApis::GetOrtFenceForD3D12Interop,
+    &OrtApis::GetOrtFenceForGraphicsInterop,
     &OrtApis::InteropEpWait,
     &OrtApis::InteropEpSignal,
     &OrtApis::SyncStream_GetHandle,
