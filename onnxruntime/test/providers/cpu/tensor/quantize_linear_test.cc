@@ -448,6 +448,7 @@ TEST(QuantizeLinearOpTest, Uint16) {
                             32769, 32765,
                             65535, 0,
                             65535, 0});
+  test.SetOutputAbsErr("y", 1.0f);
 
   // Disable Tensorrt EP due to error: unsupported data type
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
@@ -477,6 +478,7 @@ TEST(QuantizeLinearOpTest, Int16) {
                            32767, -32768,
                            32767, -32768,
                            32767, -32768});
+  test.SetOutputAbsErr("y", 1.0f);
 
   // Disable Tensorrt EP due to error: unsupported data type
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
@@ -501,6 +503,7 @@ TEST(QuantizeLinearOpTest, Int4) {
   test.AddOutput<Int4x2>("y", dims,
                          {Int4x2(-8, -7), Int4x2(-1, 1), Int4x2(2, 7),
                           Int4x2(7, unused_val)});
+  test.SetOutputAbsErr("y", 1.0f);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -568,6 +571,7 @@ TEST(QuantizeLinearOpTest, OddLarge_Int4) {
   test.AddInput<float>("scale", {}, {scale}, true);
   test.AddInput<Int4x2>("zero_point", {}, {Int4x2(zp, unused_val)}, true);
   test.AddOutput<Int4x2>("y", dims, output);
+  test.SetOutputAbsErr("y", 1.0f);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -594,6 +598,7 @@ TEST(QuantizeLinearOpTest, OddLarge_UInt4) {
   test.AddInput<float>("scale", {}, {scale}, true);
   test.AddInput<UInt4x2>("zero_point", {}, {UInt4x2(zp, unused_val)}, true);
   test.AddOutput<UInt4x2>("y", dims, output);
+  test.SetOutputAbsErr("y", 1.0f);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -611,6 +616,7 @@ TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {-23});
   test.AddOutput<int8_t>("y", dims, {-23, 28, 53, 104, 127, -74, -128, -128});
+  test.SetOutputAbsErr("y", 1.0f);
   // Disable Tensorrt EP due to the error, node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -628,6 +634,7 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {23});
   test.AddOutput<int8_t>("y", dims, {23, 74, 99, 127, 127, -28, -104, -128});
+  test.SetOutputAbsErr("y", 1.0f);
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
