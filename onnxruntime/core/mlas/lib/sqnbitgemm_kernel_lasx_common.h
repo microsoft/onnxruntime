@@ -6,6 +6,7 @@
 --*/
 #pragma once
 #include "qnbitgemm.h"
+#include "core/common/safeint.h"
 
 static MLAS_FORCEINLINE __m256
 __lasx_xvzero()
@@ -18,13 +19,13 @@ GetContinueLayoutOffsetSubBlk(size_t N, const size_t n, const size_t SubOrBlkCou
 {
     size_t T = n / 4, t = n % 4;
     bool te = T == N / 4;
-    size_t scale_dst_offset = T * 4 * SubOrBlkCountK;
+    SafeInt<size_t> scale_dst_offset = static_cast<SafeInt<size_t>>(T) * 4 * SubOrBlkCountK;
     if (te) {
-        scale_dst_offset += t * SubOrBlkCountK + k_sub_or_blk;
+        scale_dst_offset += static_cast<SafeInt<size_t>>(t) * SubOrBlkCountK + k_sub_or_blk;
     } else {
-        scale_dst_offset += k_sub_or_blk * 4 + t;
+        scale_dst_offset += static_cast<SafeInt<size_t>>(k_sub_or_blk) * 4 + t;
     }
-    return scale_dst_offset;
+    return scale_dst_offset.Value();
 }
 
 static size_t
@@ -32,18 +33,18 @@ GetContinueLayoutOffsetBlkInSubBlk(size_t N, const size_t n, const size_t BlockC
 {
     size_t T = n / 4, t = n % 4, k_subblk = k_blk / blks_per_sub, b = k_blk % blks_per_sub;
     bool te = T == N / 4, be = k_subblk == BlockCountK / blks_per_sub;
-    size_t scale_dst_offset = T * 4 * BlockCountK;
+    SafeInt<size_t> scale_dst_offset = static_cast<SafeInt<size_t>>(T) * 4 * BlockCountK;
     if (te) {
-        scale_dst_offset += t * BlockCountK + k_blk;
+        scale_dst_offset += static_cast<SafeInt<size_t>>(t) * BlockCountK + k_blk;
     } else {
-        scale_dst_offset += k_subblk * blks_per_sub * 4;
+        scale_dst_offset += static_cast<SafeInt<size_t>>(k_subblk) * blks_per_sub * 4;
         if (be) {
-            scale_dst_offset += b * 4 + t;
+            scale_dst_offset += static_cast<SafeInt<size_t>>(b) * 4 + t;
         } else {
-            scale_dst_offset += t * blks_per_sub + b;
+            scale_dst_offset += static_cast<SafeInt<size_t>>(t) * blks_per_sub + b;
         }
     }
-    return scale_dst_offset;
+    return scale_dst_offset.Value();
 }
 
 static void
@@ -62,23 +63,23 @@ ComputePackBlkSum_Lasx(
         const size_t n = tid / BlockCountK;
         const size_t k_blk = tid % BlockCountK;
 
-        const size_t src_blk_offset = n * BlockCountK + k_blk;
-        float QuantBScale = QuantBScaleBegin[src_blk_offset];
+        const SafeInt<size_t> src_blk_offset = static_cast<SafeInt<size_t>>(n) * BlockCountK + k_blk;
+        float QuantBScale = QuantBScaleBegin[src_blk_offset.Value()];
         uint8_t zp = 8;
 
         if (QuantBZPBegin) {
             size_t ZPCountK = MlasDivRoundup(BlockCountK, 2);
-            size_t src_zp_offset = ZPCountK * n + k_blk / 2;
+            SafeInt<size_t> src_zp_offset = static_cast<SafeInt<size_t>>(ZPCountK) * n + k_blk / 2;
             bool low_zp = k_blk % 2 == 0;
-            const std::byte* QuantBZP = QuantBZPBegin + src_zp_offset;
-            const std::byte low_mask{0X0F};
+            const std::byte* QuantBZP = QuantBZPBegin + src_zp_offset.Value();
+            const std::byte low_mask{0X0f};
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
         float result = -QuantBScale * zp;
 
-        const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        BlockSumBegin[dst_offset] = result;
+        const SafeInt<size_t> dst_offset = (static_cast<SafeInt<size_t>>(n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+        BlockSumBegin[dst_offset.Value()] = result;
 
         if (BlkLen == 16) {
         } else if (BlkLen >= SubBlkLen) {
@@ -118,8 +119,8 @@ PackQuantB(
             const size_t n = tid / SubBlkCountK;
             const size_t k_subblk = tid % SubBlkCountK;
 
-            const size_t src_data_offset = n * BlockCountK * BlkDataSize + k_subblk * SubBlkDataSize;
-            const std::byte* QuantBData = QuantBDataBegin + src_data_offset;
+            const SafeInt<size_t> src_data_offset = static_cast<SafeInt<size_t>>(n) * BlockCountK * BlkDataSize + k_subblk * SubBlkDataSize;
+            const std::byte* QuantBData = QuantBDataBegin + src_data_offset.Value();
 
             size_t PackBytePairCount = SubBlkBytePairCount;
             size_t PackDataSize = SubBlkDataSize;
@@ -135,7 +136,7 @@ PackQuantB(
                 std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
                 std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
 
-                dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                dst0 = (src0 & std::byte{0x0f}) | ((src1 & std::byte{0x0f}) << 4);
                 dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
             } };
 
@@ -148,7 +149,7 @@ PackQuantB(
                 PackDataSize = BlkDataSize;
                 const size_t k_blks_remaining = BlockCountK - (SubBlkCountK - 1) * SubBlkLen / BlkLen;
                 for (size_t k = 0; k < k_blks_remaining; k++) {
-                    const size_t k_blk = k_subblk * SubBlkLen / BlkLen + k;
+                    const SafeInt<size_t> k_blk = static_cast<SafeInt<size_t>>(k_subblk) * SubBlkLen / BlkLen + k;
                     if (BlkLen == 16) {
                         // not to do the compute order layout yet
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
@@ -158,7 +159,7 @@ PackQuantB(
                         assert(SubBlkLen == 128);
                     } else {
                         int blks_per_sub = (int)(SubBlkLen / BlkLen);
-                        const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+                        const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk.Value(), blks_per_sub);
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
                         pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData, PackBytePairCount, PackDataSize);
                     }
@@ -174,8 +175,8 @@ PackQuantB(
                     pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                 } else {
                     int blks_per_sub = (int)(SubBlkLen / BlkLen);
-                    const size_t k_blk = k_subblk * blks_per_sub;
-                    const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+                    const SafeInt<size_t> k_blk = static_cast<SafeInt<size_t>>(k_subblk) * blks_per_sub;
+                    const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk.Value(), blks_per_sub);
                     std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
                     pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                 }
@@ -267,25 +268,29 @@ Q8PackQuantB(
             const size_t c_4 = c & (~3), c_res = c & 3;
             const size_t r_subblk = tid % SubBlkCountK;
 
-            const std::byte* src = QuantBDataBegin + c * StrideN + r_subblk * SubBlkLen;
+            const SafeInt<size_t> data_offset = static_cast<SafeInt<size_t>>(c) * StrideN + r_subblk * SubBlkLen;
+            const std::byte* src = QuantBDataBegin + data_offset.Value();
 
             if (c_4 + 4 <= N) {                                              // full 4 cols
                 if (RemainderBlockCountK && r_subblk == SubBlkCountK - 1) {  // remainder blocks
+                    const SafeInt<size_t> subblk_data_offset = static_cast<SafeInt<size_t>>(c_4) * StrideN + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
                     std::byte* dest =
-                        PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
+                        PackedQuantBDataBegin + subblk_data_offset.Value();
                     for (size_t i = 0; i < RemainderBlockCountK; i++) {
                         std::copy(src, src + BlkSize, dest);
                         src += BlkSize;
                         dest += BlkSize * 4;
                     }
                 } else {  // full subblock
+                    const SafeInt<size_t> subblk_data_offset = static_cast<SafeInt<size_t>>(c_4) * StrideN + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
                     std::byte* dest =
-                        PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
+                        PackedQuantBDataBegin + subblk_data_offset.Value();
                     std::copy(src, src + SubBlkSize, dest);
                 }
             } else {  // remainder cols
+                const SafeInt<size_t> remain_data_offset = static_cast<SafeInt<size_t>>(c) * StrideN + r_subblk * SubBlkSize;
                 std::byte* dest =
-                    PackedQuantBDataBegin + c * StrideN + r_subblk * SubBlkSize;
+                    PackedQuantBDataBegin + remain_data_offset.Value();
                 std::copy(src, src + std::min(SubBlkSize, StrideN - r_subblk * SubBlkSize), dest);
             }
         }
@@ -304,7 +309,8 @@ Q8ComputePackBlkSum(
     const size_t BlockCountK
 )
 {
-    std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
+    SafeInt<size_t> size = static_cast<SafeInt<size_t>>(N) * BlockCountK;
+    std::vector<float> QuantBScaleBeginCopy(size.Value());
     std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
 
     MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
@@ -312,36 +318,38 @@ Q8ComputePackBlkSum(
         const size_t n_4 = n & (~3), n_res = n & 3;
         const size_t k_blk = tid % BlockCountK;
 
-        const size_t src_blk_offset = n * BlockCountK + k_blk;
-        const float& QuantBScale = QuantBScaleBeginCopy[src_blk_offset];
+        const SafeInt<size_t> src_blk_offset = static_cast<SafeInt<size_t>>(n) * BlockCountK + k_blk;
+        const float& QuantBScale = QuantBScaleBeginCopy[src_blk_offset.Value()];
         uint8_t zp = 128;
         if (QuantBZPBegin) {
-            const std::byte* QuantBZP = QuantBZPBegin + src_blk_offset;
+            const std::byte* QuantBZP = QuantBZPBegin + src_blk_offset.Value();
             zp = (uint8_t)(*QuantBZP);
         }
 
-        const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+        const SafeInt<size_t> dst_offset = (static_cast<SafeInt<size_t>>(n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+        *(BlockSumBegin + dst_offset.Value()) = -QuantBScale * zp;
 
         if (n_4 + 4 > N) {
-            *(QuantBScaleBegin + n * BlockCountK + k_blk) = QuantBScale;
+            SafeInt<size_t> ptr_offset = static_cast<SafeInt<size_t>>(n) * BlockCountK + k_blk;
+            *(QuantBScaleBegin + ptr_offset.Value()) = QuantBScale;
         } else if (BlkLen >= SubBlkLen) {
-            *(QuantBScaleBegin + n_4 * BlockCountK + k_blk * 4 + n_res) = QuantBScale;
+            SafeInt<size_t> ptr_offset = static_cast<SafeInt<size_t>>(n_4) * BlockCountK + k_blk * 4 + n_res;
+            *(QuantBScaleBegin + ptr_offset.Value()) = QuantBScale;
         } else {
             size_t blks_per_sub = SubBlkLen / BlkLen;
             size_t remainder_blk = BlockCountK % blks_per_sub;
             size_t sub_blk_count_k = MlasDivRoundup(BlockCountK, blks_per_sub);
             size_t k_subblk = k_blk / blks_per_sub;
             size_t k_blk_res = k_blk % blks_per_sub;
-            size_t dest_offset;
+            SafeInt<size_t> dest_offset;
 
             if (remainder_blk && k_subblk == sub_blk_count_k - 1) {  // remainder blocks
-                dest_offset = n_4 * BlockCountK + k_blk * 4 + n_res;
+                dest_offset = static_cast<SafeInt<size_t>>(n_4) * BlockCountK + k_blk * 4 + n_res;
             } else {  // full subblock
-                dest_offset = n_4 * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
+                dest_offset = static_cast<SafeInt<size_t>>(n_4) * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
             }
 
-            *(QuantBScaleBegin + dest_offset) = QuantBScale;
+            *(QuantBScaleBegin + dest_offset.Value()) = QuantBScale;
         }
     });
 }
@@ -409,7 +417,7 @@ lasx_maddubs_epi16_sat(__m256i a, __m256i b)
     __m256i even_prod16 = __lasx_xvmaddwev_h_bu_b(zero_h, a, b);
     __m256i odd_prod16 = __lasx_xvmaddwod_h_bu_b(zero_h, a, b);
 
-    __m256i sum16_sat = __lasx_xvsadd_h(even_prod16, odd_prod16);  // 如果你有这个 instr
+    __m256i sum16_sat = __lasx_xvsadd_h(even_prod16, odd_prod16);
 
     return sum16_sat;  // 16-bit signed saturated results (16 lanes)
 }
@@ -417,7 +425,7 @@ lasx_maddubs_epi16_sat(__m256i a, __m256i b)
 static inline __m256i
 lasx_madd_epi16(__m256i a, __m256i b)
 {
-    __m256i zero = __lasx_xvldi(0);  // 向量全部 0
+    __m256i zero = __lasx_xvldi(0);
     __m256i even_acc = __lasx_xvmaddwev_w_h(zero, a, b);
     __m256i result = __lasx_xvmaddwod_w_h(even_acc, a, b);
 
