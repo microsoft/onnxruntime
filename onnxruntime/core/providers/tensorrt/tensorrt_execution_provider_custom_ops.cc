@@ -29,7 +29,35 @@
 namespace onnxruntime {
 
 namespace {
-ORT_CONSTINIT static std::mutex trt_custom_op_mutex;
+class TrtCustomOpDomainStateLocker;
+
+struct TrtCustomOpDomainState {
+  friend class TrtCustomOpDomainStateLocker;
+
+ private:
+  std::mutex mutex;
+
+ public:
+  std::unique_ptr<OrtCustomOpDomain> custom_op_domain{std::make_unique<OrtCustomOpDomain>()};
+  std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+  bool is_loaded{false};
+};
+
+class TrtCustomOpDomainStateLocker {
+ public:
+  explicit TrtCustomOpDomainStateLocker(TrtCustomOpDomainState& state) : state_{state}, lock_{state_.mutex} {}
+  TrtCustomOpDomainState* operator->() { return &state_; }
+  const TrtCustomOpDomainState* operator->() const { return &state_; }
+
+ private:
+  TrtCustomOpDomainState& state_;
+  std::lock_guard<std::mutex> lock_;
+};
+
+TrtCustomOpDomainState& GetTrtCustomOpDomainState() {
+  static TrtCustomOpDomainState state;
+  return state;
+}
 }  // namespace
 
 extern TensorrtLogger& GetTensorrtLogger(bool verbose);
@@ -50,11 +78,9 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose);
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
-  static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
-  static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
-  std::lock_guard<std::mutex> lock(trt_custom_op_mutex);
-  if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
-    domain_list.push_back(custom_op_domain.get());
+  TrtCustomOpDomainStateLocker state(GetTrtCustomOpDomainState());
+  if (state->custom_op_domain->domain_ != "" && state->custom_op_domain->custom_ops_.size() > 0) {
+    domain_list.push_back(state->custom_op_domain.get());
     return Status::OK();
   }
 
@@ -62,8 +88,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   // When the TRT plugin library is loaded, the global static object is created and the plugin is registered to TRT registry.
   // This is done through macro, for example, REGISTER_TENSORRT_PLUGIN(VisionTransformerPluginCreator).
   // extra_plugin_lib_paths has the format of "path_1;path_2....;path_n"
-  static bool is_loaded = false;
-  if (!extra_plugin_lib_paths.empty() && !is_loaded) {
+  if (!extra_plugin_lib_paths.empty() && !state->is_loaded) {
     std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
     std::string lib;
     while (std::getline(extra_plugin_libs, lib, ';')) {
@@ -74,7 +99,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
         LOGS_DEFAULT(WARNING) << "[TensorRT EP]" << status.ToString();
       }
     }
-    is_loaded = true;
+    state->is_loaded = true;
   }
 
   try {
@@ -137,14 +162,14 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
         continue;
       }
 
-      created_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr));  // Make sure TensorRTCustomOp object won't be cleaned up
-      created_custom_op_list.back().get()->SetName(plugin_name);
-      custom_op_domain->custom_ops_.push_back(created_custom_op_list.back().get());
+      state->created_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr));  // Make sure TensorRTCustomOp object won't be cleaned up
+      state->created_custom_op_list.back().get()->SetName(plugin_name);
+      state->custom_op_domain->custom_ops_.push_back(state->created_custom_op_list.back().get());
       registered_plugin_names.insert(plugin_name);
     }
 
-    custom_op_domain->domain_ = "trt.plugins";
-    domain_list.push_back(custom_op_domain.get());
+    state->custom_op_domain->domain_ = "trt.plugins";
+    domain_list.push_back(state->custom_op_domain.get());
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
   }
