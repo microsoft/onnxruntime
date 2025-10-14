@@ -2882,19 +2882,17 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
                                             const TypeProto& onnx_inferred_types_after_data_propagation) const {
   auto dim_size = onnx_inferred_types_after_data_propagation.tensor_type().shape().dim_size();
 
-  if (dim_size < 0) {
-    return Status::OK();
-  }
-
-  // Size operator generates a scalar output and a scalar has 0 rank.
-  // But its PartialDataPropagationFunction() has the chance to generate a shape data with rank > 0.
+  // Size operator generates a scalar output and a scalar has rank equals zero.
+  // But Size operator's PartialDataPropagationFunction() has the chance to
+  // generate output data with rank > 0.
   // So, handle it here.
   if (node.OpType() == "Size") {
     const auto* input_0 = node.GetDefinitions().input_defs[0];
     auto& tensor_shape_proto = input_0->values_after_data_propagation_;
     auto get_num_elements = [&](const TensorShapeProto& tensor_shape_proto) -> void {
       int64_t num_elements = 1;
-      // The TensorShapeProto (inferred shape values) should have rank > 0 and the all the dimensions have values (not symbolic)
+      // The TensorShapeProto (inferred shape values) should have rank > 0 and
+      // all the dimensions have values (not symbolic)
       if (tensor_shape_proto.dim_size() > 0) {
         for (const auto& dim : tensor_shape_proto.dim()) {
           if (!dim.has_dim_value()) {
@@ -2910,13 +2908,13 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
     return Status::OK();
   }
 
-  // If the dimension size is 0, it could indicate one of the following cases:
+  // If dimension size is 0, it could indicate one of the following cases:
   //   1. The inferred output is a scalar.
   //   2. The node's input is a scalar, and the operator's PartialDataPropagationFunction() cannot handle it.
   //
   // In other words, some operators' PartialDataPropagationFunction() implementations do not support
   // scalar inputs or outputs. In such cases, attempt data propagation manually and store the inferred
-  // scalar value in the NodeArg if applicable.
+  // scalar value in the NodeArg if any.
   if (dim_size == 0) {
     if (node.OpType() == "Gather") {
       // Following code extracts an element from a 1D array if all conditions are met.
@@ -3016,15 +3014,15 @@ Status Graph::SaveValuesFromDataPropagation(Node& node,
               }
             }
           }
-        }
-
-        const ONNX_NAMESPACE::AttributeProto* axes_attr = node.GetAttributes().count("axes")
-                                                              ? &node.GetAttributes().at("axes")
-                                                              : nullptr;
-        if (axes_attr) {
-          for (auto v : axes_attr->ints()) {
-            axis = v;
-            break;
+        } else {
+          const auto& attrs = node.GetAttributes();
+          auto it = attrs.find("axes");
+          if (it != attrs.end()) {
+            const auto& axes_attr = it->second;
+            for (auto v : axes_attr.ints()) {
+              axis = v;
+              break;  // get first value
+            }
           }
         }
 
