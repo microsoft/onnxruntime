@@ -8371,6 +8371,60 @@ TEST_F(GraphTransformationTests, NchwcTransformerConv) {
                                         pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, NchwcTransformerConvRelu) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{1, 16, 49}});
+    auto* einsum_weight_arg = builder.MakeInitializer<float>({1}, {1.0f});
+    auto* conv_weight_arg = builder.MakeInitializer<float>({32, 16, 1, 1}, std::vector<float>(32 * 16, 1.0f));
+    auto* conv_output_arg = builder.MakeIntermediate();
+    auto* relu_output_arg = builder.MakeIntermediate();
+    auto* reshape_before_conv_out = builder.MakeIntermediate();
+    auto* einsum_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    auto& einsum_node = builder.AddNode("Einsum", {input_arg, einsum_weight_arg}, {einsum_out});
+    einsum_node.AddAttribute("equation", "abc,d->abc");
+    auto* reshape_shape_before = builder.MakeInitializer<int64_t>({4}, {1, 16, 7, 7});
+    builder.AddNode("Reshape", {einsum_out, reshape_shape_before}, {reshape_before_conv_out});
+    builder.AddNode("Conv", {reshape_before_conv_out, conv_weight_arg}, {conv_output_arg});
+    builder.AddNode("Relu", {conv_output_arg}, {relu_output_arg});
+    auto* reshape_shape_after = builder.MakeInitializer<int64_t>({3}, {1, 32, 49});
+    builder.AddNode("Reshape", {relu_output_arg, reshape_shape_after}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    for (auto& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+    auto op_counts = CountOpsInGraph(graph);
+    EXPECT_EQ(op_counts["Conv"], 1);
+    EXPECT_EQ(op_counts["Relu"], 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_counts = CountOpsInGraph(graph);
+    EXPECT_EQ(op_counts["Conv"], 0);
+    EXPECT_EQ(op_counts["Relu"], 0);
+    EXPECT_EQ(op_counts["com.microsoft.nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_counts["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_counts["com.microsoft.nchwc.ReorderOutput"], 1);
+
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv" && node.Domain() == kMSNchwcDomain) {
+        auto& attrs = node.GetAttributes();
+        EXPECT_NE(attrs.find("activation"), attrs.end());
+        EXPECT_EQ(attrs.at("activation").s(), "Relu");
+      }
+    }
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<NchwcTransformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace test
