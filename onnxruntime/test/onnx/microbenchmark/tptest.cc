@@ -35,7 +35,7 @@ BENCHMARK(BM_CreateThreadPool)
 #pragma GCC optimize("O0")
 #endif
 void SimpleForLoop(ptrdiff_t first, ptrdiff_t last) {
-  size_t sum = 0;
+  [[maybe_unused]] size_t sum = 0;
   for (; first != last; ++first) {
     ++sum;
   }
@@ -102,7 +102,8 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   for (auto _ : state) {
     for (int j = 0; j < 100; j++) {
       ThreadPool::TrySimpleParallelFor(tp.get(), len, [&](size_t) {
-        for (volatile size_t x = 0; x < body; x++) {
+        for (size_t x = 0; x < body; x++) {
+          benchmark::DoNotOptimize(x);
         }
       });
     }
