@@ -83,7 +83,40 @@ void operator delete(void* p, size_t /*size*/) noexcept { return Provider_GetHos
 namespace onnxruntime {
 
 namespace {
-ORT_CONSTINIT static std::mutex run_on_unload_mutex;
+
+class OnUnloadManager {
+ public:
+  ~OnUnloadManager() {
+    std::unique_ptr<std::vector<std::function<void()>>> funcs;
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      funcs = std::move(run_on_unload_functions_);
+    }
+
+    if (!funcs) {
+      return;
+    }
+
+    for (auto& function : *funcs) {
+      function();
+    }
+  }
+
+  void Add(std::function<void()> function) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    if (!run_on_unload_functions_) {
+      run_on_unload_functions_ = std::make_unique<std::vector<std::function<void()>>>();
+    }
+    run_on_unload_functions_->push_back(std::move(function));
+  }
+
+ private:
+  std::mutex mutex_;
+  std::unique_ptr<std::vector<std::function<void()>>> run_on_unload_functions_;
+};
+
+static OnUnloadManager g_on_unload_manager;
+
 }  // namespace
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -96,28 +129,10 @@ ProviderHostCPU& g_host_cpu = g_host->GetProviderHostCPU();
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 void RunOnUnload(std::function<void()> function) {
-  std::lock_guard<std::mutex> guard{run_on_unload_mutex};
-  if (!s_run_on_unload_)
-    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
-  s_run_on_unload_->push_back(std::move(function));
+  g_on_unload_manager.Add(std::move(function));
 }
-
-// This object is destroyed as part of the DLL unloading code and handles running all of the RunOnLoad functions
-struct OnUnload {
-  ~OnUnload() {
-    if (!s_run_on_unload_)
-      return;
-
-    for (auto& function : *s_run_on_unload_)
-      function();
-
-    s_run_on_unload_.reset();
-  }
-
-} g_on_unload;
 
 void* CPUAllocator::Alloc(size_t size) { return g_host->CPUAllocator__Alloc(this, size); }
 void CPUAllocator::Free(void* p) { g_host->CPUAllocator__Free(this, p); }
