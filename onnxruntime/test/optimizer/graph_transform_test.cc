@@ -8336,7 +8336,6 @@ TEST_F(GraphTransformationTests, NchwcTransformerConv) {
     auto* conv_weight_arg = builder.MakeInitializer<float>({32, 16, 1, 1}, std::vector<float>(32 * 16, 1.0f));
     auto* conv_output_arg = builder.MakeIntermediate();
     auto* reshape_before_conv_out = builder.MakeIntermediate();
-    auto* reshape_after_conv_out = builder.MakeIntermediate();
     auto* einsum_out = builder.MakeIntermediate();
     auto* output_arg = builder.MakeOutput();
 
