@@ -529,8 +529,8 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                                T* present_value,           // present value only (if not using present state)
                                                bool transpose_output,      // whether to transpose the output (0, 2, 1, 3)
                                                ThreadPool* tp) const {
-  ORT_ENFORCE((past_value == nullptr) == (present_value == nullptr),
-              "The implementation only supports past_value and present_value both null or both not null.");
+  ORT_ENFORCE(!((past_key != nullptr) && (present_key == nullptr)),
+              "The implementation does not support past_key provided and present_key being null.");
   const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;   // P x H_v
   const ptrdiff_t v_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;  // L x H_v
   const ptrdiff_t present_chunk_length = past_chunk_length + v_input_chunk_length;              // T x H_v
