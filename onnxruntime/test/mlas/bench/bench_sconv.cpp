@@ -146,7 +146,6 @@ MLAS_THREADPOOL* GetMlasThreadPool(void) {
 }
 
 void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
-
   MLAS_THREADPOOL* tp = GetMlasThreadPool();
 
   const int64_t rank = state.range(0);                       // Rank
