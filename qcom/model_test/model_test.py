@@ -4,7 +4,9 @@
 
 import argparse
 import logging
-from collections.abc import Generator, Iterable, Sequence
+import numbers
+from collections import defaultdict
+from collections.abc import Generator, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal, NamedTuple, cast, get_args
 
@@ -24,14 +26,14 @@ BackendT = Literal["cpu", "gpu", "htp"]
 class ModelTestDef(NamedTuple):
     model_root: Path
     backend_type: BackendT
-    rtol: float
-    atol: float
+    rtol: Mapping[str, float]
+    atol: Mapping[str, float]
     enable_context: bool
     enable_cpu_fallback: bool
 
     def __repr__(self) -> str:
         return (
-            f"{self.model_root.name}|{self.backend_type}|rtol:{self.rtol}|atol:{self.atol}"
+            f"{self.model_root.name}|{self.backend_type}"
             f"|enable_context:{self.enable_context}|cpu_fallback:{self.enable_cpu_fallback}"
         )
 
@@ -55,6 +57,7 @@ class ModelTestCase:
             session_options.add_session_config_entry("ep.context_enable", "1")
             session_options.add_session_config_entry("ep.context_file_path", str(context_model_path))
 
+        logging.info(f"Preparing {self.__model_root.name}")
         self.__session = onnxruntime.InferenceSession(
             model_def.model_root / f"{model_def.model_root.name}.onnx",
             sess_options=session_options,
@@ -62,46 +65,72 @@ class ModelTestCase:
             provider_options=[{"backend_type": model_def.backend_type}],
         )
 
-    @property
-    def inputs(self) -> list[dict[str, np.ndarray]]:
-        return [dict(zip(self.input_names, ip, strict=False)) for ip in self.input_protos]
+    def load_inputs(self) -> list[dict[str, np.ndarray]]:
+        return self.__tensors_from_files(self.input_paths)
+
+    def load_outputs(self) -> list[dict[str, np.ndarray]]:
+        return self.__tensors_from_files(self.output_paths)
 
     @property
     def input_names(self) -> list[str]:
         return [n.name for n in self.__session.get_inputs()]
 
     @property
+    def input_shapes(self) -> list[list[int]]:
+        return [n.shape for n in self.__session.get_inputs()]
+
+    @property
     def input_paths(self) -> list[list[Path]]:
         return [list(ds.glob("input_*.pb")) for ds in self.__model_root.glob("test_data_set_*")]
 
     @property
-    def input_protos(self) -> list[list[np.ndarray]]:
-        return self.__tensors_from_files(self.input_paths)
+    def output_names(self) -> list[str]:
+        return [n.name for n in self.__session.get_outputs()]
+
+    @property
+    def output_shapes(self) -> list[list[int]]:
+        return [n.shape for n in self.__session.get_outputs()]
 
     @property
     def output_paths(self) -> list[list[Path]]:
         return [list(ds.glob("output_*.pb")) for ds in self.__model_root.glob("test_data_set_*")]
 
-    @property
-    def output_protos(self) -> list[list[np.ndarray]]:
-        return self.__tensors_from_files(self.output_paths)
-
     @staticmethod
-    def __tensors_from_files(data_sets: Iterable[Iterable[Path]]) -> list[list[np.ndarray]]:
+    def __protos_from_files(data_sets: Iterable[Iterable[Path]]) -> list[list[onnx.TensorProto]]:
+        return [[onnx.TensorProto.FromString(f.read_bytes()) for f in ds] for ds in data_sets]
+
+    @classmethod
+    def __tensors_from_files(cls, data_sets: Iterable[Iterable[Path]]) -> list[dict[str, np.ndarray]]:
         return [
-            [onnx.numpy_helper.to_array(onnx.TensorProto.FromString(f.read_bytes())) for f in ds] for ds in data_sets
+            {node.name: onnx.numpy_helper.to_array(node) for node in dataset}
+            for dataset in cls.__protos_from_files(data_sets)
         ]
 
     def run(self) -> None:
-        assert len(self.inputs) == len(self.output_protos)
+        inputs = self.load_inputs()
+        expected = self.load_outputs()
 
-        for ds_idx in range(len(self.inputs)):
-            actual = cast(Sequence[np.ndarray], self.__session.run([], self.inputs[ds_idx]))
-            expected = cast(Sequence[np.ndarray], self.output_protos[ds_idx])
+        if len(inputs) == 0:
+            logging.info(f"{self.__model_root.name} has no reference data.")
+            return
 
-            assert len(actual) == len(expected)
-            for i in range(len(actual)):
-                np.testing.assert_allclose(actual[i], expected[i], atol=self.__atol, rtol=self.__rtol)
+        logging.info(f"Evaluating {self.__model_root.name} with {len(inputs)} reference datasets.")
+        assert len(inputs) == len(expected)
+
+        for ds_idx in range(len(inputs)):
+            logging.debug(f"Expected outputs: { {n: t.shape for n, t in expected[ds_idx].items()} }")
+            actual = dict(
+                zip(self.output_names, cast(Sequence[np.ndarray], self.__session.run([], inputs[ds_idx])), strict=False)
+            )
+            for name in expected[ds_idx]:
+                if name not in actual:
+                    logging.debug(f"Actual outputs: { {n: t.shape for n, t in actual.items()} }")
+                    raise ValueError(f"Output {name} not found in actual.")
+                atol = self.__atol[name]
+                rtol = self.__rtol[name]
+                logging.info(f"Comparing actual outputs for {name} to reference.")
+                np.testing.assert_allclose(actual[name], expected[ds_idx][name], atol=atol, rtol=rtol)
+                logging.info(f"{name} is close enough (rtol: {rtol}; atol: {atol})")
 
 
 class ModelTestSuite:
@@ -119,18 +148,48 @@ class ModelTestSuite:
         config = self.__parse_config()
         self.__enable_context = enable_context
         self.__enable_cpu_fallback = enable_cpu_fallback
-        self.__default_rtol = rtol if rtol else cast(float, config.get("rtol_default", DEFAULT_RTOL))
-        self.__default_atol = atol if atol else cast(float, config.get("atol_default", DEFAULT_ATOL))
-        self.__rtol_overrides = cast(dict[str, float], config.get("rtol_overrides", {}))
-        self.__atol_overrides = cast(dict[str, float], config.get("atol_overrides", {}))
+        self.__default_rtol = defaultdict(
+            lambda: rtol if rtol else cast(float, config.get("rtol_default", DEFAULT_RTOL))
+        )
+        self.__default_atol = defaultdict(
+            lambda: atol if atol else cast(float, config.get("atol_default", DEFAULT_ATOL))
+        )
+        self.__rtol_overrides = cast(dict[str, Mapping[str, float]], config.get("rtol_overrides", {}))
+        self.__atol_overrides = cast(dict[str, Mapping[str, float]], config.get("atol_overrides", {}))
 
     def __parse_config(self) -> dict[str, float | dict[str, float]]:
+        def parse_overrides(
+            overrides: dict[str, numbers.Real | dict[str, numbers.Real]],
+            default_tolerance: float,
+        ) -> dict[str, dict[str, float]]:
+            parsed = {}
+            for model, tolerance in overrides.items():
+                if isinstance(tolerance, numbers.Real):
+                    # Why we bind tolerance to t: https://docs.astral.sh/ruff/rules/function-uses-loop-variable/
+                    parsed[model] = defaultdict(lambda t=float(tolerance): t)
+                elif isinstance(tolerance, dict):
+                    default_tol = tolerance.get("*", default_tolerance)
+                    assert isinstance(default_tol, numbers.Real)
+                    d = defaultdict(lambda t=default_tol: float(t))
+                    d.update({k: v for k, v in tolerance.items() if k != "*"})
+                    parsed[model] = d
+                else:
+                    raise ValueError(f"{model} has unexpected value type.")
+            return parsed
+
         # I don't love that this file sits in the directory above the test suite, but
         # that's that the ORT tests do so we're sticking with it.
         config_path = self.__suite_root.parent / "onnx_backend_test_series_overrides.jsonc"
         if not config_path.exists():
             return {}
-        return jsonc.load(config_path.open("rt"))
+        config = jsonc.load(config_path.open("rt"))
+
+        if "atol_overrides" in config:
+            config["atol_overrides"] = parse_overrides(config["atol_overrides"], config["atol_default"])
+        if "rtol_overrides" in config:
+            config["rtol_overrides"] = parse_overrides(config["rtol_overrides"], config["rtol_default"])
+
+        return config
 
     @property
     def tests(self) -> Generator[ModelTestDef, None, None]:
@@ -176,8 +235,8 @@ if __name__ == "__main__":
             ModelTestDef(
                 args.model,
                 args.backend,
-                rtol=rtol,
-                atol=atol,
+                rtol=defaultdict(lambda: rtol),
+                atol=defaultdict(lambda: atol),
                 enable_context=args.enable_context,
                 enable_cpu_fallback=args.enable_cpu_fallback,
             )

@@ -76,9 +76,11 @@ jobs:
     with:
       nightly_build: ${{ inputs.nightly_build }}
       target_arch: arm64ec
-      upload_wheel: false  # ARM64x is the way to go so let's not confuse matters by publishing artifacts
+      upload_wheel: true
+      test_wheel: true
       target_py_vsn: ${{ inputs.target_py_vsn }}
-      run_tests: false  # ARM64ec tests are horribly broken so this is a build-only config in CI.
+      run_tests: false  # ARM64ec unit tests are horribly broken (though model tests seem fine).
+      test_runner_arch: arm64
 
   build-and-test-windows-x86_64:
     if: ${{ inputs.do_all }}

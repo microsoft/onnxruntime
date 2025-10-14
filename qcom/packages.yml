@@ -81,6 +81,11 @@ java_windows_x86_64:
   sha256: 6cce98ce38b86737c63912fd1df9ecfee1fe209ab08c0e1e16500f054e67de48
   content_root: jdk-{version}
   bindir: bin
+model_zoo:
+  version: 2025-10-08
+  url: http://ort-ep-win-01:8000/model-zoo/model-zoo-{version}.zip
+  sha256: 1e49e5c570ee16c7bf62973dc8f52201f4caaa45dda0e74fdc190b55e980ffa7
+  content_root: model-zoo
 ninja_linux:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip

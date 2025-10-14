@@ -18,6 +18,10 @@ from .util import (
 PACKAGE_MANAGER = REPO_ROOT / "qcom" / "scripts" / "all" / "package_manager.py"
 
 
+def get_model_zoo_root(package_manager_venv: Path | None) -> Path:
+    return get_package_content_dir(package_manager_venv, "model_zoo")
+
+
 def get_onnx_models_root(package_manager_venv: Path | None) -> Path:
     return get_package_content_dir(package_manager_venv, "onnx_models")
 
