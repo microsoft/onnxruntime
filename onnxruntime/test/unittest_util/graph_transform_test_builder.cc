@@ -18,7 +18,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 // enable to dump model for debugging
-#define SAVE_TEST_GRAPH 0
+#define SAVE_TEST_GRAPH 1
 
 namespace onnxruntime {
 namespace test {
@@ -241,6 +241,7 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
     std::unordered_map<std::string, int> domain_to_version;
     domain_to_version[kOnnxDomain] = opset;
     domain_to_version[kMSDomain] = 1;
+    domain_to_version[kMSNchwcDomain] = 1;
     Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                 domain_to_version, {}, logger);
     Graph& graph = model.MainGraph();

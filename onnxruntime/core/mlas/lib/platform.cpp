@@ -442,6 +442,11 @@ Return Value:
                     this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
 
+                if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
+                    this->NchwcBlockSize = 16;
+                    this->PreferredBufferAlignment = 64;
+                }
+
 #if !defined(ORT_MINIMAL_BUILD)
 
                 //
@@ -465,8 +470,6 @@ Return Value:
                     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
-                    this->NchwcBlockSize = 16;
-                    this->PreferredBufferAlignment = 64;
 
                     //
                     // Check if the processor supports AVX512 core features
