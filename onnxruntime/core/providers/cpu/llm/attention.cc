@@ -199,10 +199,6 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              T* output_qk,                           // Q*K output
                                              ThreadPool* tp,
                                              AllocatorPtr allocator) const {
-  if (present_key != nullptr) {
-    ORT_ENFORCE(past_key != nullptr, "past_key must be provided when present_key is requested.");
-  }
-
   const size_t past_chunk_length = static_cast<size_t>(parameters.past_sequence_length) * parameters.head_size;   // P x H
   const size_t q_input_chunk_length = static_cast<size_t>(parameters.q_sequence_length) * parameters.head_size;   // S x H
   const size_t k_input_chunk_length = static_cast<size_t>(parameters.kv_sequence_length) * parameters.head_size;  // L x H
