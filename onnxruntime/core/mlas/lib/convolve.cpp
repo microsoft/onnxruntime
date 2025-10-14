@@ -750,7 +750,7 @@ MlasConvExpandThenGemmSegmentedThreaded(
     size_t BatchGroupStart;
     size_t BatchGroupEnd;
 
-    if (static_cast<uint32_t>(Index) < BatchGroupCountExtra) {
+    if (static_cast<size_t>(Index) < BatchGroupCountExtra) {
         BatchGroupStart = (BatchGroupCountPerThread + 1) * Index;
         BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread + 1;
     } else {
