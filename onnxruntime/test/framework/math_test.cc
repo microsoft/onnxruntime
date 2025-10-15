@@ -20,6 +20,7 @@
 #include "core/platform/threadpool.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/thread_utils.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -124,6 +125,141 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
 }
 
 INSTANTIATE_TEST_SUITE_P(MathGemmTests, MathGemmTest,
+                         testing::Values(1, 0));
+
+class MathBFloat16GemmTest : public testing::TestWithParam<int> {
+ protected:
+  static OrtThreadPoolParams CreateThreadPoolOptions(int size) {
+    OrtThreadPoolParams option;
+    option.thread_pool_size = size;
+    return option;
+  }
+  std::unique_ptr<concurrency::ThreadPool> tp{concurrency::CreateThreadPool(&Env::Default(), CreateThreadPoolOptions(GetParam()), concurrency::ThreadPoolType::INTRA_OP)};
+};
+
+TEST_P(MathBFloat16GemmTest, GemmNoTransNoTrans) {
+  if (!MlasBf16AccelerationSupported()) {
+    GTEST_SKIP() << "BF16 acceleration is not supported on this platform.";
+  }
+  const int M = 5;
+  const int N = 6;
+  const int K = 10;
+
+  std::vector<float> X_fp32(M * K);
+  std::vector<float> W_fp32(K * N);
+  std::vector<float> Y_fp32(M * N);
+  std::vector<float> Y_ref(M * N);
+
+  // Initialize with random data
+  for (size_t i = 0; i < X_fp32.size(); ++i) X_fp32[i] = (float)rand() / (float)RAND_MAX;
+  for (size_t i = 0; i < W_fp32.size(); ++i) W_fp32[i] = (float)rand() / (float)RAND_MAX;
+
+  std::vector<BFloat16> X_bf16(M * K);
+  std::vector<BFloat16> W_bf16(K * N);
+  std::vector<BFloat16> Y_bf16(M * N);
+
+  FloatToBFloat16(X_fp32.data(), X_bf16.data(), X_bf16.size());
+  FloatToBFloat16(W_fp32.data(), W_bf16.data(), W_bf16.size());
+
+  const BFloat16 kOne_bf16(1.f);
+  const BFloat16 kZero_bf16(0.f);
+
+  math::Gemm<BFloat16>(CblasNoTrans, CblasNoTrans, M, N, K, kOne_bf16,
+                    VECTOR_HEAD(X_bf16), VECTOR_HEAD(W_bf16), kZero_bf16, VECTOR_HEAD(Y_bf16),
+                    tp.get());
+
+  BFloat16ToFloat(Y_bf16.data(), Y_fp32.data(), Y_fp32.size());
+
+  // Reference computation
+  math::Gemm<float>(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f,
+                   VECTOR_HEAD(X_fp32), VECTOR_HEAD(W_fp32), 0.0f, VECTOR_HEAD(Y_ref),
+                   tp.get());
+
+  for (size_t i = 0; i < Y_fp32.size(); ++i) {
+    EXPECT_NEAR(Y_fp32[i], Y_ref[i], 0.05);
+  }
+}
+
+TEST_P(MathBFloat16GemmTest, GemmTransTrans) {
+  if (!MlasBf16AccelerationSupported()) {
+    GTEST_SKIP() << "BF16 acceleration is not supported on this platform.";
+  }
+  const int M = 5;
+  const int N = 6;
+  const int K = 10;
+
+  std::vector<float> X_fp32(K * M);
+  std::vector<float> W_fp32(N * K);
+  std::vector<float> Y_fp32(M * N);
+  std::vector<float> Y_ref(M * N);
+
+  // Initialize with random data
+  for (size_t i = 0; i < X_fp32.size(); ++i) X_fp32[i] = (float)rand() / (float)RAND_MAX;
+  for (size_t i = 0; i < W_fp32.size(); ++i) W_fp32[i] = (float)rand() / (float)RAND_MAX;
+
+  std::vector<BFloat16> X_bf16(K * M);
+  std::vector<BFloat16> W_bf16(N * K);
+  std::vector<BFloat16> Y_bf16(M * N);
+
+  FloatToBFloat16(X_fp32.data(), X_bf16.data(), X_bf16.size());
+  FloatToBFloat16(W_fp32.data(), W_bf16.data(), W_bf16.size());
+
+  const BFloat16 kOne_bf16(1.f);
+  const BFloat16 kZero_bf16(0.f);
+
+  math::Gemm<BFloat16>(CblasTrans, CblasTrans, M, N, K, kOne_bf16,
+                    VECTOR_HEAD(X_bf16), VECTOR_HEAD(W_bf16), kZero_bf16, VECTOR_HEAD(Y_bf16),
+                    tp.get());
+
+  BFloat16ToFloat(Y_bf16.data(), Y_fp32.data(), Y_fp32.size());
+
+  // Reference computation
+  math::Gemm<float>(CblasTrans, CblasTrans, M, N, K, 1.0f,
+                   VECTOR_HEAD(X_fp32), VECTOR_HEAD(W_fp32), 0.0f, VECTOR_HEAD(Y_ref),
+                   tp.get());
+
+  for (size_t i = 0; i < Y_fp32.size(); ++i) {
+    EXPECT_NEAR(Y_fp32[i], Y_ref[i], 0.05);
+  }
+}
+
+TEST_P(MathBFloat16GemmTest, MatMul) {
+  if (!MlasBf16AccelerationSupported()) {
+    GTEST_SKIP() << "BF16 acceleration is not supported on this platform.";
+  }
+  const int M = 5;
+  const int N = 6;
+  const int K = 10;
+
+  std::vector<float> X_fp32(M * K);
+  std::vector<float> W_fp32(K * N);
+  std::vector<float> Y_fp32(M * N);
+  std::vector<float> Y_ref(M * N);
+
+  // Initialize with random data
+  for (size_t i = 0; i < X_fp32.size(); ++i) X_fp32[i] = (float)rand() / (float)RAND_MAX;
+  for (size_t i = 0; i < W_fp32.size(); ++i) W_fp32[i] = (float)rand() / (float)RAND_MAX;
+
+  std::vector<BFloat16> X_bf16(M * K);
+  std::vector<BFloat16> W_bf16(K * N);
+  std::vector<BFloat16> Y_bf16(M * N);
+
+  FloatToBFloat16(X_fp32.data(), X_bf16.data(), X_bf16.size());
+  FloatToBFloat16(W_fp32.data(), W_bf16.data(), W_bf16.size());
+
+  math::MatMul<BFloat16>(M, N, K, VECTOR_HEAD(X_bf16), VECTOR_HEAD(W_bf16), VECTOR_HEAD(Y_bf16), tp.get());
+
+  BFloat16ToFloat(Y_bf16.data(), Y_fp32.data(), Y_fp32.size());
+
+  // Reference computation
+  math::MatMul<float>(M, N, K, VECTOR_HEAD(X_fp32), VECTOR_HEAD(W_fp32), VECTOR_HEAD(Y_ref), tp.get());
+
+  for (size_t i = 0; i < Y_fp32.size(); ++i) {
+    EXPECT_NEAR(Y_fp32[i], Y_ref[i], 0.05);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(MathBFloat16GemmTests, MathBFloat16GemmTest,
                          testing::Values(1, 0));
 
 TEST(MathTest, GemvNoTrans) {

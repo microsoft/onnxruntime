@@ -25,6 +25,10 @@ Abstract:
 
 #include <thread>
 #include <mutex>
+#if defined(MLAS_TARGET_AMD64_IX86)
+#include <cpuinfo.h>
+#endif
+
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
@@ -780,6 +784,23 @@ Return Value:
     return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif
 }
+
+bool MLASCALL
+MlasBf16AccelerationSupported()
+{
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+    return MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_BF16();
+#elif defined(MLAS_TARGET_AMD64_IX86)
+    if (!cpuinfo_initialize()) {
+        return false;
+    }
+    // Check for AVX512_BF16 or AMX_BF16
+    return cpuinfo_has_x86_avx512bf16() || cpuinfo_has_x86_amx_bf16();
+#else
+    return false;
+#endif
+}
+
 
 #ifdef MLAS_TARGET_AMD64_IX86
 
