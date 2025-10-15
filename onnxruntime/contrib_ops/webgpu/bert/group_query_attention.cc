@@ -206,7 +206,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       !use_sliding_window &&
       CanApplyFlashAttention(attention_bias, present_key, present_value, parameters, context)) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-                               present_value, parameters, context);
+                               present_value, parameters, context, seqlen_k);
   }
 
   Tensor qSplit;

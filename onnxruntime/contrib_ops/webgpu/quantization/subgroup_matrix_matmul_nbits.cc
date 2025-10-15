@@ -132,7 +132,9 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t config_index, bool has_zero_points) {
+Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& b,
+                                 const ShaderVariableHelper& scales_b,
+                                 uint32_t nbits, int32_t config_index, bool has_zero_points) {
   auto& config = intel_supported_subgroup_matrix_configs[config_index];
   shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))] << ";\n"
                                     << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<3>(config))] << ";\n"
@@ -150,7 +152,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
   var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
   )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
   if (nbits == 4) {
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -161,9 +163,14 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
             // Stored in column major fashion.
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
-            let scale = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
-            let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
-            let b_value = input_b[b_idx];
+            )ADDNL_FN_PART";
+    shader.AdditionalImplementation() << "let scale = component_type("
+                                      << scales_b.GetByOffset("(b_global * uniforms.K + k_idx + col) / quantization_block_size")
+                                      << ");"
+                                      << "let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);"
+                                      << "let b_value = "
+                                      << b.GetByOffset("b_idx") << ';';
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
             let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
             let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
             let tile_b_base = row * tile_k + col;
@@ -176,10 +183,10 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             tile_B[tile_b_base + 6] = b_value_lower[3];
             tile_B[tile_b_base + 7] = b_value_upper[3];
         }
-    )ADDNL_FN";
+    )ADDNL_FN_PART";
   } else {
     ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -190,22 +197,28 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
             // Stored in column major fashion.
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
-            let scale   = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
-            let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
-            let b_value = input_b[b_idx];
-            let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
-            let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(zero)) * scale;
-            let tile_b_base = row * tile_k + col;
-            tile_B[tile_b_base]     = b_value0[0];
-            tile_B[tile_b_base + 1] = b_value0[1];
-            tile_B[tile_b_base + 2] = b_value0[2];
-            tile_B[tile_b_base + 3] = b_value0[3];
-            tile_B[tile_b_base + 4] = b_value1[0];
-            tile_B[tile_b_base + 5] = b_value1[1];
-            tile_B[tile_b_base + 6] = b_value1[2];
-            tile_B[tile_b_base + 7] = b_value1[3];
-        }
-    )ADDNL_FN";
+        )ADDNL_FN_PART";
+    shader.AdditionalImplementation() << "let scale = component_type("
+                                      << scales_b.GetByOffset("(b_global * uniforms.K + k_idx + col) / quantization_block_size")
+                                      << ");"
+                                      << " let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);"
+                                      << "let b_value = "
+                                      << b.GetByOffset("b_idx") << ';';
+
+    shader.AdditionalImplementation() <<
+        R"ADDNL_FN_PART(let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
+    let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(zero)) * scale;
+    let tile_b_base = row * tile_k + col;
+    tile_B[tile_b_base] = b_value0[0];
+    tile_B[tile_b_base + 1] = b_value0[1];
+    tile_B[tile_b_base + 2] = b_value0[2];
+    tile_B[tile_b_base + 3] = b_value0[3];
+    tile_B[tile_b_base + 4] = b_value1[0];
+    tile_B[tile_b_base + 5] = b_value1[1];
+    tile_B[tile_b_base + 6] = b_value1[2];
+    tile_B[tile_b_base + 7] = b_value1[3];
+  }
+    )ADDNL_FN_PART";
   }
 
   shader.MainFunctionBody() << R"MAIN_FN(
@@ -266,10 +279,12 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
   return Status::OK();
 }
 
-Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_zero_points) {
+Status GenerateShaderCodeOnApple(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
+                                 const ShaderVariableHelper& scales_b,
+                                 const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points) {
   // tile/subtile sizes and work distribution are inspired from metal shaders in llama.cpp (kernel_mul_mm)
   // https://github.com/ggml-org/llama.cpp/blob/d04e7163c85a847bc61d58c22f2c503596db7aa8/ggml/src/ggml-metal/ggml-metal.metal#L6066
-  shader.AdditionalImplementation() << R"ADDNL_FN(
+  shader.AdditionalImplementation() << R"ADDNL_FN_PART(
         const tile_cols = 64;
         const tile_rows = 32;
         const tile_k = 32;
@@ -292,13 +307,17 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
             // 128 threads need to load 32 x 32. 4 threads per row or 8 col per thread.
             for (var col_offset:u32 = 0; col_offset < 8; col_offset++)
             {
-                tile_A[row * tile_k + col + col_offset] = compute_precision(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
+        )ADDNL_FN_PART";
+  shader.AdditionalImplementation()
+      << " tile_A[row * tile_k + col + col_offset] = compute_precision("
+      << a.GetByOffset("a_global * uniforms.K + k_idx + col + col_offset")
+      << ");";
+  shader.AdditionalImplementation() << R"ADDNL_FN_PART(
             }
-        }
-    )ADDNL_FN"
-                                    << GenerateZeroPointReadingCode(nbits, has_zero_points, "compute_precision");
+          })ADDNL_FN_PART";
+  shader.AdditionalImplementation() << GenerateZeroPointReadingCode(nbits, has_zero_points, "compute_precision");
   if (nbits == 4) {
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -309,28 +328,35 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
             // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
             // Stored in column major fashion.
             let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
-            let scale = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
+                                 )ADDNL_FN_PART";
+    shader.AdditionalImplementation() << "let scale = compute_precision("
+                                      << scales_b.GetByOffset("(b_global * uniforms.K + k_idx + col) / quantization_block_size")
+                                      << ");";
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
             let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             for (var step:u32 = 0; step < 2; step++)
             {
-                var b_value = input_b[b_idx+step];
-                var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
-                var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
-                let tile_b_base = row * tile_k + col + step * 8;
-                tile_B[tile_b_base]     = b_value_lower[0];
-                tile_B[tile_b_base + 1] = b_value_upper[0];
-                tile_B[tile_b_base + 2] = b_value_lower[1];
-                tile_B[tile_b_base + 3] = b_value_upper[1];
-                tile_B[tile_b_base + 4] = b_value_lower[2];
-                tile_B[tile_b_base + 5] = b_value_upper[2];
-                tile_B[tile_b_base + 6] = b_value_lower[3];
-                tile_B[tile_b_base + 7] = b_value_upper[3];
-            }
-        }
-    )ADDNL_FN";
+            )ADDNL_FN_PART";
+    shader.AdditionalImplementation() << "var b_value = "
+                                      << b.GetByOffset("b_idx+step")
+                                      << ';';
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
+    var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
+    let tile_b_base = row * tile_k + col + step * 8;
+    tile_B[tile_b_base] = b_value_lower[0];
+    tile_B[tile_b_base + 1] = b_value_upper[0];
+    tile_B[tile_b_base + 2] = b_value_lower[1];
+    tile_B[tile_b_base + 3] = b_value_upper[1];
+    tile_B[tile_b_base + 4] = b_value_lower[2];
+    tile_B[tile_b_base + 5] = b_value_upper[2];
+    tile_B[tile_b_base + 6] = b_value_lower[3];
+    tile_B[tile_b_base + 7] = b_value_upper[3];
+  }
+}
+    )ADDNL_FN_PART";
   } else {
     ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -341,42 +367,49 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
             // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
             // Stored in column major fashion.
             let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
-            let scale = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
-            let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step:u32 = 0; step < 2; step++)
-            {
-                var b_value = input_b[b_idx+step];
-                var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
-                var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
-                let tile_b_base = row * tile_k + col + step * 8;
-                tile_B[tile_b_base]     = b_value0[0];
-                tile_B[tile_b_base + 1] = b_value0[1];
-                tile_B[tile_b_base + 2] = b_value0[2];
-                tile_B[tile_b_base + 3] = b_value0[3];
-                tile_B[tile_b_base + 4] = b_value1[0];
-                tile_B[tile_b_base + 5] = b_value1[1];
-                tile_B[tile_b_base + 6] = b_value1[2];
-                tile_B[tile_b_base + 7] = b_value1[3];
-            }
-        }
-    )ADDNL_FN";
+            )ADDNL_FN_PART";
+    shader.AdditionalImplementation() << "let scale = compute_precision("
+                                      << scales_b.GetByOffset("(b_global * uniforms.K + k_idx + col) / quantization_block_size")
+                                      << ");";
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
+    let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
+    for (var step : u32 = 0; step < 2; step++) {
+            )ADDNL_FN_PART";
+    shader.AdditionalImplementation() << "var b_value = "
+                                      << b.GetByOffset("b_idx+step")
+                                      << ';';
+
+    shader.AdditionalImplementation() << R"ADDNL_FN_PART(
+    var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
+    var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
+    let tile_b_base = row * tile_k + col + step * 8;
+    tile_B[tile_b_base]     = b_value0[0];
+    tile_B[tile_b_base + 1] = b_value0[1];
+    tile_B[tile_b_base + 2] = b_value0[2];
+    tile_B[tile_b_base + 3] = b_value0[3];
+    tile_B[tile_b_base + 4] = b_value1[0];
+    tile_B[tile_b_base + 5] = b_value1[1];
+    tile_B[tile_b_base + 6] = b_value1[2];
+    tile_B[tile_b_base + 7] = b_value1[3];
   }
-  shader.AdditionalImplementation() << R"ADDNL_FN(
-        fn storeOutput(offset:u32, row: u32, col:u32, src_slot:u32, row_limit:i32) {
-            if (row_limit > 0 && row < u32(row_limit))
-            {
-                output[offset + row * uniforms.N + col] = output_element_t(scratch[src_slot][0][row * 8 + col]);
-                output[offset + row * uniforms.N + col + 8] = output_element_t(scratch[src_slot][1][row * 8 + col]);
-                output[offset + row * uniforms.N + col + 16] = output_element_t(scratch[src_slot][2][row * 8 + col]);
-                output[offset + row * uniforms.N + col + 24] = output_element_t(scratch[src_slot][3][row * 8 + col]);
-                let col2 = col + 1;
-                output[offset + row * uniforms.N + col2] = output_element_t(scratch[src_slot][0][row * 8 + col2]);
-                output[offset + row * uniforms.N + col2 + 8] = output_element_t(scratch[src_slot][1][row * 8 + col2]);
-                output[offset + row * uniforms.N + col2 + 16] = output_element_t(scratch[src_slot][2][row * 8 + col2]);
-                output[offset + row * uniforms.N + col2 + 24] = output_element_t(scratch[src_slot][3][row * 8 + col2]);
-            }
-        }
-    )ADDNL_FN";
+}
+    )ADDNL_FN_PART";
+  }
+  shader.AdditionalImplementation()
+      << "        fn storeOutput(offset:u32, row: u32, col:u32, src_slot:u32, row_limit:i32) {\n"
+      << "            if (row_limit > 0 && row < u32(row_limit))\n"
+      << "            {\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col", "output_element_t(scratch[src_slot][0][row * 8 + col])") << ";\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col + 8", "output_element_t(scratch[src_slot][1][row * 8 + col])") << ";\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col + 16", "output_element_t(scratch[src_slot][2][row * 8 + col])") << ";\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col + 24", "output_element_t(scratch[src_slot][3][row * 8 + col])") << ";\n"
+      << "                let col2 = col + 1;\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col2", "output_element_t(scratch[src_slot][0][row * 8 + col2])") << ";\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col2 + 8", "output_element_t(scratch[src_slot][1][row * 8 + col2])") << ";\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col2 + 16", "output_element_t(scratch[src_slot][2][row * 8 + col2])") << ";\n"
+      << "                " << output.SetByOffset("offset + row * uniforms.N + col2 + 24", "output_element_t(scratch[src_slot][3][row * 8 + col2])") << ";\n"
+      << "            }\n"
+      << "        }\n";
 
   shader.MainFunctionBody() << R"MAIN_FN(
         let a_global_base = workgroup_id.y * tile_rows;
@@ -463,18 +496,18 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_
 }
 
 Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("input_b", ShaderUsage::UseUniform);
-  shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
+  const auto& scales_b = shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   if (!vendor_.compare("apple")) {
-    return GenerateShaderCodeOnApple(shader, nbits_, has_zero_points_);
+    return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_);
   } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, nbits_, config_index_, has_zero_points_);
+    return GenerateShaderCodeOnIntel(shader, b, scales_b, nbits_, config_index_, has_zero_points_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
