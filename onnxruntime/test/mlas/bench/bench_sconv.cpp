@@ -139,14 +139,14 @@ void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
   }
 }
 
-MLAS_THREADPOOL* GetMlasThreadPool(void) {
+static MLAS_THREADPOOL* GetMlasThreadPoolForConvBenchmark(void) {
   static auto threadpool = std::make_unique<onnxruntime::concurrency::ThreadPool>(
       &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 4, true);
   return threadpool.get();
 }
 
 void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
-  MLAS_THREADPOOL* tp = GetMlasThreadPool();
+  MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
 
   const int64_t rank = state.range(0);                       // Rank
   const int64_t batch_size = state.range(1);                 // N
