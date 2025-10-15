@@ -61,11 +61,22 @@ class SharedContext : public WeakSingleton<SharedContext> {
       size_t weights_size_;
     };
 
+    void clear() {
+      metadata.clear();
+      metadata_filepath.clear();
+      external_weight_filename.clear();
+      mapped_weights.reset();
+    }
+
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
     Metadata::Map metadata;
     fs::path metadata_filepath;
   } shared_weights;
+
+  void clear() {
+    shared_weights.clear();
+  }
 };
 
 using config_t = std::map<std::string, ov::AnyMap>;
@@ -109,6 +120,7 @@ struct ProviderInfo {
   bool so_context_embed_mode{false};       // ORT session option
   bool so_share_ep_contexts{false};        // ORT session option
   fs::path so_context_file_path{};         // ORT session option
+  bool so_stop_share_ep_contexts{false};   // ORT session option
   const ConfigOptions* config_options{NULL};
   const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",

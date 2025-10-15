@@ -65,6 +65,7 @@ OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
     backend_manager.ShutdownBackendManager();
   }
   backend_managers_.clear();
+  shared_context_.reset();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -212,6 +213,12 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::ofstream file{metadata_file_path, std::ios::binary};
     ORT_RETURN_IF_NOT(file, "Metadata file could not be written: ", metadata_file_path);
     file << metadata;
+  }
+
+  if (session_context_.so_stop_share_ep_contexts) {
+    if (shared_context_) {
+      shared_context_->clear();
+    }
   }
 
   return status;
