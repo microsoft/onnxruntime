@@ -1477,7 +1477,7 @@ template <typename F4>
 void CastOpTestFloatFloat4(std::vector<int64_t> shape,
                            std::vector<float> float_data,
                            bool is_fp4_input = false) {
-  size_t num_pairs = float_data.size() / 2;
+  int num_pairs = static_cast<int>(float_data.size()) / 2;
   int num_fp4_elements = static_cast<int>((float_data.size() + 1) / 2);
   bool is_odd_count = (float_data.size() % 2 != 0);
 
