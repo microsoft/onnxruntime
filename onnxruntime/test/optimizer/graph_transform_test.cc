@@ -8329,6 +8329,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
   }
 }
 
+// in training mode the Nchwc ops schemas are removed
+#ifndef ENABLE_TRAINING
+
 TEST_F(GraphTransformationTests, NchwcTransformerConv) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({{1, 16, 49}});
@@ -8511,6 +8514,8 @@ TEST_F(GraphTransformationTests, NchwcTransformerMaxPool) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
                                         pre_graph_checker, post_graph_checker));
 }
+
+#endif  // ENABLE_TRAINING
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
