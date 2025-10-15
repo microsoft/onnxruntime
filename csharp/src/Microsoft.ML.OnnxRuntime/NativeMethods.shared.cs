@@ -485,7 +485,7 @@ namespace Microsoft.ML.OnnxRuntime
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 #endif
 
-            const uint ORT_API_VERSION = 14;
+            const uint ORT_API_VERSION = 15;
 #if NETSTANDARD2_0
             IntPtr ortApiPtr = OrtGetApi(ORT_API_VERSION);
             api_ = (OrtApi)Marshal.PtrToStructure(ortApiPtr, typeof(OrtApi));
@@ -849,6 +849,21 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCreateSyncStreamForEpDevice)Marshal.GetDelegateForFunctionPointer(
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
+
+            OrtGetOrtFenceForGraphicsInterop =
+                (DOrtGetOrtFenceForGraphicsInterop)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetOrtFenceForGraphicsInterop,
+                    typeof(DOrtGetOrtFenceForGraphicsInterop));
+
+            OrtInteropEpWait =
+                (DOrtInteropEpWait)Marshal.GetDelegateForFunctionPointer(
+                    api_.InteropEpWait,
+                    typeof(DOrtInteropEpWait));
+
+            OrtInteropEpSignal =
+                (DOrtInteropEpSignal)Marshal.GetDelegateForFunctionPointer(
+                    api_.InteropEpSignal,
+                    typeof(DOrtInteropEpSignal));
 
             OrtSyncStream_GetHandle =
                 (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
@@ -2746,6 +2761,29 @@ namespace Microsoft.ML.OnnxRuntime
             );
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetOrtFenceForGraphicsInterop(
+            IntPtr /* OrtSession* */ session,
+            IntPtr /* struct GraphicsInteropParams* */ graphicsInteropParams,
+            out IntPtr /* void** */ extSemFence
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtInteropEpWait(
+            IntPtr /* OrtSession* */ session,
+            IntPtr /* void* */ extSemFence,
+            IntPtr /* OrtSyncStream* */ stream,
+            uint /* uint64_t */ fenceValue
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtInteropEpSignal(
+            IntPtr /* OrtSession* */ session,
+            IntPtr /* void* */ extSemFence,
+            IntPtr /* OrtSyncStream* */ stream,
+            uint /* uint64_t */ fenceValue
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* void* */ DOrtSyncStream_GetHandle(
             IntPtr /* OrtSyncStream* */ stream
             );
@@ -2762,6 +2800,9 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtEpDevice_Device OrtEpDevice_Device;
         public static DOrtEpDevice_MemoryInfo OrtEpDevice_MemoryInfo;
         public static DOrtCreateSyncStreamForEpDevice OrtCreateSyncStreamForEpDevice;
+        public static DOrtGetOrtFenceForGraphicsInterop OrtGetOrtFenceForGraphicsInterop;
+        public static DOrtInteropEpWait OrtInteropEpWait;
+        public static DOrtInteropEpSignal OrtInteropEpSignal;
         public static DOrtSyncStream_GetHandle OrtSyncStream_GetHandle;
         public static DOrtReleaseSyncStream OrtReleaseSyncStream;
 

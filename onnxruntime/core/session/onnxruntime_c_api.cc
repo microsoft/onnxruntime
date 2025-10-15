@@ -3432,13 +3432,16 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* ses
     if (const_provider) {
       auto* provider = const_cast<onnxruntime::IExecutionProvider*>(const_provider);
       auto status = provider->GetExtSemaphore(graphicsInteropParams, extSemFence);
-      if (!status.IsOK()) {
-        return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      if(status.IsOK()) {
+        return nullptr;
+      }
+      if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
+        return ToOrtStatus(status);
       }
     }
   }
 
-  return nullptr;  // Indicates success
+  return OrtApis::CreateStatus(ORT_FAIL, "No active execution provider returned a semaphore for the given session");
   API_IMPL_END
 }
 
@@ -3471,13 +3474,16 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ v
     if (provider) {
       auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
       auto status = execution_provider->SetupInteropEpWait(extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
-      if (!status.IsOK()) {
-        return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+      if(status.IsOK()) {
+        return nullptr;
+      }
+      if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
+        return ToOrtStatus(status);
       }
     }
   }
 
-  return nullptr;
+  return OrtApis::CreateStatus(ORT_FAIL, "No execution provider is actively being used");
   API_IMPL_END
 }
 
@@ -3510,13 +3516,16 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_
     if (provider) {
       auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
       auto status = execution_provider->SetupInteropEpSignal(OrtApis::GetEpApi(), extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
-      if (!status.IsOK()) {
+      if(status.IsOK()) {
+        return nullptr;
+      }
+      if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
         return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
       }
     }
   }
 
-  return nullptr;
+  return OrtApis::CreateStatus(ORT_FAIL, "No execution provider is actively being used");
   API_IMPL_END
 }
 
