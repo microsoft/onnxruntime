@@ -2953,8 +2953,13 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           OrtValue ort_value;
           if (this->GetOrtValueInitializer(input_1->Name(), ort_value, true)) {
             const Tensor& tensor = ort_value.Get<Tensor>();
-            const int64_t* data = tensor.Data<int64_t>();
-            index = *data;
+            if (initializer->data_type() == TensorProto_DataType_INT32) {
+              const int32_t* data = tensor.Data<int32_t>();
+              index = static_cast<int64_t>(*data);
+            } else if (initializer->data_type() == TensorProto_DataType_INT64) {
+              const int64_t* data = tensor.Data<int64_t>();
+              index = *data;
+            }
           } else {
             // If we can't get the OrtValue, it is a bug
             ORT_THROW("Initializer ", input_1->Name(),
@@ -2962,8 +2967,13 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           }
         } else if (utils::HasRawData(*initializer)) {
           const std::string& raw = initializer->raw_data();
-          const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
-          index = *data;
+          if (initializer->data_type() == TensorProto_DataType_INT32) {
+            const int32_t* data = reinterpret_cast<const int32_t*>(raw.data());
+            index = static_cast<int64_t>(*data);
+          } else if (initializer->data_type() == TensorProto_DataType_INT64) {
+            const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
+            index = *data;
+          }
         } else {
           if (initializer->data_type() == TensorProto_DataType_INT32) {
             std::vector<int32_t> values;
