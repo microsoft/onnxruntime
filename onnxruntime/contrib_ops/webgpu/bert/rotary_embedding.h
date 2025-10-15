@@ -44,6 +44,8 @@ class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddin
       {"q_input_output_stride", ProgramUniformVariableDataType::Uint32},
       {"k_global_shape", ProgramUniformVariableDataType::Uint32},
       {"k_input_output_stride", ProgramUniformVariableDataType::Uint32},
+      {"first_prompt_flag", ProgramUniformVariableDataType::Uint32},
+      {"subsequent_prompt_flag", ProgramUniformVariableDataType::Uint32},
       {"q_domain_size", ProgramUniformVariableDataType::Uint32});
 
  private:
