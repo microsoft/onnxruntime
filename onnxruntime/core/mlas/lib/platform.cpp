@@ -791,10 +791,9 @@ MlasBf16AccelerationSupported()
 #if defined(MLAS_TARGET_ARM64) && defined(__linux__)
     return MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_BF16();
 #elif defined(MLAS_TARGET_AMD64_IX86)
-    if (!cpuinfo_initialize()) {
-        return false;
-    }
-    // Check for AVX512_BF16 or AMX_BF16
+    // cpuinfo is initialized early by the Env singleton (platform specific).
+    // Just query the feature flags here; if cpuinfo was unavailable initialization would have failed and
+    // the feature queries will safely return false.
     return cpuinfo_has_x86_avx512bf16() || cpuinfo_has_x86_amx_bf16();
 #else
     return false;

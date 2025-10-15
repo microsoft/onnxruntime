@@ -863,6 +863,10 @@ ProcessorInfo WindowsEnv::GetProcessorAffinityMask(int global_processor_id) cons
 
 WindowsEnv::WindowsEnv() {
   l2_cache_size_ = 0;
+#if defined(CPUINFO_SUPPORTED)
+  // Initialize cpuinfo once on Windows similar to PosixEnv constructor.
+  (void)cpuinfo_initialize();
+#endif
   InitializeCpuInfo();
 }
 

@@ -18,6 +18,9 @@ limitations under the License.
 #include "core/platform/windows/telemetry.h"
 #include "core/common/inlined_containers.h"
 #include <Windows.h>
+#if defined(CPUINFO_SUPPORTED)
+#include <cpuinfo.h>
+#endif
 
 namespace onnxruntime {
 
