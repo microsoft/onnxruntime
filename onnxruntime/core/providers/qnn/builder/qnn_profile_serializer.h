@@ -6,7 +6,6 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include <System/QnnSystemInterface.h>
 
@@ -30,9 +29,7 @@ namespace profile {
 
 struct ProfilingInfo {
   std::string graph_name = "";
-  std::string output_filepath = "";
-
-  bool tracelogging_provider_ep_enabled = false;
+  std::string csv_output_filepath = "";
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   uint64_t start_time = 0;
@@ -40,19 +37,61 @@ struct ProfilingInfo {
   uint32_t num_events = 0;
 
   ProfilingMethodType method_type = ProfilingMethodType::UNKNOWN;
-  QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
 #endif
 };
 
 class Serializer {
  public:
-  Serializer(const ProfilingInfo& profiling_info);
+  Serializer(const ProfilingInfo& profiling_info,
+             QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface,
+             bool tracelogging_provider_ep_enabled);
 
+  // Extracts all event/subevent data then:
+  //  1. Writes/appends data to a csv file defined in profiling_info_
+  //  2. If QNN System Profile API is enabled, converts the data
+  //     into a QNN System Profile Event and stores the new obj locally
   Status ProcessEvent(const QnnProfile_EventId_t event_Id, const std::string& event_level,
                       const QnnProfile_EventData_t& event_data);
 
+  // Extracts all event/subevent data then:
+  //  1. Writes/appends data to a csv file defined in profiling_info_
+  //  2. If QNN System Profile API is enabled, converts the data
+  //     into a QNN System Profile Event and stores the new obj locally
   Status ProcessExtendedEvent(const QnnProfile_EventId_t event_id, const std::string& event_level,
                               const QnnProfile_ExtendedEventData_t& event_data);
+
+  // If QNN API is too old, turn Serializer into an ofstream wrapper class
+  // Keeps code clean, any performance impacts can be ignored when profiling is enabled
+  ~Serializer() {
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    event_data_list_.clear();
+    system_parent_event_lookup_map_.clear();
+    event_profile_id_lookup_map_.clear();
+    sub_event_data_map_.clear();
+#endif
+  }
+
+  // Initalizes outfile_ to output to a defined .csv file
+  // or appends to the defined .csv file if it already exists
+  // This is in its own function & not ctor for error checking/handling
+  Status InitCsvFile();
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  // Serializes all locally stored QNN System Profile Event data into a
+  // qnn profiling .log file in the same directory as the .csv file defined
+  // in profilng_info_. The output file name with have the same name
+  // as the .csv file (sans extension) with _qnn.log appended to the end.
+  Status SerializeEventsToQnnLog();
+
+  QnnSystemProfile_ProfileEventV1_t* GetParentSystemEvent(const QnnProfile_EventId_t event_id);
+
+  QnnSystemProfile_ProfileEventV1_t* GetSystemEventPointer(const QnnProfile_EventId_t event_id);
+
+  void AddSubEventList(const uint32_t num_sub_events, QnnSystemProfile_ProfileEventV1_t* event_ptr);
+
+  Status SetParentSystemEvent(const QnnProfile_EventId_t event_id,
+                              QnnSystemProfile_ProfileEventV1_t* const system_parent_event);
+#endif
 
  private:
 #ifdef _WIN32
@@ -66,34 +105,7 @@ class Serializer {
       const char* eventIdentifier);
 #endif
 
-  // If QNN API is too old, turn Serializer into an ofstream wrapper class
-  // Keeps code clean, any performance impacts can be ignored when profiling is enabled
- public:
-  ~Serializer() {
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
-    event_data_list_.clear();
-    system_parent_event_lookup_map_.clear();
-    event_profile_id_lookup_map_.clear();
-    sub_event_data_map_.clear();
-#endif
-  }
-
-  Status InitFile();
-
-#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
- public:
-  Status SerializeEvents();
-
-  QnnSystemProfile_ProfileEventV1_t* GetParentSystemEvent(const QnnProfile_EventId_t event_id);
-
-  QnnSystemProfile_ProfileEventV1_t* GetSystemEventPointer(const QnnProfile_EventId_t event_id);
-
-  void AddSubEventList(const uint32_t num_sub_events, QnnSystemProfile_ProfileEventV1_t* event_ptr);
-
-  Status SetParentSystemEvent(const QnnProfile_EventId_t event_id,
-                              QnnSystemProfile_ProfileEventV1_t* const system_parent_event);
-
- private:
   class ManagedSerializationTargetHandle {
    public:
     ManagedSerializationTargetHandle(const QnnSystemProfile_SerializationTargetHandle_t& raw_handle,
@@ -143,9 +155,9 @@ class Serializer {
   std::unordered_map<QnnProfile_EventId_t, QnnSystemProfile_ProfileEventV1_t*> event_profile_id_lookup_map_;
   std::unordered_map<QnnSystemProfile_ProfileEventV1_t*, std::vector<QnnSystemProfile_ProfileEventV1_t> > sub_event_data_map_;
 
-  QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface_;
 #endif  // QNN_SYSTEM_PROFILE_API_ENABLED
   const ProfilingInfo profiling_info_;
+  QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface_;
   bool tracelogging_provider_ep_enabled_ = false;
   std::ofstream outfile_;
 };

@@ -1620,30 +1620,31 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
     return Status::OK();
   }
 
+  bool tracelogging_provider_ep_enabled = false;
 #ifdef _WIN32
   auto& provider = QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
     auto level = provider.Level();
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
-      profiling_info.tracelogging_provider_ep_enabled = true;
+      tracelogging_provider_ep_enabled = true;
     }
   }
 #endif  // defined(_WIN32)
 
   // ETW disabled previously, but enabled now
-  if (ProfilingLevel::INVALID == profiling_level_etw_ && profiling_info.tracelogging_provider_ep_enabled) {
+  if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
     LOGS(*logger_, ERROR) << "ETW disabled previously, but enabled now. Can't do the switch! Won't output any profiling.";
     return Status::OK();
   }
 
   // ETW enabled previously, but disabled now
-  if (ProfilingLevel::INVALID != profiling_level_etw_ && !profiling_info.tracelogging_provider_ep_enabled) {
+  if (ProfilingLevel::INVALID != profiling_level_etw_ && !tracelogging_provider_ep_enabled) {
     LOGS(*logger_, ERROR) << "ETW enabled previously, but disabled now. Can't do the switch! Won't output any profiling.";
     return Status::OK();
   }
 
-  ORT_RETURN_IF(!profiling_info.tracelogging_provider_ep_enabled && profiling_file_path_.empty(),
+  ORT_RETURN_IF(!tracelogging_provider_ep_enabled && profiling_file_path_.empty(),
                 "Need to specify a CSV file via provider option profiling_file_path if ETW not enabled.");
 
   ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
@@ -1675,15 +1676,16 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
       LOGS(*logger_, VERBOSE) << "The QNN backend does not support extended event data.";
     }
 
-    profiling_info.output_filepath = profiling_file_path_;
+    profiling_info.csv_output_filepath = profiling_file_path_;
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     profiling_info.num_events = num_events;
-    profiling_info.qnn_system_interface = qnn_sys_interface_;
 #endif
 
-    profile::Serializer profile_writer(profiling_info);
+    profile::Serializer profile_writer(profiling_info,
+                                       qnn_sys_interface_,
+                                       tracelogging_provider_ep_enabled);
     if (!profiling_file_path_.empty()) {
-      ORT_RETURN_IF_ERROR(profile_writer.InitFile());
+      ORT_RETURN_IF_ERROR(profile_writer.InitCsvFile());
     }
 
     for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
@@ -1695,7 +1697,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
                                     backendSupportsExtendedEventData));
     }
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
-    ORT_RETURN_IF_ERROR(profile_writer.SerializeEvents());
+    ORT_RETURN_IF_ERROR(profile_writer.SerializeEventsToQnnLog());
 #endif
 
     if (!profiling_file_path_.empty()) {
@@ -1703,7 +1705,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
                               << profiling_file_path_ << ")";
     }
 
-    if (profiling_info.tracelogging_provider_ep_enabled) {
+    if (tracelogging_provider_ep_enabled) {
       LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to ETW";
     }
   }

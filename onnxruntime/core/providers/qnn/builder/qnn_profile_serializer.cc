@@ -210,8 +210,8 @@ Status Serializer::ProcessExtendedEvent(const QnnProfile_EventId_t event_id, con
   return Status::OK();
 }
 
-Status Serializer::InitFile() {
-  auto output_filepath = profiling_info_.output_filepath;
+Status Serializer::InitCsvFile() {
+  auto output_filepath = profiling_info_.csv_output_filepath;
   // Write to CSV in append mode
   std::ifstream infile(output_filepath.c_str());
   bool exists = infile.good();
@@ -229,12 +229,33 @@ Status Serializer::InitFile() {
   return Status::OK();
 }
 
-#ifndef QNN_SYSTEM_PROFILE_API_ENABLED
-Serializer::Serializer(const ProfilingInfo& profiling_info)
+Serializer::Serializer(const ProfilingInfo& profiling_info,
+                       QNN_SYSTEM_INTERFACE_VER_TYPE qnn_system_interface,
+                       bool tracelogging_provider_ep_enabled)
     : profiling_info_(profiling_info),
-      tracelogging_provider_ep_enabled_(profiling_info.tracelogging_provider_ep_enabled) {
+      qnn_system_interface_(qnn_system_interface),
+      tracelogging_provider_ep_enabled_(tracelogging_provider_ep_enabled) {
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  std::filesystem::path output_fs_filepath(profiling_info.csv_output_filepath);
+  qnn_log_filename_ = output_fs_filepath.filename().string();
+  // Remove extension (assumed to be ".csv") then add "_qnn.log"
+  size_t extension_start_idx = qnn_log_filename_.rfind(".");
+  qnn_log_filename_ = qnn_log_filename_.substr(0, extension_start_idx);
+  qnn_log_filename_.append("_qnn.log");
+
+  std::filesystem::path abs_output_path;
+  if (output_fs_filepath.has_root_path()) {
+    abs_output_path = output_fs_filepath.parent_path();
+  } else {
+    abs_output_path = std::filesystem::current_path() / output_fs_filepath.parent_path();
+  }
+  output_directory_ = abs_output_path.string();
+
+  event_data_list_.reserve(profiling_info.num_events);
+#endif
 }
-#else
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
 QnnSystemProfile_MethodType_t ParseMethodType(ProfilingMethodType method_type) {
   switch (method_type) {
     case ProfilingMethodType::EXECUTE:
@@ -281,28 +302,6 @@ std::string GetSystemProfileErrorString(Qnn_ErrorHandle_t error) {
   }
 }
 
-Serializer::Serializer(const ProfilingInfo& profiling_info)
-    : qnn_system_interface_(profiling_info.qnn_system_interface),
-      profiling_info_(profiling_info),
-      tracelogging_provider_ep_enabled_(profiling_info.tracelogging_provider_ep_enabled) {
-  std::filesystem::path output_fs_filepath(profiling_info.output_filepath);
-  qnn_log_filename_ = output_fs_filepath.filename().string();
-  // Remove extension (assumed to be ".csv") then add "_qnn.log"
-  size_t extension_start_idx = qnn_log_filename_.rfind(".");
-  qnn_log_filename_ = qnn_log_filename_.substr(0, extension_start_idx);
-  qnn_log_filename_.append("_qnn.log");
-
-  std::filesystem::path abs_output_path;
-  if (output_fs_filepath.has_root_path()) {
-    abs_output_path = output_fs_filepath.parent_path();
-  } else {
-    abs_output_path = std::filesystem::current_path() / output_fs_filepath.parent_path();
-  }
-  output_directory_ = abs_output_path.string();
-
-  event_data_list_.reserve(profiling_info.num_events);
-}
-
 QnnSystemProfile_ProfileEventV1_t* Serializer::AddEvent(const QnnProfile_EventId_t event_id,
                                                         const QnnProfile_EventData_t event) {
   return CreateSystemEvent(event_data_list_, event_id, event);
@@ -333,7 +332,7 @@ QnnSystemProfile_ProfileEventV1_t* Serializer::AddExtendedSubEvent(const QnnProf
   return CreateSystemExtendedEvent(sub_event_list, event_id, sub_event);
 }
 
-Status Serializer::SerializeEvents() {
+Status Serializer::SerializeEventsToQnnLog() {
   bool result = nullptr == qnn_system_interface_.systemProfileCreateSerializationTarget ||
                 nullptr == qnn_system_interface_.systemProfileSerializeEventData ||
                 nullptr == qnn_system_interface_.systemProfileFreeSerializationTarget;
