@@ -443,6 +443,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetEpDeviceForInputs;
 
         public IntPtr CreateSyncStreamForEpDevice;
+        public IntPtr GetOrtFenceForGraphicsInterop;
+        public IntPtr InteropEpWait;
+        public IntPtr InteropEpSignal;
         public IntPtr SyncStream_GetHandle;
         public IntPtr ReleaseSyncStream;
 
@@ -847,7 +850,7 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
 
-            OrtSyncStream_GetHandle = 
+            OrtSyncStream_GetHandle =
                 (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
                     api_.SyncStream_GetHandle,
                     typeof(DOrtSyncStream_GetHandle));
@@ -2643,7 +2646,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                  byte[] /* const char* */ value);
 
         /// <summary>
-        /// Get the value for the provided key. 
+        /// Get the value for the provided key.
         /// </summary>
         /// <returns>Value. Returns IntPtr.Zero if key was not found.</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -2766,7 +2769,7 @@ namespace Microsoft.ML.OnnxRuntime
         // Auto Selection EP registration and selection customization
 
         /// <summary>
-        /// Register an execution provider library. 
+        /// Register an execution provider library.
         /// The library must implement CreateEpFactories and ReleaseEpFactory.
         /// </summary>
         /// <param name="env">Environment to add the EP library to.</param>

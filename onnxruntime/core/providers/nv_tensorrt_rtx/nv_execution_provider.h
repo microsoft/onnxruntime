@@ -289,6 +289,10 @@ class NvExecutionProvider : public IExecutionProvider {
   //  explicit NvExecutionProvider(const ProviderOptions& provider_options_map, const ConfigOptions* config_options);
   virtual ~NvExecutionProvider();
 
+  virtual Status GetExtSemaphore(struct GraphicsInteropParams graphicsInteropParams, void** extSemFence) override;
+  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) override;
+  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) override;
+
   cublasHandle_t PerThreadDefaultCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }

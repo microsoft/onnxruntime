@@ -33,6 +33,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <d3d12.h>
 
 /** \brief The API version defined in this header
  *
@@ -506,6 +507,27 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
+
+typedef enum ExternalSyncPrimitive {
+  ExternalSyncPrimitive_D3D12Fence,
+  ExternalSyncPrimitive_VulkanSemaphore,
+} ExternalSyncPrimitive;
+
+typedef struct GraphicsInteropParams
+{
+  ExternalSyncPrimitive extSyncPrimitive;
+  union FencePtr
+  {
+      ID3D12Fence* pFence;
+      // VkFence pFenceVulkan;    // Vulkan fence here
+  } FencePtr;
+
+  union DevicePtr
+  {
+    ID3D12Device* pDevice;
+    // VkDevice pVkDevice;
+  } DevicePtr;
+} GraphicsInteropParams;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
@@ -6487,6 +6509,10 @@ struct OrtApi {
   ORT_API2_STATUS(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
+
+  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /** \brief Get the native handle of the sync stream.
    *
