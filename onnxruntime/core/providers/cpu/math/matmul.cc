@@ -88,6 +88,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
         .TypeConstraint("T", BuildKernelDefConstraints<int64_t, uint64_t>()),
     MatMul<int64_t>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    MatMul,
+    13,
+    BFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
+    MatMul<BFloat16>);
+
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();

@@ -100,6 +100,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     Gemm<MLFloat16>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Gemm,
+    13,
+    BFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
+    Gemm<BFloat16>);
+
 bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
                    bool trans_a,
@@ -157,7 +164,7 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
   if (K == 0) {
-    if (beta == 0 || c_data == nullptr) {
+    if (beta == T(0.0f) || c_data == nullptr) {
       EigenMatrixMapRowMajor<T> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
       dest.setZero();
     }
@@ -397,6 +404,43 @@ Status Gemm<MLFloat16>::Compute(OpKernelContext* context) const {
   }
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
+
+  return Status::OK();
+}
+
+template <>
+Status Gemm<BFloat16>::Compute(OpKernelContext* context) const {
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+
+  const auto* A = context->Input<Tensor>(0);
+  const auto* B = context->Input<Tensor>(1);
+  const auto* C = context->Input<Tensor>(2);
+
+  // Bias could be missing. Treat as scalar 0 if that is the case.
+  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans,
+                    C != nullptr ? C->Shape() : TensorShape({}));
+
+  if (!helper.State().IsOK())
+    return helper.State();
+
+  ptrdiff_t M = helper.M();
+  ptrdiff_t N = helper.N();
+  ptrdiff_t K = helper.K();
+
+  auto Y = context->Output(0, {M, N});
+
+  // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
+  if (M == 0 || N == 0)
+    return Status::OK();
+
+  BFloat16* y_data = Y->MutableData<BFloat16>();
+  const BFloat16* c_data = C != nullptr ? C->Data<BFloat16>() : nullptr;
+  const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
+
+  ComputeGemm(trans_A_, trans_B_, M, N, K, static_cast<BFloat16>(alpha_), A->Data<BFloat16>(), B->Data<BFloat16>(), static_cast<BFloat16>(beta_),
+              c_data, c_shape, y_data, thread_pool);
+
+  ComputeActivation(y_data, SafeInt<ptrdiff_t>(M) * N, thread_pool);
 
   return Status::OK();
 }
