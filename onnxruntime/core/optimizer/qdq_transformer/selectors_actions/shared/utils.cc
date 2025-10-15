@@ -64,6 +64,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Relu", {}},
           {"Gelu", {}},
           {"Elu", {}},
+          {"Erf", {}},
           {"HardSigmoid", {}},
           {"HardSwish", {}},
           {"Sigmoid", {}},
