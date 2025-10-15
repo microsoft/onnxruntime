@@ -36,6 +36,8 @@ const ort = require('onnxruntime-node');
 
 - Follow the [Quick Start](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-node) instructions for ONNX Runtime Node.js binding.
 
+## Supported Versions
+
 The following table lists the supported versions of ONNX Runtime Node.js binding provided with pre-built binaries.
 
 | EPs/Platforms | Windows x64        | Windows arm64      | Linux x64          | Linux arm64        | MacOS x64          | MacOS arm64        |
