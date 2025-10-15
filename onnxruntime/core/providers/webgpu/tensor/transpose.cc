@@ -110,22 +110,15 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
                               gsl::span<const size_t> permutations,
-                              const Tensor& input, Tensor& output, const TensorShape* input_shape_ptr, TensorShape* output_shape_ptr) {
-  const auto& input_shape = input_shape_ptr ? *input_shape_ptr : input.Shape();
+                              const Tensor& input, Tensor& output) {
+  const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
 
   TensorShapeVector output_dims(rank);
 
-  if (output_shape_ptr) {
-    auto dims = output_shape_ptr->GetDims();
-    for (int32_t i = 0; i < rank; ++i) {
-      output_dims[i] = dims[i];
-    }
-  } else {
-    for (int32_t i = 0; i < rank; i++) {
-      output_dims[i] = input_dims[permutations[i]];
-    }
+  for (int32_t i = 0; i < rank; i++) {
+    output_dims[i] = input_dims[permutations[i]];
   }
 
   TensorShapeVector new_shape{};
