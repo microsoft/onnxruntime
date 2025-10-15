@@ -1026,16 +1026,16 @@ xvi8ger4pp_impl(
 
     const __vector unsigned char maskb = { 0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15 };
 
-    __vector int va_interm[4];
+    __vector int va_interim[4];
     __vector unsigned char vb_interm = vec_perm(vb, vb, maskb);
 
     __vector int va_prep;
     __vector int vb_prep[4];
 
-    va_interm[0] = (__vector int) vec_unpackh(vec_unpackh((__vector signed char) va));
-    va_interm[1] = (__vector int) vec_unpackl(vec_unpackh((__vector signed char) va));
-    va_interm[2] = (__vector int) vec_unpackh(vec_unpackl((__vector signed char) va));
-    va_interm[3] = (__vector int) vec_unpackl(vec_unpackl((__vector signed char) va));
+    va_interim[0] = (__vector int) vec_unpackh(vec_unpackh((__vector signed char) va));
+    va_interim[1] = (__vector int) vec_unpackl(vec_unpackh((__vector signed char) va));
+    va_interim[2] = (__vector int) vec_unpackh(vec_unpackl((__vector signed char) va));
+    va_interim[3] = (__vector int) vec_unpackl(vec_unpackl((__vector signed char) va));
 
     vb_prep[0] = (__vector int) vec_unpackh(vec_unpackh(vb_interm));
     vb_prep[1] = (__vector int) vec_unpackl(vec_unpackh(vb_interm));
@@ -1046,7 +1046,7 @@ xvi8ger4pp_impl(
     {
         for (size_t k = 0; k < 4; ++k)
         {
-            va_prep = vec_perm(va_interm[i], va_interm[i], maska[k]);
+            va_prep = vec_perm(va_interim[i], va_interim[i], maska[k]);
 
             acc[i] += va_prep * vb_prep[k];
         }

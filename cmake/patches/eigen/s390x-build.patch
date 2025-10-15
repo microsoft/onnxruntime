@@ -425,7 +425,7 @@ From: Aleksei Nikiforov <aleksei.nikiforov@linux.ibm.com>
 Date: Tue, 10 Jun 2025 13:47:49 +0200
 Subject: [PATCH 4/6] Use vec_xl and vec_xst for pload and pstore on s390x
 
-Fix two missed occurences.
+Fix two missed occurrences.
 ---
  Eigen/src/Core/arch/ZVector/PacketMath.h | 10 ++--------
  1 file changed, 2 insertions(+), 8 deletions(-)
