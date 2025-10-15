@@ -102,8 +102,8 @@ bool ScatterElementsOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const 
   // ONNX specifies that indices must use int64, but some WebNN backends only support int32.
   // Allows to use int32 as a workaround for such backends.
   can_fallback_int64_to_int32_ = CanFallbackInt64ToInt32(wnn_limits, "scatterElements", "indices");
-  return IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger) ||
-         can_fallback_int64_to_int32_;
+  return can_fallback_int64_to_int32_ ||
+         IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 
 void CreateScatterElementsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
