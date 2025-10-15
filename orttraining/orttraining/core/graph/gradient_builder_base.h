@@ -6,7 +6,7 @@
 #include <vector>
 #include <string>
 #include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/graph/graph.h"
 #include "core/util/math.h"
 #include "orttraining/core/graph/graph_augmenter.h"
