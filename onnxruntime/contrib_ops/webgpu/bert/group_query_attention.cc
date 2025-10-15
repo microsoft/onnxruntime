@@ -167,8 +167,7 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
        gsl::narrow_cast<uint32_t>(head_size),
        1u});
 
-  const uint32_t total = q_domain_size + k_domain_size;
-
+  // Dispatch computations only over the Q domain, and fuse K write operations using a head-index-based condition.
   FusedQKRotaryEmbeddingProgram program(params.rotary_interleaved_);
   program
       .CacheHint(params.rotary_interleaved_)
@@ -183,7 +182,7 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {query_out, ProgramTensorMetadataDependency::Rank},
           {key_out, ProgramTensorMetadataDependency::Rank},
       })
-      .SetDispatchGroupSize((total + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .SetDispatchGroupSize((q_domain_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {params.scale_},
           {gsl::make_span(q_global_dims)},
