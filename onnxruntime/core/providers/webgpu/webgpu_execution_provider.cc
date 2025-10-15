@@ -28,6 +28,7 @@
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
+#include "core/providers/webgpu/tensor/cast.h"
 
 namespace onnxruntime {
 
@@ -417,7 +418,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterND);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterND);
 
-std::unique_ptr<KernelRegistry> RegisterKernels() {
+std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = false) {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -463,13 +464,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED(6, 12, Tanh),
       KERNEL_CREATE_INFO(13, Tanh),
       KERNEL_CREATE_INFO(1, Not),
-
-      KERNEL_CREATE_INFO_VERSIONED(6, 8, Cast),
-      KERNEL_CREATE_INFO_VERSIONED(9, 12, Cast),
-      KERNEL_CREATE_INFO_VERSIONED(13, 18, Cast),
-      KERNEL_CREATE_INFO_VERSIONED(19, 20, Cast),
-      KERNEL_CREATE_INFO_VERSIONED(21, 22, Cast),
-      KERNEL_CREATE_INFO(23, Cast),
 
       // // activations
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, float, Clip)>,
@@ -771,6 +765,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
     }
   }
 
+  // Register Cast kernels with conditional int64 support based on graph capture
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<6, 8>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<9, 12>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<13, 18>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<19, 20>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<21, 22>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23>(enable_graph_capture)));
+
 #ifndef DISABLE_CONTRIB_OPS
   Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry);
   ORT_ENFORCE(status.IsOK(), "Failed to register WebGPU contrib kernels: " + status.ErrorMessage());
@@ -869,9 +871,13 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 }
 
 std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels();
-
-  return registry;
+  if (enable_graph_capture_) {
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(true);
+    return registry;
+  } else {
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(false);
+    return registry;
+  }
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
