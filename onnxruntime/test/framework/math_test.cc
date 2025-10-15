@@ -165,15 +165,15 @@ TEST_P(MathBFloat16GemmTest, GemmNoTransNoTrans) {
   const BFloat16 kZero_bf16(0.f);
 
   math::Gemm<BFloat16>(CblasNoTrans, CblasNoTrans, M, N, K, kOne_bf16,
-                    VECTOR_HEAD(X_bf16), VECTOR_HEAD(W_bf16), kZero_bf16, VECTOR_HEAD(Y_bf16),
-                    tp.get());
+                       VECTOR_HEAD(X_bf16), VECTOR_HEAD(W_bf16), kZero_bf16, VECTOR_HEAD(Y_bf16),
+                       tp.get());
 
   BFloat16ToFloat(Y_bf16.data(), Y_fp32.data(), Y_fp32.size());
 
   // Reference computation
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f,
-                   VECTOR_HEAD(X_fp32), VECTOR_HEAD(W_fp32), 0.0f, VECTOR_HEAD(Y_ref),
-                   tp.get());
+                    VECTOR_HEAD(X_fp32), VECTOR_HEAD(W_fp32), 0.0f, VECTOR_HEAD(Y_ref),
+                    tp.get());
 
   for (size_t i = 0; i < Y_fp32.size(); ++i) {
     EXPECT_NEAR(Y_fp32[i], Y_ref[i], 0.05);
@@ -208,15 +208,15 @@ TEST_P(MathBFloat16GemmTest, GemmTransTrans) {
   const BFloat16 kZero_bf16(0.f);
 
   math::Gemm<BFloat16>(CblasTrans, CblasTrans, M, N, K, kOne_bf16,
-                    VECTOR_HEAD(X_bf16), VECTOR_HEAD(W_bf16), kZero_bf16, VECTOR_HEAD(Y_bf16),
-                    tp.get());
+                       VECTOR_HEAD(X_bf16), VECTOR_HEAD(W_bf16), kZero_bf16, VECTOR_HEAD(Y_bf16),
+                       tp.get());
 
   BFloat16ToFloat(Y_bf16.data(), Y_fp32.data(), Y_fp32.size());
 
   // Reference computation
   math::Gemm<float>(CblasTrans, CblasTrans, M, N, K, 1.0f,
-                   VECTOR_HEAD(X_fp32), VECTOR_HEAD(W_fp32), 0.0f, VECTOR_HEAD(Y_ref),
-                   tp.get());
+                    VECTOR_HEAD(X_fp32), VECTOR_HEAD(W_fp32), 0.0f, VECTOR_HEAD(Y_ref),
+                    tp.get());
 
   for (size_t i = 0; i < Y_fp32.size(); ++i) {
     EXPECT_NEAR(Y_fp32[i], Y_ref[i], 0.05);
