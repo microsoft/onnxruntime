@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cstring>
 
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 
 namespace onnxruntime {
 namespace utils {

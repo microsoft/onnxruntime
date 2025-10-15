@@ -12,7 +12,7 @@
 #include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/framework/int4.h"
