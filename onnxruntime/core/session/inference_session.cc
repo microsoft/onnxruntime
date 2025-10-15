@@ -2606,12 +2606,34 @@ common::Status InferenceSession::CheckShapes(const std::string& input_output_nam
                            " Please fix either the inputs/outputs or the model.");
   }
 
+  // Helper function to check whether QNN EP is used & all nodes are assigned to QNN EP,
+  // and relax the constraint to support batch multiplier on the first dimension.
+  // We will check whether only the Htp backend is used inside QnnModel::ExecuteGraph.
+  auto is_qnn_batch_multiplier_valid = [this](int64_t input_dim, int64_t expected_dim, const Graph& graph) -> bool {
+    // check if QNN EP is used
+    if (execution_providers_.Get(kQnnExecutionProvider) == nullptr) {
+      return false;
+    }
+    // check if all nodes are assigned to QNN EP
+    for (const auto& node : graph.Nodes()) {
+      const auto& node_provider = node.GetExecutionProviderType();
+      if (node_provider.empty() || node_provider != kQnnExecutionProvider) {
+        return false;
+      }
+    }
+
+    if (expected_dim <= 0) return false;
+
+    return (input_dim % expected_dim == 0);
+  };
+
   InlinedVector<size_t> invalid_dim_indices;
   for (size_t i = 0; i < shape_size; ++i) {
     if (expected_shape[i] < 0) {
       continue;  // this represents a symbolic shape dimension
-    }
-    if (input_output_shape[i] != expected_shape[i]) {
+    } else if (i == 0 && is_qnn_batch_multiplier_valid(input_output_shape[i], expected_shape[i], model_->MainGraph())) {
+      continue;  // Qnn API supports batch multiplier, but the running batch size must be divisible by the original batch size.
+    } else if (input_output_shape[i] != expected_shape[i]) {
       invalid_dim_indices.push_back(i);
     }
   }
