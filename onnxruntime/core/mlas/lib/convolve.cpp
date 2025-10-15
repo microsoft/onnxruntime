@@ -1000,7 +1000,7 @@ Return Value:
 
         ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
-        if (size_t(TargetThreadCount) >= BatchGroupCount) {
+        if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
             TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
         }
 
