@@ -62,7 +62,7 @@ TEST_F(QnnHTPBackendTests, Rank6ToRank5Fusion_Float) {
                   GetProviderOptions(),
                   13,
                   ExpectedEPNodeAssignment::All,
-                  1e-2f);  // Increased tolerance for HTP backend
+                  1e-2f);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

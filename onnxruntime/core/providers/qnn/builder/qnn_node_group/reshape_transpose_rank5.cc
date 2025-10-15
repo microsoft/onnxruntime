@@ -27,18 +27,12 @@ namespace {
 
 constexpr size_t kRank6 = 6;
 constexpr size_t kRank5 = 5;
+constexpr const char* kOpTypeReshape = "Reshape";
+constexpr const char* kOpTypeTranspose = "Transpose";
+constexpr const char* kAttrTransposePerm = "perm";
 
 using MapNodeToNodeUnit = std::unordered_map<const Node*, const NodeUnit*>;
 using MapNodeUnitToGroup = std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>;
-
-/// @brief Get the transpose permutation attribute
-std::optional<std::vector<int64_t>> GetTransposePerm(const NodeUnit& transpose) {
-  if (transpose.OpType() != "Transpose") {
-    return std::nullopt;
-  }
-  NodeAttrHelper helper(transpose.GetNode());
-  return helper.Get("perm", std::vector<int64_t>());
-}
 
 /// @brief Get the shape of a tensor from its NodeArg
 std::optional<TensorShape> GetTensorShape(const NodeArg* node_arg) {
@@ -127,14 +121,14 @@ std::optional<std::array<const NodeUnit*, 3>> MatchRank6ToRank5Pattern(
                         << " UnitType=" << static_cast<int>(reshape1->UnitType());
 
   // Validate first Reshape in pattern - allow both SingleNode and QDQGroup
-  if (reshape1->OpType() != "Reshape") {
+  if (reshape1->OpType() != kOpTypeReshape) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] First node in pattern is not a Reshape op";
     return std::nullopt;
   }
 
   // Get Transpose child (middle node in pattern) - allow both SingleNode and QDQGroup
   const NodeUnit* transpose = GetChildNodeUnit(
-      graph_viewer, *reshape1, "Transpose", node_to_node_unit, node_unit_to_qnn_node_group, logger);
+      graph_viewer, *reshape1, kOpTypeTranspose, node_to_node_unit, node_unit_to_qnn_node_group, logger);
   if (transpose == nullptr) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] Transpose (middle node in pattern) not found after first Reshape";
     return std::nullopt;
@@ -144,7 +138,7 @@ std::optional<std::array<const NodeUnit*, 3>> MatchRank6ToRank5Pattern(
 
   // Get second Reshape child (last node in pattern) - allow both SingleNode and QDQGroup
   const NodeUnit* reshape2 = GetChildNodeUnit(
-      graph_viewer, *transpose, "Reshape", node_to_node_unit, node_unit_to_qnn_node_group, logger);
+      graph_viewer, *transpose, kOpTypeReshape, node_to_node_unit, node_unit_to_qnn_node_group, logger);
   if (reshape2 == nullptr) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] Second Reshape (last node in pattern) not found after Transpose";
     return std::nullopt;
@@ -156,8 +150,8 @@ std::optional<std::array<const NodeUnit*, 3>> MatchRank6ToRank5Pattern(
   return std::array<const NodeUnit*, 3>{reshape1, transpose, reshape2};
 }
 
-/// @brief Validate the pattern conditions
-bool ValidatePatternConditions(
+/// @brief Validate the pattern conditions and find the unit dimension index
+std::optional<size_t> ValidatePatternConditions(
     const NodeUnit* reshape1,
     const NodeUnit* transpose,
     const NodeUnit* reshape2,
@@ -169,12 +163,12 @@ bool ValidatePatternConditions(
 
   if (!qnn_model_wrapper.IsConstantInput(reshape1_shape_input->Name())) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Reshape1 shape input is not constant";
-    return false;
+    return std::nullopt;
   }
 
   if (!qnn_model_wrapper.IsConstantInput(reshape2_shape_input->Name())) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Reshape2 shape input is not constant";
-    return false;
+    return std::nullopt;
   }
 
   // Get tensor shapes
@@ -186,7 +180,7 @@ bool ValidatePatternConditions(
   if (!t0_shape.has_value() || !t1_shape.has_value() ||
       !t2_shape.has_value() || !t3_shape.has_value()) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Failed to get tensor shapes";
-    return false;
+    return std::nullopt;
   }
 
   auto t1_dims = t1_shape->GetDims();
@@ -196,32 +190,56 @@ bool ValidatePatternConditions(
   if (t1_shape->NumDimensions() != kRank6 || t2_shape->NumDimensions() != kRank6) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Condition 1 failed - not rank-6: t1_rank="
                           << t1_shape->NumDimensions() << " t2_rank=" << t2_shape->NumDimensions();
-    return false;
+    return std::nullopt;
   }
 
-  // Condition 2: First dimension of t1 == First dimension of t2 == 1
   if (t1_dims.empty() || t2_dims.empty()) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Condition 2 failed - empty dims";
-    return false;
+    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Empty dims";
+    return std::nullopt;
   }
 
-  if (t1_dims[0] != 1 || t2_dims[0] != 1) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Condition 2 failed - first dim not 1: t1[0]="
-                          << t1_dims[0] << " t2[0]=" << t2_dims[0];
-    return false;
+  // Condition 2: Find a dimension with value 1 that exists at the same index in both t1 and t2
+  std::optional<size_t> unit_dim_index;
+  for (size_t i = 0; i < kRank6; ++i) {
+    if (t1_dims[i] == 1 && t2_dims[i] == 1) {
+      unit_dim_index = i;
+      break;
+    }
   }
 
-  LOGS(logger, INFO) << "[Rank6ToRank5] ValidateConditions: All conditions passed!";
-  return true;
+  if (!unit_dim_index.has_value()) {
+    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: No common unit dimension found in t1 and t2";
+    return std::nullopt;
+  }
+
+  // Condition 3: Transpose must leave the unit dimension in place
+  NodeAttrHelper transpose_helper(transpose->GetNode());
+  std::vector<int64_t> perm = transpose_helper.Get(kAttrTransposePerm, std::vector<int64_t>{});
+  if (perm.size() != kRank6) {
+    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Invalid permutation size: " << perm.size();
+    return std::nullopt;
+  }
+
+  if (perm[unit_dim_index.value()] != static_cast<int64_t>(unit_dim_index.value())) {
+    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Transpose moves unit dimension from index "
+                          << unit_dim_index.value() << " to " << perm[unit_dim_index.value()];
+    return std::nullopt;
+  }
+
+  LOGS(logger, INFO) << "[Rank6ToRank5] ValidateConditions: All conditions passed! Unit dimension at index "
+                     << unit_dim_index.value();
+  return unit_dim_index;
 }
 
 /// @brief Create or validate the QNN nodes with rank-5 tensors
 Status CreateOrValidateOnQnn(
     QnnModelWrapper* qnn_model_wrapper,
     gsl::span<const NodeUnit* const> node_units,
+    size_t unit_dim_index,
     bool validate,
     const logging::Logger& logger) {
-  LOGS(logger, VERBOSE) << "[Rank6ToRank5] CreateOrValidateOnQnn: validate=" << validate;
+  LOGS(logger, VERBOSE) << "[Rank6ToRank5] CreateOrValidateOnQnn: validate=" << validate
+                        << " unit_dim_index=" << unit_dim_index;
 
   const NodeUnit* reshape1 = node_units[0];
   const NodeUnit* transpose = node_units[1];
@@ -242,36 +260,43 @@ Status CreateOrValidateOnQnn(
   auto t1_dims = t1_shape->GetDims();
   auto t2_dims = t2_shape->GetDims();
 
-  // Create rank-5 shape for t1 (remove first dimension)
+  // Create rank-5 shape for t1 (remove unit dimension at unit_dim_index)
   std::vector<uint32_t> t1_rank5_dims;
   t1_rank5_dims.reserve(kRank5);
-  for (size_t i = 1; i < t1_dims.size(); ++i) {
-    t1_rank5_dims.push_back(static_cast<uint32_t>(t1_dims[i]));
+  for (size_t i = 0; i < t1_dims.size(); ++i) {
+    if (i != unit_dim_index) {
+      t1_rank5_dims.push_back(static_cast<uint32_t>(t1_dims[i]));
+    }
   }
 
-  // Create rank-5 shape for t2 (remove first dimension)
+  // Create rank-5 shape for t2 (remove unit dimension at unit_dim_index)
   std::vector<uint32_t> t2_rank5_dims;
   t2_rank5_dims.reserve(kRank5);
-  for (size_t i = 1; i < t2_dims.size(); ++i) {
-    t2_rank5_dims.push_back(static_cast<uint32_t>(t2_dims[i]));
+  for (size_t i = 0; i < t2_dims.size(); ++i) {
+    if (i != unit_dim_index) {
+      t2_rank5_dims.push_back(static_cast<uint32_t>(t2_dims[i]));
+    }
   }
 
   // Get transpose permutation and adjust for rank-5
-  auto perm_opt = GetTransposePerm(*transpose);
-  if (!perm_opt.has_value()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get transpose permutation");
-  }
-
-  std::vector<int64_t> perm = perm_opt.value();
+  NodeAttrHelper transpose_helper(transpose->GetNode());
+  std::vector<int64_t> perm = transpose_helper.Get(kAttrTransposePerm, std::vector<int64_t>{});
   if (perm.size() != kRank6) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected rank-6 permutation");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected rank-6 permutation, got rank-", perm.size());
   }
 
-  // Remove first value and subtract 1 from other values
+  // Remove unit dimension and adjust indices
   std::vector<uint32_t> perm_rank5;
   perm_rank5.reserve(kRank5);
-  for (size_t i = 1; i < perm.size(); ++i) {
-    perm_rank5.push_back(static_cast<uint32_t>(perm[i] - 1));
+  for (size_t i = 0; i < perm.size(); ++i) {
+    if (i != unit_dim_index) {
+      int64_t perm_val = perm[i];
+      // Adjust index: if perm_val > unit_dim_index, subtract 1
+      if (perm_val > static_cast<int64_t>(unit_dim_index)) {
+        perm_val--;
+      }
+      perm_rank5.push_back(static_cast<uint32_t>(perm_val));
+    }
   }
 
   // Use original tensor names from ONNX
@@ -309,10 +334,15 @@ Status CreateOrValidateOnQnn(
 
   // Create Transpose with rank-5 input/output
   {
+    // Get quantization params for transpose output
+    const NodeUnitIODef& transpose_output = transpose->Outputs()[0];
+    QnnQuantParamsWrapper transpose_quant_param;
+    ORT_RETURN_IF_ERROR(transpose_quant_param.Init(*qnn_model_wrapper, transpose_output));
+
     // Check if output tensor already exists
     if (!qnn_model_wrapper->IsQnnTensorWrapperExist(t2_name)) {
-      // Create rank-5 output tensor for transpose using QnnTensorWrapper constructor
-      QnnTensorWrapper t2_tensor(t2_name, QNN_TENSOR_TYPE_NATIVE, data_type, QnnQuantParamsWrapper(),
+      // Create rank-5 output tensor for transpose with proper quantization params
+      QnnTensorWrapper t2_tensor(t2_name, QNN_TENSOR_TYPE_NATIVE, data_type, std::move(transpose_quant_param),
                                  std::vector<uint32_t>(t2_rank5_dims));
       ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensorWrapper(std::move(t2_tensor)), "Failed to add transpose output");
     }
@@ -394,20 +424,21 @@ std::unique_ptr<IQnnNodeGroup> Rank6ToRank5Fusion::TryFusion(
   const NodeUnit* transpose = pattern->at(1);
   const NodeUnit* reshape2 = pattern->at(2);
 
-  // Validate pattern conditions
-  if (!ValidatePatternConditions(reshape1, transpose, reshape2, qnn_model_wrapper, logger)) {
+  // Validate pattern conditions and get unit dimension index
+  auto unit_dim_index = ValidatePatternConditions(reshape1, transpose, reshape2, qnn_model_wrapper, logger);
+  if (!unit_dim_index.has_value()) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] Pattern condition validation failed";
     return nullptr;
   }
 
   // Validate on QNN
-  if (CreateOrValidateOnQnn(&qnn_model_wrapper, pattern.value(), /*validate=*/true, logger) != Status::OK()) {
+  if (CreateOrValidateOnQnn(&qnn_model_wrapper, pattern.value(), unit_dim_index.value(), /*validate=*/true, logger) != Status::OK()) {
     LOGS(logger, VERBOSE) << "[Rank6ToRank5] QNN validation failed";
     return nullptr;
   }
 
   LOGS(logger, INFO) << "[Rank6ToRank5] Fusion successful! Creating Rank6ToRank5Fusion node group";
-  return std::make_unique<Rank6ToRank5Fusion>(pattern.value());
+  return std::make_unique<Rank6ToRank5Fusion>(pattern.value(), unit_dim_index.value());
 }
 
 gsl::span<const NodeUnit* const> Rank6ToRank5Fusion::GetNodeUnits() const {
@@ -416,12 +447,12 @@ gsl::span<const NodeUnit* const> Rank6ToRank5Fusion::GetNodeUnits() const {
 
 Status Rank6ToRank5Fusion::IsSupported(
     QnnModelWrapper& qnn_model_wrapper, const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), /*validate=*/true, logger);
+  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), unit_dim_index_, /*validate=*/true, logger);
 }
 
 Status Rank6ToRank5Fusion::AddToModelBuilder(
     QnnModelWrapper& qnn_model_wrapper, const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), /*validate=*/false, logger);
+  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), unit_dim_index_, /*validate=*/false, logger);
 }
 
 }  // namespace qnn

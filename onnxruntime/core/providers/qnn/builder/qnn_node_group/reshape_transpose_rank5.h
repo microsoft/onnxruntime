@@ -20,16 +20,18 @@ class QnnModelWrapper;
 /// <summary>
 /// Represents a fusion of pattern: Reshape -> Transpose -> Reshape where intermediate tensors are rank-6.
 /// QNN doesn't support rank-6 Reshape and Transpose operators, so this fusion converts them to rank-5
-/// by removing the first dimension (which must be 1) from intermediate tensors.
+/// by removing a unit dimension (value of 1) from intermediate tensors.
 /// Pattern: Tensor(t0) -> Reshape(R1) -> Tensor(t1) -> Transpose(T1) -> Tensor(t2) -> Reshape(R2) -> Tensor(t3)
 /// Conditions:
 /// - Rank(t0) == Rank(t3) AND Last dimension of t0 equals last dimension of t3
 /// - Rank(t1) == Rank(t2) == 6
-/// - First dimension of t1 == First dimension of t2 == 1
+/// - There exists a dimension index where both t1 and t2 have value 1
+/// - Transpose must leave that unit dimension in place (perm[unit_dim_index] == unit_dim_index)
 /// </summary>
 class Rank6ToRank5Fusion : public IQnnNodeGroup {
  public:
-  explicit Rank6ToRank5Fusion(gsl::span<const NodeUnit* const> node_units) {
+  explicit Rank6ToRank5Fusion(gsl::span<const NodeUnit* const> node_units, size_t unit_dim_index)
+      : unit_dim_index_(unit_dim_index) {
     ORT_ENFORCE(node_units.size() == 3, "Pattern expects exactly 3 NodeUnits.");
     node_units_[0] = node_units[0];
     node_units_[1] = node_units[1];
@@ -56,6 +58,7 @@ class Rank6ToRank5Fusion : public IQnnNodeGroup {
 
  private:
   std::array<const NodeUnit*, 3> node_units_;  // Reshape1, Transpose, Reshape2
+  size_t unit_dim_index_;                      // Index of the unit dimension (value 1) to remove
 };
 
 }  // namespace qnn
