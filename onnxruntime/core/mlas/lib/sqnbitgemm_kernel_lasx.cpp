@@ -37,20 +37,20 @@ QNBitGemmPackQuantBDataSize_Lasx(
 {
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     if (ComputeType == SQNBIT_CompInt8) {
-        SafeInt<size_t> PackedQuantBDataSize = static_cast<SafeInt<size_t>>(N) * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        const SafeInt<size_t> ScaleSize = static_cast<SafeInt<size_t>>(N) * BlockCountK * sizeof(float);
-        SafeInt<size_t> BlkSumSize = static_cast<SafeInt<size_t>>(BlockCountK) * MlasDivRoundup(N, 16) * 16 * sizeof(float);
+        SafeInt<size_t> PackedQuantBDataSize = SafeInt<size_t>(N) * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        const SafeInt<size_t> ScaleSize = SafeInt<size_t>(N) * BlockCountK * sizeof(float);
+        SafeInt<size_t> BlkSumSize = SafeInt<size_t>(BlockCountK) * MlasDivRoundup(N, 16) * 16 * sizeof(float);
 
         // _mm256_load_si256 requires alignment on a 32-byte boundary
         constexpr size_t PackedQuantBDataAlignment = 32;
-        PackedQuantBDataSize += static_cast<SafeInt<size_t>>(PackedQuantBDataAlignment) - 1;
+        PackedQuantBDataSize += SafeInt<size_t>(PackedQuantBDataAlignment) - 1;
         constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
-        BlkSumSize += static_cast<SafeInt<size_t>>(BlkSumAlignment) - 1;
+        BlkSumSize += SafeInt<size_t>(BlkSumAlignment) - 1;
 
         PackedQuantBDataSize += ScaleSize + BlkSumSize;
         return PackedQuantBDataSize.Value();
     } else {
-        SafeInt<size_t> PackedQuantBDataSize = static_cast<SafeInt<size_t>>(N) * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        SafeInt<size_t> PackedQuantBDataSize = SafeInt<size_t>(N) * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         return PackedQuantBDataSize.Value();
     }
 }
@@ -73,7 +73,7 @@ SQ4BitGemmPackQuantBData_Lasx(
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const SafeInt<size_t> Iterations = static_cast<SafeInt<size_t>>(N) * BlockCountK;  // one iteration per block
+    const SafeInt<size_t> Iterations = SafeInt<size_t>(N) * BlockCountK;  // one iteration per block
 
     size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
 
@@ -110,7 +110,7 @@ SQ4BitGemmPackQuantBData_Lasx(
             const size_t n = tid / BlockCountK;
             const size_t k_blk = tid % BlockCountK;
 
-            const SafeInt<size_t> data_offset = static_cast<SafeInt<size_t>>(n) * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
+            const SafeInt<size_t> data_offset = SafeInt<size_t>(n) * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
             const std::byte* QuantBData = QuantBDataBegin + data_offset.Value();
             std::byte* PackedQuantBData = PackedQuantBDataBegin + data_offset.Value();
 
@@ -163,7 +163,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum_Lasx(
     }
 
     if (QuantBScaleBegin) {
-        SafeInt<size_t> offset = static_cast<SafeInt<size_t>>(N) * BlockCountK;
+        SafeInt<size_t> offset = SafeInt<size_t>(N) * BlockCountK;
         std::copy(QuantBScaleBegin, QuantBScaleBegin + offset.Value(), packed_quant_b.PackedQuantBScale);
     }
 
@@ -272,13 +272,13 @@ ComputeDotProducts_BlkLen32Plus_CompFp32_lasx(
 
         float scale_v[NCols];
         UnrolledLoop<NCols>([&](size_t i) {
-            SafeInt<size_t> scale_offset = static_cast<SafeInt<size_t>>(StrideQuantBScale) * i;
+            SafeInt<size_t> scale_offset = SafeInt<size_t>(StrideQuantBScale) * i;
             scale_v[i] = *(s + scale_offset.Value());
         });
 
         std::byte* b_blk_data_col_ptr[NCols];
         UnrolledLoop<NCols>([&](size_t i) {
-            SafeInt<size_t> data_offset = static_cast<SafeInt<size_t>>(StrideQuantBData) * i;
+            SafeInt<size_t> data_offset = SafeInt<size_t>(StrideQuantBData) * i;
             b_blk_data_col_ptr[i] = (std::byte*)(b_blk_data_ptr + data_offset.Value());
         });
 
@@ -427,13 +427,13 @@ ComputeDotProducts_BlkLen16_CompFp32_lasx(
 
         float scale_v[NCols];
         UnrolledLoop<NCols>([&](size_t i) {
-            SafeInt<size_t> scale_offset = static_cast<SafeInt<size_t>>(StrideQuantBScale) * i;
+            SafeInt<size_t> scale_offset = SafeInt<size_t>(StrideQuantBScale) * i;
             scale_v[i] = *(s + scale_offset.Value());
         });
 
         std::byte* b_blk_data_col_ptr[NCols];
         UnrolledLoop<NCols>([&](size_t i) {
-            SafeInt<size_t> data_offset = static_cast<SafeInt<size_t>>(StrideQuantBData) * i;
+            SafeInt<size_t> data_offset = SafeInt<size_t>(StrideQuantBData) * i;
             b_blk_data_col_ptr[i] = (std::byte*)(b_blk_data_ptr + data_offset.Value());
         });
 
@@ -551,7 +551,7 @@ SQ4BitGemmM1Kernel_BlkLen16_CompFp32_lasx(
 
     float* SumPtr = CRowPtr;
 
-    int64_t nblk = static_cast<int64_t>(CountN) - NCols4;
+    int64_t nblk = <int64_t>(CountN) - NCols4;
     while (nblk >= 0) {
         ComputeDotProducts_BlkLen16_CompFp32_lasx<NCols4, HasZeroPoint>(
             BlkLen16,
@@ -560,12 +560,12 @@ SQ4BitGemmM1Kernel_BlkLen16_CompFp32_lasx(
             BiasPtr
         );
 
-        SafeInt<size_t> data_offset = static_cast<SafeInt<size_t>>(StrideQuantBData) * NCols4;
-        SafeInt<size_t> scale_offset = static_cast<SafeInt<size_t>>(StrideQuantBScale) * NCols4;
+        SafeInt<size_t> data_offset = SafeInt<size_t>(StrideQuantBData) * NCols4;
+        SafeInt<size_t> scale_offset = SafeInt<size_t>(StrideQuantBScale) * NCols4;
         QuantBDataColPtr += data_offset.Value();
         QuantBScaleColPtr += scale_offset.Value();
         if constexpr (HasZeroPoint) {
-            SafeInt<size_t> zeropoint_offset = static_cast<SafeInt<size_t>>(StrideQuantBZeroPoint) * NCols4;
+            SafeInt<size_t> zeropoint_offset = SafeInt<size_t>(StrideQuantBZeroPoint) * NCols4;
             QuantBZeroPointColPtr += zeropoint_offset.Value();
         }
 
@@ -650,12 +650,12 @@ SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_lasx(
             );
         }
 
-        SafeInt<size_t> data_offset = static_cast<SafeInt<size_t>>(StrideQuantBData) * NCols4;
-        SafeInt<size_t> scale_offset = static_cast<SafeInt<size_t>>(StrideQuantBScale) * NCols4;
+        SafeInt<size_t> data_offset = SafeInt<size_t>(StrideQuantBData) * NCols4;
+        SafeInt<size_t> scale_offset = SafeInt<size_t>(StrideQuantBScale) * NCols4;
         QuantBDataColPtr += data_offset.Value();
         QuantBScaleColPtr += scale_offset.Value();
         if constexpr (HasZeroPoint) {
-            SafeInt<size_t> zeropoint_offset = static_cast<SafeInt<size_t>>(StrideQuantBZeroPoint) * NCols4;
+            SafeInt<size_t> zeropoint_offset = SafeInt<size_t>(StrideQuantBZeroPoint) * NCols4;
             QuantBZeroPointColPtr += zeropoint_offset.Value();
         }
 
@@ -768,15 +768,15 @@ Q4BitBlkDequantBForSgemmBlkLen16_CompFp32_lasx(
         for (size_t k = 0; k < BlockCountK; k++) {
             // count # of tiles plus blks of the current tile from top
             const size_t tile_count = col / GemmFloatKernelWidth16;
-            SafeInt<size_t> offset = static_cast<SafeInt<size_t>>(tile_count * CountK + k * BlkLen16) * GemmFloatKernelWidth16;
+            SafeInt<size_t> offset = SafeInt<size_t>(tile_count * CountK + k * BlkLen16) * GemmFloatKernelWidth16;
             float* dst_ptr = FpData + offset.Value();
             if (col % GemmFloatKernelWidth16 >= NCols8) {
                 // for the second half to 16 width tile
                 dst_ptr += NCols8;
             }
-            SafeInt<size_t> b_data_offset = static_cast<SafeInt<size_t>>(col) * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
-            SafeInt<size_t> b_scale_offset = static_cast<SafeInt<size_t>>(col) * BlockCountK + k;
-            SafeInt<size_t> b_zp_offset = static_cast<SafeInt<size_t>>(col) * zp_col_stride_in_bytes + k / 2;
+            SafeInt<size_t> b_data_offset = SafeInt<size_t>(col) * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
+            SafeInt<size_t> b_scale_offset = SafeInt<size_t>(col) * BlockCountK + k;
+            SafeInt<size_t> b_zp_offset = SafeInt<size_t>(col) * zp_col_stride_in_bytes + k / 2;
             const std::byte* b_data_ptr = QuantBData + b_data_offset.Value();
             const float* scale_ptr = QuantBScale + b_scale_offset.Value();
             const std::byte* zp_ptr = QuantBZeroPoint + b_zp_offset.Value();
@@ -911,15 +911,15 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_lasx(
         for (size_t k = 0; k < BlockCountK; k++) {
             // count # of tiles plus blks of the current tile from top
             const size_t tile_count = col / GemmFloatKernelWidth16;
-            SafeInt<size_t> offset = static_cast<SafeInt<size_t>>(tile_count * CountK + k * BlkLen) * GemmFloatKernelWidth16;
+            SafeInt<size_t> offset = SafeInt<size_t>(tile_count * CountK + k * BlkLen) * GemmFloatKernelWidth16;
             float* dst_ptr = FpData + offset.Value();
             if (col % GemmFloatKernelWidth16 >= NCols8) {
                 // for the second half to 16 width tile
                 dst_ptr += NCols8;
             }
-            SafeInt<size_t> b_data_offset = static_cast<SafeInt<size_t>>(col) * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
-            SafeInt<size_t> b_scale_offset = static_cast<SafeInt<size_t>>(col) * BlockCountK + k;
-            SafeInt<size_t> b_zp_offset = static_cast<SafeInt<size_t>>(col) * zp_col_stride_in_bytes + k / 2;
+            SafeInt<size_t> b_data_offset = SafeInt<size_t>(col) * b_data_col_stride_in_bytes + k * blk_data_size_in_bytes;
+            SafeInt<size_t> b_scale_offset = SafeInt<size_t>(col) * BlockCountK + k;
+            SafeInt<size_t> b_zp_offset = SafeInt<size_t>(col) * zp_col_stride_in_bytes + k / 2;
             const std::byte* b_data_ptr = QuantBData + b_data_offset.Value();
             const float* scale_ptr = QuantBScale + b_scale_offset.Value();
             const std::byte* zp_ptr = QuantBZeroPoint + b_zp_offset.Value();
