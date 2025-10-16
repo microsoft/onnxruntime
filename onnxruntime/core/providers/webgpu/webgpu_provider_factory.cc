@@ -168,6 +168,20 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP small storage buffer binding size for testing: " << small_storage_buffer_binding_size_for_testing;
 
+  // power preference
+  int power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);  // default
+  std::string power_preference_str;
+  if (config_options.TryGetConfigEntry(kPowerPreference, power_preference_str)) {
+    if (power_preference_str == kPowerPreference_HighPerformance) {
+      power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);
+    } else if (power_preference_str == kPowerPreference_LowPower) {
+      power_preference = static_cast<int>(WGPUPowerPreference_LowPower);
+    } else {
+      ORT_THROW("Invalid power preference: ", power_preference_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP power preference: " << power_preference;
+
   webgpu::WebGpuContextConfig context_config{
       context_id,
       reinterpret_cast<WGPUInstance>(webgpu_instance),
@@ -212,20 +226,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
     }
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Dawn backend type: " << backend_type;
-
-  // power preference
-  int power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);  // default
-  std::string power_preference_str;
-  if (config_options.TryGetConfigEntry(kPowerPreference, power_preference_str)) {
-    if (power_preference_str == kPowerPreference_HighPerformance) {
-      power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);
-    } else if (power_preference_str == kPowerPreference_LowPower) {
-      power_preference = static_cast<int>(WGPUPowerPreference_LowPower);
-    } else {
-      ORT_THROW("Invalid power preference: ", power_preference_str);
-    }
-  }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP power preference: " << power_preference;
 
   // buffer cache modes
   auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
