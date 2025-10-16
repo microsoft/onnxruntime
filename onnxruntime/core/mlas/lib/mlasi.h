@@ -162,7 +162,7 @@ MLAS_FORCEINLINE void
 #include "core/common/cpuid_info.h"
 using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
 
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 #else  // BUILD_MLAS_NO_ONNXRUNTIME
 
