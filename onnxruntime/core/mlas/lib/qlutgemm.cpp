@@ -147,7 +147,7 @@ void MlasTMACPackScalesAndZeroPoints(
 bool MLASCALL MlasIsTMACAvailable(
     size_t /*BlkBitWidth*/,
     size_t /*BlkLen*/
-)
+) // TODO: fix the below to use smthg besides the gen kernel
 {
     const auto* Dispatch = GetMlasPlatform().LUTGenKernel;
     return Dispatch != nullptr;
@@ -176,16 +176,17 @@ void MLASCALL MlasTmac(
     }
 
     const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(N, K, 2, BlkLen);
-    size_t lut_size = CalculateLUTSize(K, M, tmac_params.bits);
+    size_t lut_size = CalculateLUTSize(K, M, tmac_params.g);
     auto lut_buffer = std::make_unique<uint8_t[]>(lut_size);
 
-    const size_t lut_meta_size = (K / BlkLen) * M;
+    const size_t lut_scales_size_meta = 64;
+    const size_t lut_meta_size = 64 * M * tmac_params.g; // TODO: 64 should be stored as lut_scales_size
     auto biases_float = std::make_unique<float[]>(lut_meta_size);
     auto scales_float = std::make_unique<float[]>(lut_meta_size);
 
     const auto* a_float = reinterpret_cast<const float*>(A);  // Activation data
 
-    const int num_groups = static_cast<int>(K / BlkLen);
+    // const int num_groups = static_cast<int>(K / BlkLen);
 
     // Parallelize over M (batch dimension)
     // Each iteration processes one row of the activation matrix
@@ -195,7 +196,7 @@ void MLASCALL MlasTmac(
         [&](ptrdiff_t ine11) {
             const size_t row_offset = static_cast<size_t>(ine11) * K;
             const size_t lut_offset = static_cast<size_t>(ine11) * K * 4;  // 4 bytes per K element for 2-bit LUT
-            const size_t scale_bias_offset = static_cast<size_t>(ine11) * num_groups;
+            const size_t scale_bias_offset = static_cast<size_t>(ine11) * lut_scales_size_meta;
 
             // Call the dispatch function for this row
             Dispatch->GenerateLUT(
@@ -216,11 +217,11 @@ void MLASCALL MlasTmac(
 
     // TODO: fix the below 4
     // Matrix multiplication: Output[N×M] = QuantBData[N×K] × Weights[K×M]
-    const size_t OutputRows = M;    // Number of output features
-    const size_t OutputCols = N;    // Batch size
-    const size_t NumTiles = M * bits / bm;
+    const size_t OutputRows = N;    // Number of output features
+    const size_t OutputCols = M;    // Batch size
+    const size_t NumTiles = 8; // hardcoding -- TODO: should be moved to tmac kernel config
 
-    const size_t ChunkSize0 = M / NumTiles;
+    const size_t ChunkSize0 = N / NumTiles;
     const size_t ChunkSize1 = tmac_params.chunk_n; // process one batch item at a time
 
 // In llama.cpp terminology (note the swap!):
@@ -233,7 +234,7 @@ void MLASCALL MlasTmac(
     const size_t total_chunks = nchunk0 * nchunk1;
 
     // Pre-calculate sizes for offset calculations
-    const size_t w_size = OutputRows * K * bits / 8;
+    const size_t w_size = N * K * bits / 8;
     const size_t w_chunk_size = w_size / NumTiles;
 
     // Determine weight-scale layout. These should be provided by the caller or inferred from the packed weights.
@@ -315,7 +316,7 @@ void MLASCALL MlasTmac(
                         static_cast<int>(bm),                           // bm
                         static_cast<int>(K),                            // K dimension
                         static_cast<int>(M),                            // K dimension
-                        static_cast<int>(N),                            // N dimension (batch size)
+                        1,
                         BlkLen                                          // Weight quantization group size
                     );
                 }

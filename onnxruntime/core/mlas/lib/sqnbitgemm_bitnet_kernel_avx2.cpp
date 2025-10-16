@@ -656,7 +656,7 @@ void TMACComputeGemm_avx2(
             int N,              
             size_t BlkLen      // Weight quantization group size (q_group_size)
             ) {
-    // Validate batch size
+    // // Validate batch size
     if (N != 1) {
         throw std::runtime_error("N > 1 is not supported yet");
     }

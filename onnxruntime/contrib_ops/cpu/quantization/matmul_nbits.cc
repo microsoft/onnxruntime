@@ -16,6 +16,8 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
+#include "core/platform/threadpool.h"
+#include "core/util/thread_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -182,15 +184,39 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
-  // if (has_g_idx_ || has_unquantized_zero_point_) {
+  // if (has_g_idx_ || has_unquantized_zero_point_)
   // TODO: this part modified so i can test ek atmulnbits
   if (has_g_idx_) {
     return Status::OK();
   }
 
-  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) && compute_type_ != TMAC) {
     return Status::OK();
   }
+  if (compute_type_ == TMAC && !MlasIsTMACAvailable(nbits_, block_size_)) {
+    return Status::OK();
+  }
+
+  // Create a temporary threadpool for parallel packing
+  // This is used during model load time to speed up weight prepacking
+  std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
+  concurrency::ThreadPool* threadpool_ptr = nullptr;
+  
+  // Only create threadpool for operations that can benefit from it
+  if (compute_type_ == TMAC || compute_type_ == SQNBIT_CompInt8) {
+    OrtThreadPoolParams tpo;
+    tpo.thread_pool_size = 4;  // Use default (typically number of cores)
+    tpo.allow_spinning = false;  // Don't spin during model load
+    tpo.auto_set_affinity = false;
+    
+    temp_threadpool = concurrency::CreateThreadPool(
+        &Env::Default(),
+        tpo,
+        concurrency::ThreadPoolType::INTRA_OP);
+    
+    threadpool_ptr = temp_threadpool.get();
+  }
+
   if (input_idx == InputIndex::B) {
     const Tensor* scales = nullptr;
     OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
@@ -203,7 +229,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     auto scale_ptr = scales ? scales->DataRaw() : nullptr;
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
-                                has_zp_input_, nullptr, nullptr);
+                                has_zp_input_, nullptr, threadpool_ptr);
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
@@ -239,10 +265,12 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       } else {
         packed_scales_zp_size_ = N_ * K_ / block_size_;
         packed_scales_zp_ = IAllocator::MakeUniquePtr<float>(alloc, packed_scales_zp_size_, true);
-        MlasTMACPackScalesAndZeroPoints(N_, K_, nbits_, block_size_,has_zp_input_, packed_scales_zp_.get(), scales_ptr, nullptr);
+        MlasTMACPackScalesAndZeroPoints(N_, K_, nbits_, block_size_, has_zp_input_, packed_scales_zp_.get(), scales_ptr, nullptr);
       }
     } 
   }
+  
+  // Threadpool will be automatically destroyed when temp_threadpool goes out of scope
 
   return Status::OK();
 }
@@ -800,7 +828,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // If this changes, i.e., if MlasIsQNBitGemmAvailable() can return true while
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
-    if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
+    if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) || (compute_type_ == TMAC && MlasIsTMACAvailable(nbits_, block_size_))) {
       return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }
   }
