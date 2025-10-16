@@ -454,6 +454,8 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
  */
 Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
 
+bool StrToInt(std::string_view str, int& num);
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime
