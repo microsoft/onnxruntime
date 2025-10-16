@@ -21,4 +21,4 @@ onnx
 sphinx_exec_code
 sphinx_tabs
 furo
-torch
+torch >= 2.6.0

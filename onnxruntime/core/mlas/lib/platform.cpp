@@ -16,7 +16,9 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
@@ -558,6 +560,7 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
@@ -566,6 +569,7 @@ Return Value:
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelNeon;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelNeon;
     this->NchwcBlockSize = MLAS_NEON_NCHWC_BLOCK_SIZE;
+#endif
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -598,6 +602,25 @@ Return Value:
         this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
+    }
+#endif
+
+#if defined(MLAS_USE_SVE)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        this->ErfKernelRoutine = MlasSveErfKernel;
+        this->LogisticKernelRoutine = MlasSveLogisticKernel;
+        this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
+        this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+    }
+    else{
+        this->ErfKernelRoutine = MlasErfKernel;
+        this->LogisticKernelRoutine = MlasLogisticKernel;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
 #endif
 

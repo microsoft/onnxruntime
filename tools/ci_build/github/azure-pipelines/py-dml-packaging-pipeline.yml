@@ -38,13 +38,6 @@ extends:
     - template: stages/py-win-gpu-stage.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
-        PYTHON_VERSION: '3.10'
-        EP_BUILD_FLAGS: --use_dml
-        EP_NAME: directml
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-    - template: stages/py-win-gpu-stage.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
         PYTHON_VERSION: '3.11'
         EP_BUILD_FLAGS: --use_dml
         EP_NAME: directml

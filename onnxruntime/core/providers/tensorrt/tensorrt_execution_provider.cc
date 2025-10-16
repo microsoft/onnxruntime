@@ -2114,12 +2114,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
           fused_inputs.erase(it);
           erased.insert(output);
         }
-        // Only when output is neither in input list nor erased list, add the output to output list
+        // Only when output is neither in input list nor erased list, and the output is consumed by another node, add the output to output list
         else if (erased.find(output) == erased.end()) {
           if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
             graph_outputs_to_add[output] = output_order;
           }
-          fused_outputs[output] = output_order++;
+
+          if (graph.GetGraph().GetConsumerNodes(output->Name()).size() > 0) {
+            fused_outputs[output] = output_order++;
+          }
         }
       }
     }
@@ -3973,6 +3976,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
       trt_state->context->reset();
       trt_state->engine->reset();
+
+      // Clear dds output allocator map since the engine and context will be recreated.
+      dds_output_allocator_map.clear();
+
       auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
       if (max_workspace_size_ > 0) {
         trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);

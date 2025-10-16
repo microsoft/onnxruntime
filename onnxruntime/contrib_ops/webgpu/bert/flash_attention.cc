@@ -51,6 +51,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
+    // TODO: Add NormalizeDispatchGroupSize logic here to avoid exceeding max dispatch size.
     shader.MainFunctionBody() << "  // Prepare indirect dispatch buffer for thread 0\n"
                               << "  if (global_idx == 0u) {\n"
                               << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
@@ -311,6 +312,7 @@ Status FlashAttentionDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper& sha
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_decode_vx_reduce.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(seq_tile_size, seq_tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(use_indirect_dispatch, use_indirect_dispatch_));
 }
@@ -322,11 +324,12 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
                                            const WebgpuAttentionParameters& parameters,
                                            uint32_t num_total_seq_length_tile,
                                            uint32_t num_present_sequence_length_tile,
+                                           uint32_t seq_tile_size,
                                            bool use_indirect_dispatch) {
   const int components = 4;
   constexpr int tile_size = 8;
   int tile_head_size = tile_size * components;
-  FlashAttentionDecodeVxReduceProgram program{"FlashAttentionDecodeVxReduce", tile_size, use_indirect_dispatch};
+  FlashAttentionDecodeVxReduceProgram program{"FlashAttentionDecodeVxReduce", tile_size, seq_tile_size, use_indirect_dispatch};
   program.AddInputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (use_indirect_dispatch) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
@@ -334,7 +337,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
   const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_head_size - 1) / tile_head_size);
   program.SetDispatchGroupSize(parameters.num_heads_ * num_head_size_tile)
-      .CacheHint(tile_size, use_indirect_dispatch)
+      .CacheHint(tile_size, seq_tile_size, use_indirect_dispatch)
       .SetWorkgroupSize(tile_size * tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             num_total_seq_length_tile,
@@ -441,7 +444,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                               use_indirect_dispatch, present_sequence_length));
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeVxReduce(context, &out_split_vx, output, seqlen_k, parameters,
                                                           num_total_seq_length_tile,
-                                                          num_present_sequence_length_tile, use_indirect_dispatch));
+                                                          num_present_sequence_length_tile, tile_size, use_indirect_dispatch));
 
   return Status::OK();
 }

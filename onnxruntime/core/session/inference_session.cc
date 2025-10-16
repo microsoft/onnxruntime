@@ -1517,12 +1517,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Insert copy node/s.
   {
-    std::vector<std::string> provider_types;
+    InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
     for (auto& provider_ptr : execution_providers_) {
-      provider_types.push_back(provider_ptr->Type());
+      providers.push_back(provider_ptr.get());
     }
 
-    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
+    MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 

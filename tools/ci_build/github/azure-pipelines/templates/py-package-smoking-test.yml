@@ -26,8 +26,6 @@ jobs:
     ${{ parameters.machine_pool }}
   strategy:
     matrix:
-      Python310:
-        PythonVersion: '3.10'
       Python311:
         PythonVersion: '3.11'
       Python312:
@@ -55,7 +53,7 @@ jobs:
         FILE_NAME=$(basename $FILE_NAME)
         PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
         python3 -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
-        python3 -m pip install --no-index --find-links "$(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}" $PYTHON_PACKAGE_NAME
+        python3 -m pip install --no-index --find-links . $PYTHON_PACKAGE_NAME
         python3 -m pip show $PYTHON_PACKAGE_NAME
         python3 -c "import onnxruntime as ort; print(ort.__version__)"
       workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
