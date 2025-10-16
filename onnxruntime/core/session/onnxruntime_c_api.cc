@@ -3450,6 +3450,9 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ v
   if(extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
   }
+  if(stream == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Stream is null.");
+  }
   auto* session = reinterpret_cast<onnxruntime::InferenceSession*>(ort_session);
   if (!session)
   {
@@ -3491,6 +3494,9 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_
   API_IMPL_BEGIN
   if(extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
+  }
+  if(stream == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Stream is null.");
   }
   auto* session = reinterpret_cast<onnxruntime::InferenceSession*>(ort_session);
   if (!session)
@@ -3718,7 +3724,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForGraphicsInterop is not supported in a minimal build.");
   API_IMPL_END

@@ -94,25 +94,29 @@ class IExecutionProvider {
 
   virtual Status GetExtSemaphore(struct GraphicsInteropParams graphicsInteropParams, void** extSemFence) {
 
-    *extSemFence = (void*)&graphicsInteropParams;   //fall back path
+    auto* interopParams = new struct GraphicsInteropParams(graphicsInteropParams);
+    *extSemFence = interopParams;   //fall back path
     return Status::OK();
   }
 
   virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
+    auto* interopParams = static_cast<struct GraphicsInteropParams*>(extSemFence);
 
     HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    ExternalSyncPrimitive extSyncPrimitive = ((struct GraphicsInteropParams*)extSemFence)->extSyncPrimitive;
+    ExternalSyncPrimitive extSyncPrimitive = interopParams->extSyncPrimitive;
     switch (extSyncPrimitive) {
       case ExternalSyncPrimitive_D3D12Fence:
-        ((struct GraphicsInteropParams*)extSemFence)->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
+        interopParams->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
         break;
       default:
+        delete interopParams;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
     }
 
+    delete interopParams;
     return Status::OK();
   }
   virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) {
