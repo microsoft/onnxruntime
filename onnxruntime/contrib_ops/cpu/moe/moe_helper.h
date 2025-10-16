@@ -33,7 +33,21 @@ struct MoEParameters {
   MoEParallelType parallel_type{MoEParallelType::None};
   int64_t tensor_shards{1};
 };
+
 namespace moe_helper {
+
+// Validate block-wise quantization requirements according to op spec
+inline Status ValidateBlockwiseQuantization(int64_t block_size, int64_t hidden_size, int64_t inter_size) {
+  if (block_size > 0) {
+    ORT_ENFORCE(hidden_size % block_size == 0,
+                "For block-wise quantization, hidden_size (", hidden_size,
+                ") must be divisible by block_size (", block_size, ").");
+    ORT_ENFORCE(inter_size % block_size == 0,
+                "For block-wise quantization, inter_size (", inter_size,
+                ") must be divisible by block_size (", block_size, ").");
+  }
+  return Status::OK();
+}
 
 template <typename Tensor>
 Status CheckInputs(MoEParameters& parameters,
