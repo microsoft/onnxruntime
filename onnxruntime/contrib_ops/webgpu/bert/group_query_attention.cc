@@ -110,35 +110,87 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const W
   return context.RunProgram(program);
 }
 
-Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output, bool is_query_input) {
+// Fused Q/K rotary embedding
+Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
+                                 const WebgpuAttentionParameters& params,
+                                 const Tensor* query_in,
+                                 const Tensor* key_in,
+                                 const Tensor* seqlen_k,
+                                 const Tensor* cos_cache,
+                                 const Tensor* sin_cache,
+                                 Tensor* query_out,
+                                 Tensor* key_out) {
+  Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(),
+                                           TensorShape({params.batch_size_, params.sequence_length_}));
+  ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, params, seqlen_k, &pos_ids));
+
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
-  const auto hidden_size = is_query_input ? params.hidden_size_ : params.kv_hidden_size_;
-  const TensorShape global_shape({params.batch_size_, params.sequence_length_, hidden_size / head_size, static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
-  const auto rank = global_shape.NumDimensions();
-  std::vector<uint32_t> global_dims(rank);
-  std::vector<uint32_t> global_strides(rank);
-  for (size_t j = 0; j < rank; ++j) {
-    global_dims[j] = gsl::narrow_cast<uint32_t>(global_shape[j]);
-    global_strides[j] = gsl::narrow_cast<uint32_t>(global_shape.SizeFromDimension(j + 1));
-  }
-  const auto input_output_strides = std::vector<uint32_t>({gsl::narrow_cast<uint32_t>(input->Shape().SizeFromDimension(1)), gsl::narrow_cast<uint32_t>(hidden_size), gsl::narrow_cast<uint32_t>(head_size), 1});
-  const auto output_size = gsl::narrow_cast<const uint32_t>(global_shape.Size());
 
-  RotaryEmbeddingProgram program(params.rotary_interleaved_);
+  // Build Q domain
+  const auto hidden_size_q = params.hidden_size_;
+  const TensorShape q_global_shape({params.batch_size_, params.sequence_length_,
+                                    hidden_size_q / head_size,
+                                    static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
+  const auto rank = q_global_shape.NumDimensions();
+  std::vector<uint32_t> q_global_dims(rank);
+  std::vector<uint32_t> q_global_strides(rank);
+  for (size_t j = 0; j < rank; ++j) {
+    q_global_dims[j] = gsl::narrow_cast<uint32_t>(q_global_shape[j]);
+    q_global_strides[j] = gsl::narrow_cast<uint32_t>(q_global_shape.SizeFromDimension(j + 1));
+  }
+
+  // Build K domain
+  const auto hidden_size_k = params.kv_hidden_size_;
+  const TensorShape k_global_shape({params.batch_size_, params.sequence_length_,
+                                    hidden_size_k / head_size,
+                                    static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
+  std::vector<uint32_t> k_global_dims(rank);
+  for (size_t j = 0; j < rank; ++j) {
+    k_global_dims[j] = gsl::narrow_cast<uint32_t>(k_global_shape[j]);
+  }
+
+  const auto q_domain_size = gsl::narrow_cast<uint32_t>(q_global_shape.Size());
+
+  const auto q_input_output_strides = std::vector<uint32_t>(
+      {gsl::narrow_cast<uint32_t>(query_in->Shape().SizeFromDimension(1)),
+       gsl::narrow_cast<uint32_t>(hidden_size_q),
+       gsl::narrow_cast<uint32_t>(head_size),
+       1u});
+
+  const auto k_input_output_strides = std::vector<uint32_t>(
+      {gsl::narrow_cast<uint32_t>(key_in->Shape().SizeFromDimension(1)),
+       gsl::narrow_cast<uint32_t>(hidden_size_k),
+       gsl::narrow_cast<uint32_t>(head_size),
+       1u});
+
+  // Dispatch computations only over the Q domain, and fuse K write operations using a head-index-based condition.
+  FusedQKRotaryEmbeddingProgram program(params.rotary_interleaved_);
   program
       .CacheHint(params.rotary_interleaved_)
-      .AddInputs({{input, ProgramTensorMetadataDependency::Rank},
-                  {pos_ids, ProgramTensorMetadataDependency::Rank},
-                  {cos_cache, ProgramTensorMetadataDependency::Rank},
-                  {sin_cache, ProgramTensorMetadataDependency::Rank}})
-      .AddOutput(output)
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{params.scale_},
-                            {gsl::make_span(global_dims)},
-                            {gsl::make_span(global_strides)},
-                            {gsl::make_span(input_output_strides)}})
+      .AddInputs({
+          {query_in, ProgramTensorMetadataDependency::Rank},
+          {key_in, ProgramTensorMetadataDependency::Rank},
+          {&pos_ids, ProgramTensorMetadataDependency::Rank},
+          {cos_cache, ProgramTensorMetadataDependency::Rank},
+          {sin_cache, ProgramTensorMetadataDependency::Rank},
+      })
+      .AddOutputs({
+          {query_out, ProgramTensorMetadataDependency::Rank},
+          {key_out, ProgramTensorMetadataDependency::Rank},
+      })
+      .SetDispatchGroupSize((q_domain_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({
+          {params.scale_},
+          {gsl::make_span(q_global_dims)},
+          {gsl::make_span(q_global_strides)},
+          {gsl::make_span(q_input_output_strides)},
+          {gsl::make_span(k_global_dims)},
+          {gsl::make_span(k_input_output_strides)},
+          {q_domain_size},
+      })
       .AddIndices(TensorShape{1, 1});
+
   return context.RunProgram(program);
 }
 
@@ -199,15 +251,6 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
-  // Use a sliding window if the total sequence exceeds the window's length.
-  bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
-  if (!do_rotary_ &&
-      head_sink == nullptr && !use_smooth_softmax_ &&
-      !use_sliding_window &&
-      CanApplyFlashAttention(attention_bias, present_key, present_value, parameters, context)) {
-    return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-                               present_value, parameters, context, seqlen_k);
-  }
 
   Tensor qSplit;
   Tensor kSplit;
@@ -218,6 +261,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
     ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit));
     parameters.is_packed_qkv_ = false;
+    parameters.qkv_format_ = Q_K_V_BSNH;
     query = &qSplit;
     key = &kSplit;
     value = &vSplit;
@@ -228,13 +272,22 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (do_rotary_) {
     qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
     kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
-    auto pos_ids_shape = TensorShape({parameters.batch_size_, parameters.sequence_length_});
-    Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
-    ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlen_k, &pos_ids));
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, query, &pos_ids, cos_cache, sin_cache, &qRotary, /* is_query_input = */ true));
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, key, &pos_ids, cos_cache, sin_cache, &kRotary, /* is_query_input = */ false));
+    ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(context, parameters,
+                                                  query, key,
+                                                  seqlen_k,
+                                                  cos_cache, sin_cache,
+                                                  &qRotary, &kRotary));
     query = &qRotary;
     key = &kRotary;
+  }
+
+  // Use a sliding window if the total sequence exceeds the window's length.
+  bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
+  if (head_sink == nullptr && !use_smooth_softmax_ &&
+      !use_sliding_window &&
+      CanApplyFlashAttention(attention_bias, present_key, present_value, parameters, context)) {
+    return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
+                               present_value, parameters, context);
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,

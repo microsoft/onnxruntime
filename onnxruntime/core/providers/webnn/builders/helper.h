@@ -38,7 +38,7 @@ WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
 
-inline std::vector<int64_t> HandleNegativeAxes(const std::vector<int64_t>& axes, size_t input_size) {
+inline std::vector<int64_t> HandleNegativeAxes(const gsl::span<const int64_t> axes, size_t input_size) {
   std::vector<int64_t> new_axes(axes.size());
   for (size_t i = 0; i < axes.size(); ++i) {
     new_axes[i] = HandleNegativeAxis(axes[i], input_size);

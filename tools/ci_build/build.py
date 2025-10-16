@@ -1751,7 +1751,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
                 run_subprocess(
-                    [sys.executable, "-m", "pip", "install", "torch", *extra],
+                    [sys.executable, "-m", "pip", "install", "torch==2.8.0", "torchvision==0.23.0", *extra],
                     cwd=cwd,
                     dll_path=dll_path,
                     python_path=python_path,

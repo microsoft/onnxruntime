@@ -713,6 +713,52 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   ASSERT_TRUE(status.IsOK());
 }
 
+TEST(TensorrtExecutionProviderTest, DDSOutputTest) {
+  PathString model_name = ORT_TSTR("testdata/ort_github_issue_26272_dds.onnx");
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderRunWithDDSOutput";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_op_x = {3, 4};
+  std::vector<float> values_op_x(12, 0.f);  // 12=3*4
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  std::vector<OrtValue> fetches;
+
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // First pass run
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+
+  // Second pass run with new shape
+  dims_op_x = {6, 4};
+  values_op_x.resize(24, 0.f);  // 24=6*4
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+  feeds.clear();
+
+  feeds.insert(std::make_pair("data", ml_value_x));
+
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+}
+
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   // GetParam() returns the parameter of following format:
   // ##cache type##_##input shape type##
