@@ -188,12 +188,10 @@ void Gemm<BFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, 
   if (beta == BFloat16(0.f)) {
     C_mat.setZero();
   } else {
-    Eigen::bfloat16 beta_bfloat;
-    std::memcpy(&beta_bfloat, &beta, sizeof(beta_bfloat));
+    Eigen::bfloat16 beta_bfloat(static_cast<float>(beta));
     C_mat *= beta_bfloat;
   }
-  Eigen::bfloat16 alpha_bfloat;
-  std::memcpy(&alpha_bfloat, &alpha, sizeof(alpha_bfloat));
+  Eigen::bfloat16 alpha_bfloat(static_cast<float>(alpha));
 
   switch (TransA) {
     case CblasNoTrans: {
