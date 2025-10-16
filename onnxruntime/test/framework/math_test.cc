@@ -16,6 +16,7 @@
 // Modifications Copyright (c) Microsoft.
 
 #include "core/util/math.h"
+#include "core/common/float16.h"  // BFloat16 helpers
 #include <gtest/gtest.h>
 #include "core/platform/threadpool.h"
 #include "core/util/math_cpuonly.h"

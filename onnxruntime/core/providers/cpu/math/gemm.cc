@@ -178,7 +178,7 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                 b_data,
                 // ideally we need to set the output buffer contents to 0 if bias is missing,
                 // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
-                c_data != nullptr ? beta : 0,
+                c_data != nullptr ? beta : T(0),
                 y_data,
                 thread_pool);
 }
