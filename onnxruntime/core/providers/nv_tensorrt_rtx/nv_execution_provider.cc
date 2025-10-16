@@ -86,7 +86,7 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-Status NvExecutionProvider::GetExtSemaphore(struct GraphicsInteropParams graphicsInteropParams, void** extSemFence)
+Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, void** extSemFence)
 {
   // By calling GetPerThreadContext(), we ensure that the cuda context
   // for the current thread is created if it doesn't already exist.
@@ -94,13 +94,13 @@ Status NvExecutionProvider::GetExtSemaphore(struct GraphicsInteropParams graphic
   (void)GetPerThreadContext();
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC semHandleDesc = {};
-  ExternalSyncPrimitive extSyncPrimitive = graphicsInteropParams.extSyncPrimitive;
+  ExternalSyncPrimitive extSyncPrimitive = graphicsInteropParams->extSyncPrimitive;
 
   if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
   {
 #if DX_FOR_INTEROP
       HANDLE sharedFenceHandle = nullptr;
-      if(graphicsInteropParams.DevicePtr.pDevice->CreateSharedHandle(graphicsInteropParams.FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
+      if(graphicsInteropParams->DevicePtr.pDevice->CreateSharedHandle(graphicsInteropParams->FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create shared handle for D3D12 fence");
       }
       semHandleDesc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
@@ -118,29 +118,37 @@ Status NvExecutionProvider::GetExtSemaphore(struct GraphicsInteropParams graphic
 
 Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue)
 {
-  LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpWait() called.";
+  LOGS_DEFAULT(VERBOSE) << "NvExecutionProvider::SetupInteropEpWait() called.";
 
   // make CUDA wait for the upload by Graphics API to finish
   CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS waitParams = {};
   waitParams.params.fence.value = fenceValue;
-  CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
+  CUexternalSemaphore cSemFence = static_cast<CUexternalSemaphore>(extSemFence);
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
-  cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
+  CUresult result = cuWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
+  if(result != CUDA_SUCCESS)
+  {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for external semaphore");
+  }
 
   return Status::OK();
 }
 
 Status NvExecutionProvider::SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue)
 {
-  LOGS_DEFAULT(INFO) << "NvExecutionProvider::SetupInteropEpSignal() called.";
+  LOGS_DEFAULT(VERBOSE) << "NvExecutionProvider::SetupInteropEpSignal() called.";
 
   cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
 
   // make Graphics API wait for the CUDA kernel to finish
   CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signalParams = {};
   signalParams.params.fence.value = fenceValue;
-  CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
-  cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
+  CUexternalSemaphore cSemFence = static_cast<CUexternalSemaphore>(extSemFence);
+  CUresult result = cuSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
+  if(result != CUDA_SUCCESS)
+  {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to signal external semaphore");
+  }
 
   ORT_UNUSED_PARAMETER(ortEpApi);
   return Status::OK();

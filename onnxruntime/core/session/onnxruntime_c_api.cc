@@ -3407,7 +3407,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ void** extSemFence) {
   API_IMPL_BEGIN
   auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   if (!inference_session) {
@@ -3724,7 +3724,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ struct GraphicsInteropParams graphicsInteropParams, _In_ void** extSemFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ void** extSemFence) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForGraphicsInterop is not supported in a minimal build.");
   API_IMPL_END

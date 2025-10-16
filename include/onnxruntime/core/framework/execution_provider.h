@@ -96,28 +96,31 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status GetExtSemaphore(struct GraphicsInteropParams graphicsInteropParams, void** extSemFence) {
+  virtual Status GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, void** extSemFence) {
 
-    auto* interopParams = new struct GraphicsInteropParams(graphicsInteropParams);
+    auto* interopParams = new struct GraphicsInteropParams(*graphicsInteropParams);
     *extSemFence = interopParams;   //fall back path
     return Status::OK();
   }
 
   virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
+    auto* interopParams = static_cast<struct GraphicsInteropParams*>(extSemFence);
 
-    ExternalSyncPrimitive extSyncPrimitive = (static_cast<struct GraphicsInteropParams*>(extSemFence))->extSyncPrimitive;
+    ExternalSyncPrimitive extSyncPrimitive = interopParams->extSyncPrimitive;
     if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
     {
 #if DX_FOR_INTEROP
         HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        (static_cast<struct GraphicsInteropParams*>(extSemFence))->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
+        interopParams->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
+        delete interopParams;
         return Status::OK();
 #endif
     }
     ORT_UNUSED_PARAMETER(fenceValue);
+    delete interopParams;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
   }
   virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) {
