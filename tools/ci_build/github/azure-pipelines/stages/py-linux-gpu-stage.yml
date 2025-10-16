@@ -22,9 +22,9 @@ parameters:
 
 - name: cuda_version
   type: string
-  default: '12.2'
+  default: '12.8'
   values:
-   - 12.2
+   - 12.8
 
 stages:
 - stage: Linux_py_GPU_Wheels_${{ parameters.arch }}
@@ -55,7 +55,7 @@ stages:
       - name: trt_version
         ${{ if eq(parameters.cuda_version, '11.8') }}:
           value: ${{ variables.linux_trt_version_cuda11 }}
-        ${{ if eq(parameters.cuda_version, '12.2') }}:
+        ${{ if eq(parameters.cuda_version, '12.8') }}:
           value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
       - checkout: self

@@ -1015,6 +1015,9 @@ def generate_build_tree(
     if path_to_protoc_exe:
         cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
 
+    if args.cmake_deps_mirror_dir:
+        cmake_args += [f"-Donnxruntime_CMAKE_DEPS_MIRROR_DIR={args.cmake_deps_mirror_dir}"]
+
     if args.fuzz_testing:
         if not (
             args.build_shared_lib
@@ -1330,7 +1333,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
             cmd_args.extend(["--target", *targets])
 
         build_tool_args = []
-        if num_parallel_jobs != 1:
+        if num_parallel_jobs != 0:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
                 # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
                 # not maxing out CL_MPCount
@@ -1748,7 +1751,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
                 run_subprocess(
-                    [sys.executable, "-m", "pip", "install", "torch", *extra],
+                    [sys.executable, "-m", "pip", "install", "torch==2.8.0", "torchvision==0.23.0", *extra],
                     cwd=cwd,
                     dll_path=dll_path,
                     python_path=python_path,
