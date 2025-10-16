@@ -146,14 +146,11 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                     hidden_size_k / head_size,
                                     static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
   std::vector<uint32_t> k_global_dims(rank);
-  std::vector<uint32_t> k_global_strides(rank);
   for (size_t j = 0; j < rank; ++j) {
     k_global_dims[j] = gsl::narrow_cast<uint32_t>(k_global_shape[j]);
-    k_global_strides[j] = gsl::narrow_cast<uint32_t>(k_global_shape.SizeFromDimension(j + 1));
   }
 
   const auto q_domain_size = gsl::narrow_cast<uint32_t>(q_global_shape.Size());
-  const auto k_domain_size = gsl::narrow_cast<uint32_t>(k_global_shape.Size());
 
   const auto q_input_output_strides = std::vector<uint32_t>(
       {gsl::narrow_cast<uint32_t>(query_in->Shape().SizeFromDimension(1)),
@@ -189,10 +186,8 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {gsl::make_span(q_global_strides)},
           {gsl::make_span(q_input_output_strides)},
           {gsl::make_span(k_global_dims)},
-          {gsl::make_span(k_global_strides)},
           {gsl::make_span(k_input_output_strides)},
           {q_domain_size},
-          {k_domain_size},
       })
       .AddIndices(TensorShape{1, 1});
 
