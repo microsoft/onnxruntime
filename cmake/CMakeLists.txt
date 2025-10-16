@@ -287,8 +287,12 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
 endif()
 
 
-# Single output director for all binaries
+# Single output directory for all binaries
 set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
+
+# Local mirror directory of cmake dependencies
+set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
+set(onnxruntime_CMAKE_DEPS_MIRROR_DIR ${REPO_ROOT}/mirror CACHE PATH "Path to the local mirror of cmake dependencies")
 
 
 include(FetchContent)
@@ -425,7 +429,6 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
 endif()
 
-set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
 set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
