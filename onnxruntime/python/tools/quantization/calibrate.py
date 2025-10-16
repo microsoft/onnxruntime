@@ -420,7 +420,9 @@ class MinMaxCalibrater(CalibraterBase):
             self.intermediate_outputs.append(
                 [
                     value if sess_o.name not in self.model_original_outputs else None
-                    for sess_o, value in zip(self.infer_session.get_outputs(), self.infer_session.run(None, inputs))
+                    for sess_o, value in zip(
+                        self.infer_session.get_outputs(), self.infer_session.run(None, inputs), strict=False
+                    )
                 ]
             )
             if (
