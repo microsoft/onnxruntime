@@ -71,7 +71,7 @@ class Serializer {
 #endif
   }
 
-  // Initalizes outfile_ to output to a defined .csv file
+  // Initializes outfile_ to output to a defined .csv file
   // or appends to the defined .csv file if it already exists
   // This is in its own function & not ctor for error checking/handling
   Status InitCsvFile();
@@ -79,7 +79,7 @@ class Serializer {
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   // Serializes all locally stored QNN System Profile Event data into a
   // qnn profiling .log file in the same directory as the .csv file defined
-  // in profilng_info_. The output file name with have the same name
+  // in profilng_info_. The output file name will have the same name
   // as the .csv file (sans extension) with _qnn.log appended to the end.
   Status SerializeEventsToQnnLog();
 
