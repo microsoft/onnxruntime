@@ -371,8 +371,24 @@ TEST(ConvTest, Conv2D_3) {
   vector<float> W = {1.f, 2.f, 3.f, 4.f, 2.f, 4.f, 6.f, 8.f};
 
   vector<int64_t> Y_shape = {2, 2, 2, 2};
-  auto Y = {37.f, 47.f, 67.f, 77.f, 254.f, 274.f, 314.f, 334.f,
-            58.f, 68.f, 55.f, 65.f, 230.f, 250.f, 296.f, 316.f,};
+  auto Y = {
+      37.f,
+      47.f,
+      67.f,
+      77.f,
+      254.f,
+      274.f,
+      314.f,
+      334.f,
+      58.f,
+      68.f,
+      55.f,
+      65.f,
+      230.f,
+      250.f,
+      296.f,
+      316.f,
+  };
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape);
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape, true);
