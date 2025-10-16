@@ -898,9 +898,14 @@ if(NOT IOS)
     set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
     file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
         ${onnx_test_runner_src_dir}/*.h
-        ${onnx_test_runner_src_dir}/*.cc)
+        ${onnx_test_runner_src_dir}/*.cc
+        ${onnx_test_runner_src_dir}/utils/*.h
+        ${onnx_test_runner_src_dir}/utils/*.cc)
 
-    list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
+    list(REMOVE_ITEM onnx_test_runner_common_srcs 
+        ${onnx_test_runner_src_dir}/main.cc
+        ${onnx_test_runner_src_dir}/command_args_parser.cc
+        ${onnx_test_runner_src_dir}/command_args_parser.h)
 
     onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
     if(MSVC)
@@ -1282,7 +1287,10 @@ set(onnx_test_libs
   ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (NOT IOS)
-    onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
+    onnxruntime_add_executable(onnx_test_runner
+                               ${onnx_test_runner_src_dir}/main.cc
+                               ${onnx_test_runner_src_dir}/command_args_parser.cc
+                               ${onnx_test_runner_src_dir}/command_args_parser.h)
     if(MSVC)
       target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -1295,7 +1303,31 @@ if (NOT IOS)
       endif()
     endif()
 
-    target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
+    if (onnxruntime_BUILD_SHARED_LIB)
+      # onnx_test_runner calls functions from onnxruntime_test_utils, which depend on ORT internal C++ APIs not exposed through the public C API.
+      # Therefore, we ensure that all necessary internal ORT libraries are linked here.
+      # For example:
+      # - CompareOrtValue()
+      #     - Uses onnxruntime::DataTypeImpl::TypeFromProto(), onnxruntime::DataTypeImpl::ToString(), etc. from onnxruntime_framework
+      #     - Uses onnxruntime::concurrency::ThreadPool from onnxruntime_util
+      #
+      # Once onnxruntime_framework is linked, additional internal dependencies such as onnxruntime_graph and onnxruntime_mlas must also be linked,
+      # as they are transitively required by symbols used in onnxruntime_framework.
+      set(onnx_test_runner_libs
+            onnx_test_runner_common onnxruntime_test_utils onnxruntime_framework onnxruntime_common onnxruntime_graph onnxruntime_util onnxruntime_mlas
+            onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
+            ${onnxruntime_EXTERNAL_LIBRARIES}
+            absl::flags absl::flags_parse ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+
+      target_link_libraries(onnx_test_runner PRIVATE ${onnx_test_runner_libs} nlohmann_json::nlohmann_json)
+
+      if(WIN32)
+        target_link_libraries(onnx_test_runner PRIVATE debug dbghelp advapi32)
+      endif()
+    else()
+      target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs} nlohmann_json::nlohmann_json)
+    endif()
+
     target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
@@ -1454,15 +1486,17 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
       endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
-      if (onnxruntime_USE_CUDA OR onnxruntime_USE_NV OR onnxruntime_USE_TENSORRT)
-        target_link_libraries(onnxruntime_perf_test PRIVATE CUDA::cudart)
-      endif()
       if(WIN32)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
       endif()
     else()
       target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs})
     endif()
+
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_NV OR onnxruntime_USE_TENSORRT)
+      target_link_libraries(onnxruntime_perf_test PRIVATE CUDA::cudart)
+    endif()
+
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 endif()
