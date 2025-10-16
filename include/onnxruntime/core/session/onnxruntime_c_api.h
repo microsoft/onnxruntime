@@ -33,7 +33,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <d3d12.h>
 
 /** \brief The API version defined in this header
  *
@@ -513,6 +512,8 @@ typedef enum ExternalSyncPrimitive {
   ExternalSyncPrimitive_VulkanSemaphore,
 } ExternalSyncPrimitive;
 
+typedef class ID3D12Fence ID3D12Fence;
+typedef class ID3D12Device ID3D12Device;
 typedef struct GraphicsInteropParams
 {
   ExternalSyncPrimitive extSyncPrimitive;

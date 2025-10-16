@@ -797,6 +797,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     azure_group = parser.add_argument_group("Azure Execution Provider")
     azure_group.add_argument("--use_azure", action="store_true", help="Enable Azure EP.")
 
+    # --- DX for Interop Feature ---
+    dx_group = parser.add_argument_group("DX for Interop Feature")
+    dx_group.add_argument("--use_dx_for_interop", action="store_true", help="Enable DX for Interop feature.")
 
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for other miscellaneous features."""

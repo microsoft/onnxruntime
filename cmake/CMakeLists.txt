@@ -243,6 +243,15 @@ option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific algorithms. Use only for testing and debugging generic algorithms." OFF)
 
+# DX for interop feature option
+option(onnxruntime_USE_DX_FOR_INTEROP "Build with the DX for Interop feature." OFF)
+
+if (onnxruntime_USE_DX_FOR_INTEROP)
+  add_compile_definitions(DX_FOR_INTEROP=1)
+else()
+  add_compile_definitions(DX_FOR_INTEROP=0)
+endif()
+
 option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is compatible with TensorRT EP interface" OFF)
 option(onnxruntime_USE_NV_INTERFACE "Build ONNXRuntime shared lib which is compatible with NV EP interface" OFF)
 option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)

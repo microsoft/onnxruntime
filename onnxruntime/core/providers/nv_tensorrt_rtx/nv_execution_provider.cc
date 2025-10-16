@@ -94,19 +94,18 @@ Status NvExecutionProvider::GetExtSemaphore(struct GraphicsInteropParams graphic
   (void)GetPerThreadContext();
   CUexternalSemaphore cSemFence = reinterpret_cast<CUexternalSemaphore>(extSemFence);
   CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC semHandleDesc = {};
-  HANDLE sharedFenceHandle = nullptr;
   ExternalSyncPrimitive extSyncPrimitive = graphicsInteropParams.extSyncPrimitive;
 
-  switch (extSyncPrimitive) {
-    case ExternalSyncPrimitive_D3D12Fence:
+  if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
+  {
+#if DX_FOR_INTEROP
+      HANDLE sharedFenceHandle = nullptr;
       if(graphicsInteropParams.DevicePtr.pDevice->CreateSharedHandle(graphicsInteropParams.FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create shared handle for D3D12 fence");
       }
       semHandleDesc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
       semHandleDesc.handle.win32.handle = sharedFenceHandle;
-      break;
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
+#endif
   }
   if(cuImportExternalSemaphore(&cSemFence, &semHandleDesc) != CUDA_SUCCESS)
   {

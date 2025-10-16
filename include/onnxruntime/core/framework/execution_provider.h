@@ -38,6 +38,10 @@ class GraphOptimizerRegistry;
 #include "core/framework/tuning_context.h"
 #include "core/session/onnxruntime_c_api.h"
 
+#if DX_FOR_INTEROP
+#include <d3d12.h>
+#endif
+
 struct OrtEpDevice;
 struct OrtRunOptions;
 
@@ -101,23 +105,20 @@ class IExecutionProvider {
 
   virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
-    auto* interopParams = static_cast<struct GraphicsInteropParams*>(extSemFence);
 
-    HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    ExternalSyncPrimitive extSyncPrimitive = interopParams->extSyncPrimitive;
-    switch (extSyncPrimitive) {
-      case ExternalSyncPrimitive_D3D12Fence:
-        interopParams->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
+    ExternalSyncPrimitive extSyncPrimitive = (static_cast<struct GraphicsInteropParams*>(extSemFence))->extSyncPrimitive;
+    if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
+    {
+#if DX_FOR_INTEROP
+        HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        (static_cast<struct GraphicsInteropParams*>(extSemFence))->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
-        break;
-      default:
-        delete interopParams;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
+        return Status::OK();
+#endif
     }
-
-    delete interopParams;
-    return Status::OK();
+    ORT_UNUSED_PARAMETER(fenceValue);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
   }
   virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(extSemFence);
