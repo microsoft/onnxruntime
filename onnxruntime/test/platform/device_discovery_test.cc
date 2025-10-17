@@ -5,8 +5,8 @@
 
 #include "gtest/gtest.h"
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)
 namespace onnxruntime::test {
-
 namespace {
 
 std::vector<OrtHardwareDevice> GetDevicesByType(OrtHardwareDeviceType device_type) {
@@ -31,3 +31,4 @@ TEST(DeviceDiscoveryTest, HasCpuDevice) {
 }
 
 }  // namespace onnxruntime::test
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)

@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build_x86_release:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
     timeout-minutes: 300
 
     steps:

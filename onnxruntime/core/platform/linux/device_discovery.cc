@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -100,27 +101,44 @@ Status ReadValueFromFile(const fs::path& file_path, ValueType& value) {
   return ParseStringWithClassicLocale<ValueType>(file_text, value);
 }
 
+std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
+  ORT_UNUSED_PARAMETER(device_id);
+
+  // Currently, we only assume that all Nvidia GPUs are discrete.
+
+  constexpr auto kNvidiaPciId = 0x10de;
+  if (vendor_id == kNvidiaPciId) {
+    return true;
+  }
+
+  return std::nullopt;
+}
+
 Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevice& gpu_device_out) {
   OrtHardwareDevice gpu_device{};
   const auto& sysfs_path = path_info.path;
 
   // vendor id
-  {
-    const auto vendor_id_path = sysfs_path / "device" / "vendor";
-    ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, gpu_device.vendor_id));
-  }
+  uint16_t vendor_id{};
+  const auto vendor_id_path = sysfs_path / "device" / "vendor";
+  ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, vendor_id));
+  gpu_device.vendor_id = vendor_id;
 
   // TODO vendor name
 
   // device id
-  {
-    const auto device_id_path = sysfs_path / "device" / "device";
-    ORT_RETURN_IF_ERROR(ReadValueFromFile(device_id_path, gpu_device.device_id));
-  }
+  uint16_t device_id{};
+  const auto device_id_path = sysfs_path / "device" / "device";
+  ORT_RETURN_IF_ERROR(ReadValueFromFile(device_id_path, device_id));
+  gpu_device.device_id = device_id;
 
   // metadata
   gpu_device.metadata.Add("card_idx", MakeString(path_info.card_idx));
-  // TODO is card discrete?
+
+  if (const auto is_gpu_discrete = IsGpuDiscrete(vendor_id, device_id);
+      is_gpu_discrete.has_value()) {
+    gpu_device.metadata.Add("Discrete", (*is_gpu_discrete ? "1" : "0"));
+  }
 
   gpu_device.type = OrtHardwareDeviceType_GPU;
 
