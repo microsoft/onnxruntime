@@ -28,6 +28,13 @@
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/buffer_manager.h"
+
+// Define ORT_DLL_EXPORT before including webgpu_provider_factory.h to ensure
+// ORT_WEBGPU_EXPORT becomes __declspec(dllexport) instead of __declspec(dllimport)
+#ifndef ORT_DLL_EXPORT
+#define ORT_DLL_EXPORT
+#endif
+#include "core/providers/webgpu/webgpu_provider_factory.h"  // For ORT_WEBGPU_EXPORT macros
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/program_cache_key.h"
@@ -977,6 +984,9 @@ void WebGpuContextFactory::ReleaseContext(int context_id) {
   ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   if (--it->second.ref_count == 0 && !it->second.context->preserve_device_) {
+    // TODO: Investigate why memory leak is triggered if we don't explicitly destroy the device.
+    // It seems that memory leak deletection is triggered before the device is destroyed.
+    it->second.context->Device().Destroy();
     contexts_.erase(it);
   }
 }
@@ -997,3 +1007,45 @@ WGPUDevice GetDevice(int context_id) {
 
 }  // namespace webgpu
 }  // namespace onnxruntime
+
+// C API functions for external access
+extern "C" {
+
+ORT_WEBGPU_EXPORT const void* ORT_WEBGPU_API_CALL OrtWebGpuGetDawnProcTable(int context_id) {
+#if !defined(__wasm__) && !defined(BUILD_DAWN_SHARED_LIBRARY) && !defined(USE_EXTERNAL_DAWN)
+  try {
+    // Ensure context is initialized
+    auto& context = onnxruntime::webgpu::WebGpuContextFactory::GetContext(context_id);
+    (void)context;  // Suppress unused variable warning
+    return &dawn::native::GetProcs();
+  } catch (...) {
+    return nullptr;
+  }
+#else
+  return nullptr;
+#endif
+}
+
+ORT_WEBGPU_EXPORT void* ORT_WEBGPU_API_CALL OrtWebGpuGetInstance(int context_id) {
+#if !defined(__wasm__)
+  try {
+    auto& context = onnxruntime::webgpu::WebGpuContextFactory::GetContext(context_id);
+    return context.Instance().Get();
+  } catch (...) {
+    return nullptr;
+  }
+#else
+  return nullptr;
+#endif
+}
+
+ORT_WEBGPU_EXPORT void* ORT_WEBGPU_API_CALL OrtWebGpuGetDevice(int context_id) {
+  try {
+    auto& context = onnxruntime::webgpu::WebGpuContextFactory::GetContext(context_id);
+    return context.Device().Get();
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+}  // extern "C"
