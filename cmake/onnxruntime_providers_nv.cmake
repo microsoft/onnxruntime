@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Licensed under the MIT License.
   find_package(CUDAToolkit REQUIRED 12.8)
-  set(CMAKE_CUDA_COMPILER "${CUDAToolkit_BIN_DIR}/nvcc${CMAKE_EXECUTABLE_SUFFIX}" CACHE FILEPATH "CUDA compiler" FORCE)
-  message(STATUS "NVCC path: ${CMAKE_CUDA_COMPILER}")
-  enable_language(CUDA)
+  #set(CMAKE_CUDA_COMPILER "${CUDAToolkit_BIN_DIR}/nvcc${CMAKE_EXECUTABLE_SUFFIX}" CACHE FILEPATH "CUDA compiler" FORCE)
+  #message(STATUS "NVCC path: ${CMAKE_CUDA_COMPILER}")
+  #enable_language(CUDA)
   if(onnxruntime_DISABLE_CONTRIB_OPS)
     message( FATAL_ERROR "To compile TensorRT execution provider contrib ops have to be enabled to dump an engine using com.microsoft:EPContext node." )
   endif()
