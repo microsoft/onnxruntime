@@ -777,6 +777,7 @@ endif()
     if(LOONGARCH64 AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/qgemm_kernel_lsx.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_lasx.cpp
           ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLasx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLsx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLasx.S
