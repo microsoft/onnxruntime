@@ -1472,7 +1472,7 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
   }
 
   uint32_t rpc_polling_time = 0;
-  if (qnn::HtpPerformanceMode::kHtpBurst != htp_performance_mode) {
+  if (qnn::HtpPerformanceMode::kHtpBurst == htp_performance_mode) {
     rpc_polling_time = 9999;
   }
 

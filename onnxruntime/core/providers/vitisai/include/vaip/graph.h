@@ -14,6 +14,7 @@ Node& graph_add_node(Graph& graph, const std::string& name, const std::string& o
                      const NodeAttributes& attributes, const std::string& domain);
 void graph_save(const Graph& graph, const std::string& filename, const std::string& dat_filename,
                 size_t initializer_size_threshold);
+vaip_core::DllSafe<std::string> graph_save_string(const Graph& graph);
 Node& graph_fuse(Graph& graph, const std::string& name, const std::string& op_type, const std::vector<size_t>& nodes,
                  const std::vector<std::string>& inputs, const std::vector<std::string>& outputs,
                  const std::vector<std::string>& constant_initializers);
