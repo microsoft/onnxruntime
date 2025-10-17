@@ -634,7 +634,6 @@ if (onnxruntime_USE_WEBGPU)
     #
     set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
-    set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
     set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -715,6 +714,7 @@ if (onnxruntime_USE_WEBGPU)
     endif()
 
     if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      set(DAWN_FETCH_DEPENDENCIES OFF CACHE BOOL "" FORCE)
       # use the custom dawn source path if provided
       #
       # specified as:
@@ -725,6 +725,7 @@ if (onnxruntime_USE_WEBGPU)
         EXCLUDE_FROM_ALL
       )
     else()
+      set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
       set(ONNXRUNTIME_Dawn_PATCH_COMMAND
           # The dawn_destroy_buffer_on_destructor.patch contains the following changes:
           #
