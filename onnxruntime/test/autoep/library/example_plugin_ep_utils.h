@@ -47,11 +47,12 @@
 #define EP_FILE __FILE__
 #endif
 
-#define LOG(level, ...)                                                                                             \
-  do {                                                                                                              \
-    std::ostringstream ss;                                                                                          \
-    ss << __VA_ARGS__;                                                                                              \
-    api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), EP_FILE, __LINE__, __FUNCTION__); \
+#define LOG(level, ...)                                                                               \
+  do {                                                                                                \
+    std::ostringstream ss;                                                                            \
+    ss << __VA_ARGS__;                                                                                \
+    Ort::Status ignored{api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), \
+                                               EP_FILE, __LINE__, __FUNCTION__)};                     \
   } while (false)
 
 #define RETURN_ERROR(code, ...)                       \

@@ -1588,17 +1588,25 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
         # run shared_lib_test if necessary
         if args.build_shared_lib:
-            adb_push("libonnxruntime.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
-            adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
-            adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-            run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
-            run_adb_shell(
-                f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
-            )
+            shared_library_test_program_names = [
+                "onnxruntime_shared_lib_test",
+                "onnxruntime_customopregistration_test",
+                "onnxruntime_autoep_test",
+            ]
+
+            shared_libraries = [
+                "libonnxruntime.so",
+                "libcustom_op_library.so",
+                "libcustom_op_get_const_input_test_library.so",
+            ]
+
+            for file_to_copy in (shared_library_test_program_names + shared_libraries):
+                adb_push(file_to_copy, device_dir, cwd=cwd)
+
+            # run test programs
+            for test_program_name in shared_library_test_program_names:
+                adb_shell(f"chmod +x {device_dir}/{test_program_name}")
+                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/{test_program_name}")
 
         all_android_tests_passed = True
 

@@ -1978,8 +1978,7 @@ endif()
 
 # Build library that can be used with RegisterExecutionProviderLibrary and automatic EP selection
 # We need a shared lib build to use that as a dependency for the test library
-# Currently we only have device discovery on Windows so no point building the test app on other platforms.
-if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
+if (onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
   # example_plugin_ep
@@ -1987,7 +1986,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
                                                 "${TEST_SRC_DIR}/autoep/library/*.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
+  target_link_libraries(example_plugin_ep PRIVATE onnxruntime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)

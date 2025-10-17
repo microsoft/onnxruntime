@@ -36,7 +36,7 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
 
   // EP instance if the stream is being created internally for inferencing.
   // nullptr when the stream is created outside of an inference session for data copies.
-  const OrtEp* ep_;
+  [[maybe_unused]] const OrtEp* ep_;
   ExampleEpFactory* factory_{nullptr};
 };
 
@@ -60,5 +60,5 @@ class NotificationImpl : public OrtSyncNotificationImpl, public ApiPtrs {
   static OrtStatus* ORT_API_CALL WaitOnHostImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept;
   static void ORT_API_CALL ReleaseImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept;
 
-  void* event_{NULL};  // placeholder. e.g. CANN uses aclrtEvent, CUDA uses cudaEvent_t
+  [[maybe_unused]] void* event_{NULL};  // placeholder. e.g. CANN uses aclrtEvent, CUDA uses cudaEvent_t
 };
