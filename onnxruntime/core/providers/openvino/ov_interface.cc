@@ -365,7 +365,7 @@ StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, s
   // check if there is input_ids tensors and if the tensor type is int64,
   // because logic prefill_use_full_chat_history is only for specific inputs and data type
   auto input_ids_opt = FindTensor("input_ids");
-  if (gpu_or_npu && input_ids_opt.has_value() && input_ids_opt->get_element_type() != ov::element::i64) {
+  if (gpu_or_npu && input_ids_opt.has_value() && input_ids_opt->get_element_type() == ov::element::i64) {
     prefill_use_full_chat_history = true;
   }
 }
