@@ -74,9 +74,8 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   const std::string ep_version_{"0.1.0"};  // EP version
 
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
-  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-  MemoryInfoUniquePtr default_memory_info_;
-  MemoryInfoUniquePtr readonly_memory_info_;  // used for initializers
+  Ort::MemoryInfo default_memory_info_;
+  Ort::MemoryInfo readonly_memory_info_;  // used for initializers
 
   bool arena_allocator_using_default_settings_{true};
   std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
