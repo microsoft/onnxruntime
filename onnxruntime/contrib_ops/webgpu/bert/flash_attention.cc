@@ -190,6 +190,8 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
   shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (use_indirect_dispatch_) {
     shader.AddInput("seqlens_k", ShaderUsage::None);
+    // Add indirect buffer as input to read workgroup dimensions
+    shader.AddInput("indirect_buffer", ShaderUsage::None);
   }
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
@@ -221,6 +223,8 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (use_indirect_dispatch) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
+    // Add indirect buffer as input so shader can read workgroup dimensions
+    program.AddInput({indirect_buffer, ProgramTensorMetadataDependency::None});
   }
   if (has_attention_bias) {
     program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
@@ -253,6 +257,8 @@ Status FlashAttentionDecodeSplitVxProgram::GenerateShaderCode(ShaderHelper& shad
   shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   if (use_indirect_dispatch_) {
     shader.AddInput("seqlens_k", ShaderUsage::None);
+    // Add indirect buffer as input to read workgroup dimensions
+    shader.AddInput("indirect_buffer", ShaderUsage::None);
   }
   shader.AddOutput("out_split_vx", ShaderUsage::UseUniform);
 
@@ -287,8 +293,10 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
   if (use_indirect_dispatch) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None})
-        .SetIndirectDispatchTensor(indirect_buffer);
+    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
+    // Add indirect buffer as input so shader can read workgroup dimensions
+    program.AddInput({indirect_buffer, ProgramTensorMetadataDependency::None});
+    program.SetIndirectDispatchTensor(indirect_buffer);
   } else {
     program.SetDispatchGroupSize(parameters.num_heads_ * num_total_seq_length_tile);
   }
