@@ -96,9 +96,7 @@ Status ShaderHelper::Init() {
 }
 
 void ShaderHelper::FinalizeInputs() {
-  // Automatically add indirect buffer as the last input when using indirect dispatch.
-  // This avoids the need to manually add it in every shader that uses indirect dispatch.
-  // The indirect buffer is added by SetIndirectDispatchTensor() as the last program input.
+  // Automatically add indirect buffer as the last shader input when using indirect dispatch.
   if (program_.IndirectDispatchTensor() != nullptr) {
     AddInput("indirect_buffer", ShaderUsage::None);
   }
