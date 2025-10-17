@@ -15,7 +15,12 @@ class ExampleEpFactory;
 class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
  public:
   StreamImpl(ExampleEpFactory& factory, const OrtEp* ep, const OrtKeyValuePairs* /*stream_options*/)
-      : ApiPtrs(factory), ep_{ep}, factory_{&factory} {
+      : ApiPtrs(factory), factory_{&factory} {
+    // `ep` is the EP instance if the stream is being created internally for inferencing.
+    // nullptr when the stream is created outside of an inference session for data copies.
+    // It is not used by this example implementation.
+    static_cast<void>(ep);
+
     ort_version_supported = ORT_API_VERSION;
     CreateNotification = CreateNotificationImpl;
     GetHandle = GetHandleImpl;
@@ -34,9 +39,6 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
 
   void* handle_{nullptr};  // use the real stream type, like cudaStream_t or aclrtStream, etc.
 
-  // EP instance if the stream is being created internally for inferencing.
-  // nullptr when the stream is created outside of an inference session for data copies.
-  [[maybe_unused]] const OrtEp* ep_;
   ExampleEpFactory* factory_{nullptr};
 };
 
@@ -60,5 +62,5 @@ class NotificationImpl : public OrtSyncNotificationImpl, public ApiPtrs {
   static OrtStatus* ORT_API_CALL WaitOnHostImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept;
   static void ORT_API_CALL ReleaseImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept;
 
-  [[maybe_unused]] void* event_{NULL};  // placeholder. e.g. CANN uses aclrtEvent, CUDA uses cudaEvent_t
+  void* event_{NULL};  // placeholder. e.g. CANN uses aclrtEvent, CUDA uses cudaEvent_t
 };
