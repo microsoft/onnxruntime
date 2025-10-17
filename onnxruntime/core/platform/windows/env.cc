@@ -866,14 +866,13 @@ WindowsEnv::WindowsEnv() {
   InitializeCpuInfo();
 }
 
-
 /*
 Discover all cores in a windows system.
 Note - every "id" here, given it be group id, core id, or logical processor id, starts from 0.
 */
 void WindowsEnv::InitializeCpuInfo() {
   // Initialize cpuinfo once on Windows similar to PosixEnv constructor.
-  (void)cpuinfo_initialize(); //Ignore the error if it failed to initialize
+  (void)cpuinfo_initialize();  // Ignore the error if it failed to initialize
   // TODO: we should also call cpuinfo_deinitialize()
   // TODO: the cpuinfo_initialize() function also gets called when creating ort thread pool, it would be better to
   // put them in one place.
