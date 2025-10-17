@@ -86,6 +86,7 @@ static std::unordered_map<std::string, std::vector<FusionFunc>> fusions = {
     {"Cast", {CastLoneQFusion::TryFusion}},
     {"Erf", {GeluFusion::TryFusion}},
     {"Reshape", {Rank6ToRank5Fusion::TryFusion}},
+    {"Erf", {GeluFusion::TryFusion}},
     {"Transpose", {ChannelShuffleFusion::TryFusion}}};
 
 void registerUDO(const std::string& node_type, const std::string& op_package) {
