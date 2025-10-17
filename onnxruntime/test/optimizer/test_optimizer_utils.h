@@ -7,7 +7,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ort_value.h"
 #include "test/unittest_util/framework_test_utils.h"
