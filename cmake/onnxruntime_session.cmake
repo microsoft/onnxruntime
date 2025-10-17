@@ -45,10 +45,6 @@ if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_session PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
 
-if(TARGET onnxruntime_providers_shared)
-  target_compile_definitions(onnxruntime_session PRIVATE ORT_PROVIDER_BRIDGE_IS_SUPPORTED)
-endif()
-
 if(NOT MSVC)
   set_source_files_properties(${ONNXRUNTIME_ROOT}/core/session/environment.cc PROPERTIES COMPILE_FLAGS  "-Wno-parentheses")
 endif()

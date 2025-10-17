@@ -415,13 +415,7 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
                                                             true,
                                                             ProviderLibraryPathType::Absolute);
 
-  const bool is_provider_bridge = [&]() -> bool {
-#if defined(ORT_PROVIDER_BRIDGE_IS_SUPPORTED)
-    return provider_library->Load() == Status::OK();  // library has GetProvider
-#else
-    return false;
-#endif
-  }();
+  bool is_provider_bridge = provider_library->Load() == Status::OK();  // library has GetProvider
 
   LOGS_DEFAULT(INFO) << "Loading EP library: " << library_path
                      << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
