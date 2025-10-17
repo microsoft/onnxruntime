@@ -179,6 +179,11 @@ Status WebGpuContext::Wait(wgpu::Future f) {
 }
 
 Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
+  // Finalize program inputs by adding the indirect buffer as the last input if needed.
+  if (program.IndirectDispatchTensor() != nullptr) {
+    program.AddInput({program.IndirectDispatchTensor(), ProgramTensorMetadataDependency::None});
+  }
+
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
