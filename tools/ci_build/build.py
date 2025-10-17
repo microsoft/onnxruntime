@@ -1600,7 +1600,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 "libcustom_op_get_const_input_test_library.so",
             ]
 
-            for file_to_copy in (shared_library_test_program_names + shared_libraries):
+            for file_to_copy in shared_library_test_program_names + shared_libraries:
                 adb_push(file_to_copy, device_dir, cwd=cwd)
 
             # run test programs
