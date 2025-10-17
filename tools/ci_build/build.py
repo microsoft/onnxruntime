@@ -1586,7 +1586,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         else:
             run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
-        # run shared_lib_test if necessary
+        # run shared library tests if applicable
         if args.build_shared_lib:
             shared_library_test_program_names = [
                 "onnxruntime_shared_lib_test",
