@@ -399,7 +399,7 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
       std::vector<std::string> value_names;
       value_names.reserve(value_infos.size());
 
-      for (const auto vi : value_infos) {
+      for (const auto& vi : value_infos) {
         value_names.push_back(vi.GetName());
       }
 
