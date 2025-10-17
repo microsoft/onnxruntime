@@ -1650,12 +1650,12 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   endif()
 endif()
 
-# Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will
-# be included next.
+# From this point on, onnxruntime_EXTERNAL_LIBRARIES should be no longer be modified. It will be used in
+# onnxruntime.cmake which will be included next.
 
-# The order of the following CMake file names (which exclude the ".cmake" suffix) matters. Later CMake files may depend
-# on earlier ones but earler ones cannot depend on later ones. For example, if A appears before B, then A.cmake cannot
-# use variables defined in B.cmake.
+# The order of the CMake file names (which exclude the ".cmake" suffix) in ONNXRUNTIME_CMAKE_FILES matters. Later CMake
+# files may depend on earlier ones but earlier ones cannot depend on later ones. For example, if A appears before B,
+# then A.cmake cannot use variables defined in B.cmake.
 set(ONNXRUNTIME_CMAKE_FILES
     onnxruntime_flatbuffers
     onnxruntime_common
