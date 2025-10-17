@@ -10,6 +10,7 @@
 #include <type_traits>
 
 #include "core/framework/customregistry.h"
+#include "core/framework/float4.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/run_options.h"
 #include "core/framework/tensor.h"
@@ -698,7 +699,15 @@ class BaseTester {
           const int64_t expected_values_count = T::CalcNumInt4Pairs(shape.Size());
           ORT_ENFORCE(expected_values_count == values_count, values_count,
                       " input values doesn't match tensor size of ", expected_values_count);
-        } else {
+        }
+#if !defined(DISABLE_FLOAT4_TYPES)
+        else if constexpr (std::is_same_v<T, Float4E2M1x2>) {
+          const int64_t expected_values_count = T::CalcNumFloat4Pairs(shape.Size());
+          ORT_ENFORCE(expected_values_count == values_count, values_count,
+                      " input values doesn't match tensor size of ", expected_values_count);
+        }
+#endif
+        else {
           ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
                       shape.Size());
         }
