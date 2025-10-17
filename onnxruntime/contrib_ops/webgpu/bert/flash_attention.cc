@@ -287,8 +287,8 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
   if (use_indirect_dispatch) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
-    program.SetIndirectDispatchTensor(indirect_buffer);
+    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None})
+        .SetIndirectDispatchTensor(indirect_buffer);
   } else {
     program.SetDispatchGroupSize(parameters.num_heads_ * num_total_seq_length_tile);
   }
