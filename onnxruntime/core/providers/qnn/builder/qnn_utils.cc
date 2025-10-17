@@ -34,9 +34,11 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
       {QNN_DATATYPE_FLOAT_16, 2},
       {QNN_DATATYPE_FLOAT_32, 4},
       {QNN_DATATYPE_BOOL_8, 1},
+      {QNN_DATATYPE_SFIXED_POINT_4, sizeof(Int4x2)},
       {QNN_DATATYPE_SFIXED_POINT_8, 1},
       {QNN_DATATYPE_SFIXED_POINT_16, 2},
       {QNN_DATATYPE_SFIXED_POINT_32, 4},
+      {QNN_DATATYPE_UFIXED_POINT_4, sizeof(Int4x2)},
       {QNN_DATATYPE_UFIXED_POINT_8, 1},
       {QNN_DATATYPE_UFIXED_POINT_16, 2},
       {QNN_DATATYPE_UFIXED_POINT_32, 4},
@@ -103,11 +105,21 @@ size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
   }
   // Unreachable
 }
+size_t GetQnnTensorDataSizeInBytes(const uint32_t num_elements, Qnn_DataType_t element_type) {
+  if (element_type == QNN_DATATYPE_SFIXED_POINT_4 || element_type == QNN_DATATYPE_UFIXED_POINT_4) {
+    return num_elements / 2;
+  }
+  SafeInt<size_t> data_length = GetElementSizeByType(element_type);
+  return num_elements * data_length;
+}
 
 size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
   ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
-  SafeInt<size_t> data_length = GetElementSizeByType(element_type);
-  return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
+  return GetQnnTensorDataSizeInBytes(std::accumulate(shape.begin(), shape.end(), 1u, std::multiplies<>{}), element_type);
+}
+
+size_t GetQnnTensorDataSizeInBytes(const Qnn_Tensor_t& tensor) {
+  return GetQnnTensorDataSizeInBytes(gsl::span{GetQnnTensorDims(tensor), size_t{GetQnnTensorRank(tensor)}}, GetQnnTensorDataType(tensor));
 }
 
 bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor) {
@@ -994,7 +1006,7 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
   const size_t num_dims = shape.size();
   const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
   ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
-  size_t expected_num_quant_bytes = GetElementSizeByType(data_type) * data.size();
+  size_t expected_num_quant_bytes = GetQnnTensorDataSizeInBytes(static_cast<uint32_t>(data.size()), data_type);
   ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
                     "Cannot quantize data because output buffer is not the correct size");
 
