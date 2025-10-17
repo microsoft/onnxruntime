@@ -95,6 +95,15 @@ Status ShaderHelper::Init() {
   return Status::OK();
 }
 
+void ShaderHelper::FinalizeInputs() {
+  // Automatically add indirect buffer as the last input when using indirect dispatch.
+  // This avoids the need to manually add it in every shader that uses indirect dispatch.
+  // The indirect buffer is added by SetIndirectDispatchTensor() as the last program input.
+  if (program_.IndirectDispatchTensor() != nullptr) {
+    AddInput("indirect_buffer", ShaderUsage::None);
+  }
+}
+
 const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, ShaderUsage usage) {
   const size_t input_index = input_vars_.size();
   ORT_ENFORCE(input_index < program_.Inputs().size(),

@@ -362,6 +362,9 @@ ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t 
 
 ProgramBase& ProgramBase::SetIndirectDispatchTensor(const Tensor* indirect_dispatch_tensor) {
   indirect_dispatch_tensor_ = indirect_dispatch_tensor;
+  // Automatically add the indirect buffer as an input so the shader can read dispatch dimensions.
+  // This avoids the need to manually add it in every program that uses indirect dispatch.
+  AddInput({indirect_dispatch_tensor, ProgramTensorMetadataDependency::None});
   return *this;
 }
 
