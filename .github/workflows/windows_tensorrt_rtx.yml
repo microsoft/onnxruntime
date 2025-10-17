@@ -116,7 +116,7 @@ jobs:
             exit $lastExitCode
           }
           # Execute the build process
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_nv_tensorrt_rtx --tensorrt_rtx_home="${{ runner.temp }}\TensorRT-RTX-1.1.1.26.Windows.win10.cuda-12.9"             --cuda_home="${{ runner.temp }}\v12.8" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags             --build_dir build --skip_submodule_sync --build_shared_lib --build --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests             --use_cuda --use_nv_tensorrt_rtx --tensorrt_rtx_home="${{ runner.temp }}\TensorRT-RTX-1.1.1.26.Windows.win10.cuda-12.9"             --cuda_home="${{ runner.temp }}\v12.8" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
