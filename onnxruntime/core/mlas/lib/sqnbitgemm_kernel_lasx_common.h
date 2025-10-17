@@ -7,6 +7,49 @@
 #pragma once
 #include "qnbitgemm.h"
 #include "core/common/safeint.h"
+#include <memory>
+
+template<typename T, size_t RequiredAlignment = 0>
+struct MlasAlignedAllocator {
+    using value_type = T;
+
+    MlasAlignedAllocator() = default;
+
+    template<typename U, size_t A>
+    MlasAlignedAllocator(const MlasAlignedAllocator<U, A>&) {}
+
+    T* allocate(size_t n) {
+        // If RequiredAlignment > 0, use the required value
+        // Otherwise, use the value of MlasGetPreferredBufferAlignment()
+        size_t alignment = RequiredAlignment > 0 ?
+                          RequiredAlignment :
+                          MlasGetPreferredBufferAlignment();
+
+        size_t size = n * sizeof(T);
+        if (size % alignment != 0)  // check the size
+            size = ((size + alignment - 1) / alignment) * alignment;
+        #if defined(_MSC_VER)
+            void* ptr = _aligned_malloc(size, alignment);
+        #else
+            void* ptr = aligned_alloc(alignment, size);
+        #endif
+        if (!ptr) throw std::bad_alloc();
+        return static_cast<T*>(ptr);
+    }
+
+    void deallocate(T* ptr, size_t) {
+        #if defined(_MSC_VER)
+            _aligned_free(ptr);
+        #else
+            free(ptr);
+        #endif
+    }
+
+    template<typename U>
+    struct rebind {
+        using other = MlasAlignedAllocator<U, RequiredAlignment>;
+    };
+};
 
 static MLAS_FORCEINLINE __m256
 __lasx_xvzero()
@@ -310,7 +353,7 @@ Q8ComputePackBlkSum(
 )
 {
     SafeInt<size_t> size =  SafeInt<size_t>(N) * BlockCountK;
-    std::vector<float> QuantBScaleBeginCopy(size.Value());
+    std::vector<float, MlasAlignedAllocator<float, 32>> QuantBScaleBeginCopy(size.Value());
     std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
 
     MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
