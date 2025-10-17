@@ -5,7 +5,7 @@
 #include <math.h>
 
 #include "core/common/endian.h"
-#if defined(USE_CUDA)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 #include "cuda_bf16.h"  // from CUDA SDK
 #endif
 
@@ -102,7 +102,7 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
   }
 
   inline ORT_HOST_DEVICE BFloat16(float v) noexcept {
-#if defined(USE_CUDA) && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     val = __bfloat16_as_ushort(__float2bfloat16(v));
 #elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
@@ -147,7 +147,7 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
   }
 
   inline ORT_HOST_DEVICE float ToFloat() const noexcept {
-#ifdef USE_CUDA
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     return __bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&val));
 #elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
@@ -208,7 +208,7 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
 
   ORT_HOST_DEVICE operator float() const noexcept { return ToFloat(); }
 
-#ifdef USE_CUDA
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   ORT_HOST_DEVICE BFloat16(const __nv_bfloat16& value) { val = *reinterpret_cast<const unsigned short*>(&value); }
   explicit ORT_HOST_DEVICE operator __nv_bfloat16() const { return *reinterpret_cast<const __nv_bfloat16*>(&val); }
 #endif
