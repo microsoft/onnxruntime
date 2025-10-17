@@ -122,6 +122,7 @@ extends:
           build_config: 'RelWithDebInfo'
           PublishArchive: true
           PublishNugetToFeed: false
+          UseWebGPU: true
 
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:
