@@ -75,9 +75,9 @@ parameters:
 
 - name: CudaVersion
   type: string
-  default: '11.8'
+  default: '12.8'
   values:
-      - 11.8
+      - 13.0
       - 12.8
 
 - name: SpecificArtifact
@@ -123,7 +123,7 @@ stages:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
-            
+
       - ${{ if eq(parameters.buildJava, 'true') }}:
         - output: pipelineArtifact
           targetPath: $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}

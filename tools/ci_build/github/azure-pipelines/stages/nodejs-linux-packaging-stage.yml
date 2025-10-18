@@ -18,15 +18,15 @@ stages:
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: '11'
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        value: '13'
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: ${{ variables.linux_trt_version_cuda11 }}
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        value: ${{ variables.linux_trt_version_cuda13 }}
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
