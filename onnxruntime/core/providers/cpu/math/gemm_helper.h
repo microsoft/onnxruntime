@@ -93,7 +93,7 @@ void GemmBroadcastBias(ptrdiff_t M, ptrdiff_t N, T beta,
                        _In_opt_ const T* c_data, _In_opt_ const TensorShape* c_shape,
                        _Out_writes_(M* N) T* y_data) {
   // Broadcast the bias as needed if bias is given
-  if (beta != 0 && c_data != nullptr) {
+  if (beta != T(0.0f) && c_data != nullptr) {
     ORT_ENFORCE(c_shape != nullptr, "c_shape is required if c_data is provided");
     auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
     if (c_shape->Size() == 1) {

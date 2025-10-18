@@ -29,16 +29,6 @@ struct MLAS_SBGEMM_KERNEL_NEON {
     static constexpr MLAS_SBGEMM_STRIDES Strides{128, 128, 256};  // M:N:K
 };
 
-bool MLASCALL
-MlasBf16AccelerationSupported()
-{
-#if defined(MLAS_TARGET_ARM64)
-    return MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_BF16();
-#else
-    return false;
-#endif
-}
-
 /*
     This routine converts fp32 to bf16 and copies elements from the source
      matrix to the destination packed buffer.
