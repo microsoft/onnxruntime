@@ -174,6 +174,8 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
     qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V73;
   } else if (htp_arch_string == "75") {
     qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V75;
+  } else if (htp_arch_string == "81") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V81;
   } else {
     LOGS_DEFAULT(WARNING) << "Invalid HTP architecture: " << htp_arch_string;
   }
