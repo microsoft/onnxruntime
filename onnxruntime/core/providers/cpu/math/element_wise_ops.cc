@@ -13,6 +13,7 @@
 #include "core/mlas/inc/mlas.h"
 
 #include <cmath>
+#include <type_traits>
 
 namespace onnxruntime {
 // Supported types for operators that have type reduction enabled
@@ -624,8 +625,32 @@ Status Mul<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+// Helper function to check for division by zero in integer types
+template <typename T>
+Status CheckDivisionByZero(const Tensor& denominator_tensor) {
+  // Only check for integer types where division by zero causes SIGFPE
+  if constexpr (std::is_integral_v<T>) {
+    const T* data = denominator_tensor.Data<T>();
+    const size_t size = static_cast<size_t>(denominator_tensor.Shape().Size());
+    
+    for (size_t i = 0; i < size; ++i) {
+      if (data[i] == T{0}) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, 
+                               "Division by zero error in Div operator");
+      }
+    }
+  }
+  return Status::OK();
+}
+
 template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
+  // Get input tensors for validation
+  const auto& input_tensor_1 = context->RequiredInput<Tensor>(1);
+  
+  // Check for division by zero (only for integer types)
+  ORT_RETURN_IF_ERROR(CheckDivisionByZero<T>(input_tensor_1));
+  
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() / per_iter_bh.EigenInput1<T>().array();
