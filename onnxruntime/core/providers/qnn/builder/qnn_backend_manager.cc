@@ -376,31 +376,34 @@ Status QnnBackendManager::LoadQnnSerializerBackend() {
 }
 
 Status QnnBackendManager::LoadQnnSystemLib() {
+  if (!system_lib_loaded_) {
 #ifdef _WIN32
-  std::string system_lib_file = "QnnSystem.dll";
+    std::string system_lib_file = "QnnSystem.dll";
 #else
-  std::string system_lib_file = "libQnnSystem.so";
+    std::string system_lib_file = "libQnnSystem.so";
 #endif  // #ifdef _WIN32
-  LOGS_DEFAULT(INFO) << "Loading QnnSystem lib";
-  std::filesystem::path lib_file_path(backend_path_.c_str());
-  std::string sys_file_path(lib_file_path.remove_filename().string() + system_lib_file);
-  QnnSystemInterface_t* system_interface_provider{nullptr};
-  auto rt = GetQnnInterfaceProvider<QnnSystemInterfaceGetProvidersFn_t,
-                                    QnnSystemInterface_t>(sys_file_path.c_str(),
-                                                          "QnnSystemInterface_getProviders",
-                                                          &system_lib_handle_,
-                                                          {QNN_SYSTEM_API_VERSION_MAJOR,
-                                                           QNN_SYSTEM_API_VERSION_MINOR,
-                                                           QNN_SYSTEM_API_VERSION_PATCH},
-                                                          &system_interface_provider);
-  ORT_RETURN_IF_ERROR(rt);
-  Qnn_Version_t system_interface_version = GetQnnInterfaceApiVersion(system_interface_provider);
-  qnn_sys_interface_ = system_interface_provider->QNN_SYSTEM_INTERFACE_VER_NAME;
+    LOGS_DEFAULT(INFO) << "Loading QnnSystem lib";
+    std::filesystem::path lib_file_path(backend_path_.c_str());
+    std::string sys_file_path(lib_file_path.remove_filename().string() + system_lib_file);
+    QnnSystemInterface_t* system_interface_provider{nullptr};
+    auto rt = GetQnnInterfaceProvider<QnnSystemInterfaceGetProvidersFn_t,
+                                      QnnSystemInterface_t>(sys_file_path.c_str(),
+                                                            "QnnSystemInterface_getProviders",
+                                                            &system_lib_handle_,
+                                                            {QNN_SYSTEM_API_VERSION_MAJOR,
+                                                             QNN_SYSTEM_API_VERSION_MINOR,
+                                                             QNN_SYSTEM_API_VERSION_PATCH},
+                                                            &system_interface_provider);
+    ORT_RETURN_IF_ERROR(rt);
+    Qnn_Version_t system_interface_version = GetQnnInterfaceApiVersion(system_interface_provider);
+    qnn_sys_interface_ = system_interface_provider->QNN_SYSTEM_INTERFACE_VER_NAME;
 
-  LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << system_interface_version.major
-                     << "." << system_interface_version.minor
-                     << " backend provider name: " << system_interface_provider->providerName;
+    LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << system_interface_version.major
+                       << "." << system_interface_version.minor
+                       << " backend provider name: " << system_interface_provider->providerName;
 
+    system_lib_loaded_ = true;
+  }
   return Status::OK();
 }
 
@@ -639,6 +642,7 @@ Status QnnBackendManager::InitializeProfiling() {
     return Status::OK();
   }
 
+  bool enable_optrace = false;
   QnnProfile_Level_t qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
   if (ProfilingLevel::BASIC == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
@@ -646,9 +650,35 @@ Status QnnBackendManager::InitializeProfiling() {
   } else if (ProfilingLevel::DETAILED == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_DETAILED;
     LOGS_DEFAULT(VERBOSE) << "Profiling level set to detailed.";
+  } else if (ProfilingLevel::OPTRACE == profiling_level_merge_) {
+    qnn_profile_level = QNN_PROFILE_LEVEL_DETAILED;
+    enable_optrace = true;
+    LOGS_DEFAULT(VERBOSE) << "Profiling level set to optrace.";
   }
+
   Qnn_ErrorHandle_t result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile! Error: ", QnnErrorHandleToString(result));
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  profiling_enabled_ = true;
+  ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
+
+  if (enable_optrace) {
+    QnnProfile_Config_t optrace_config = QNN_PROFILE_CONFIG_INIT;
+    optrace_config.option = QNN_PROFILE_CONFIG_OPTION_ENABLE_OPTRACE;
+    optrace_config.enableOptrace = enable_optrace;
+
+    const QnnProfile_Config_t* profile_configs[] = {&optrace_config, nullptr};
+    result = qnn_interface_.profileSetConfig(profile_backend_handle_, profile_configs);
+
+    ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to enable op trace! Error: ", QnnErrorHandleToString(result));
+  }
+#else
+  if (enable_optrace) {
+    LOGS_DEFAULT(WARNING) << "Profiling level set to optrace, but QNN SDK Version is older than 2.29.0. "
+                          << "Profiling level will be set to detailed instead.";
+  }
+#endif
 
   return Status::OK();
 }
@@ -1128,6 +1158,13 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                   "Invalid function pointer for contextCreateFromBinary.");
 
+    qnn::profile::ProfilingInfo profiling_info;
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    if (ProfilingEnabled()) {
+      profiling_info.start_time = qnn::utils::GetTimeStampInUs();
+    }
+#endif
+
     rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                                 device_handle_,
                                                 context_configs,
@@ -1135,8 +1172,19 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                                 buffer_length,
                                                 &context,
                                                 profile_backend_handle_);
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    if (ProfilingEnabled()) {
+      profiling_info.stop_time = qnn::utils::GetTimeStampInUs();
+      profiling_info.method_type = ProfilingMethodType::CREATE_FROM_BINARY;
+      profiling_info.graph_name = node_name;
+    }
+#endif
+
     ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
     ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
+
+    ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo(profiling_info));
 
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
   }
@@ -1158,8 +1206,6 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
   sys_ctx_handle = nullptr;
-
-  ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
   context_created_ = true;
 
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
@@ -1569,7 +1615,7 @@ void QnnBackendManager::ReleaseResources() {
   return;
 }
 
-Status QnnBackendManager::ExtractBackendProfilingInfo() {
+Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInfo& profiling_info) {
   if (ProfilingLevel::OFF == profiling_level_merge_ || ProfilingLevel::INVALID == profiling_level_merge_) {
     return Status::OK();
   }
@@ -1603,6 +1649,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
   ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
+  LOGS(*logger_, VERBOSE) << "Extracting profiling events for graph " << profiling_info.graph_name;
   const QnnProfile_EventId_t* profile_events{nullptr};
   uint32_t num_events{0};
   Qnn_ErrorHandle_t result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
@@ -1629,34 +1676,35 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
       LOGS(*logger_, VERBOSE) << "The QNN backend does not support extended event data.";
     }
 
-    std::ofstream outfile;
-    if (!profiling_file_path_.empty()) {
-      // Write to CSV in append mode
-      std::ifstream infile(profiling_file_path_.c_str());
-      bool exists = infile.good();
-      infile.close();
+    profiling_info.csv_output_filepath = profiling_file_path_;
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    profiling_info.num_events = num_events;
+#endif
 
-      outfile.open(profiling_file_path_, std::ios_base::app);
-      ORT_RETURN_IF(!outfile.is_open(), "Failed to open profiling file: ", profiling_file_path_);
-      // If file didn't exist before, write the header
-      if (!exists) {
-        outfile << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";
-      }
+    profile::Serializer profile_writer(profiling_info,
+                                       qnn_sys_interface_,
+                                       tracelogging_provider_ep_enabled);
+    if (!profiling_file_path_.empty()) {
+      ORT_RETURN_IF_ERROR(profile_writer.InitCsvFile());
     }
 
     for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", outfile, backendSupportsExtendedEventData,
-                                tracelogging_provider_ep_enabled));
+          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", profile_writer,
+                                backendSupportsExtendedEventData));
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingSubEvents(*(profile_events + event_idx), outfile, backendSupportsExtendedEventData,
-                                    tracelogging_provider_ep_enabled));
+          ExtractProfilingSubEvents(*(profile_events + event_idx), profile_writer,
+                                    backendSupportsExtendedEventData));
     }
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    ORT_RETURN_IF_ERROR(profile_writer.SerializeEventsToQnnLog());
+#endif
 
-    if (outfile) {
+    if (!profiling_file_path_.empty()) {
       LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to file ("
                               << profiling_file_path_ << ")";
     }
+
     if (tracelogging_provider_ep_enabled) {
       LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to ETW";
     }
@@ -1667,9 +1715,8 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
 Status QnnBackendManager::ExtractProfilingSubEvents(
     QnnProfile_EventId_t profile_event_id,
-    std::ofstream& outfile,
-    bool useExtendedEventData,
-    bool tracelogging_provider_ep_enabled) {
+    profile::Serializer& profile_writer,
+    bool useExtendedEventData) {
   const QnnProfile_EventId_t* profile_sub_events{nullptr};
   uint32_t num_sub_events{0};
   Qnn_ErrorHandle_t result = qnn_interface_.profileGetSubEvents(profile_event_id, &profile_sub_events, &num_sub_events);
@@ -1678,13 +1725,28 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
   if (num_sub_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_sub_events: " << profile_sub_events << " num_sub_events: " << num_sub_events;
 
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    QnnSystemProfile_ProfileEventV1_t* parent_system_event = nullptr;
+    parent_system_event = profile_writer.GetParentSystemEvent(profile_event_id);
+    if (parent_system_event == nullptr) {
+      parent_system_event = profile_writer.GetSystemEventPointer(profile_event_id);
+      profile_writer.AddSubEventList(num_sub_events, parent_system_event);
+    }
+#endif
+
     for (size_t sub_event_idx = 0; sub_event_idx < num_sub_events; sub_event_idx++) {
+      QnnProfile_EventId_t subevent_id = *(profile_sub_events + sub_event_idx);
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+
+      ORT_RETURN_IF_ERROR(profile_writer.SetParentSystemEvent(subevent_id, parent_system_event));
+
+#endif
+
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingEvent(*(profile_sub_events + sub_event_idx), "SUB-EVENT", outfile, useExtendedEventData,
-                                tracelogging_provider_ep_enabled));
+          ExtractProfilingEvent(subevent_id, "SUB-EVENT", profile_writer, useExtendedEventData));
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx), outfile, useExtendedEventData,
-                                    tracelogging_provider_ep_enabled));
+          ExtractProfilingSubEvents(subevent_id, profile_writer, useExtendedEventData));
     }
 
     LOGS(*logger_, VERBOSE) << "Wrote QNN profiling sub events (" << num_sub_events << ")";
@@ -1695,165 +1757,42 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
 
 Status QnnBackendManager::ExtractProfilingEvent(
     QnnProfile_EventId_t profile_event_id,
-    const std::string& eventLevel,
-    std::ofstream& outfile,
-    bool useExtendedEventData,
-    bool tracelogging_provider_ep_enabled) {
+    const std::string& event_level,
+    profile::Serializer& profile_writer,
+    bool useExtendedEventData) {
   if (useExtendedEventData) {
-    return ExtractProfilingEventExtended(profile_event_id, eventLevel, outfile, tracelogging_provider_ep_enabled);
+    return ExtractProfilingEventExtended(profile_event_id, event_level, profile_writer);
   } else {
-    return ExtractProfilingEventBasic(profile_event_id, eventLevel, outfile, tracelogging_provider_ep_enabled);
+    return ExtractProfilingEventBasic(profile_event_id, event_level, profile_writer);
   }
 }
 
 Status QnnBackendManager::ExtractProfilingEventBasic(
     QnnProfile_EventId_t profile_event_id,
-    const std::string& eventLevel,
-    std::ofstream& outfile,
-    bool tracelogging_provider_ep_enabled) {
+    const std::string& event_level,
+    profile::Serializer& profile_writer) {
   QnnProfile_EventData_t event_data;
   Qnn_ErrorHandle_t result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(result & 0xFFFF);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
-  std::string message = GetEventTypeString(event_data.type);
-  std::string unit = GetUnitString(event_data.unit);
-
-  if (outfile) {
-    outfile << "UNKNOWN"
-            << ","
-            << message << ","
-            << event_data.value << ","
-            << unit << ","
-            << "BACKEND"
-            << ","
-            << eventLevel << ","
-            << (event_data.identifier ? event_data.identifier : "NULL") << "\n";
-  }
-
-  if (tracelogging_provider_ep_enabled) {
-#ifdef _WIN32
-    LogQnnProfileEventAsTraceLogging(
-        (uint64_t)0,
-        message,
-        std::to_string(event_data.value),
-        unit,
-        "BACKEND",
-        eventLevel,
-        (event_data.identifier ? event_data.identifier : "NULL"));
-#endif
-  }
+  ORT_RETURN_IF_ERROR(profile_writer.ProcessEvent(profile_event_id, event_level, event_data));
 
   return Status::OK();
 }
 
 Status QnnBackendManager::ExtractProfilingEventExtended(
     QnnProfile_EventId_t profile_event_id,
-    const std::string& eventLevel,
-    std::ofstream& outfile,
-    bool tracelogging_provider_ep_enabled) {
+    const std::string& event_level,
+    profile::Serializer& profile_writer) {
   QnnProfile_ExtendedEventData_t event_data_extended;
   auto resultGetExtendedEventData = qnn_interface_.profileGetExtendedEventData(profile_event_id, &event_data_extended);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(resultGetExtendedEventData & 0xFFFF);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != errorCode, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
-  // need to check the version first
-  std::string message = GetEventTypeString(event_data_extended.v1.type);
-  std::string unit = GetUnitString(event_data_extended.v1.unit);
-
-  if (outfile) {
-    if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
-      outfile << event_data_extended.v1.timestamp << ","
-              << message << ","
-              << ExtractQnnScalarValue(event_data_extended.v1.value) << ","
-              << unit << ","
-              << "BACKEND"
-              << ","
-              << eventLevel << ","
-              << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
-    }
-  }
-
-  if (tracelogging_provider_ep_enabled) {
-#ifdef _WIN32
-    LogQnnProfileEventAsTraceLogging(
-        event_data_extended.v1.timestamp,
-        message,
-        ExtractQnnScalarValue(event_data_extended.v1.value),
-        unit,
-        "BACKEND",
-        eventLevel,
-        (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL"));
-#endif
-  }
+  ORT_RETURN_IF_ERROR(profile_writer.ProcessExtendedEvent(profile_event_id, event_level, event_data_extended));
 
   return Status::OK();
-}
-
-#ifdef _WIN32
-void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
-    uint64_t timestamp,
-    const std::string& message,
-    const std::string& qnnScalarValue,
-    const std::string& unit,
-    const std::string& timingSource,
-    const std::string& eventLevel,
-    const char* eventIdentifier) {
-  QnnTelemetry& qnn_telemetry = QnnTelemetry::Instance();
-  qnn_telemetry.LogQnnProfileEvent(timestamp, message, qnnScalarValue, unit, timingSource, eventLevel, eventIdentifier);
-}
-#endif
-
-const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {
-  const auto& unitStringMap = GetUnitStringMap();
-  auto it = unitStringMap.find(unitType);
-  if (it != unitStringMap.end()) {
-    return it->second;
-  }
-  static const std::string unknown = "UNKNOWN";
-  return unknown;
-}
-
-const std::unordered_map<QnnProfile_EventUnit_t, std::string>& QnnBackendManager::GetUnitStringMap() {
-  static const std::unordered_map<QnnProfile_EventUnit_t, std::string> unitStringMap = {
-      {QNN_PROFILE_EVENTUNIT_MICROSEC, "US"},
-      {QNN_PROFILE_EVENTUNIT_BYTES, "BYTES"},
-      {QNN_PROFILE_EVENTUNIT_CYCLES, "CYCLES"},
-      {QNN_PROFILE_EVENTUNIT_COUNT, "COUNT"},
-      {QNN_PROFILE_EVENTUNIT_OBJECT, "OBJECT"},
-      {QNN_PROFILE_EVENTUNIT_BACKEND, "BACKEND"}};
-  return unitStringMap;
-}
-
-const std::string QnnBackendManager::GetEventTypeString(QnnProfile_EventType_t eventType) {
-  // Interpret the event type
-  switch (eventType) {
-    case QNN_PROFILE_EVENTTYPE_INIT:
-      return "INIT";
-    case QNN_PROFILE_EVENTTYPE_FINALIZE:
-      return "FINALIZE";
-    case QNN_PROFILE_EVENTTYPE_EXECUTE:
-      return "EXECUTE";
-    case QNN_PROFILE_EVENTTYPE_NODE:
-      return "NODE";
-    case QNN_PROFILE_EVENTTYPE_EXECUTE_QUEUE_WAIT:
-      return "EXECUTE QUEUE WAIT";
-    case QNN_PROFILE_EVENTTYPE_EXECUTE_PREPROCESS:
-      return "EXECUTE PREPROCESS";
-    case QNN_PROFILE_EVENTTYPE_EXECUTE_DEVICE:
-      return "EXECUTE DEVICE";
-    case QNN_PROFILE_EVENTTYPE_EXECUTE_POSTPROCESS:
-      return "EXECUTE POSTPROCESS";
-    case QNN_PROFILE_EVENTTYPE_DEINIT:
-      return "DE-INIT";
-    case QNN_PROFILE_EVENTTYPE_BACKEND:
-      return "BACKEND";
-    default:
-      if (eventType > QNN_PROFILE_EVENTTYPE_BACKEND) {
-        return "BACKEND";
-      }
-      return "UNKNOWN";
-  }
 }
 
 const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error) {
@@ -1879,45 +1818,6 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
 
 std::string QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
   return utils::GetQnnErrorMessage(qnn_interface_, error);
-}
-
-const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {
-  switch (scalar.dataType) {
-    case QNN_DATATYPE_INT_8:
-      return std::to_string(static_cast<int>(scalar.int8Value));
-    case QNN_DATATYPE_INT_16:
-      return std::to_string(scalar.int16Value);
-    case QNN_DATATYPE_INT_32:
-      return std::to_string(scalar.int32Value);
-    case QNN_DATATYPE_INT_64:
-      return std::to_string(scalar.int64Value);
-    case QNN_DATATYPE_UINT_8:
-      return std::to_string(static_cast<unsigned int>(scalar.uint8Value));
-    case QNN_DATATYPE_UINT_16:
-      return std::to_string(scalar.uint16Value);
-    case QNN_DATATYPE_UINT_32:
-      return std::to_string(scalar.uint32Value);
-    case QNN_DATATYPE_UINT_64:
-      return std::to_string(scalar.uint64Value);
-    case QNN_DATATYPE_FLOAT_16:
-      return std::to_string(scalar.floatValue);
-    case QNN_DATATYPE_FLOAT_32:
-      return std::to_string(scalar.floatValue);
-    case QNN_DATATYPE_SFIXED_POINT_8:
-    case QNN_DATATYPE_SFIXED_POINT_16:
-    case QNN_DATATYPE_SFIXED_POINT_32:
-      return std::to_string(scalar.int32Value);  // Assume using int types for signed fixed points.
-    case QNN_DATATYPE_UFIXED_POINT_8:
-    case QNN_DATATYPE_UFIXED_POINT_16:
-    case QNN_DATATYPE_UFIXED_POINT_32:
-      return std::to_string(scalar.uint32Value);  // Assume using unsigned int types for unsigned fixed points.
-    case QNN_DATATYPE_BOOL_8:
-      return scalar.bool8Value ? "true" : "false";
-    case QNN_DATATYPE_STRING:
-      return scalar.stringValue ? scalar.stringValue : "NULL";
-    default:
-      return "UNKNOWN";
-  }
 }
 
 QnnBackendManager::~QnnBackendManager() {

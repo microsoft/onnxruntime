@@ -1426,6 +1426,11 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
   return Status::OK();
 }
 
+uint64_t GetTimeStampInUs() {
+  auto timestamp = std::chrono::steady_clock::now().time_since_epoch();
+  return std::chrono::duration_cast<std::chrono::microseconds>(timestamp).count();
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime
