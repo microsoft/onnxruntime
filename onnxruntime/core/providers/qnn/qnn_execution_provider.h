@@ -49,6 +49,11 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const override;
+
+  common::Status ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
+                                                        OrtCompiledModelCompatibility& model_compatibility) const override;
+
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;

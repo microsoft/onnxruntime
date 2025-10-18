@@ -4,6 +4,7 @@
 #include "core/providers/qnn/builder/qnn_utils.h"
 
 #include <algorithm>
+#include <charconv>
 #include <functional>
 #include <limits>
 #include <map>
@@ -1424,6 +1425,14 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
   perm[rank - 1] = axis;
 
   return Status::OK();
+}
+
+bool StrToInt(std::string_view str, int& num) {
+  auto res = std::from_chars(str.data(), str.data() + str.size(), num);
+  if (res.ec == std::errc::invalid_argument) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace utils
