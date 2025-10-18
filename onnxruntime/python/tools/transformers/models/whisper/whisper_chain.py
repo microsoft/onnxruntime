@@ -54,16 +54,19 @@ def chain_model(args):
     config = WhisperConfig.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer = WhisperTokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
+    use_fp16_inputs = args.precision == Precision.FLOAT16 or (
+        args.precision in (Precision.INT8, Precision.INT4) and args.use_gpu
+    )
     # Create inputs/outputs for WhisperBeamSearch op
-    temperature_name = "temperature_fp16" if args.precision == Precision.FLOAT16 else "temperature"
+    temperature_name = "temperature_fp16" if use_fp16_inputs else "temperature"
     beam_inputs = [
-        "input_features_fp16" if args.precision == Precision.FLOAT16 else "input_features",
+        "input_features_fp16" if use_fp16_inputs else "input_features",
         "max_length",
         "min_length",
         "num_beams",
         "num_return_sequences",
-        "length_penalty_fp16" if args.precision == Precision.FLOAT16 else "length_penalty",
-        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "repetition_penalty",
+        "length_penalty_fp16" if use_fp16_inputs else "length_penalty",
+        "repetition_penalty_fp16" if use_fp16_inputs else "repetition_penalty",
         "vocab_mask" if args.use_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
         "",  # attention mask
@@ -74,8 +77,8 @@ def chain_model(args):
         temperature_name if args.use_temperature else "",
     ]
 
-    sequence_scores_name = "sequence_scores_fp16" if args.precision == Precision.FLOAT16 else "sequence_scores"
-    scores_name = "scores_fp16" if args.precision == Precision.FLOAT16 else "scores"
+    sequence_scores_name = "sequence_scores_fp16" if use_fp16_inputs else "sequence_scores"
+    scores_name = "scores_fp16" if use_fp16_inputs else "scores"
     beam_outputs = [
         "sequences",
         sequence_scores_name if args.output_sequence_scores else "",
@@ -85,7 +88,7 @@ def chain_model(args):
     ]
 
     graph_nodes = []
-    if args.precision == Precision.FLOAT16:
+    if use_fp16_inputs:
         input_features_cast_node = helper.make_node(
             "Cast",
             inputs=["input_features"],
