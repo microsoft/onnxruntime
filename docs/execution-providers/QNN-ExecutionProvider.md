@@ -528,7 +528,7 @@ session = ort.InferenceSession(
 )
 ```
 
-Upon successful session creation, three files will be genearted:
+Upon successful session creation, three files will be generated:
 - model_ctx.onnx
 - model_qnn.bin
 - QNNExecutionProvider_QNN__<number>_schematic.bin
@@ -536,7 +536,7 @@ Upon successful session creation, three files will be genearted:
 model_ctx.onnx is an onnx model with a node that points to the model_qnn.bin context binary, which will be used by the HTP backend for execution. The _schematic.bin file will be used by qnn-profile-viewer to generate QHAS data.
 
 ### Generating QHAS Data
-Previously for general profiling data, the a session was created and executed with ""model.onnx". However, now there is a new _ctx.onnx model that utilizes a newly generated context binary. As such, a new inference session must be created with the new _ctx.onnx model:
+Previously for general profiling data, a session was created and executed with "model.onnx". However, now there is a new _ctx.onnx model that utilizes a newly generated context binary. As such, a new inference session must be created with the new _ctx.onnx model:
 ```python
 # Continuing from Optrace Setup:
 
@@ -553,22 +553,25 @@ input0 = np.ones((1,2,3,4), dtype=np.float32)
 result = optrace_session.run(None, {"input": input0})
 ```
 
-As before under "General Usage", a .csv file (optrace.csv) and a _qnn.log file (optrace_qnn.log) are generated. qnn-profile-viewer will be used again, but with different parameters:
+As before under "General Usage", a .csv file (optrace.csv) and a _qnn.log file (optrace_qnn.log) are generated.
+
+qnn-profile-viewer can be used with different parameters and files to parse all the data written to optrace_qnn.log:
 ```console
 > qnn-profile-viewer.exe --config .\config.json --reader .\QnnHtpOptraceProfilingReader.dll --input_log .\optrace_qnn.log  --schematic .\QNNExecutionProvider_QNN_12345_schematic.bin --output optrace.json
 ```
 
-Three new files are used:
-- config.json: Please refer to the "Post Process (Chrometrace Generation)" section [on this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-optrace-profiling).
-- QnnHtpOptraceProfilingReader.dll: Provided as part of the QAIRT SDK. The corresponding file for Linux is libQnnHtpOptraceProfilingReader.so.
-- QNNExecutionProvider_QNN_12345_schematic.bin: The name will vary. This file must be the same one generated alongside the context binary under "Optrace Setup".
-
-Additionally, the output file is now a .json file contaning chrometrace data. This .json file can be opened with either [Perfetto Trace Vizualizer](https://ui.perfetto.dev/) or with chrome://tracing.
+Please note:
+- Three new files are used:
+  - config.json: Please refer to the "Post Process (Chrometrace Generation)" section [on this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-optrace-profiling).
+  - QnnHtpOptraceProfilingReader.dll: Provided as part of the QAIRT SDK. The corresponding file for Linux is libQnnHtpOptraceProfilingReader.so.
+  - QNNExecutionProvider_QNN_12345_schematic.bin: The name will vary. This file must be the same one generated alongside the context binary under "Optrace Setup".
+- The output file is now a .json file containing chrometrace data. This .json file can be opened with either [Perfetto Trace Vizualizer](https://ui.perfetto.dev/) or with chrome://tracing.
 
 After running qnn-profile-viewer, you should see a handful of .json files generated with the same prefix as the --output filename parameter. You should also see an .html file generated as well. This .html file can be opened by Chrome to view the chrometrace in a more user-friendly GUI.
 
 ### Additional References
 For more information how to interpret QHAS data, please refer to [this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-analysis-summary-qhas-).
+
 For more information on the data collected with optrace profiling, please refer to [this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-optrace-profiling).
 
 ## QNN EP weight sharing
