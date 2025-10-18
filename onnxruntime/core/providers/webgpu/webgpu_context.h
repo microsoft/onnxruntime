@@ -41,6 +41,7 @@ struct WebGpuContextConfig {
   ValidationMode validation_mode;
   bool preserve_device;
   bool small_storage_buffer_binding_size_for_testing;
+  int power_preference;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -177,8 +178,8 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device, bool small_storage_buffer_binding_size_for_testing = false)
-      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device}, small_storage_buffer_binding_size_for_testing_{small_storage_buffer_binding_size_for_testing} {}
+  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device, bool small_storage_buffer_binding_size_for_testing = false, int power_preference = static_cast<int>(wgpu::PowerPreference::HighPerformance))
+      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device}, small_storage_buffer_binding_size_for_testing_{small_storage_buffer_binding_size_for_testing}, power_preference_{power_preference} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
@@ -267,6 +268,7 @@ class WebGpuContext final {
   bool is_profiling_ = false;
   bool preserve_device_;
   bool small_storage_buffer_binding_size_for_testing_;
+  int power_preference_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP
