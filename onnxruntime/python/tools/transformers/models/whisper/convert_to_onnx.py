@@ -11,7 +11,6 @@ import os
 import onnx
 import torch
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
-from onnx.external_data_helper import load_external_data_for_model
 from whisper_chain import chain_model
 from whisper_encoder import WhisperEncoder
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
@@ -20,8 +19,6 @@ from onnxruntime.quantization.matmul_nbits_quantizer import (
     KQuantWeightOnlyQuantConfig,
     MatMulNBitsQuantizer,
     QuantFormat,
-    RTNWeightOnlyQuantConfig,
-    KQuantWeightOnlyQuantConfig,
 )
 
 logger = logging.getLogger("")
@@ -297,28 +294,20 @@ def parse_arguments(argv=None):
     ###################################
 
     quant_args.add_argument(
-        "--quantize_embedding_layer",
+        "--accuracy_level",
+        default=0,
         required=False,
-        action="store_true",
-        help="Quantize MatMul, GEMM, and Gather.",
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation.",
     )
-    quant_args.set_defaults(quantize_embedding_layer=False)
 
     quant_args.add_argument(
-        "--quantize_per_channel",
+        "--quantize_symmetric",
         required=False,
         action="store_true",
-        help="Quantize weights per each channel.",
+        help="Quantize weights symmetrically",
     )
-    quant_args.set_defaults(quantize_per_channel=False)
-
-    quant_args.add_argument(
-        "--quantize_reduce_range",
-        required=False,
-        action="store_true",
-        help="Quantize weights with 7 bits.",
-    )
-    quant_args.set_defaults(quantize_reduce_range=False)
+    quant_args.set_defaults(quantize_symmetric=False)
 
     args = parser.parse_args(argv)
 
@@ -331,6 +320,7 @@ def parse_arguments(argv=None):
     return args
 
 
+# quant_method is reserved for mixed precision in future
 def make_quant_algo_config(precision, quant_method: str, matmul_nodes=None):
     customized_weight_config = {}
     quant_algo_config = None
@@ -341,10 +331,7 @@ def make_quant_algo_config(precision, quant_method: str, matmul_nodes=None):
             customized_weight_config[node_name] = {"bits": 8}
         quant_algo_config = KQuantWeightOnlyQuantConfig(customized_weight_config=customized_weight_config)
     else:
-        if quant_method == "rtn":
-            quant_algo_config = RTNWeightOnlyQuantConfig()
-        elif quant_method == "k_quant":
-            quant_algo_config = KQuantWeightOnlyQuantConfig(customized_weight_config=customized_weight_config)
+        quant_algo_config = KQuantWeightOnlyQuantConfig(customized_weight_config=customized_weight_config)
 
     return quant_algo_config
 
@@ -366,12 +353,13 @@ def export_onnx_models(
     output_qk: bool = False,
     overwrite: bool = False,
     use_int32_inputs: bool = True,
-    quantize_embedding_layer: bool = False,
-    quantize_per_channel: bool = False,
-    quantize_reduce_range: bool = False,
+    accuracy_level: int = 0,
+    quantize_symmetric: bool = False,
     provider: str = "cpu",
 ):
     device = torch.device("cuda" if use_gpu else "cpu")
+    if not use_gpu:
+        accuracy_level = 4  # change to 4 for CPU EP
     use_fp16_inputs = precision == Precision.FLOAT16 or (precision in (Precision.INT8, Precision.INT4) and use_gpu)
 
     models = WhisperHelper.load_model(
@@ -468,16 +456,15 @@ def export_onnx_models(
                         )
 
                 if precision in (Precision.INT8, Precision.INT4):
-                    onnx_model = onnx.load(onnx_path, load_external_data=False)
-                    load_external_data_for_model(onnx_model, os.path.dirname(onnx_path))
+                    onnx_model = onnx.load(onnx_path, load_external_data=True)
                     matmul_nodes = [node.name for node in onnx_model.graph.node if node.op_type == "MatMul"]
                     quant_algo_config = make_quant_algo_config(precision, "k_quant", matmul_nodes)
 
                     quant = MatMulNBitsQuantizer(
                         model=onnx_model,
                         block_size=32,
-                        is_symmetric=True,
-                        accuracy_level=4,
+                        is_symmetric=quantize_symmetric,
+                        accuracy_level=accuracy_level,
                         quant_format=QuantFormat.QOperator,
                         op_types_to_quantize=("MatMul",),
                         algo_config=quant_algo_config,
@@ -493,7 +480,7 @@ def export_onnx_models(
                         save_as_external_data=True,
                         all_tensors_to_one_file=True,
                         location=os.path.basename(output_path) + ".data",
-                        size_threshold=1024,
+                        size_threshold=0,
                         convert_attribute=False,
                     )
             else:
@@ -537,9 +524,8 @@ def main(argv=None):
         args.output_cross_qk,
         args.overwrite,
         not args.use_int64_inputs,
-        args.quantize_embedding_layer,
-        args.quantize_per_channel,
-        args.quantize_reduce_range,
+        args.accuracy_level,
+        args.quantize_symmetric,
         args.provider,
     )
 
