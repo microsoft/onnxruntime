@@ -34,7 +34,7 @@ parameters:
   type: string
   default: '12.8'
   values:
-    - 11.8
+    - 13.0
     - 12.8
 
 stages:
