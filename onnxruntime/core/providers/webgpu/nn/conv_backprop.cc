@@ -4,7 +4,7 @@
 #include <string>
 #include <sstream>
 #include "core/common/inlined_containers.h"
-#include "core/providers/webgpu/nn/conv_backprop_webgpu.h"
+#include "core/providers/webgpu/nn/conv_backprop.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 namespace onnxruntime {
 namespace webgpu {
