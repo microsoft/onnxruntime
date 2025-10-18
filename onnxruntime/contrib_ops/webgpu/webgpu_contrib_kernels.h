@@ -13,7 +13,7 @@ namespace webgpu {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 
-Status RegisterWebGpuContribKernels(KernelRegistry& kernel_registry);
+Status RegisterWebGpuContribKernels(KernelRegistry& kernel_registry, bool enable_graph_capture = false);
 
 }  // namespace webgpu
 }  // namespace contrib
