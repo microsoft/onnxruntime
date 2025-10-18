@@ -23,6 +23,7 @@ namespace test {
 TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
   const std::string& registration_name = Utils::example_ep_info.registration_name;
+  const std::string& ep_name = Utils::example_ep_info.ep_name;
 
   const OrtApi* c_api = &Ort::GetApi();
   // this should load the library and create OrtEpDevice
@@ -35,10 +36,8 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
   // should be one device for the example EP
   auto num_test_ep_devices = std::count_if(ep_devices, ep_devices + num_devices,
-                                           [&registration_name, &c_api](const OrtEpDevice* device) {
-                                             // the example uses the registration name for the EP name
-                                             // but that is not a requirement and the two can differ.
-                                             return c_api->EpDevice_EpName(device) == registration_name;
+                                           [&ep_name, &c_api](const OrtEpDevice* device) {
+                                             return c_api->EpDevice_EpName(device) == ep_name;
                                            });
   ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
 
@@ -50,6 +49,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
 TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
   const std::string& registration_name = Utils::example_ep_info.registration_name;
+  const std::string& ep_name = Utils::example_ep_info.ep_name;
 
   // this should load the library and create OrtEpDevice
   ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
@@ -58,14 +58,13 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
 
   // should be one device for the example EP
   auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
-                                     [&registration_name](Ort::ConstEpDevice& device) {
-                                       // the example uses the registration name for the EP name
-                                       // but that is not a requirement and the two can differ.
-                                       return device.EpName() == registration_name;
+                                     [&ep_name](Ort::ConstEpDevice& device) {
+                                       return device.EpName() == ep_name;
                                      });
   ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by the test library.";
 
-  // test all the C++ getters. expected values are from \onnxruntime\test\autoep\library\example_plugin_ep.cc
+  // test all the C++ getters.
+  // expected values are from \onnxruntime\test\autoep\library\example_plugin_ep\*.cc
   ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso");
 
   auto metadata = test_ep_device->EpMetadata();
@@ -89,6 +88,53 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 }
 
+// Test loading example_plugin_ep_virt_gpu and its associated OrtEpDevice/OrtHardwareDevice.
+// This EP creates a new OrtHardwareDevice instance that represents a virtual GPU and gives to ORT.
+TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
+  const std::filesystem::path& library_path = Utils::example_ep_virt_gpu_info.library_path;
+  const std::string& registration_name = Utils::example_ep_virt_gpu_info.registration_name;
+  const std::string& ep_name = Utils::example_ep_virt_gpu_info.ep_name;
+
+  // this should load the library and create OrtEpDevice
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+
+  // should be one device for the example EP
+  auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
+                                     [&ep_name](Ort::ConstEpDevice& device) {
+                                       return device.EpName() == ep_name;
+                                     });
+  ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by " << ep_name;
+
+  // test all the C++ getters.
+  // expected values are from \onnxruntime\test\autoep\library\example_plugin_ep_virt_gpu\*.cc
+  ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso2");
+
+  auto metadata = test_ep_device->EpMetadata();
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), "0.1.0");
+  ASSERT_STREQ(metadata.GetValue("ex_key"), "ex_value");
+
+  auto options = test_ep_device->EpOptions();
+  ASSERT_STREQ(options.GetValue("compile_optimization"), "O3");
+
+  // Check the virtual GPU device info.
+  Ort::ConstHardwareDevice virt_gpu_device = test_ep_device->Device();
+  ASSERT_EQ(virt_gpu_device.Type(), OrtHardwareDeviceType_GPU);
+  ASSERT_EQ(virt_gpu_device.VendorId(), 0xB358);
+  ASSERT_EQ(virt_gpu_device.DeviceId(), 0);
+  ASSERT_STREQ(virt_gpu_device.Vendor(), test_ep_device->EpVendor());
+
+  // OrtHardwareDevice should have 2 metadata entries ("DiscoveredBy" and "IsVirtual")
+  Ort::ConstKeyValuePairs device_metadata = virt_gpu_device.Metadata();
+  std::unordered_map<std::string, std::string> metadata_entries = device_metadata.GetKeyValuePairs();
+  ASSERT_EQ(metadata_entries.size(), 2);
+  ASSERT_EQ(metadata_entries[kOrtHardwareDevice_MetadataKey_DiscoveredBy], ep_name);
+  ASSERT_EQ(metadata_entries[kOrtHardwareDevice_MetadataKey_IsVirtual], "1");
+
+  // and this should unload it without throwing
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
 }  // namespace test
 }  // namespace onnxruntime
 

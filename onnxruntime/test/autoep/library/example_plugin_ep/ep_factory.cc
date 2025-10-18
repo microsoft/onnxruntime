@@ -5,6 +5,8 @@
 
 #include <cassert>
 
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+
 #include "ep.h"
 #include "ep_allocator.h"
 #include "ep_arena.h"
@@ -12,13 +14,14 @@
 #include "ep_stream_support.h"
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
-    : ApiPtrs(apis), default_logger_{default_logger}, ep_name_{ep_name} {
+    : OrtEpFactory{}, ApiPtrs(apis), default_logger_{default_logger}, ep_name_{ep_name} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
   GetVendorId = GetVendorIdImpl;
   GetVersion = GetVersionImpl;
 
+  GetAdditionalHardwareDevices = GetAdditionalHardwareDevicesImpl;  // optional. can be null.
   GetSupportedDevices = GetSupportedDevicesImpl;
 
   CreateEp = CreateEpImpl;
@@ -95,6 +98,21 @@ uint32_t ORT_API_CALL ExampleEpFactory::GetVendorIdImpl(const OrtEpFactory* this
 const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
   return factory->ep_version_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEpFactory* /*this_ptr*/,
+                                                                           const OrtHardwareDevice* const* /*found_devices*/,
+                                                                           size_t /*num_found_devices*/,
+                                                                           OrtHardwareDevice** /*additional_devices*/,
+                                                                           size_t /*max_additional_devices*/,
+                                                                           size_t* num_additional_devices) noexcept {
+  // EP factory can provide ORT with additional hardware devices that ORT did not find, or that are not
+  // available on the target machine but could serve as compilation targets.
+
+  // This example EP does not provide any additional hardware devices.
+  *num_additional_devices = 0;
+  return nullptr;
 }
 
 /*static*/
@@ -190,8 +208,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
   std::string ep_context_enable;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(factory->ort_api, *session_options,
-                                                 "ep.context_enable", "0", ep_context_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.context_enable", "0", ep_context_enable));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";

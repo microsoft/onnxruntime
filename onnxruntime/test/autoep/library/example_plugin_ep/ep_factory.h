@@ -7,7 +7,7 @@
 
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
-#include "example_plugin_ep_utils.h"
+#include "../plugin_ep_utils.h"
 
 /// <summary>
 /// Example EP factory that can create an OrtEp and return information about the supported hardware devices.
@@ -32,6 +32,13 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   static uint32_t ORT_API_CALL GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept;
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetAdditionalHardwareDevicesImpl(OrtEpFactory* this_ptr,
+                                                                  const OrtHardwareDevice* const* found_devices,
+                                                                  size_t num_found_devices,
+                                                                  OrtHardwareDevice** additional_devices,
+                                                                  size_t max_additional_devices,
+                                                                  size_t* num_additional_devices) noexcept;
 
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                          const OrtHardwareDevice* const* devices,

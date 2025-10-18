@@ -13,7 +13,8 @@ namespace onnxruntime {
 using Forward = ForwardToFactoryImpl<EpFactoryInternal>;
 
 EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl)
-    : impl_{std::move(impl)} {
+    : OrtEpFactory{},  // Ensure optional functions are default initialized to nullptr
+      impl_{std::move(impl)} {
   ort_version_supported = ORT_API_VERSION;
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
@@ -29,6 +30,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::CreateDataTransfer = Forward::CreateDataTransfer;
   OrtEpFactory::IsStreamAware = Forward::IsStreamAware;
   OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
+  OrtEpFactory::GetAdditionalHardwareDevices = Forward::GetAdditionalHardwareDevices;
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,
