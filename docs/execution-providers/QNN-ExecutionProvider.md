@@ -62,6 +62,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |'off'||
 |'basic'||
 |'detailed'||
+|'optrace'|Requires QAIRT 2.39 or later|
 
 |`"profiling_file_path"`|Description|
 |---|---|
@@ -441,6 +442,134 @@ g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEmbedMod
 # Python
 options.add_session_config_entry("ep.context_embed_mode", "1")
 ```
+
+## QNN EP Profiling
+Profiling data is available with the HTP backend. Enabling QNN profiling will generate a user-readable .csv file that will contain information from initialization, execution, and de-initialization.
+
+If onnxruntime is compiled with a more recent QAIRT SDK (2.39 or later), then a _qnn.log file will also be generated alongside the .csv file. This .log file is parsable by [qnn-profile-viewer](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/general_tools.html#qnn-profile-viewer), which is provided in the SDK.
+
+### General Usage
+To utilize QNN profiling, simply set the EP options profiling_level to basic, detailed, or optrace. Additionally, the EP option profiling_file_path must also be defined to the output .csv filepath you would like write data to:
+```python
+# Python on Windows on Snapdragon device
+import onnxruntime as ort
+import numpy as np
+
+provider_options = [
+    "htp_performance_mode": "burst",
+    "device_id": "0",
+    "htp_graph_finalization_optimization_mode":"3"
+    "soc_model": "60",
+    "htp_arch": "73",
+    "vtcm_mv": "8",
+    "profiling_level": "basic",
+    "profiling_file_path": "output.csv"
+]
+
+sess_options = ort.SessionOptions()
+
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=sess_options,
+    providers=["QNNExecutionProvider"],
+    provider_options=provider_options
+)
+
+input0 = np.ones((1,2,3,4), dtype=np.float32)
+result = session.run(None, {"input": input0})
+```
+
+With the example above, a file "output.csv" will be generated containing the profiling data. Additionally, if using QAIRT 2.39 SDK or later, another file "output_qnn.log" will be generated.
+
+"output_qnn.log" can then be parsed with the appropriate qnn-profile-viewer binary:
+```console
+> qnn-profile-viewer.exe --input_log .\output_qnn.log --output output_2.csv
+```
+
+The above will output basic information, such as the profiling data for the fastest and slowest execution as well as the average case. A .csv file can also be generated this way, too, though the information will likely not differ from the "output.csv".
+
+Additionally, if the profiling_level is set to "detailed" or "optrace", additional data will be shown per-network-layer.
+
+### Optrace-Level Profiling
+[Optrace-level profiling](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-profiling) generates a profiling .log file that contains [Qualcomm Hexagon Tensor Processor Analaysis Summary (QHAS)](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-analysis-summary-qhas-) data. This data can be used to generate chrometraces and provide a web browser-friendly UI to visualize data.
+
+**This feature is only available with the QAIRT 2.39 SDK and later.**
+
+### Optrace Setup
+To utilize this feature, a context binary must be generated prior to execution:
+```python
+# Python on Windows on Snapdragon device
+import onnxruntime as ort
+import numpy as np
+
+provider_options = [
+    "htp_performance_mode": "burst",
+    "device_id": "0",
+    "htp_graph_finalization_optimization_mode":"3"
+    "soc_model": "60",
+    "htp_arch": "73",
+    "vtcm_mv": "8",
+    "profiling_level": "optrace",   # Set profiling_level to optrace
+    "profiling_file_path": "optrace.csv"
+]
+
+sess_options = ort.SessionOptions()
+
+# Enable context bin generation
+sess_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+sess_options.add_session_config_entry("ep.context_embed_mode", "0")
+sess_options.add_session_config_entry("ep.context_enable", "1")
+
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=sess_options,
+    providers=["QNNExecutionProvider"],
+    provider_options=provider_options
+)
+```
+
+Upon successful session creation, three files will be genearted:
+- model_ctx.onnx
+- model_qnn.bin
+- QNNExecutionProvider_QNN__<number>_schematic.bin
+
+model_ctx.onnx is an onnx model with a node that points to the model_qnn.bin context binary, which will be used by the HTP backend for execution. The _schematic.bin file will be used by qnn-profile-viewer to generate QHAS data.
+
+### Generating QHAS Data
+Previously for general profiling data, the a session was created and executed with ""model.onnx". However, now there is a new _ctx.onnx model that utilizes a newly generated context binary. As such, a new inference session must be created with the new _ctx.onnx model:
+```python
+# Continuing from Optrace Setup:
+
+sess_options.add_session_config_entry("ep.context_enable", "0")
+
+optrace_session = ort.InferenceSession(
+    "model_ctx.onnx",
+    sess_options=sess_options,
+    providers=["QNNExecutionProvider"],
+    provider_options=provider_options
+)
+
+input0 = np.ones((1,2,3,4), dtype=np.float32)
+result = optrace_session.run(None, {"input": input0})
+```
+
+As before under "General Usage", a .csv file (optrace.csv) and a _qnn.log file (optrace_qnn.log) are generated. qnn-profile-viewer will be used again, but with different parameters:
+```console
+> qnn-profile-viewer.exe --config .\config.json --reader .\QnnHtpOptraceProfilingReader.dll --input_log .\optrace_qnn.log  --schematic .\QNNExecutionProvider_QNN_12345_schematic.bin --output optrace.json
+```
+
+Three new files are used:
+- config.json: Please refer to the "Post Process (Chrometrace Generation)" section [on this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-optrace-profiling).
+- QnnHtpOptraceProfilingReader.dll: Provided as part of the QAIRT SDK. The corresponding file for Linux is libQnnHtpOptraceProfilingReader.so.
+- QNNExecutionProvider_QNN_12345_schematic.bin: The name will vary. This file must be the same one generated alongside the context binary under "Optrace Setup".
+
+Additionally, the output file is now a .json file contaning chrometrace data. This .json file can be opened with either [Perfetto Trace Vizualizer](https://ui.perfetto.dev/) or with chrome://tracing.
+
+After running qnn-profile-viewer, you should see a handful of .json files generated with the same prefix as the --output filename parameter. You should also see an .html file generated as well. This .html file can be opened by Chrome to view the chrometrace in a more user-friendly GUI.
+
+### Additional References
+For more information how to interpret QHAS data, please refer to [this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-analysis-summary-qhas-).
+For more information on the data collected with optrace profiling, please refer to [this page](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/htp_backend.html#qnn-htp-optrace-profiling).
 
 ## QNN EP weight sharing
 
