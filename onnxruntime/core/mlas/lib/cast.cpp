@@ -72,9 +72,9 @@ MlasConvertHalfToFloatBufferInParallel(
             ThreadPool, Count,
             // Tensor Op Cost
             {
-                onnxruntime::narrow<double>(Count * sizeof(MLAS_FP16)),  // Size of no. of elements in bytes to be loaded
-                onnxruntime::narrow<double>(Count * sizeof(float)),      // Size of no. of elements in bytes to be stored
-                onnxruntime::narrow<double>(num_compute_cycles),         // No. of compute cycles required for the tensor op
+                static_cast<double>(Count * sizeof(MLAS_FP16)),  // Size of no. of elements in bytes to be loaded
+                static_cast<double>(Count * sizeof(float)),      // Size of no. of elements in bytes to be stored
+                static_cast<double>(num_compute_cycles),         // No. of compute cycles required for the tensor op
             },
             // Lambda function required by TryParallelFor method
             [Source, Destination](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
@@ -130,19 +130,19 @@ MlasConvertFloatToHalfBufferInParallel(
         // Estimate compute cycles (heuristics similar to Half Float path)
         size_t num_compute_cycles;
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasSSE3()) {
-            num_compute_cycles = onnxruntime::narrow<std::ptrdiff_t>(Count >> 1);
+            num_compute_cycles = Count >> 1;
         } else if (MLAS_CPUIDINFO::GetCPUIDInfo().HasAVX2()) {
-            num_compute_cycles = onnxruntime::narrow<std::ptrdiff_t>(Count >> 2);
+            num_compute_cycles = Count >> 2;
         } else {
-            num_compute_cycles = onnxruntime::narrow<std::ptrdiff_t>(Count * 10);
+            num_compute_cycles = Count * 10;
         }
 
         MLAS_THREADPOOL::TryParallelFor(
             ThreadPool, Count,
             {
-                onnxruntime::narrow<double>(Count * sizeof(float)),       // bytes to load
-                onnxruntime::narrow<double>(Count * sizeof(MLAS_FP16)),   // bytes to store
-                onnxruntime::narrow<double>(num_compute_cycles),          // compute cost
+                static_cast<double>(Count * sizeof(float)),       // bytes to load
+                static_cast<double>(Count * sizeof(MLAS_FP16)),   // bytes to store
+                static_cast<double>(num_compute_cycles),          // compute cost
             },
             [Source, Destination](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
                 MlasConvertFloatToHalfBuffer(

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/element_wise_ops.h"
-
 #include "core/common/narrow.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/math.h"
@@ -1994,17 +1993,19 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   const float* input_data = X->Data<float>();
   float* output_data = Y->MutableData<float>();
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  int64_t elem_count = X->Shape().Size();
-  constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
-  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+
+  const std::ptrdiff_t elem_count = X->Shape().Size();
+  constexpr std::ptrdiff_t length_per_task = 4096;  // this number comes from FastGelu.
+  const std::ptrdiff_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+
   concurrency::ThreadPool::TryBatchParallelFor(
-      tp, narrow<std::ptrdiff_t>(task_count),
+      tp, task_count,
       [&](ptrdiff_t task_idx) {
-        const auto start = task_idx * length_per_task;
+        const std::ptrdiff_t start = task_idx * length_per_task;
         const float* p_input = input_data + start;
         float* p_output = output_data + start;
-        int64_t count = std::min(length_per_task, elem_count - start);
-        MlasComputeErf(p_input, p_output, narrow<std::ptrdiff_t>(count));
+        const std::ptrdiff_t count = std::min(length_per_task, elem_count - start);
+        MlasComputeErf(p_input, p_output, count);
       },
       0);
 
