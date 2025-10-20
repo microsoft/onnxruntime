@@ -91,8 +91,7 @@ QDC_TESTS = [
     TestConfig("Mobile Device", Platform.ANDROID, [
         TestDevice("3625030", "Lanai SM8650"),
         TestDevice("3700521", "Pakala SM8750"),
-        # Kaanapali has many test failures; AI Hub team is investigating.
-        # TestDevice("3922779", "Kaanapali SM8850"),
+        TestDevice("3922779", "Kaanapali SM8850"),
     ]),
     TestConfig("Windows on Snapdragon", Platform.WINDOWS, [
         # We have a Hamoa CI machine so we don't enable it in QDC.
