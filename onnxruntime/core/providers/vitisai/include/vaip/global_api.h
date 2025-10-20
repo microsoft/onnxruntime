@@ -40,3 +40,6 @@ using EventInfo = std::tuple<
 void profiler_collect(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);
+std::unique_ptr<IExecutionProvider>
+CreateExecutionProviderFromAnotherEp(const std::string& lib,
+                                     std::unordered_map<std::string, std::string>& provider_options);

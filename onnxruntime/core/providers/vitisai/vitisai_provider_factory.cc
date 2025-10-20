@@ -28,6 +28,10 @@ struct VitisAIProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider() {
+  auto it = info_.find("external_ep_libray");
+  if (it != info_.end()) {
+   return CreateExecutionProviderFromAnotherEp(*it, info_);
+  }
   return std::make_unique<VitisAIExecutionProvider>(info_);
 }
 
@@ -56,7 +60,10 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider(const
       provider_options["ort_session_config." + key] = value;
     }
   }
-
+  auto it = provider_options.find("external_ep_libray");
+  if (it != provider_options.end()) {
+    return CreateExecutionProviderFromAnotherEp(*it, provider_options);
+  }
   auto ep_instance = std::make_unique<VitisAIExecutionProvider>(provider_options);
   ep_instance->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
   return ep_instance;
