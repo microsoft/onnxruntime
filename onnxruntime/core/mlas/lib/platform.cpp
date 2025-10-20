@@ -37,6 +37,11 @@ Abstract:
 #endif
 #endif
 
+
+#if defined(MLAS_TARGET_S390X)
+#include <sys/auxv.h>
+#endif
+
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
 
@@ -692,6 +697,26 @@ Return Value:
 
 #endif // MLAS_TARGET_POWER
 
+#if defined(MLAS_TARGET_S390X)
+    this->GemmFloatKernel = MlasSgemmKernel;
+    this->GemmDoubleKernel = MlasDgemmKernel;
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+    this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
+    this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
+
+    bool HasVXEInstructions = getauxval(AT_HWCAP) & HWCAP_S390_VXE;
+    if (HasVXEInstructions) {
+        this->GemmFloatKernel = MlasSgemmKernelZVECTOR;
+        this->GemmU8X8Dispatch = &MlasGemm8X8DispatchZVECTOR;
+
+        this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelZVECTOR;
+        this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelZVECTOR;
+    }
+#endif // MLAS_TARGET_S390X
+
 #if defined(MLAS_TARGET_LARCH64)
 
     //
@@ -716,6 +741,9 @@ Return Value:
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelLasx;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelLasx;
         this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Lasx;
+
+        // add new sqn-lasx kernel
+        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchLasx;
 
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
