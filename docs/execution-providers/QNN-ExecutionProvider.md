@@ -449,16 +449,17 @@ Profiling data is available with the HTP backend. Enabling QNN profiling will ge
 If onnxruntime is compiled with a more recent QAIRT SDK (2.39 or later), then a _qnn.log file will also be generated alongside the .csv file. This .log file is parsable by [qnn-profile-viewer](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-10/general_tools.html#qnn-profile-viewer), which is provided in the SDK.
 
 ### General Usage
-To utilize QNN profiling, simply set the EP options profiling_level to basic, detailed, or optrace. Additionally, the EP option profiling_file_path must also be defined to the output .csv filepath you would like write data to:
+To utilize QNN profiling, simply set the EP option profiling_level to basic, detailed, or optrace. Additionally, the EP option profiling_file_path must also be set to the output .csv filepath you would like to write data to:
 ```python
 # Python on Windows on Snapdragon device
 import onnxruntime as ort
 import numpy as np
 
 provider_options = [
+    "backend_path": "path/to/QnnHtp.dll", # Use libQnnHtp.so if on Linux
     "htp_performance_mode": "burst",
     "device_id": "0",
-    "htp_graph_finalization_optimization_mode":"3"
+    "htp_graph_finalization_optimization_mode":"3",
     "soc_model": "60",
     "htp_arch": "73",
     "vtcm_mv": "8",
@@ -503,9 +504,10 @@ import onnxruntime as ort
 import numpy as np
 
 provider_options = [
+    "backend_path": "path/to/QnnHtp.dll", # Use libQnnHtp.so if on Linux
     "htp_performance_mode": "burst",
     "device_id": "0",
-    "htp_graph_finalization_optimization_mode":"3"
+    "htp_graph_finalization_optimization_mode":"3",
     "soc_model": "60",
     "htp_arch": "73",
     "vtcm_mv": "8",
@@ -516,7 +518,6 @@ provider_options = [
 sess_options = ort.SessionOptions()
 
 # Enable context bin generation
-sess_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
 sess_options.add_session_config_entry("ep.context_embed_mode", "0")
 sess_options.add_session_config_entry("ep.context_enable", "1")
 
@@ -531,7 +532,7 @@ session = ort.InferenceSession(
 Upon successful session creation, three files will be generated:
 - model_ctx.onnx
 - model_qnn.bin
-- QNNExecutionProvider_QNN__<number>_schematic.bin
+- QNNExecutionProvider_QNN_\<number\>_schematic.bin
 
 model_ctx.onnx is an onnx model with a node that points to the model_qnn.bin context binary, which will be used by the HTP backend for execution. The _schematic.bin file will be used by qnn-profile-viewer to generate QHAS data.
 
