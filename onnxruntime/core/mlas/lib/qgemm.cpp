@@ -405,10 +405,10 @@ Return Value:
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
         ~(BufferAlignment - 1);
-    //If this gemm B argument is used in a dynamically quantization gemm operation we can optimize for
-    //this use case. Concat both packed representations for later decision. This allows for cases later
-    //where can_use_dynamic_mlas is false we still have the prepack at the cost of some memory otherwise
-    //we can use the qgemm quantization for better performance
+    // If this gemm B argument is used in a dynamically quantization gemm operation we can optimize for
+    // this use case. Concat both packed representations for later decision. This allows for cases later
+    // where we still have the prepack at the cost of some memory otherwise we can use the qgemm quantization 
+    // for better performance
     return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K);
 }
 
