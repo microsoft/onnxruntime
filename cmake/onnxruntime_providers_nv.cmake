@@ -68,27 +68,27 @@ endif ()
 
   MESSAGE(STATUS "Looking for ${TRT_RTX_LIB}")
 
-  find_library(TENSORRT_LIBRARY_INFER ${TRT_RTX_LIB}
+  find_library(TENSORRT_RTX_LIBRARY_INFER ${TRT_RTX_LIB}
     HINTS ${TENSORRT_RTX_ROOT}
     PATH_SUFFIXES lib lib64 lib/x64)
 
-  if (NOT TENSORRT_LIBRARY_INFER)
+  if (NOT TENSORRT_RTX_LIBRARY_INFER)
     MESSAGE(STATUS "Can't find ${TRT_RTX_LIB}")
   endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     MESSAGE(STATUS "Looking for ${RTX_PARSER_LIB}")
 
-    find_library(TENSORRT_LIBRARY_NVONNXPARSER ${RTX_PARSER_LIB}
+    find_library(TENSORRT_RTX_LIBRARY_NVONNXPARSER ${RTX_PARSER_LIB}
       HINTS  ${TENSORRT_RTX_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
 
-    if (NOT TENSORRT_LIBRARY_NVONNXPARSER)
+    if (NOT TENSORRT_RTX_LIBRARY_NVONNXPARSER)
       MESSAGE(STATUS "Can't find ${RTX_PARSER_LIB}")
     endif()
 
-    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_NVONNXPARSER})
-    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
+    set(TENSORRT_RTX_LIBRARY ${TENSORRT_RTX_LIBRARY_INFER} ${TENSORRT_RTX_LIBRARY_NVONNXPARSER})
+    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_RTX_LIBRARY}")
   else()
     set(ONNX_USE_LITE_PROTO ON)
 
@@ -119,16 +119,16 @@ endif ()
     endif()
     # Static libraries are just nvonnxparser_static on all platforms
     set(onnxparser_link_libs nvonnxparser_static)
-    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER})
-    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
+    set(TENSORRT_RTX_LIBRARY ${TENSORRT_RTX_LIBRARY_INFER})
+    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_RTX_LIBRARY}")
   endif()
 
-  # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
+  # ${TENSORRT_RTX_LIBRARY} is empty if we link nvonnxparser_static.
   # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
   # However, starting from TRT 10 GA, nvonnxparser_static doesn't link against tensorrt libraries.
-  # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER}
-  set(trt_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+  # Therefore, the above code finds ${TENSORRT_RTX_LIBRARY_INFER}
+  set(trt_rtx_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_RTX_LIBRARY})
   file(GLOB_RECURSE onnxruntime_providers_nv_tensorrt_rtx_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.cc"
@@ -146,9 +146,9 @@ endif ()
   target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE Eigen3::Eigen  onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
   add_dependencies(onnxruntime_providers_nv_tensorrt_rtx onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
+    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${trt_rtx_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   else()
-    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
+    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${onnxparser_link_libs} ${trt_rtx_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   endif()
   target_include_directories(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${TENSORRT_RTX_INCLUDE_DIR} ${onnx_tensorrt_SOURCE_DIR}
     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
