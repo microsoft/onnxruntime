@@ -6116,6 +6116,7 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
 
+
 TEST(ReductionOpTest, MissingOptionalAxes) {
   OpTester test("ReduceMax", 18);
   test.AddInput<float>("data", {2, 2},
@@ -6127,6 +6128,27 @@ TEST(ReductionOpTest, MissingOptionalAxes) {
   // OpenVINO doesn't support "axes" input
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
+
+
+TEST(ReductionOpTest, ReduceSumSquare_EmptyAxes_NoReduce_ElementwiseSquare) {
+
+  OpTester test("ReduceSumSquare",  18);
+
+  test.AddInput<float>("data", {2}, {2.f, 3.f});
+
+  test.AddInput<int64_t>("axes", {0}, {}, /*is_initializer*/ true);
+
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+
+  test.AddOutput<float>("reduced", {2}, {4.f, 9.f});
+
+  test.Run();
+}
+
+
+//-------------------------------------
+
+
 
 }  // namespace test
 }  // namespace onnxruntime
