@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build_test_qnn_ep:
     name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
     timeout-minutes: 120
     strategy:
       matrix: 
@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: x64
@@ -47,14 +47,14 @@ jobs:
       - name: Download QNN SDK
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v2.38.0.250901 .
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v2.39.0.250926 .
           dir
         shell: pwsh
             
       - name: Set QNN_SDK_ROOT environment variable
         shell: pwsh
         run: |
-          $qnn_sdk_path = Join-Path $env:RUNNER_TEMP "qnn-v2.38.0.250901"
+          $qnn_sdk_path = Join-Path $env:RUNNER_TEMP "qnn-v2.39.0.250926"
           echo "QNN_SDK_ROOT=$qnn_sdk_path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "QNN SDK Root: $qnn_sdk_path"
           dir $qnn_sdk_path
