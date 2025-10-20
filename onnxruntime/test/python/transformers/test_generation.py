@@ -27,6 +27,7 @@ else:
     from onnxruntime.transformers.benchmark_helper import Precision
     from onnxruntime.transformers.convert_generation import main as run
     from onnxruntime.transformers.models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+
     if not find_spec("onnxruntime.training"):
         from onnxruntime.transformers.models.whisper.convert_to_onnx import main as run_whisper
 
