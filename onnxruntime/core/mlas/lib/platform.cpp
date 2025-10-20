@@ -442,7 +442,8 @@ Return Value:
                     this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
 
-                if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
+                const bool AVX512FSupported = (Cpuid7[1] & 0x10000) != 0 && (xcr0 & 0xE0) == 0xE0;
+                if (AVX512FSupported) {
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
                 }
@@ -454,7 +455,7 @@ Return Value:
                 // operating system supports saving AVX512F state.
                 //
 
-                if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
+                if (AVX512FSupported) {
 
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->GemmDoubleKernel = MlasGemmDoubleKernelAvx512F;
