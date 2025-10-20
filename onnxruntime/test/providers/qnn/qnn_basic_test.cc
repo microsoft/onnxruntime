@@ -1090,7 +1090,7 @@ static GetTestModelFn BuildCastAddTestCase() {
 
 void VerifyFileExistsAndIsNonEmpty(const std::string& filepath) {
   std::ifstream csv_file(filepath, std::ifstream::binary);
-  EXPECT_TRUE(csv_file.good());
+  ASSERT_TRUE(csv_file.good());
 
   csv_file.seekg(0, csv_file.end);
   size_t buffer_size = static_cast<size_t>(csv_file.tellg());
