@@ -1821,6 +1821,10 @@ Status ProviderLibrary::Load() {
         ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
       } else {
         auto full_path = Env::Default().GetRuntimePath() + filename_;
+        if (!std::filesystem::exists(full_path)) {
+          // If library is not found in the runtime path, try letting the OS loader find it.
+          full_path = filename_;
+        }
         ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
       }
 
