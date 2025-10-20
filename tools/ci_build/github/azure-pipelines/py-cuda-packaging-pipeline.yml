@@ -49,4 +49,4 @@ extends:
       - template: stages/py-gpu-packaging-stage.yml
         parameters:
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          cuda_version: '12.2'
+          cuda_version: '12.8'

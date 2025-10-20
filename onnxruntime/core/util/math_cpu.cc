@@ -17,7 +17,7 @@
 
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 #include <algorithm>
 #include <type_traits>
