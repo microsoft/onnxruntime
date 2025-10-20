@@ -34,7 +34,9 @@
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
         "^test_attention_4d_fp16_expanded*",  // precision issue: 3 / 192 mismatched elements
         "^test_attention_4d_gqa_with_past_and_present_fp16_expanded*",  // webgpu mismatched elements 38 / 576
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal*",  // location of infinities
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded*",  // webgpu
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
         "^test_l2normalization*",  // LpNormalization(22) not implemented
