@@ -21,6 +21,7 @@ if find_transformers_source() and find_transformers_source(["models", "t5"]):
     from benchmark_helper import Precision
     from convert_generation import main as run
     from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models
+
     if not find_spec("onnxruntime.training"):
         from models.whisper.convert_to_onnx import main as run_whisper
 else:
