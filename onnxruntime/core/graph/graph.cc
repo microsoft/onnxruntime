@@ -2887,14 +2887,71 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
 
 Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
                                                  NodeArg& output_def,
-                                                 const TypeProto& onnx_inferred_types_after_data_propagation) const {
-  auto dim_size = onnx_inferred_types_after_data_propagation.tensor_type().shape().dim_size();
+                                                 const TypeProto& onnx_inferred_type_after_data_propagation) const {
+  auto dim_size = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim_size();
 
-  // Size operator generates a scalar output and a scalar has rank equals zero.
-  // But Size operator's PartialDataPropagationFunction() has the chance to
-  // generate output data with rank > 0.
-  // So, ignore its PartialDataPropagationFunction() and infer the output value here.
+  // Helper function to get the input value if it's a initializer.
+  auto get_initialized_input_values = [&](const std::string& input_name, std::vector<int64_t>& input_values) -> void {
+    const TensorProto* initializer = this->GetConstantInitializer(input_name, true);
+
+    if (initializer) {
+      // Get shape from TensorProto and calculate element counts.
+      // If shape has dimension size equals zero, it means it's a scalar and has only one value.
+      int64_t element_cnt = 1;
+      for (auto& dim : initializer->dims()) {
+        element_cnt *= dim;
+      }
+
+      // Check if this is in-memory external data (data stored in OrtValue)
+      if (utils::HasExternalDataInMemory(*initializer)) {
+        // Try to get the OrtValue for this initializer
+        OrtValue ort_value;
+        if (this->GetOrtValueInitializer(input_name, ort_value, true)) {
+          const Tensor& tensor = ort_value.Get<Tensor>();
+          if (initializer->data_type() == TensorProto_DataType_INT32) {
+            input_values.resize(element_cnt);
+            for (int64_t i = 0; i < element_cnt; ++i) {
+              input_values[i] = static_cast<int64_t>(tensor.Data<int32_t>()[i]);
+            }
+          } else if (initializer->data_type() == TensorProto_DataType_INT64) {
+            input_values.resize(element_cnt);
+            for (int64_t i = 0; i < element_cnt; ++i) {
+              input_values[i] = tensor.Data<int64_t>()[i];
+            }
+          }
+        } else {
+          // If we can't get the OrtValue, it is a bug
+          ORT_THROW("Initializer ", input_name,
+                    " has in-memory external data but cannot get OrtValue during shape inference");
+        }
+      } else if (utils::HasRawData(*initializer)) {
+        const std::string& raw = initializer->raw_data();
+        const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
+        input_values.resize(element_cnt);
+        for (int64_t i = 0; i < element_cnt; ++i) {
+          input_values[i] = data[i];
+        }
+      } else {
+        if (initializer->data_type() == TensorProto_DataType_INT32) {
+          std::vector<int32_t> values;
+          values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
+          input_values.resize(element_cnt);
+          for (int64_t i = 0; i < element_cnt; ++i) {
+            input_values[i] = static_cast<int64_t>(values[0]);
+          }
+        } else if (initializer->data_type() == TensorProto_DataType_INT64) {
+          input_values.resize(element_cnt);
+          input_values.assign(initializer->int64_data().begin(), initializer->int64_data().end());
+        }
+      }
+    }
+  };
+
+  // Following operators, e.g. Size, Squeeze and Unsqueeze, calling their PartialDataPropagationFunction() alone
+  // to get the inferred shape values is still not enough to get the proper values.
+  // So, ignore the inferred values from PartialDataPropagationFunction() and infer the output values here.
   if (node.OpType() == "Size") {
+    // Size operator generates a scalar output
     const auto* input_0 = node.GetDefinitions().input_defs[0];
     auto& tensor_shape_proto = input_0->inferred_shape_values_;
     auto get_num_elements = [&](const TensorShapeProto& tensor_shape_proto) -> void {
@@ -2914,6 +2971,157 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
 
     if (tensor_shape_proto.has_value()) {
       get_num_elements(*tensor_shape_proto);
+    }
+
+    return Status::OK();
+
+  } else if (node.OpType() == "Squeeze") {
+    const auto* input_0 = node.GetDefinitions().input_defs[0];
+    auto& tensor_shape_proto = input_0->inferred_shape_values_;
+
+    auto update_output_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> void {
+      // The TensorShapeProto (inferred shape values) should have rank > 0 and
+      // all the dimensions have values (not symbolic)
+      if (tensor_shape_proto.dim_size() > 0) {
+        for (const auto& dim : tensor_shape_proto.dim()) {
+          if (!dim.has_dim_value()) {
+            return;
+          }
+        }
+      }
+
+      if (tensor_shape_proto.dim_size() == 1) {
+        output_def.inferred_scalar_value_ = tensor_shape_proto.dim(0).dim_value();
+      } else if (tensor_shape_proto.dim_size() > 1) {
+        // Get axes value
+        std::vector<int64_t> axes;
+        std::unordered_set<int64_t> axes_set;
+
+        // Note: Starting from opset 13, "axes" is provided as a second input to the Squeeze operator.
+        //       In opset 11 and earlier, "axes" is defined as a node attribute instead.
+        if (node.GetDefinitions().input_defs.size() > 1) {
+          const auto* input_1 = node.GetDefinitions().input_defs[1];
+          get_initialized_input_values(input_1->Name(), axes);
+        } else {
+          const auto& attrs = node.GetAttributes();
+          auto it = attrs.find("axes");
+          if (it != attrs.end()) {
+            const auto& axes_attr = it->second;
+            for (const auto& i : axes_attr.ints()) {
+              axes.push_back(i);
+            }
+          }
+        }
+
+        for (size_t i = 0; i < axes.size(); ++i) {
+          // Negative value means counting dimensions from the back.
+          if (axes[i] < 0) {
+            axes_set.insert(axes[i] + tensor_shape_proto.dim_size());
+          } else {
+            axes_set.insert(axes[i]);
+          }
+        }
+
+        if (!output_def.inferred_shape_values_.has_value()) {
+          output_def.inferred_shape_values_.emplace();
+        }
+        output_def.inferred_shape_values_->clear_dim();
+
+        for (const auto& dim : tensor_shape_proto.dim()) {
+          auto value = dim.dim_value();
+          if (axes_set.find(value) == axes_set.end() && value != 1) {
+            output_def.inferred_shape_values_->add_dim()->set_dim_value(value);
+          }
+        }
+      }
+    };
+
+    if (tensor_shape_proto.has_value()) {
+      update_output_shape_values(*tensor_shape_proto);
+    }
+
+    return Status::OK();
+
+  } else if (node.OpType() == "Unsqueeze") {
+    const auto* input_0 = node.GetDefinitions().input_defs[0];
+    auto& tensor_shape_proto = input_0->inferred_shape_values_;
+
+    auto update_output_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> void {
+      // The TensorShapeProto (inferred shape values) should have rank > 0 and
+      // all the dimensions have values (not symbolic)
+      if (tensor_shape_proto.dim_size() > 0) {
+        for (const auto& dim : tensor_shape_proto.dim()) {
+          if (!dim.has_dim_value()) {
+            return;
+          }
+        }
+      }
+
+      if (tensor_shape_proto.dim_size() > 0) {
+        // Get axes value
+        std::vector<int64_t> axes;
+        std::unordered_set<int64_t> axes_set;
+
+        // Note: Starting from opset 13, "axes" is provided as a second input to the Squeeze operator.
+        //       In opset 11 and earlier, "axes" is defined as a node attribute instead.
+        if (node.GetDefinitions().input_defs.size() > 1) {
+          const auto* input_1 = node.GetDefinitions().input_defs[1];
+          get_initialized_input_values(input_1->Name(), axes);
+        } else {
+          const auto& attrs = node.GetAttributes();
+          auto it = attrs.find("axes");
+          if (it != attrs.end()) {
+            const auto& axes_attr = it->second;
+            for (const auto& i : axes_attr.ints()) {
+              axes.push_back(i);
+            }
+          }
+        }
+
+        // axes is required, if not provided just do nothing and return.
+        if (axes.empty()) {
+          return;
+        }
+
+        for (size_t i = 0; i < axes.size(); ++i) {
+          // Negative value means counting dimensions from the back.
+          if (axes[i] < 0) {
+            axes_set.insert(axes[i] + tensor_shape_proto.dim_size());
+          } else {
+            axes_set.insert(axes[i]);
+          }
+        }
+
+        if (!output_def.inferred_shape_values_.has_value()) {
+          output_def.inferred_shape_values_.emplace();
+        }
+        output_def.inferred_shape_values_->clear_dim();
+
+        int64_t axis = 0;
+        for (const auto& dim : tensor_shape_proto.dim()) {
+          if (axes_set.find(axis) != axes_set.end()) {
+            output_def.inferred_shape_values_->add_dim()->set_dim_value(1);
+          }
+
+          auto value = dim.dim_value();
+          output_def.inferred_shape_values_->add_dim()->set_dim_value(value);
+
+          axis += 1;
+        }
+      }
+    };
+
+    if (dim_size == 0 && input_0->inferred_scalar_value_.has_value()) {
+      // Following code expands a scalr to one dimension array, e.g. shape data is 64 -> it becomes [64]
+      // In this case, the axis should be 0
+      if (!output_def.inferred_shape_values_.has_value()) {
+        output_def.inferred_shape_values_.emplace();
+      }
+      output_def.inferred_shape_values_->clear_dim();
+      output_def.inferred_shape_values_->add_dim()->set_dim_value(*input_0->inferred_scalar_value_);
+
+    } else if (tensor_shape_proto.has_value()) {
+      update_output_shape_values(*tensor_shape_proto);
     }
 
     return Status::OK();
@@ -2943,53 +3151,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       const auto* input_1 = node.GetDefinitions().input_defs[1];
 
       // The "indices" should be an initializer because it's a scalar in this case.
-      const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
-      int64_t index = std::numeric_limits<int64_t>::min();
-
-      if (initializer) {
-        // Check if this is in-memory external data (data stored in OrtValue)
-        if (utils::HasExternalDataInMemory(*initializer)) {
-          // Try to get the OrtValue for this initializer
-          OrtValue ort_value;
-          if (this->GetOrtValueInitializer(input_1->Name(), ort_value, true)) {
-            const Tensor& tensor = ort_value.Get<Tensor>();
-            if (initializer->data_type() == TensorProto_DataType_INT32) {
-              const int32_t* data = tensor.Data<int32_t>();
-              index = static_cast<int64_t>(*data);
-            } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-              const int64_t* data = tensor.Data<int64_t>();
-              index = *data;
-            }
-          } else {
-            // If we can't get the OrtValue, it is a bug
-            ORT_THROW("Initializer ", input_1->Name(),
-                      " has in-memory external data but cannot get OrtValue during shape inference");
-          }
-        } else if (utils::HasRawData(*initializer)) {
-          const std::string& raw = initializer->raw_data();
-          if (initializer->data_type() == TensorProto_DataType_INT32) {
-            const int32_t* data = reinterpret_cast<const int32_t*>(raw.data());
-            index = static_cast<int64_t>(*data);
-          } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-            const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
-            index = *data;
-          }
-        } else {
-          if (initializer->data_type() == TensorProto_DataType_INT32) {
-            std::vector<int32_t> values;
-            values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
-            if (values.size() == 1) {
-              index = static_cast<int64_t>(values[0]);
-            }
-          } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-            std::vector<int64_t> values;
-            values.assign(initializer->int64_data().begin(), initializer->int64_data().end());
-            if (values.size() == 1) {
-              index = values[0];
-            }
-          }
-        }
-      }
+      std::vector<int64_t> indices;
+      get_initialized_input_values(input_1->Name(), indices);
 
       // Get the previously inferred dimension values
       auto& tensor_shape_proto = input_0->inferred_shape_values_;
@@ -2997,92 +3160,19 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       // Save the dimension value in the NodeArg.
       // Index value is expected to be within bounds [-s, s-1] along axis of size s
       if (tensor_shape_proto.has_value()) {
-        if (index != std::numeric_limits<int64_t>::min() &&
-            index < tensor_shape_proto->dim_size() && index >= -tensor_shape_proto->dim_size()) {
-          if (index < 0) {
-            index = tensor_shape_proto->dim_size() + index;
+        if (indices.size() == 1 &&
+            indices[0] < tensor_shape_proto->dim_size() && indices[0] >= -tensor_shape_proto->dim_size()) {
+          if (indices[0] < 0) {
+            indices[0] = tensor_shape_proto->dim_size() + indices[0];
           }
 
-          auto& dim = tensor_shape_proto->dim(static_cast<int32_t>(index));
+          auto& dim = tensor_shape_proto->dim(static_cast<int32_t>(indices[0]));
           if (dim.has_dim_value()) {
             output_def.inferred_scalar_value_ = dim.dim_value();
           }
         }
       }
 
-    } else if (node.OpType() == "Unsqueeze") {
-      // Following code expands a scalr to one dimension array if all conditions are met.
-      // e.g. shape data is 64 -> it becomes [64]
-
-      // Try to get the "data" input
-      const auto* input_0 = node.GetDefinitions().input_defs[0];
-
-      // Only handle the "data" input which is previously inferred from data propagation and is a scalar
-      if (input_0->inferred_scalar_value_.has_value()) {
-        // Try to get the "axes" value
-        int64_t axis = -1;
-
-        // Note: Starting from opset 13, "axes" is provided as a second input to the Unsqueeze operator.
-        //       In opset 11 and earlier, "axes" is defined as a node attribute instead.
-        if (node.GetDefinitions().input_defs.size() > 1) {
-          const auto* input_1 = node.GetDefinitions().input_defs[1];
-          // Only check the case that "axes" input is an initializer
-          const TensorProto* initializer = this->GetConstantInitializer(input_1->Name(), true);
-
-          if (initializer && initializer->dims_size() == 1) {
-            // Check if this is in-memory external data (data stored in OrtValue)
-            if (utils::HasExternalDataInMemory(*initializer)) {
-              // Try to get the OrtValue for this initializer
-              OrtValue ort_value;
-              if (this->GetOrtValueInitializer(input_1->Name(), ort_value, true)) {
-                const Tensor& tensor = ort_value.Get<Tensor>();
-                const int64_t* data = tensor.Data<int64_t>();
-                axis = *data;
-              } else {
-                // If we can't get the OrtValue, it is a bug
-                ORT_THROW("Initializer ", input_1->Name(),
-                          " has in-memory external data but cannot get OrtValue during shape inference");
-              }
-            } else if (utils::HasRawData(*initializer)) {
-              const std::string& raw = initializer->raw_data();
-              const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
-              axis = *data;
-            } else {
-              if (initializer->data_type() == TensorProto_DataType_INT32) {
-                std::vector<int32_t> values;
-                values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
-                if (values.size() == 1) {
-                  axis = static_cast<int64_t>(values[0]);
-                }
-              } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-                std::vector<int64_t> values;
-                values.assign(initializer->int64_data().begin(), initializer->int64_data().end());
-                if (values.size() == 1) {
-                  axis = values[0];
-                }
-              }
-            }
-          }
-        } else {
-          const auto& attrs = node.GetAttributes();
-          auto it = attrs.find("axes");
-          if (it != attrs.end()) {
-            const auto& axes_attr = it->second;
-            if (axes_attr.ints_size()) {
-              axis = axes_attr.ints()[0];
-            }
-          }
-        }
-
-        // In this case, the axis should be 0
-        if (axis == 0) {
-          if (!output_def.inferred_shape_values_.has_value()) {
-            output_def.inferred_shape_values_.emplace();
-          }
-          output_def.inferred_shape_values_->clear_dim();
-          output_def.inferred_shape_values_->add_dim()->set_dim_value(*input_0->inferred_scalar_value_);
-        }
-      }
     } else if (node.OpType() == "Add") {
       // Try to get the "A" input
       const auto* input_0 = node.GetDefinitions().input_defs[0];
@@ -3121,11 +3211,12 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       }
     }
   }
-  // If the dimension size is greater than 0, only save the inferred shape values from data propagation
-  // when the data has rank > 0 and all dimensions have concrete (non-symbolic) values.
+  // If the dimension size is greater than 0.
   else if (dim_size > 0) {
+    // Only handle that the inferred shape values from data propagation if the data has rank > 0
+    // and all dimensions have concrete (non-symbolic) values.
     for (int i = 0; i < dim_size; ++i) {
-      if (!onnx_inferred_types_after_data_propagation.tensor_type().shape().dim(i).has_dim_value()) {
+      if (!onnx_inferred_type_after_data_propagation.tensor_type().shape().dim(i).has_dim_value()) {
         return Status::OK();
       }
     }
@@ -3136,7 +3227,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
 
     output_def.inferred_shape_values_->clear_dim();
     for (int i = 0; i < dim_size; ++i) {
-      auto value = onnx_inferred_types_after_data_propagation.tensor_type().shape().dim(i).dim_value();
+      auto value = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim(i).dim_value();
       output_def.inferred_shape_values_->add_dim()->set_dim_value(value);
     }
   }
@@ -3326,6 +3417,14 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     }
   }
 
+  if (node.OpType() == "Shape") {
+    std::cout << "Shape" << std::endl;
+  }
+
+  if (node.OpType() == "Size") {
+    std::cout << "Size" << std::endl;
+  }
+
   // Apply ONNX's type/shape inference to this node.
   // This will call InferAndVerifySubgraphTypes if the ONNX level type/shape inferencing for the Node attempts
   // to do subgraph type/shape inferencing (Scan/If/Loop nodes).
@@ -3378,8 +3477,11 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     auto op_formal_parameter = op.outputs().at(operand_index);
 
     const TypeProto& onnx_inferred_type = onnx_inferred_types[i];
+    const TypeProto& onnx_inferred_type_after_data_propagation = onnx_inferred_types_after_data_propagation[i];
 
-    ORT_RETURN_IF_ERROR(SaveShapeValuesFromDataPropagation(node, *output_def, onnx_inferred_types_after_data_propagation[i]));
+    ORT_RETURN_IF_ERROR(SaveShapeValuesFromDataPropagation(node,
+                                                           *output_def,
+                                                           onnx_inferred_type_after_data_propagation));
 
     DataType existing_type = output_def->Type();
     DataType inferred_type = nullptr;
