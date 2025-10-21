@@ -13,7 +13,7 @@ constexpr const char* kLayerNormInputShapeMismatchError =
     "Size of scale and bias (if provided) must match X.shape[axis:], "
     "or scale and bias (with same shape) can be broadcasted to X when axis is 2.";
 
-constexpr const char* kLayerNormInvalidSize = "Size of X.shape[axis:] must be larger than 1, got ";
+constexpr const char* kLayerNormInvalidSize = "Size of X.shape[axis:] must be larger than 0, got ";
 
 constexpr int64_t kLayerNormInvalidInput = -1;
 
@@ -54,7 +54,10 @@ class LayerNormHelper {
     params.bias_size = bias_shape.Size();
     params.broadcast_param = 0;
 
-    if (params.norm_size <= 1) {
+    // Allow degenerate normalization size of 1. It's a valid computation
+    // where the normalized value becomes 0 (and output equals bias if provided).
+    // Only reject zero-size which would lead to divide-by-zero in computation.
+    if (params.norm_size < 1) {
       params.broadcast_param = kLayerNormInvalidInput;
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kLayerNormInvalidSize, params.norm_size);
     } else if (params.scale_size != params.norm_size || (has_bias && params.bias_size != params.scale_size)) {
