@@ -81,6 +81,9 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   ORT_RETURN_IF_ERROR(program.GenerateShaderCode(shader_helper));
 
+  // Finalize inputs after GenerateShaderCode() to ensure indirect buffer is added as the last input
+  shader_helper.FinalizeInputs();
+
   ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForInputs());
   ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForOutputs());
   ORT_RETURN_IF_ERROR(shader_helper.ValidateIndices());

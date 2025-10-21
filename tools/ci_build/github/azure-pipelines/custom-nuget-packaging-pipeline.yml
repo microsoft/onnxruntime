@@ -1,12 +1,12 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
 
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.38.0.250901
+  default: 2.39.0.250926
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
@@ -38,10 +38,10 @@ variables:
   - name: ReleaseVersionSuffix
     value: ''
   - name: win_cuda_home
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\v11.8
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: $(Agent.TempDirectory)\v12.2
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: $(Agent.TempDirectory)\v13.0
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: $(Agent.TempDirectory)\v12.8
 
 resources:
   repositories:
@@ -178,9 +178,6 @@ extends:
             inputs:
               targetType: 'inline'
               script: |
-                mkdir -p $(Build.BinariesDirectory)/osx-x64
-                Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
-
                 mkdir -p $(Build.BinariesDirectory)/osx-arm64
                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-arm64* -Destination $(Build.BinariesDirectory)/osx-arm64
 
@@ -199,12 +196,6 @@ extends:
                 $dirs = Get-ChildItem $(Build.BinariesDirectory) -Directory
                 foreach ($dir in $dirs) {
                   Write-Host "Directory: $($dir.FullName)"
-                }
-                $osx_x64_archive = Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*
-                if ($osx_x64_archive.Count -eq 0) {
-                  Write-Host "No osx-x64 archive found."
-                } else {
-                  Write-Host "osx-x64 archive found: $($osx_x64_archive[0].FullName)"
                 }
                 $osx_arm64_archive = Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*
                 if ($osx_arm64_archive.Count -eq 0) {
@@ -233,13 +224,10 @@ extends:
               script: |
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-x64/onnxruntime-win-x64-cuda*.zip -DestinationPath $(Build.BinariesDirectory)/win-x64
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-arm64x-qnn*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
-                $osx_x64_archive = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*)[0].FullName
                 $osx_arm64_archive = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
-                tar -xzf $osx_x64_archive -C $(Build.BinariesDirectory)/osx-x64 2>$null
                 tar -xzf $osx_arm64_archive -C $(Build.BinariesDirectory)/osx-arm64 2>$null
                 $win_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-x64 -Filter onnxruntime-win-x64-cuda*)[0].FullName
                 $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-arm64x-qnn*)[0].FullName
-                $osx_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*)[0].FullName
                 $osx_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
                 Write-Host "##vso[task.setvariable variable=win_x64;]$win_x64"
                 Write-Host "##vso[task.setvariable variable=win_arm64;]$win_arm64"

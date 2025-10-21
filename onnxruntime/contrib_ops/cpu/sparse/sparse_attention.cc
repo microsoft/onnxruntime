@@ -130,6 +130,11 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
         allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
   }
 
+  OrtValue RotaryQKV;
+  OrtValue RotaryQ;
+  OrtValue RotaryK;
+  T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
+  T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
     rotary_embedding_helper::RotaryParameters rotary_params = {};
     rotary_params.batch_size = batch_size;
@@ -167,30 +172,22 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
 
     const T* q_input;
     const T* k_input;
-    T* q_rotary;
-    T* k_rotary;
     if (packed_qkv) {
-      OrtValue RotaryQKV;
       TensorShape qkv_shape({batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size});
       Tensor::InitOrtValue(element_type, qkv_shape, allocator, RotaryQKV);
       q_input = Q.Get<Tensor>().Data<T>();
       k_input = q_input + num_heads_ * sequence_length * head_size;
       q_rotary = RotaryQKV.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = q_rotary + num_heads_ * sequence_length * head_size;
-      Q = RotaryQKV;
     } else {
-      OrtValue RotaryQ;
       TensorShape q_shape({batch_size, num_heads_, sequence_length, head_size});
       Tensor::InitOrtValue(element_type, q_shape, allocator, RotaryQ);
-      OrtValue RotaryK;
       TensorShape k_shape({batch_size, kv_num_heads_, sequence_length, head_size});
       Tensor::InitOrtValue(element_type, k_shape, allocator, RotaryK);
       q_input = Q.Get<Tensor>().Data<T>();
       k_input = K.Get<Tensor>().Data<T>();
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = RotaryK.GetMutable<Tensor>()->MutableData<T>();
-      Q = RotaryQ;
-      K = RotaryK;
     }
 
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
@@ -221,9 +218,8 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q.Get<Tensor>().Data<T>(), packed_qkv ? nullptr : K.Get<Tensor>().Data<T>(),
-                        packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(), past_key, past_value,
-                        output, present_key, present_value,
+  return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
+                        past_key, past_value, output, present_key, present_value,
                         total_key_lengths, block_row_indices, block_col_indices, parameters, allocator, context);
 }
 }  // namespace contrib
