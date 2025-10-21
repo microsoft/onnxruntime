@@ -53,8 +53,8 @@ stages:
           value: ''
       - template: ../templates/common-variables.yml
       - name: trt_version
-        ${{ if eq(parameters.cuda_version, '11.8') }}:
-          value: ${{ variables.linux_trt_version_cuda11 }}
+        ${{ if eq(parameters.cuda_version, '13.0') }}:
+          value: ${{ variables.linux_trt_version_cuda13 }}
         ${{ if eq(parameters.cuda_version, '12.8') }}:
           value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
@@ -81,16 +81,14 @@ stages:
 
       - script: |
           set -e -x
-          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }} 
+          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
           mv $(Build.BinariesDirectory)/dist ./dist
           pushd dist
           find . -name \*.whl -exec unzip -qq -o {} \;
           rm -r onnxruntime
           popd
-          pushd ${{ parameters.cmake_build_type }} 
+          pushd ${{ parameters.cmake_build_type }}
           find . -name \*.whl -exec unzip -qq -o {} \;
           popd
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'Move files'
-
-
