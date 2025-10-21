@@ -111,7 +111,7 @@ void MlasTMACPackScalesAndZeroPoints(
             if (HasZeroPoint) {
                 // zp are two bit packed
                 size_t elem_idx = idx % num_elem_per_byte;
-                uint8_t v = (QuantBZeroPoint[idx / num_elem_per_byte] >> (elem_idx * bits) & (1 << bits)) - 1;
+                uint8_t v = QuantBZeroPoint[idx / num_elem_per_byte] >> (elem_idx * bits) & (1 << bits) - 1;
                 zp = static_cast<float>(v);
 
                 // Note: TMAC does this during model conversion. Since, we follow ORT format, we need to do it here.
