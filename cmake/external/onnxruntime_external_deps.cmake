@@ -314,17 +314,17 @@ if (onnxruntime_ENABLE_CPUINFO)
   # Adding pytorch CPU info library
   # TODO!! need a better way to find out the supported architectures
   set(CPUINFO_SUPPORTED FALSE)
-  if (APPLE)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo.
+    if (onnxruntime_USE_XNNPACK)
+      set(CPUINFO_SUPPORTED TRUE)
+    endif()
+  elseif (APPLE)
     list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
     if (CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
       set(CPUINFO_SUPPORTED TRUE)
     else()
       message(WARNING "cpuinfo is not supported when CMAKE_OSX_ARCHITECTURES has more than one value.")
-    endif()
-  elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo.
-    if (onnxruntime_USE_XNNPACK)
-      set(CPUINFO_SUPPORTED TRUE)
     endif()
   elseif (WIN32)
     set(CPUINFO_SUPPORTED TRUE)
