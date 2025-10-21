@@ -433,7 +433,7 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
 
       TensorProto new_tensor_proto = *tensor_proto;
-      *(new_tensor_proto.mutable_name()) = new_def_name;
+      *(new_tensor_proto.mutable_name()) = std::move(new_def_name);
 
       // Query any OrtValue existing for the original initializer
       // We are checking outer scope because GetInitializer is called with true, therefore, we potentially
