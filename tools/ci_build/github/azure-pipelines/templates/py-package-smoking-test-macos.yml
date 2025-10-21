@@ -1,0 +1,41 @@
+parameters:
+- name: python_version
+  type: string
+
+- name: os_version
+  type: string
+  
+jobs:
+- job: Test_MAC_Wheels_${{ parameters.os_version }}_${{ replace(parameters.python_version,'.','_') }}
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  pool:
+    vmImage: 'macOS-${{ parameters.os_version }}'
+  steps:
+  - checkout: none
+
+  - task: UsePythonVersion@0
+    displayName: 'Use Python'
+    inputs:
+      versionSpec: ${{ parameters.python_version }}
+
+  - download: build   # pipeline resource identifier.
+    artifact: onnxruntime-macos-x86_64_${{ replace(parameters.python_version,'.','_') }}
+
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: |
+        set -ex
+        files=(*.whl)
+        FILE_NAME="${files[0]}"
+        FILE_NAME=$(basename $FILE_NAME)
+        PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
+        python3 -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
+        python3 -m pip install --no-index --find-links . $PYTHON_PACKAGE_NAME
+        python3 -m pip show $PYTHON_PACKAGE_NAME
+        python3 -c "import onnxruntime as ort; print(ort.__version__)"
+      workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-macos-x86_64_${{ replace(parameters.python_version,'.','_') }}
+    displayName: Test Package Installation
+

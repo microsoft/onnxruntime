@@ -27,8 +27,6 @@ stages:
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
-    - name: SKIPNONPACKAGETESTS
-      value: 'ON'
     - name: runCodesignValidationInjection
       value: false
     - name: CUDA_MODULE_LOADINGL
@@ -69,6 +67,11 @@ stages:
     - download: build
       displayName: 'Download Nuget'
       artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
+
+    - download: build
+      displayName: 'Download CustomOp DLL'
+      artifact: 'onnxruntime-win-x64'
+      patterns: "testdata/custom_op_library.dll"
    
 
     - template: get-nuget-package-version-as-variable.yml
@@ -76,7 +79,10 @@ stages:
         packageFolder: '$(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
 
     - script: |
-       mklink /D /J models C:\local\models
+        mklink /D /J models C:\local\models
+        mkdir $(Build.BinariesDirectory)\Debug\Debug
+        dir $(Pipeline.Workspace)\build\onnxruntime-win-x64
+        copy $(Pipeline.Workspace)\build\onnxruntime-win-x64\testdata\custom_op_library.dll $(Build.BinariesDirectory)\Debug\Debug
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
 
