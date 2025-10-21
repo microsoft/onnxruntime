@@ -1239,7 +1239,7 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                           const logging::Logger& logger) override {
-    return std::make_unique<Model>(model_proto, model_path, local_registries, logger);
+    return std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger);
   }
   std::unique_ptr<Model> Model__construct(const std::string& graph_name,
                                           bool is_onnx_domain_only,
