@@ -2896,8 +2896,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
 
     if (initializer) {
       // Get shape from TensorProto and calculate element counts.
-      // If shape has dimension size equals zero, it means it's a scalar and has only one value.
-      int64_t element_cnt = 1;
+      // If shape has dimension size equals zero, it means it's a scalar and has only one element.
+      size_t element_cnt = 1;
       for (auto& dim : initializer->dims()) {
         element_cnt *= dim;
       }
@@ -2910,12 +2910,12 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           const Tensor& tensor = ort_value.Get<Tensor>();
           if (initializer->data_type() == TensorProto_DataType_INT32) {
             input_values.resize(element_cnt);
-            for (int64_t i = 0; i < element_cnt; ++i) {
+            for (size_t i = 0; i < element_cnt; ++i) {
               input_values[i] = static_cast<int64_t>(tensor.Data<int32_t>()[i]);
             }
           } else if (initializer->data_type() == TensorProto_DataType_INT64) {
             input_values.resize(element_cnt);
-            for (int64_t i = 0; i < element_cnt; ++i) {
+            for (size_t i = 0; i < element_cnt; ++i) {
               input_values[i] = tensor.Data<int64_t>()[i];
             }
           }
@@ -2928,7 +2928,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
         const std::string& raw = initializer->raw_data();
         const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
         input_values.resize(element_cnt);
-        for (int64_t i = 0; i < element_cnt; ++i) {
+        for (size_t i = 0; i < element_cnt; ++i) {
           input_values[i] = data[i];
         }
       } else {
@@ -2936,7 +2936,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           std::vector<int32_t> values;
           values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
           input_values.resize(element_cnt);
-          for (int64_t i = 0; i < element_cnt; ++i) {
+          for (size_t i = 0; i < element_cnt; ++i) {
             input_values[i] = static_cast<int64_t>(values[0]);
           }
         } else if (initializer->data_type() == TensorProto_DataType_INT64) {
@@ -2947,9 +2947,11 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
     }
   };
 
-  // Following operators, e.g. Size, Squeeze and Unsqueeze, calling their PartialDataPropagationFunction() alone
-  // to get the inferred shape values is still not enough to get the proper values.
-  // So, ignore the inferred values from PartialDataPropagationFunction() and infer the output values here.
+  // For certain operators (e.g., Size, Squeeze, Unsqueeze), invoking PartialDataPropagationFunction()
+  // alone does not yield fully accurate inferred shape values.
+  // Therefore, we ignore the inferred output shape values produced by PartialDataPropagationFunction() and manually infer
+  // the output shape values here.
+
   if (node.OpType() == "Size") {
     // Size operator generates a scalar output
     const auto* input_0 = node.GetDefinitions().input_defs[0];
@@ -3027,11 +3029,20 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
         }
         output_def.inferred_shape_values_->clear_dim();
 
+        int64_t dim_index = 0;
         for (const auto& dim : tensor_shape_proto.dim()) {
           auto value = dim.dim_value();
-          if (axes_set.find(value) == axes_set.end() && value != 1) {
-            output_def.inferred_shape_values_->add_dim()->set_dim_value(value);
+          if (axes_set.size() > 0) {
+            if (axes_set.find(dim_index) == axes_set.end()) {
+              output_def.inferred_shape_values_->add_dim()->set_dim_value(value);
+            }
+          } else {
+            if (value != 1) {
+              output_def.inferred_shape_values_->add_dim()->set_dim_value(value);
+            }
           }
+
+          dim_index++;
         }
       }
     };
@@ -3127,9 +3138,9 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
     return Status::OK();
   }
 
-  // If dimension size is 0, it could indicate one of the following cases:
+  // For rest of the operators, if dimension size is 0, it could indicate one of the following cases:
   //   1. The inferred output is a scalar.
-  //   2. The node's input is a scalar, and the operator's PartialDataPropagationFunction() cannot handle it.
+  //   2. The node's input is a scalar, and the operator's PartialDataPropagationFunction() doesn't handle it.
   //
   // In other words, some operators' PartialDataPropagationFunction() implementations do not support
   // scalar inputs or outputs. In such cases, attempt data propagation manually and store the inferred
@@ -3415,14 +3426,6 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         }
       }
     }
-  }
-
-  if (node.OpType() == "Shape") {
-    std::cout << "Shape" << std::endl;
-  }
-
-  if (node.OpType() == "Size") {
-    std::cout << "Size" << std::endl;
   }
 
   // Apply ONNX's type/shape inference to this node.
@@ -3792,6 +3795,26 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
       ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(CleanUpShapeValuesFromDataPropagation());
+
+  return Status::OK();
+}
+
+Status Graph::CleanUpShapeValuesFromDataPropagation() {
+  for (auto node_index : nodes_in_topological_order_) {
+    auto& node = *GetNode(node_index);
+
+    for (auto node_arg : node.MutableInputDefs()) {
+      node_arg->inferred_shape_values_.reset();
+      node_arg->inferred_scalar_value_.reset();
+    }
+
+    for (auto node_arg : node.MutableOutputDefs()) {
+      node_arg->inferred_shape_values_.reset();
+      node_arg->inferred_scalar_value_.reset();
     }
   }
 

@@ -217,8 +217,11 @@ class Tensor final {
   template <typename T>
   const T* Data() const {
     // Type check
-    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
-                "T ", "!=", dtype_);
+    do {
+      if (!(utils::IsPrimitiveDataType<T>(dtype_))) {
+        throw ::onnxruntime::OnnxRuntimeException(::onnxruntime::CodeLocation("C:\\Users\\lochi\\repos\\ort\\include\\onnxruntime\\core\\framework\\tensor.h", 221, static_cast<const char*>(__FUNCTION__), ::onnxruntime::GetStackTrace()), "utils::IsPrimitiveDataType<T>(dtype_)", ::onnxruntime::MakeString("Tensor type mismatch. ", "T ", "!=", dtype_));
+      }
+    } while (false);
     return reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
   }
 

@@ -1766,6 +1766,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status SaveShapeValuesFromDataPropagation(Node& node, NodeArg& output_def,
                                                     const ONNX_NAMESPACE::TypeProto& propagated_value_as_type_proto) const;
 
+  // Remove intermediate inferred shape values stored in all NodeArgs to reduce memory usage.
+  common::Status CleanUpShapeValuesFromDataPropagation();
+
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();
 
