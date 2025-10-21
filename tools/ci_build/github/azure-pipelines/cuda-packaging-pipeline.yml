@@ -51,19 +51,20 @@ parameters:
   default: '12.8'
   values:
   - 12.8
+  - 13.0
 
 variables:
 - template: templates/common-variables.yml
 - name: ReleaseVersionSuffix
   value: ''
 - name: win_trt_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
     value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
 - name: win_cuda_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\v11.8
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\v13.0
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
     value: $(Agent.TempDirectory)\v12.8
 
