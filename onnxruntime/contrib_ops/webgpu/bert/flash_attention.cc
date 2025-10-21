@@ -106,7 +106,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // Determine if we need to prepare indirect dispatch
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
 
-  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_,
+  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH,
                              prepare_indirect_dispatch};
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
