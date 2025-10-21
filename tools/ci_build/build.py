@@ -1600,15 +1600,16 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         # run shared library tests if applicable
         if args.build_shared_lib:
             shared_library_test_program_names = [
-                "onnxruntime_shared_lib_test",
-                "onnxruntime_customopregistration_test",
                 "onnxruntime_autoep_test",
+                "onnxruntime_customopregistration_test",
+                "onnxruntime_shared_lib_test",
             ]
 
             shared_libraries = [
-                "libonnxruntime.so",
-                "libcustom_op_library.so",
                 "libcustom_op_get_const_input_test_library.so",
+                "libcustom_op_library.so",
+                "libexample_plugin_ep.so",
+                "libonnxruntime.so",
             ]
 
             for file_to_copy in shared_library_test_program_names + shared_libraries:
