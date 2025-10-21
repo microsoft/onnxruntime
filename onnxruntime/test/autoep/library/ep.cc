@@ -381,7 +381,7 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                          size_t num_node_compute_infos) noexcept {
   (void)this_ptr;
   for (size_t i = 0; i < num_node_compute_infos; i++) {
-    delete node_compute_infos[i];
+    delete static_cast<ExampleNodeComputeInfo*>(node_compute_infos[i]);
   }
 }
 
