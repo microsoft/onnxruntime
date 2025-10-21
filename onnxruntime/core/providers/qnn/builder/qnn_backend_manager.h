@@ -233,7 +233,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Resets the context priority to the session default as defined by context_priority_
   Status ResetContextPriority();
 
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   bool ProfilingEnabled() { return profiling_enabled_; }
+#endif
 
  private:
   Status LoadBackend();
@@ -436,7 +438,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
   bool system_lib_loaded_ = false;
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   bool profiling_enabled_ = false;
+#endif
+
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;
