@@ -241,7 +241,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   std::lock_guard<std::mutex> lock{factory.mutex_};
 
   if (!factory.arena_allocator_) {
-    std::unique_ptr<OrtAllocator> ep_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+    AllocatorUniquePtr ep_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
 
     // initial shared allocator in environment does not have allocator options.
     // if the user calls CreateSharedAllocator they can provide options to configure the arena differently.

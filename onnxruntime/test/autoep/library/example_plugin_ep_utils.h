@@ -73,8 +73,6 @@ struct ApiPtrs {
   const OrtModelEditorApi& model_editor_api;
 };
 
-using AllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
-
 // Helper to release Ort one or more objects obtained from the public C API at the end of their scope.
 template <typename T>
 struct DeferOrtRelease {

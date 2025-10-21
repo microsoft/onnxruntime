@@ -51,7 +51,16 @@ struct AllocatorStats {
   }
 };
 
-struct CustomAllocator : OrtAllocator {
+// `OrtAllocator` is a C struct.
+// `BaseAllocator` is a minimal C++ struct which inherits from it. Notably, `BaseAllocator` has a virtual destructor to
+// enable a derived class to be deleted through a `BaseAllocator` pointer.
+struct BaseAllocator : OrtAllocator {
+  virtual ~BaseAllocator() = default;
+};
+
+using AllocatorUniquePtr = std::unique_ptr<BaseAllocator>;
+
+struct CustomAllocator : BaseAllocator {
   CustomAllocator(const OrtMemoryInfo* mem_info, const ApiPtrs& api_ptrs_in)
       : memory_info{mem_info}, api_ptrs{api_ptrs_in} {
     version = ORT_API_VERSION;
