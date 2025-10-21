@@ -1449,6 +1449,58 @@ static bool TryGetConfigEntry(const ConfigOptions& config_options, const std::st
   return true;
 }
 
+std::string QNNExecutionProvider::GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+
+  // Compatiblity string is expected to be in format <major>.<minor>.<patch>
+  std::string sdk_version(std::to_string(QNN_API_VERSION_MAJOR) + "." + std::to_string(QNN_API_VERSION_MINOR) + "." + std::to_string(QNN_API_VERSION_PATCH));
+  return sdk_version;
+}
+
+// Compatiblity string is expected to be in format <major>.<minor>.<patch>
+Status GetSDKVersionFromCompatibilityString(const std::string& str, int& model_version_major,
+                                            int& model_version_minor, int& model_version_patch) {
+  ORT_RETURN_IF(str.empty(), "Provided model compatibility string is empty");
+
+  size_t idx = str.find(".");
+  ORT_RETURN_IF(idx == std::string::npos || !qnn::utils::StrToInt(str.substr(0, idx), model_version_major),
+                "Failed to determine major version from model compatibility string: ", str);
+  ORT_RETURN_IF(model_version_major < 1, "Major version < 1 found in model compatibility string: ", str);
+
+  size_t start = idx + 1;
+  idx = str.find(".", start);
+  ORT_RETURN_IF(idx == std::string::npos || !qnn::utils::StrToInt(str.substr(start, idx - start), model_version_minor),
+                "Failed to determine minor version from model compatibility string: ", str);
+  ORT_RETURN_IF(model_version_minor < 0, "Negative minor version found in model compatibility string: ", str);
+
+  start = idx + 1;
+  idx = str.find(".", start);
+  ORT_RETURN_IF(idx != std::string::npos || !qnn::utils::StrToInt(str.substr(start), model_version_patch),
+                "Failed to determine patch version from model compatibility string: ", str);
+  ORT_RETURN_IF(model_version_patch < 0, "Negative patch version found in model compatibility string: ", str);
+
+  return Status::OK();
+}
+
+common::Status QNNExecutionProvider::ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
+                                                                            OrtCompiledModelCompatibility& model_compatibility) const {
+  int model_version_major = -1;
+  int model_version_minor = -1;
+  int model_version_patch = -1;
+  ORT_RETURN_IF_ERROR(GetSDKVersionFromCompatibilityString(compatibility_info, model_version_major,
+                                                           model_version_minor, model_version_patch));
+
+  if (model_version_major != QNN_API_VERSION_MAJOR || model_version_minor != QNN_API_VERSION_MINOR) {
+    model_compatibility = OrtCompiledModelCompatibility::OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+  } else if (model_version_patch != QNN_API_VERSION_PATCH) {
+    model_compatibility = OrtCompiledModelCompatibility::OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+  } else {
+    model_compatibility = OrtCompiledModelCompatibility::OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+  }
+
+  return Status::OK();
+}
+
 Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   auto backend_type = qnn_backend_manager_->GetQnnBackendType();
   if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
