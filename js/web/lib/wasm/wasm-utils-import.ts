@@ -166,7 +166,7 @@ const preload = async (absoluteUrl: string): Promise<string> => {
  * @returns - A promise that resolves to the default export of the module.
  */
 const dynamicImportDefault = async <T>(url: string): Promise<T> =>
-  (await import(/* webpackIgnore: true */ url)).default;
+  (await import(/* webpackIgnore: true */ /* @vite-ignore */ url)).default;
 
 /**
  * The proxy worker factory imported from the proxy worker module.

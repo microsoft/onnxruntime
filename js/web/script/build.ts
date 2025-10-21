@@ -371,7 +371,7 @@ async function buildTest() {
  * ```
  * to:
  * ```
- * ... await import(/* webpackIgnore: true *\/...
+ * ... await import(/* webpackIgnore: true *\/ /* @vite-ignore *\/...
  * ```
  *
  * Why we need this?
@@ -387,15 +387,18 @@ async function buildTest() {
  * - There are multiple entry points that use dynamic import to load the ort-*.mjs and ort-*.wasm. If the content of the
  * dynamic import is resolved by Webpack, it will be duplicated in the final bundle. This will increase the bundle size.
  *
+ * Additionally, Vite is unable to analyze the dynamic import calls, which triggers a warning. These dynamic imports are
+ * intentional, so the warning should be ignored. Aside from suppressing the warning, this does not change any behavior.
+ *
  * What about other bundlers?
  *
  * TBD
  *
  */
 async function postProcess() {
-  const IMPORT_MAGIC_COMMENT = '/*webpackIgnore:true*/';
+  const IMPORT_MAGIC_COMMENTS = ['/*webpackIgnore:true*/', '/*@vite-ignore*/'].join(' ');
   const IMPORT_ORIGINAL = 'await import(';
-  const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENT}`;
+  const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENTS}`;
 
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
   for (const file of files) {
@@ -449,7 +452,7 @@ async function postProcess() {
 
         consumer.eachMapping((mapping) => {
           if (mapping.generatedLine === line && mapping.generatedColumn >= column) {
-            mapping.generatedColumn += IMPORT_MAGIC_COMMENT.length;
+            mapping.generatedColumn += IMPORT_MAGIC_COMMENTS.length;
           }
 
           updatedSourceMap.addMapping({
@@ -484,9 +487,9 @@ async function postProcess() {
 
       await fs.writeFile(jsFilePath, jsFileLines.join('\n'));
       const newJsFileSize = (await fs.stat(jsFilePath)).size;
-      if (newJsFileSize - originalJsFileSize !== IMPORT_MAGIC_COMMENT.length) {
+      if (newJsFileSize - originalJsFileSize !== IMPORT_MAGIC_COMMENTS.length) {
         throw new Error(
-          `Failed to insert magic comment to file "${file}". Original size: ${
+          `Failed to insert magic comments to file "${file}". Original size: ${
             originalJsFileSize
           }, New size: ${newJsFileSize}`,
         );
@@ -497,31 +500,44 @@ async function postProcess() {
 
 async function validate() {
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
-  for (const file of files) {
-    // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
-    if ((file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.')) {
-      const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
-      const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
+  // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
+  const validateFiles = files.filter(
+    (file) => (file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.'),
+  );
 
-      if (isMinified) {
-        // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
-        //
-        // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
-        // this case, we should fix the build script (this file).
-        //
-        if (content.includes('BUILD_DEFS')) {
-          throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
-        }
-      }
+  for (const file of validateFiles) {
+    const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
+    const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
 
-      // all files should contain the magic comment to ignore dynamic import calls.
+    if (isMinified) {
+      // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
       //
-      if (!file.includes('.webgl.') && !file.includes('.bundle.')) {
-        const contentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
-        if (!content.includes(contentToSearch)) {
-          throw new Error(`Validation failed: "${file}" does not contain magic comment.`);
-        }
+      // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
+      // this case, we should fix the build script (this file).
+      //
+      if (content.includes('BUILD_DEFS')) {
+        throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
       }
+    }
+
+    if (file.includes('.webgl.') || file.includes('.bundle.')) {
+      // no further validation required.
+      //
+      continue;
+    }
+
+    // all files should contain the webpack magic comment to ignore dynamic import calls.
+    //
+    const webpackContentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
+    if (!content.includes(webpackContentToSearch)) {
+      throw new Error(`Validation failed: "${file}" does not contain webpack magic comment.`);
+    }
+
+    // all files should contain the vite magic comment to suppress dynamic import call warnings.
+    //
+    const viteContentToSearch = isMinified ? '/*@vite-ignore*/' : '/* @vite-ignore */';
+    if (!content.includes(viteContentToSearch)) {
+      throw new Error(`Validation failed: "${file}" does not contain vite magic comment.`);
     }
   }
 }
