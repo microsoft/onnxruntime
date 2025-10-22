@@ -55,10 +55,18 @@ class SharedContext : public WeakSingleton<SharedContext> {
       explicit WeightsFile(std::filesystem::path filename);
 
       void load_weights(size_t file_offset, void* data, size_t size);
+      void* TryGetOrCreateDeviceMapping(std::optional<ov::RemoteContext>& remote_context);
+      size_t Size() const { return weights_size_; }
 
      private:
       std::ifstream file_;
+      std::filesystem::path file_path_;
       size_t weights_size_;
+      struct MappingContainer {
+        void* ptr_{nullptr};
+        ov::Tensor tensor_;
+      };
+      std::map<std::string, MappingContainer> imported_device_tensors_;
     };
 
     void clear() {

@@ -20,11 +20,11 @@ using Exception = ov::Exception;
 namespace onnxruntime {
 namespace openvino_ep {
 
-SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path filename) : file_(filename, std::ios::in | std::ios::binary) {
+SharedContext::SharedWeights::WeightsFile::WeightsFile(std::filesystem::path filename) : file_(filename, std::ios::in | std::ios::binary), file_path_(filename) {
   try {
     file_.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    weights_size_ = file_.seekg(0, std::ios::end).tellg();
-  } catch (std::ifstream::failure& e) {
+    weights_size_ = std::filesystem::file_size(filename);
+  } catch (const std::exception& e) {
     ORT_THROW("Error: Failed to open weight file at ", filename.string(), " ", e.what());
   }
 }
@@ -33,6 +33,32 @@ void SharedContext::SharedWeights::WeightsFile::load_weights(size_t file_offset,
   ORT_ENFORCE(file_offset < weights_size_ && size <= weights_size_ && (file_offset <= weights_size_ - size), "Error: File offset is out of bounds.");
   file_.seekg(file_offset);
   file_.read(reinterpret_cast<char*>(data), size);
+}
+
+void* SharedContext::SharedWeights::WeightsFile::TryGetOrCreateDeviceMapping(std::optional<ov::RemoteContext>& remote_context) {
+  std::string dev_name{};
+  if (remote_context) {
+    dev_name = remote_context->get_device_name();
+  }
+
+  auto [it, inserted] = imported_device_tensors_.emplace(dev_name, MappingContainer{});
+  if (inserted) {
+    if (dev_name == "NPU") {
+#if OPENVINO_VERSION_AT_LEAST(2025, 3)
+      // try to import the memory mapped file to remote tensor
+      ORT_ENFORCE(remote_context, "Error: Remote context is required for NPU device.");
+      auto npu_context = remote_context->as<ov::intel_npu::level_zero::ZeroContext>();
+      auto&& l0_tensor = npu_context.create_tensor(ov::element::Type_t::u8, {weights_size_}, ov::intel_npu::FileDescriptor(file_path_));
+      it->second = MappingContainer{.ptr_ = l0_tensor.get(), .tensor_ = l0_tensor};
+#endif
+    } else if (dev_name.empty()) {
+      // CPU/virtual device case, create a CPU tensor memory mapped from file
+      auto&& mmaped_tensor = ov::read_tensor_data(file_path_);
+      it->second = MappingContainer{.ptr_ = mmaped_tensor.data(), .tensor_ = mmaped_tensor};
+    }
+  }
+
+  return it->second.ptr_;
 }
 
 std::ostream& operator<<(std::ostream& stream, const SharedContext::SharedWeights::Metadata::Map& metadata) {
@@ -405,29 +431,43 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 void CreateOVTensors(const std::string& device_name,
                      SharedContext::SharedWeights::Metadata::Map& metadata_map,
                      SharedContext::SharedWeights::WeightsFile& weights) {
+  // Get remote context if available
+  std::optional<ov::RemoteContext> opt_remote_ctx;
+  try {
+    opt_remote_ctx = OVCore::Get()->core.get_default_context(device_name);
+  } catch (const std::exception&) {
+    // Remote context not available
+  }
+
   for (auto& [key, value] : metadata_map) {
     if (value.tensor) continue;
 
     // Get element data type
     auto onnx_element_type = (ONNX_NAMESPACE::TensorProto_DataType)value.element_type;
+    ov::element::Type ov_elementType = GetOpenVINOElementType(onnx_element_type);
 
-    ov::element::Type ov_elementType = GetOpenVINOElementType(onnx_element_type);  // Map to OpenVINO data type
+    // Try to get memory-mapped weights
+    ov::Tensor tensor;
+    uint8_t* mmaped_weights = static_cast<uint8_t*>(weights.TryGetOrCreateDeviceMapping(opt_remote_ctx));
 
-    // Create OpenVINO Tensor
-    if (device_name == "NPU") {
-      // Use remote tensors
-      auto npu_context = OVCore::Get()->core.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
-      auto&& remote_tensor = npu_context.create_l0_host_tensor(ov_elementType, value.dimensions, ov::intel_npu::TensorType::INPUT);
-
-      // Copy data to remote tensor
-      weights.load_weights(value.data_offset, remote_tensor.get(), value.size);
-      value.tensor = std::make_shared<ov::Tensor>(remote_tensor);
+    if (mmaped_weights) {
+      // We have memory mapped weights. Create a Tensor view into it for this value.
+      ORT_ENFORCE(value.data_offset < weights.Size() &&
+                      value.size <= weights.Size() &&
+                      (value.data_offset <= weights.Size() - value.size),
+                  "File offset + size outside of external initializer file");
+      void* mmapped_offset = static_cast<void*>(mmaped_weights + value.data_offset);
+      tensor = ov::Tensor(ov_elementType, value.dimensions, mmapped_offset);
     } else {
-      // Use vanilla tensors
-      value.tensor = std::make_shared<ov::Tensor>(ov_elementType, value.dimensions);
-      weights.load_weights(value.data_offset, value.tensor->data(), value.size);
+      ORT_ENFORCE(opt_remote_ctx, "Expected either memory-mapped weights or a valid remote context, but neither is available for device: ", device_name);
+      // Can't mmap the file to device tensor, create a host tensor and copy the data
+      tensor = opt_remote_ctx->create_host_tensor(ov_elementType, value.dimensions);
+      ORT_ENFORCE(tensor.get_byte_size() == value.size, "Remote tensor size mismatch");
+      weights.load_weights(value.data_offset, tensor.data(), value.size);
     }
-    ORT_ENFORCE(value.tensor->get_byte_size() == value.size, "Unexpected tensor size mismatch");
+
+    ORT_ENFORCE(tensor.get_byte_size() == value.size, "Unexpected tensor size mismatch");
+    value.tensor = std::make_shared<ov::Tensor>(std::move(tensor));
   }
 }
 
