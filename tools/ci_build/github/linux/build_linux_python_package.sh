@@ -12,8 +12,8 @@ ENABLE_CACHE=false
 PYTHON_EXES=(
   "/opt/python/cp311-cp311/bin/python3.11"
   "/opt/python/cp313-cp313/bin/python3.13"
-  "/opt/python/cp313-cp313t/bin/python3.13t"
-    "/opt/python/cp312-cp312/bin/python3.12"
+  "/opt/python/cp314-cp314/bin/python3.14"
+  "/opt/python/cp312-cp312/bin/python3.12"
   )
 while getopts "d:p:x:c:e" parameter_Option
 do case "${parameter_Option}"
