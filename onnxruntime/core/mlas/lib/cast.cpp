@@ -81,7 +81,7 @@ MlasConvertHalfToFloatBufferInParallel(
                 MlasConvertHalfToFloatBuffer(
                     Source + first_span,
                     Destination + first_span,
-                    onnxruntime::narrow<std::ptrdiff_t>(last_span - first_span));
+                    static_cast<size_t>(last_span - first_span));
             }
         );
     }
@@ -148,7 +148,7 @@ MlasConvertFloatToHalfBufferInParallel(
                 MlasConvertFloatToHalfBuffer(
                     Source + first_span,
                     Destination + first_span,
-                    onnxruntime::narrow<size_t>(last_span - first_span));
+                    static_cast<size_t>(last_span - first_span));
             }
         );
     }
