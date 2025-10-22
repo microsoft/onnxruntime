@@ -25,7 +25,6 @@ namespace rope_avx2 {
 namespace {
 
 typedef __m256 float32x8_t;
-static constexpr int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
 
 template <bool interleaved>
 void
