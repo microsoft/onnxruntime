@@ -82,6 +82,28 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
  private:
+  class ManagedHtpPowerConfigId {
+   public:
+    ManagedHtpPowerConfigId(uint32_t htp_power_config_id, std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager);
+
+    ~ManagedHtpPowerConfigId();
+
+    uint32_t GetHtpPowerConfigId();
+
+   private:
+    uint32_t htp_power_config_id_;
+    std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
+  };
+
+  void CreateHtpPowerConfigId() const;
+
+  bool IsHtpPowerConfigIdValid();
+
+  uint32_t GetHtpPowerConfigId();
+
+  mutable std::shared_ptr<ManagedHtpPowerConfigId> managed_htp_power_config_id_ = nullptr;
+  mutable std::mutex htp_power_config_id_mutex_;
+
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   // Note: Using shared_ptr<QnnBackendManager> so that we can refer to it with a weak_ptr from a
   // HtpSharedMemoryAllocator allocation cleanup callback.
@@ -114,66 +136,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
   // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
   std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
-
-  class PerThreadContext final {
-   public:
-    PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
-                     uint32_t device_id, uint32_t core_id,
-                     qnn::HtpPerformanceMode default_htp_performance_mode,
-                     uint32_t default_rpc_control_latency,
-                     uint32_t default_rpc_polling_time);
-    ~PerThreadContext();
-    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
-
-    bool IsHtpPowerConfigIdValid() { return is_htp_power_config_id_valid_; }
-
-    uint32_t GetHtpPowerConfigId() { return htp_power_config_id_; }
-
-   private:
-    bool is_htp_power_config_id_valid_ = false;
-    uint32_t htp_power_config_id_ = 0;
-    qnn::QnnBackendManager* qnn_backend_manager_;
-  };
-
-  using PerThreadContextMap = std::unordered_map<const QNNExecutionProvider*, std::weak_ptr<PerThreadContext>>;
-
-  struct ContextCacheHolder {
-    ContextCacheHolder() {
-      RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
-        if (auto lock = weak_p_.lock())
-          p.reset();
-      });
-    }
-
-    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
-  };
-
-  static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
-    thread_local const ContextCacheHolder per_thread_context_cache;
-    return per_thread_context_cache.p;
-  }
-
-  struct PerThreadContextState {
-    // contexts that are currently active
-    std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
-    // contexts available for reuse
-    std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
-    // weak references to thread local caches from which this QNNExecutionProvider instance's entry should be removed
-    // upon destruction
-    std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
-        caches_to_update_on_destruction;
-    // synchronizes access to PerThreadContextState members
-    std::mutex mutex;
-  };
-
-  // The execution provider maintains the PerThreadContexts in this structure.
-  // Synchronization is required to update the contained structures.
-  // On the other hand, access to an individual PerThreadContext is assumed to be from a single thread at a time,
-  // so synchronization is not required for that.
-  mutable PerThreadContextState context_state_;
-
-  PerThreadContext& GetPerThreadContext() const;
-  void ReleasePerThreadContext() const;
 };
 
 }  // namespace onnxruntime
