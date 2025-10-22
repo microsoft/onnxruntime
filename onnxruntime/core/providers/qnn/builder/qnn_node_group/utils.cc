@@ -226,76 +226,12 @@ const NodeUnit* GetParentOfInput(const GraphViewer& graph_viewer,
       return nullptr;
     }
 
+    // parent must not already be part of a QDQ NodeUnit (i.e., be standalone).
+    if (p_parent_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
+      return nullptr;
+    }
+
     return p_parent_node_unit;
-  }
-  return nullptr;
-}
-
-const NodeUnit* GetChildOfOutput(const GraphViewer& graph_viewer,
-                                 const NodeUnit& node_unit,
-                                 const NodeUnitIODef& output,
-                                 const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                 const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
-  const Node* p_parent_node = nullptr;
-
-  for (auto node : node_unit.GetAllNodesInGroup()) {
-    for (auto node_output : node->OutputDefs()) {
-      if (node_output->Name() == output.node_arg.Name()) {
-        p_parent_node = node;
-        break;
-      }
-
-      if (p_parent_node != nullptr) {
-        break;
-      }
-    }
-  }
-
-  if (p_parent_node == nullptr) {
-    return nullptr;
-  }
-
-  const Node& parent_node = *p_parent_node;
-
-  if (graph_viewer.NodeProducesGraphOutput(parent_node)) {
-    // Node is producing a graph output
-    return nullptr;
-  }
-
-  for (auto edge = parent_node.OutputEdgesBegin(); edge != parent_node.OutputEdgesEnd(); ++edge) {
-    const Node& child_node = edge->GetNode();
-
-    // Check if this edge corresponds to the output we're looking for
-    bool is_matching_output = false;
-    for (auto child_input : child_node.InputDefs()) {
-      if (child_input->Name() == output.node_arg.Name()) {
-        is_matching_output = true;
-        break;
-      }
-    }
-
-    if (!is_matching_output) {
-      continue;
-    }
-
-    if (graph_viewer.GetNode(child_node.Index()) == nullptr) {
-      // Node is not in this GraphViewer
-      return nullptr;
-    }
-
-    const auto child_node_unit_it = node_unit_map.find(&child_node);
-    if (child_node_unit_it == node_unit_map.end()) {
-      return nullptr;
-    }
-    const NodeUnit* p_child_node_unit = child_node_unit_it->second;
-
-    // Check if child node has already been handled. Should not be the case if the calling
-    // fusion function has been called in topological order, but check to be safe.
-    if (qnn_node_group_map.count(p_child_node_unit) != 0) {
-      return nullptr;
-    }
-
-    return p_child_node_unit;
   }
   return nullptr;
 }
