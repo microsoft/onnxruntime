@@ -24,7 +24,7 @@
 #define onnxruntime_KLEIDIAI_KERNEL_LOGGING 0
 #endif
 
-// General logging. "tag" is expected to quality the type of message.
+// General logging. "tag" is expected to qualify the type of message.
 #define KLEIDIAI_LOG(tag, msg) std::cout << "[KLEIDIAI " << tag << "]: " << msg << std::endl;
 
 #if onnxruntime_KLEIDIAI_DEBUG_LOGGING
