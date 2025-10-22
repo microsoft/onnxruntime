@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "core/framework/execution_provider.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -16,7 +17,6 @@
 namespace onnxruntime {
 
 class Tensor;
-class WebGpuExecutionProvider;
 
 namespace webgpu {
 
@@ -41,6 +41,9 @@ class ComputeContext {
   }
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
+  }
+  inline bool IsGraphCaptureEnabled() const {
+    return ep_.IsGraphCaptureEnabled();
   }
 #if !defined(__wasm__)
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
@@ -120,7 +123,7 @@ class ComputeContext {
   //
   // Run a compute shader program.
   //
-  inline Status RunProgram(const ProgramBase& program) {
+  inline Status RunProgram(ProgramBase& program) {
     return webgpu_context_.Run(*this, program);
   }
 

@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "core/framework/float8.h"
+#include "core/common/float8.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"

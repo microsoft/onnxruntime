@@ -14,6 +14,7 @@ console.time('BUILD');
  */
 
 const args = minimist(process.argv.slice(2));
+
 /**
  * --bundle-mode=prod (default)
  *   Build multiple ort-web bundles for production.
@@ -28,7 +29,7 @@ const args = minimist(process.argv.slice(2));
  *   Build a single ort-web bundle for nodejs.
  */
 const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
-  process.env.npm_config_bundle_mode || args['bundle-mode'] || 'prod';
+  args['bundle-mode'] || process.env.npm_config_bundle_mode || 'prod';
 
 /**
  * --debug
@@ -42,7 +43,7 @@ const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
  *  Enable debug mode. In this mode, esbuild metafile feature will be enabled. Full bundle analysis will be saved to a
  * file as JSON.
  */
-const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'save'
+const DEBUG = args.debug || process.env.npm_config_debug; // boolean|'verbose'|'save'
 
 /**
  * --webgpu-ep
@@ -53,7 +54,17 @@ const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'
  *
  * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
  */
-const USE_WEBGPU_EP = process.env.npm_config_webgpu_ep ?? args['webgpu-ep'] ?? false;
+const USE_WEBGPU_EP = args['webgpu-ep'] ?? process.env.npm_config_webgpu_ep ?? false;
+
+/**
+ * --jspi
+ * --no-jspi (default)
+ *
+ * Enable or disable the use of JSPI. If enabled, JSPI will be used instead of ASYNCIFY.
+ *
+ * (temporary) This flag is used to test the JSPI integration. It will be removed in the future.
+ */
+const USE_JSPI = args.jspi ?? process.env.npm_config_jspi ?? false;
 
 /**
  * Root folder of the source code: `<ORT_ROOT>/js/`
@@ -68,6 +79,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_JSEP': JSON.stringify(!!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
+  'BUILD_DEFS.ENABLE_JSPI': JSON.stringify(!!USE_JSPI),
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
   'BUILD_DEFS.DISABLE_WEBGPU': JSON.stringify(!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WEBNN': 'false',
@@ -267,7 +279,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
  *
  * The distribution code is split into multiple files:
  *  - [output-name][.min].[m]js
- *  - ort-wasm-simd-threaded[.jsep|.asyncify].mjs
+ *  - ort-wasm-simd-threaded[.jsep|.asyncify|.jspi].mjs
  */
 async function buildOrt({
   isProduction = false,
@@ -359,7 +371,7 @@ async function buildTest() {
  * ```
  * to:
  * ```
- * ... await import(/* webpackIgnore: true *\/...
+ * ... await import(/* webpackIgnore: true *\/ /* @vite-ignore *\/...
  * ```
  *
  * Why we need this?
@@ -375,15 +387,18 @@ async function buildTest() {
  * - There are multiple entry points that use dynamic import to load the ort-*.mjs and ort-*.wasm. If the content of the
  * dynamic import is resolved by Webpack, it will be duplicated in the final bundle. This will increase the bundle size.
  *
+ * Additionally, Vite is unable to analyze the dynamic import calls, which triggers a warning. These dynamic imports are
+ * intentional, so the warning should be ignored. Aside from suppressing the warning, this does not change any behavior.
+ *
  * What about other bundlers?
  *
  * TBD
  *
  */
 async function postProcess() {
-  const IMPORT_MAGIC_COMMENT = '/*webpackIgnore:true*/';
+  const IMPORT_MAGIC_COMMENTS = ['/*webpackIgnore:true*/', '/*@vite-ignore*/'].join(' ');
   const IMPORT_ORIGINAL = 'await import(';
-  const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENT}`;
+  const IMPORT_NEW = `await import(${IMPORT_MAGIC_COMMENTS}`;
 
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
   for (const file of files) {
@@ -437,7 +452,7 @@ async function postProcess() {
 
         consumer.eachMapping((mapping) => {
           if (mapping.generatedLine === line && mapping.generatedColumn >= column) {
-            mapping.generatedColumn += IMPORT_MAGIC_COMMENT.length;
+            mapping.generatedColumn += IMPORT_MAGIC_COMMENTS.length;
           }
 
           updatedSourceMap.addMapping({
@@ -472,9 +487,9 @@ async function postProcess() {
 
       await fs.writeFile(jsFilePath, jsFileLines.join('\n'));
       const newJsFileSize = (await fs.stat(jsFilePath)).size;
-      if (newJsFileSize - originalJsFileSize !== IMPORT_MAGIC_COMMENT.length) {
+      if (newJsFileSize - originalJsFileSize !== IMPORT_MAGIC_COMMENTS.length) {
         throw new Error(
-          `Failed to insert magic comment to file "${file}". Original size: ${
+          `Failed to insert magic comments to file "${file}". Original size: ${
             originalJsFileSize
           }, New size: ${newJsFileSize}`,
         );
@@ -485,31 +500,44 @@ async function postProcess() {
 
 async function validate() {
   const files = await fs.readdir(path.join(SOURCE_ROOT_FOLDER, 'web/dist'));
-  for (const file of files) {
-    // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
-    if ((file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.')) {
-      const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
-      const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
+  // validate on all "ort.*.min.js" and "ort.*.min.mjs" files.
+  const validateFiles = files.filter(
+    (file) => (file.endsWith('.js') || file.endsWith('.mjs')) && file.startsWith('ort.'),
+  );
 
-      if (isMinified) {
-        // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
-        //
-        // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
-        // this case, we should fix the build script (this file).
-        //
-        if (content.includes('BUILD_DEFS')) {
-          throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
-        }
-      }
+  for (const file of validateFiles) {
+    const isMinified = file.endsWith('.min.js') || file.endsWith('.min.mjs');
+    const content = await fs.readFile(path.join(SOURCE_ROOT_FOLDER, 'web/dist', file), 'utf-8');
 
-      // all files should contain the magic comment to ignore dynamic import calls.
+    if (isMinified) {
+      // all files should not contain BUILD_DEFS definition. BUILD_DEFS should be defined in the build script only.
       //
-      if (!file.includes('.webgl.') && !file.includes('.bundle.')) {
-        const contentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
-        if (!content.includes(contentToSearch)) {
-          throw new Error(`Validation failed: "${file}" does not contain magic comment.`);
-        }
+      // If the final bundle contains BUILD_DEFS definition, it means the build script is not working correctly. In
+      // this case, we should fix the build script (this file).
+      //
+      if (content.includes('BUILD_DEFS')) {
+        throw new Error(`Validation failed: "${file}" contains BUILD_DEFS definition.`);
       }
+    }
+
+    if (file.includes('.webgl.') || file.includes('.bundle.')) {
+      // no further validation required.
+      //
+      continue;
+    }
+
+    // all files should contain the webpack magic comment to ignore dynamic import calls.
+    //
+    const webpackContentToSearch = isMinified ? '/*webpackIgnore:true*/' : '/* webpackIgnore: true */';
+    if (!content.includes(webpackContentToSearch)) {
+      throw new Error(`Validation failed: "${file}" does not contain webpack magic comment.`);
+    }
+
+    // all files should contain the vite magic comment to suppress dynamic import call warnings.
+    //
+    const viteContentToSearch = isMinified ? '/*@vite-ignore*/' : '/* @vite-ignore */';
+    if (!content.includes(viteContentToSearch)) {
+      throw new Error(`Validation failed: "${file}" does not contain vite magic comment.`);
     }
   }
 }
@@ -639,6 +667,32 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
+      },
+    });
+
+    // ort.jspi[.min].[m]js
+    await addAllWebBuildTasks({
+      outputName: 'ort.jspi',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.ENABLE_JSPI': 'true',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
+    });
+    // ort.jspi.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.jspi.bundle',
+      format: 'esm',
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.ENABLE_JSPI': 'true',
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',

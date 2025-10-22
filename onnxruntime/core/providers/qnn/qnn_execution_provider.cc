@@ -94,6 +94,8 @@ static void ParseProfilingLevel(std::string profiling_level_string,
     profiling_level = qnn::ProfilingLevel::BASIC;
   } else if (profiling_level_string == "detailed") {
     profiling_level = qnn::ProfilingLevel::DETAILED;
+  } else if (profiling_level_string == "optrace") {
+    profiling_level = qnn::ProfilingLevel::OPTRACE;
   } else {
     LOGS_DEFAULT(WARNING) << "Profiling level not valid.";
   }
@@ -400,6 +402,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (profiling_level_pos != provider_options_map.end()) {
     ParseProfilingLevel(profiling_level_pos->second, profiling_level);
   }
+
   static const std::string PROFILING_FILE = "profiling_file_path";
   auto profiling_file_pos = provider_options_map.find(PROFILING_FILE);
   if (profiling_file_pos != provider_options_map.end()) {

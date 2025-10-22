@@ -9,7 +9,7 @@ parameters:
   SpecificArtifact: false
   CustomOpArtifactName: 'onnxruntime-linux-x64'
   BuildId: '0'
-  CudaVersion: '11.8'
+  CudaVersion: '12.8'
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
@@ -41,7 +41,7 @@ stages:
     - script: |
         mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
         mv $(Pipeline.Workspace)/build/${{ parameters.CustomOpArtifactName }} $(Build.BinariesDirectory)/testdata
-   
+
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
@@ -58,9 +58,9 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
           Context: tools/ci_build/github/linux/docker/
-          ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          ${{ if eq(parameters.CudaVersion, '12.8') }}:
             DockerBuildArgs: "
-            --build-arg BASEIMAGE=nvidia/cuda:12.2.2-devel-ubuntu20.04
+            --build-arg BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04
             --build-arg TRT_VERSION=${{ replace(variables.linux_trt_version_cuda12, '-1.', '-1+') }}
             --build-arg BUILD_UID=$( id -u )
             "

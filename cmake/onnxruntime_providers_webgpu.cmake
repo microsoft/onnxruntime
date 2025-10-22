@@ -47,17 +47,28 @@
       list(REMOVE_ITEM EM_DAWN_WEBGPU_C_COMPILE_OPTIONS "-fno-exceptions")
       set_property(TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS ${EM_DAWN_WEBGPU_C_COMPILE_OPTIONS})
     endif()
+    if (CMAKE_CXX_FLAGS MATCHES "-fwasm-exceptions")
+      get_property(EM_DAWN_WEBGPU_C_COMPILE_OPTIONS TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS)
+      list(REMOVE_ITEM EM_DAWN_WEBGPU_C_COMPILE_OPTIONS "-fno-exceptions")
+      set_property(TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS ${EM_DAWN_WEBGPU_C_COMPILE_OPTIONS})
+    endif()
 
     # target "emdawnwebgpu_cpp" is created by Dawn. When it is linked to onnxruntime_providers_webgpu as "PUBLIC"
     # dependency, a few build/link flags will be set automatically to make sure emscripten can generate correct
     # WebAssembly/JavaScript code for WebGPU support.
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
 
-    # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
-    target_link_options(onnxruntime_providers_webgpu PUBLIC
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-    )
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s JSPI=1"
+      )
+    else()
+      # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      )
+    endif()
   else()
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu dawn::dawncpp_headers dawn::dawn_headers)
 

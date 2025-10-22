@@ -18,9 +18,9 @@ parameters:
 
 - name: cuda_version
   type: string
-  default: '12.2'
+  default: '12.8'
   values:
-   - 12.2
+   - 12.8
 
 # TODO: Ideally it should fetch information from the build that triggers it
 - name: cmake_build_type
@@ -44,9 +44,9 @@ jobs:
   - name: skipComponentGovernanceDetection
     value: true
   - name: trt_version
-    ${{ if eq(parameters.cuda_version, '11.8') }}:
-      value: ${{ variables.linux_trt_version_cuda11 }}
-    ${{ if eq(parameters.cuda_version, '12.2') }}:
+    ${{ if eq(parameters.cuda_version, '13.0') }}:
+      value: ${{ variables.linux_trt_version_cuda13 }}
+    ${{ if eq(parameters.cuda_version, '12.8') }}:
       value: ${{ variables.linux_trt_version_cuda12 }}
   workspace:
     clean: all

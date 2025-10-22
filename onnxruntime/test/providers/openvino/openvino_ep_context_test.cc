@@ -6,7 +6,7 @@
 
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
