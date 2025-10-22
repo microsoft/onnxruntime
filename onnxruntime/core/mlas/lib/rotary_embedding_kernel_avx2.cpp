@@ -218,21 +218,15 @@ RopeKernel_Avx2_fp32_Impl<true>(
         _mm256_storeu_ps(output + i + 8, y1);
     }
 
-    // Scalar remainder loop to safely handle trailing elements
-    for (; i < dim; i++) {
+    // Scalar remainder loop to safely handle trailing elements in pairs
+    for (; i + 1 < dim; i += 2) {
         size_t cache_idx = i / 2;
-        bool sign = i & 1;
-        size_t j = sign ? i - 1 : i + 1;
-
-        float output_data_i = input[i] * cos_data[cache_idx];
-        float input_data_j = input[j];
-        float sin_data_cache_idx = sin_data[cache_idx];
-        if (sign) {
-            output_data_i += input_data_j * sin_data_cache_idx;
-        } else {
-            output_data_i -= input_data_j * sin_data_cache_idx;
-        }
-        output[i] = output_data_i;
+        float input0 = input[i];
+        float input1 = input[i + 1];
+        float sin_val = sin_data[cache_idx];
+        float cos_val = cos_data[cache_idx];
+        output[i]     = input0 * cos_val - input1 * sin_val;
+        output[i + 1] = input0 * sin_val + input1 * cos_val;
     }
 }
 
