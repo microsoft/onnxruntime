@@ -2538,6 +2538,23 @@ ORT_API(void, OrtApis::ReleaseExternalInitializerInfo, _Frees_ptr_opt_ OrtExtern
   delete static_cast<onnxruntime::ExternalDataInfo*>(info);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath,
+                    _In_ int64_t file_offset, _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto ext_data_info = std::make_unique<OrtExternalInitializerInfo>(filepath, file_offset, byte_size);
+  *out = ext_data_info.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(filepath);
+  ORT_UNUSED_PARAMETER(file_offset);
+  ORT_UNUSED_PARAMETER(byte_size);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateExternalInitializerInfo() is not supported in this build.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API(const ORTCHAR_T*, OrtApis::ExternalInitializerInfo_GetFilePath, _In_ const OrtExternalInitializerInfo* info) {
   return info->GetRelPath().c_str();
 }
@@ -3296,13 +3313,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
   API_IMPL_BEGIN
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
 
+  const auto ep_devices_span = gsl::span<const OrtEpDevice* const>(ep_devices, num_ep_devices);
+  const auto ep_option_keys_span = gsl::span<const char* const>(ep_option_keys, num_ep_options);
+  const auto ep_option_vals_span = gsl::span<const char* const>(ep_option_vals, num_ep_options);
+
   ORT_API_RETURN_IF_STATUS_NOT_OK(CreateIExecutionProviderFactoryForEpDevices(
       env->GetEnvironment(),
-      session_options->value,
-      gsl::span<const OrtEpDevice* const>(ep_devices, num_ep_devices),
-      gsl::span<const char* const>(ep_option_keys, num_ep_options),
-      gsl::span<const char* const>(ep_option_vals, num_ep_options),
+      ep_devices_span,
       /*output*/ provider_factory));
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(AddEpOptionsToSessionOptions(
+      ep_devices_span,
+      ep_option_keys_span,
+      ep_option_vals_span,
+      session_options->value));
+
   session_options->provider_factories.push_back(std::move(provider_factory));
 
   return nullptr;
@@ -3654,7 +3679,7 @@ OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
 
   InlinedVector<const OrtMemoryInfo*> mem_info;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      session->GetInputOutputMemoryInfo(InferenceSession::SessionInputOutputType::kInput, mem_info));
+      session->GetInputOutputMemoryInfo(type, mem_info));
 
   auto num_found = mem_info.size();
   if (num_found > num_values) {
@@ -3733,7 +3758,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_23 = {
+static constexpr OrtApi ort_api_1_to_24 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4202,6 +4227,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::Graph_GetModelMetadata,
     &OrtApis::GetModelCompatibilityForEpDevices,
+    &OrtApis::CreateExternalInitializerInfo,
+    &OrtApis::TensorTypeAndShape_HasShape,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4239,16 +4266,16 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.23.0",
+static_assert(std::string_view(ORT_VERSION) == "1.24.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_23 above:
+// 2. If there were any APIs added to ort_api_1_to_24 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_23;
+    return &ort_api_1_to_24;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."

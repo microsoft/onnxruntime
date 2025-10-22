@@ -78,12 +78,12 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Python ${{ inputs.python_version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python_version }}
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.9
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
@@ -94,16 +94,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       # ------------- Update Step (CMake Generation) -------------
       - name: Generate Build Files (CMake) (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: update_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
@@ -115,7 +109,7 @@ jobs:
       # ------------- Build Step (Compilation) -------------
       - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: build_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
@@ -128,7 +122,7 @@ jobs:
       - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: test_step
         if: inputs.run_tests == true
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.9
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}

@@ -94,6 +94,8 @@ static void ParseProfilingLevel(std::string profiling_level_string,
     profiling_level = qnn::ProfilingLevel::BASIC;
   } else if (profiling_level_string == "detailed") {
     profiling_level = qnn::ProfilingLevel::DETAILED;
+  } else if (profiling_level_string == "optrace") {
+    profiling_level = qnn::ProfilingLevel::OPTRACE;
   } else {
     LOGS_DEFAULT(WARNING) << "Profiling level not valid.";
   }
@@ -400,6 +402,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (profiling_level_pos != provider_options_map.end()) {
     ParseProfilingLevel(profiling_level_pos->second, profiling_level);
   }
+
   static const std::string PROFILING_FILE = "profiling_file_path";
   auto profiling_file_pos = provider_options_map.find(PROFILING_FILE);
   if (profiling_file_pos != provider_options_map.end()) {
@@ -1472,7 +1475,7 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
   }
 
   uint32_t rpc_polling_time = 0;
-  if (qnn::HtpPerformanceMode::kHtpBurst != htp_performance_mode) {
+  if (qnn::HtpPerformanceMode::kHtpBurst == htp_performance_mode) {
     rpc_polling_time = 9999;
   }
 
@@ -1575,6 +1578,17 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       } else {
         LOGS_DEFAULT(ERROR) << "Invalid EP Workload Type: " << value;
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid EP Workload Type.");
+      }
+    } else if (key == kOrtEpDynamicOptionsQnnHtpPerformanceMode) {
+      auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+      if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+        return Status::OK();
+      }
+      qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+      ParseHtpPerformanceMode(value, htp_performance_mode);
+      if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    htp_performance_mode));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";

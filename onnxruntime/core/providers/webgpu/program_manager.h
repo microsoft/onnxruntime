@@ -38,6 +38,7 @@ class ProgramManager {
   ProgramManager(WebGpuContext& webgpu_context) : webgpu_context_(webgpu_context) {}
 
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
+  Status CalculateSegmentsForInputsAndOutputs(ProgramBase& program);
 
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,

@@ -7,7 +7,7 @@
 #include "core/platform/threadpool.h"
 #include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
-#include "core/framework/float8.h"
+#include "core/common/float8.h"
 #include "core/framework/int4.h"
 #include <cmath>
 #include <limits>

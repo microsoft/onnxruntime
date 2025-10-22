@@ -121,6 +121,12 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
     throw new Error('WebAssembly SIMD is not supported in the current environment.');
   }
 
+  if (BUILD_DEFS.ENABLE_JSPI) {
+    if (!('Suspending' in WebAssembly)) {
+      throw new Error('WebAssembly JSPI is not supported in the current environment.');
+    }
+  }
+
   // check if multi-threading is supported
   const multiThreadSupported = isMultiThreadSupported();
   if (numThreads > 1 && !multiThreadSupported) {

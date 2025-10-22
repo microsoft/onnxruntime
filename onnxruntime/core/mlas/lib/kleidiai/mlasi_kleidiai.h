@@ -15,6 +15,9 @@
   #define RESTRICT __restrict__
 #endif
 namespace ArmKleidiAI {
+// By default we should try for SME2 first before falling back to SME.
+inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+
 //
 // Buffer packing routines.
 //
@@ -111,4 +114,38 @@ MlasConv(
     float* Output,
     MLAS_THREADPOOL* ThreadPool
     );
+}
+
+/*++
+
+Routine Description:
+
+    This routine determines if a wraparound will occur when multiplying two size_t variables
+    Uses __builtin_mul_overflow if available on the current system and if not falls back
+    to a default implementation to check this wraparound.
+
+Arguments:
+
+    a - Supplies the first number to be muliplied.
+
+    b - Supplies the second number to be muliplied.
+
+    out - pointer to a size_t which acts as the return value in success cases.
+
+Return Value:
+
+    Returns false if the operation was successful
+    Returns true if wraparound of size_t was detected
+
+--*/
+inline bool mul_overflow_size_t_builtin(size_t a, size_t b, size_t* out) {
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_mul_overflow)
+    return __builtin_mul_overflow(a, b, out);
+#  endif
+#endif
+    // Fallback to manual check if builtin not available
+    if (b != 0 && a > SIZE_MAX / b) return true;
+    if (out) *out = a * b;
+    return false;
 }
