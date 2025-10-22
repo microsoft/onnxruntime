@@ -54,6 +54,7 @@ Status ShaderHelper::Init() {
 
   // init body string stream
   bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
+  bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
   body_.reserve(4096);
   additional_implementation_.reserve(1024);
 
@@ -68,20 +69,37 @@ Status ShaderHelper::Init() {
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
   }
-  if (!is_1d_dispatch) {
-    body_ss_ << ",\n"
-                "        @builtin(num_workgroups) num_workgroups : vec3<u32>";
-  }
-  body_ss_ << ") {\n";
-  if (is_1d_dispatch) {
+  // When using indirect dispatch, avoid @builtin(num_workgroups) to skip Dawn's validation
+  // and duplication overhead in TransformIndirectDispatchBuffer.
+  // Instead, the dispatch dimensions will be read from the indirect buffer at runtime.
+  if (use_indirect_dispatch) {
+    body_ss_ << ") {\n";
+    // For indirect dispatch, read the actual dispatch dimensions from the indirect buffer.
+    // The indirect buffer format is: [x, y, z] where x, y, z are the workgroup counts.
+    // We read these values to calculate workgroup_idx accurately based on actual dispatch.
+    body_ss_ << "  let num_workgroups_x = indirect_buffer[0];\n"
+                "  let num_workgroups_y = indirect_buffer[1];\n"
+                "  let workgroup_idx = workgroup_id.z * num_workgroups_x * num_workgroups_y + workgroup_id.y * num_workgroups_x + workgroup_id.x;\n"
+                "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
+  } else if (is_1d_dispatch) {
+    body_ss_ << ") {\n";
     body_ss_ << "  let global_idx = global_id.x;\n"
                 "  let workgroup_idx = workgroup_id.x;\n";
   } else {
+    body_ss_ << ",\n"
+                "        @builtin(num_workgroups) num_workgroups : vec3<u32>) {\n";
     body_ss_ << "  let workgroup_idx = workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x;\n"
                 "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
   }
 
   return Status::OK();
+}
+
+void ShaderHelper::FinalizeInputs() {
+  // Automatically add indirect buffer as the last shader input when using indirect dispatch.
+  if (program_.IndirectDispatchTensor() != nullptr) {
+    AddInput("indirect_buffer", ShaderUsage::None);
+  }
 }
 
 const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, ShaderUsage usage) {

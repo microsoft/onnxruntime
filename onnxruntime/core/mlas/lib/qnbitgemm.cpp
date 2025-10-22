@@ -471,7 +471,7 @@ SQ4BitGemm_CompFp32(
 
         size_t RowsRemaining = RangeCountM;
         while (RowsRemaining > 0) {
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_LARCH64)
             auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
                 a_row, dequant_b, c_blk, K, RowsRemaining, CountN, lda, ldc, 1.f, true
             );

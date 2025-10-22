@@ -83,7 +83,7 @@ stages:
       artifactName: 'onnxruntime-android-qnn-aar'
       packageName: 'onnxruntime-android-qnn'
       #TODO: get this information from the setup stage
-      QnnSDKVersion: '2.38.0.250901'
+      QnnSDKVersion: '2.39.0.250926'
 
 - template: nuget/templates/test_win.yml
   parameters:
@@ -127,7 +127,7 @@ stages:
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
-    CudaVersion: 12.2
+    CudaVersion: 12.8
 
 - template: nuget/templates/test_win.yml
   parameters:
@@ -136,7 +136,7 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     MoreSuffix: '_Windows'
-    CudaVersion: 12.2
+    CudaVersion: 12.8
 
 - template: nuget/templates/test_linux.yml
   parameters:
@@ -144,7 +144,7 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
-    CudaVersion: 12.2
+    CudaVersion: 12.8
 
 - template: nuget/templates/test_linux.yml
   parameters:
@@ -153,7 +153,7 @@ stages:
     StageSuffix: 'GPU'
     MoreSuffix: '_Linux'
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
-    CudaVersion: 12.2
+    CudaVersion: 12.8
 
 
 
@@ -202,7 +202,7 @@ stages:
 
         - template: templates/jobs/download_win_gpu_library.yml
           parameters:
-            CudaVersion: 12.2
+            CudaVersion: 12.8
             DownloadCUDA: true
             DownloadTRT: true
 
@@ -257,7 +257,7 @@ stages:
 
         - template: templates/jobs/download_win_gpu_library.yml
           parameters:
-            CudaVersion: 12.2
+            CudaVersion: 12.8
             DownloadCUDA: true
             DownloadTRT: true
 

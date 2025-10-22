@@ -11,7 +11,43 @@ namespace webgpu {
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    13,
+    24,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
+        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Squeeze);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    23, 23,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
+        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Squeeze);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    21, 22,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
+        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Squeeze);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    13, 20,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes())

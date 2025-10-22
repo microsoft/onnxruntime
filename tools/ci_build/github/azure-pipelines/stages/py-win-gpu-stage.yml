@@ -20,9 +20,9 @@ parameters:
   default: ''
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
   values:
-    - 12.2
+    - 12.8
 
 - name: cmake_build_type
   type: string
@@ -47,7 +47,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
       templateContext:
         sdl:
@@ -74,9 +74,9 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: ${{ variables.win_trt_folder_cuda11 }}
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: ${{ variables.win_trt_folder_cuda13 }}
+        ${{ if eq(parameters.CudaVersion, '12.8') }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
       - name: trt_build_flag
         ${{ if eq(parameters.use_tensorrt, true) }}:
@@ -119,7 +119,7 @@ stages:
             --cmake_generator "$(VSGenerator)"
             --enable_pybind
             --enable_onnx_tests
-            --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
+            --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -213,7 +213,7 @@ stages:
             TMPDIR: "$(Agent.TempDirectory)"
 
         - powershell: |
-            $ErrorActionPreference = "Stop"            
+            $ErrorActionPreference = "Stop"
             python -m pip uninstall -y onnxruntime onnxruntime-${{ parameters.EP_NAME }} -qq
             dir $(Build.ArtifactStagingDirectory)
             python -m pip --disable-pip-version-check install --no-index --find-links $(Build.ArtifactStagingDirectory) onnxruntime-${{ parameters.EP_NAME }}
