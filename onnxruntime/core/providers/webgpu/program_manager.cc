@@ -40,7 +40,7 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
 }
 
 Status ProgramManager::CalculateSegmentsForInputsAndOutputs(ProgramBase& program) {
-  const uint64_t maxStorageBufferBindingSize = limits_.maxStorageBufferBindingSize;
+  const uint64_t maxStorageBufferBindingSize = webgpu_context_.DeviceLimits().maxStorageBufferBindingSize;
 
   // Inputs
   for (size_t i = 0; i < program.Inputs().size(); ++i) {
