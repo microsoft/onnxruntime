@@ -7,7 +7,7 @@ import type { OrtApi as OrtApiType } from './api';
 export const Module = NativeModules.Onnxruntime;
 
 declare global {
-  const OrtApi: OrtApiType;
+  var OrtApi: OrtApiType; // eslint-disable-line no-var
 }
 
 if (typeof globalThis.OrtApi === 'undefined') {
