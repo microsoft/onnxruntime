@@ -268,6 +268,7 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT4E2M1:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2:
@@ -317,6 +318,9 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
       mgx_type = migraphx_shape_fp8e5m2fnuz_type;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:
+      mgx_type = migraphx_shape_fp4x2_type;
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
       mgx_type = migraphx_shape_int8_type;
@@ -949,6 +953,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "QLinearAdd",
                                                     "QLinearConv",
                                                     "QLinearMatMul",
+                                                    "QLinearAveragePool",
+                                                    "QLinearGlobalAveragePool",
                                                     "QuantizeLinear",
                                                     "QuickGelu",
                                                     "DynamicQuantizeLinear",

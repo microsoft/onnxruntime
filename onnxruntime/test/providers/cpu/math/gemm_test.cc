@@ -7,7 +7,6 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
-#include "test/providers/run_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
@@ -1599,7 +1598,7 @@ TEST(GemmOpTest, GemmTransA_int32_128x128x128) {
   test.AddInput<int32_t>("C", {M, N}, C_data);
   test.AddOutput<int32_t>("Y", {M, N}, Y_data);
 
-  test.ConfigExcludeEps({kQnnExecutionProvider, kCpuExecutionProvider})
+  test.ConfigExcludeEps({kQnnExecutionProvider, kCpuExecutionProvider, kCoreMLExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }

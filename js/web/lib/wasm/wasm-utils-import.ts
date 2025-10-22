@@ -166,7 +166,7 @@ const preload = async (absoluteUrl: string): Promise<string> => {
  * @returns - A promise that resolves to the default export of the module.
  */
 const dynamicImportDefault = async <T>(url: string): Promise<T> =>
-  (await import(/* webpackIgnore: true */ url)).default;
+  (await import(/* webpackIgnore: true */ /* @vite-ignore */ url)).default;
 
 /**
  * The proxy worker factory imported from the proxy worker module.
@@ -214,9 +214,11 @@ const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule> | undefined =
       require(
         !BUILD_DEFS.DISABLE_JSEP
           ? '../../dist/ort-wasm-simd-threaded.jsep.mjs'
-          : !BUILD_DEFS.DISABLE_WEBGPU
-            ? '../../dist/ort-wasm-simd-threaded.asyncify.mjs'
-            : '../../dist/ort-wasm-simd-threaded.mjs',
+          : BUILD_DEFS.ENABLE_JSPI
+            ? '../../dist/ort-wasm-simd-threaded.jspi.mjs'
+            : !BUILD_DEFS.DISABLE_WEBGPU
+              ? '../../dist/ort-wasm-simd-threaded.asyncify.mjs'
+              : '../../dist/ort-wasm-simd-threaded.mjs',
       ).default
     : undefined;
 
@@ -278,9 +280,11 @@ export const importWasmModule = async (
   } else {
     const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP
       ? 'ort-wasm-simd-threaded.jsep.mjs'
-      : !BUILD_DEFS.DISABLE_WEBGPU
-        ? 'ort-wasm-simd-threaded.asyncify.mjs'
-        : 'ort-wasm-simd-threaded.mjs';
+      : BUILD_DEFS.ENABLE_JSPI
+        ? 'ort-wasm-simd-threaded.jspi.mjs'
+        : !BUILD_DEFS.DISABLE_WEBGPU
+          ? 'ort-wasm-simd-threaded.asyncify.mjs'
+          : 'ort-wasm-simd-threaded.mjs';
     const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
     // need to preload if all of the following conditions are met:
     // 1. not in Node.js.

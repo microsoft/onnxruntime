@@ -226,6 +226,7 @@ struct ProgramInput {
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   const Tensor* tensor;
+  uint32_t segments = 1;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool use_override_shape;
@@ -245,6 +246,7 @@ struct ProgramOutput {
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
+  uint32_t segments = 1;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool is_atomic;
@@ -305,6 +307,9 @@ class ProgramBase {
   // set the size of dispatch groups.
   ProgramBase& SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t z);
 
+  // set indirect dispatch tensor for indirect dispatch
+  ProgramBase& SetIndirectDispatchTensor(const Tensor* indirect_dispatch_tensor);
+
   // set the size of a workgroup grid. Y and Z are 1 if not specified.
   ProgramBase& SetWorkgroupSize(uint32_t x);
   // set the size of a workgroup grid. Z is 1 if not specified.
@@ -343,11 +348,24 @@ class ProgramBase {
   inline const ProgramMetadata& Metadata() const { return metadata_; }
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
+  inline void setSegmentsForInput(size_t index, uint32_t segments) {
+    if (index >= inputs_.size()) {
+      throw std::out_of_range("input index out of range");
+    }
+    inputs_[index].segments = segments;
+  }
+  inline void setSegmentsForOutput(size_t index, uint32_t segments) {
+    if (index >= outputs_.size()) {
+      throw std::out_of_range("output index out of range");
+    }
+    outputs_[index].segments = segments;
+  }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
   inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }
   inline uint32_t DispatchGroupSizeZ() const { return dispatch_group_size_z_; }
+  inline const Tensor* IndirectDispatchTensor() const { return indirect_dispatch_tensor_; }
   inline uint32_t WorkgroupSizeX() const { return workgroup_size_x_; }
   inline uint32_t WorkgroupSizeY() const { return workgroup_size_y_; }
   inline uint32_t WorkgroupSizeZ() const { return workgroup_size_z_; }
@@ -373,6 +391,8 @@ class ProgramBase {
   uint32_t dispatch_group_size_x_;
   uint32_t dispatch_group_size_y_;
   uint32_t dispatch_group_size_z_;
+
+  const Tensor* indirect_dispatch_tensor_;
 
   uint32_t workgroup_size_x_;
   uint32_t workgroup_size_y_;

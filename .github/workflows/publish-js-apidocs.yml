@@ -23,12 +23,12 @@ jobs:
     name: Generate JS API docs
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 18
-      - name: Generate JS docs 
+      - name: Generate JS docs
         run: |
           cd js/
           npm ci

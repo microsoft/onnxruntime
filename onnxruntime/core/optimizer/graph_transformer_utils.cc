@@ -442,6 +442,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
+#else
+      ORT_UNUSED_PARAMETER(logger);
 #endif
 
     } break;
@@ -533,6 +535,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         }
 #else
         ORT_UNUSED_PARAMETER(cpu_execution_provider);
+        ORT_UNUSED_PARAMETER(logger);
 #endif
       }
     } break;

@@ -54,7 +54,7 @@ class TestInferenceSession(unittest.TestCase):
         input_name = session_object.get_inputs()[0].name
         res = session_object.run([], {input_name: x}, run_options=run_options)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def run_model_with_input(self, session_object, input_name, input_value, iter_num, queue):
         for _ in range(iter_num):
@@ -689,17 +689,32 @@ class TestInferenceSession(unittest.TestCase):
     def test_run_model(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        input_name = sess.get_inputs()[0].name
-        self.assertEqual(input_name, "X")
-        input_shape = sess.get_inputs()[0].shape
-        self.assertEqual(input_shape, [3, 2])
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Y")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [3, 2])
-        res = sess.run([output_name], {input_name: x})
+
+        inputs = sess.get_inputs()
+        self.assertEqual(len(inputs), 1)
+        self.assertEqual(inputs[0].name, "X")
+        self.assertEqual(inputs[0].shape, [3, 2])
+
+        input_meminfos = sess.get_input_memory_infos()
+        self.assertEqual(len(input_meminfos), 1)
+        self.assertIsNotNone(input_meminfos[0])
+
+        input_epdevices = sess.get_input_epdevices()
+        # The entry my be None (null) but it should be present
+        self.assertEqual(len(input_epdevices), 1)
+
+        outputs = sess.get_outputs()
+        self.assertEqual(len(outputs), 1)
+        self.assertEqual(outputs[0].name, "Y")
+        self.assertEqual(outputs[0].shape, [3, 2])
+
+        output_meminfos = sess.get_output_memory_infos()
+        self.assertEqual(len(output_meminfos), 1)
+        self.assertIsNotNone(output_meminfos[0])
+
+        res = sess.run([outputs[0].name], {inputs[0].name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_async(self):
         event = threading.Event()
@@ -718,7 +733,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(len(err), 0)
             self.assertEqual(len(res), 1)
             self.assertEqual(data.get_id(), 123456)
-            np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+            np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
             event.set()
 
         so = onnxrt.SessionOptions()
@@ -747,7 +762,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 2])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2(self):
         sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
@@ -762,7 +777,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2_contiguous(self):
         sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
@@ -777,10 +792,10 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
         xcontiguous = np.ascontiguousarray(x)
         rescontiguous = sess.run([output_name], {input_name: xcontiguous})
-        np.testing.assert_allclose(output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(rescontiguous[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model_multiple_threads(self):
         # Skip this test for a "pure" DML onnxruntime python wheel.
@@ -845,14 +860,14 @@ class TestInferenceSession(unittest.TestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x.tolist()})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_string_list_as_input(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], dtype=str).reshape((2, 2))
         x_name = sess.get_inputs()[0].name
         res = sess.run([], {x_name: x.tolist()})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_run_device(self):
         device = onnxrt.get_device()
@@ -873,7 +888,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, ["None", 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_boolean_inputs(self):
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=available_providers)
@@ -905,7 +920,7 @@ class TestInferenceSession(unittest.TestCase):
 
         output_expected = np.array([[True, False], [False, False]], dtype=bool)
         res = sess.run([output_name], {a_name: a, b_name: b})
-        np.testing.assert_equal(output_expected, res[0])
+        np.testing.assert_equal(res[0], output_expected)
 
     def test_string_input1(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -926,7 +941,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_string_input2(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -947,7 +962,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_input_bytes(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -968,7 +983,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0].astype("|S8"))
+        np.testing.assert_equal(res[0].astype("|S8"), x)
 
     def test_input_object(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -989,7 +1004,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(string)")
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])
+        np.testing.assert_equal(res[0], x)
 
     def test_input_void(self):
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
@@ -1014,7 +1029,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
 
         expr = np.array([["must", "have"], ["same", "size"]], dtype=object)
-        np.testing.assert_equal(expr, res[0])
+        np.testing.assert_equal(res[0], expr)
 
     def test_raise_wrong_num_inputs(self):
         with self.assertRaises(ValueError) as context:
@@ -1149,7 +1164,7 @@ class TestInferenceSession(unittest.TestCase):
             },
         )
 
-        np.testing.assert_array_equal(output_expected, res[0])
+        np.testing.assert_array_equal(res[0], output_expected)
 
     def test_sequence_insert(self):
         opt = onnxrt.SessionOptions()
@@ -1179,7 +1194,7 @@ class TestInferenceSession(unittest.TestCase):
                 "input_seq": [],
             },
         )
-        np.testing.assert_array_equal(output_expected, res[0])
+        np.testing.assert_array_equal(res[0], output_expected)
 
     def test_ort_execution_mode(self):
         opt = onnxrt.SessionOptions()
@@ -1305,6 +1320,25 @@ class TestInferenceSession(unittest.TestCase):
             providers=["CPUExecutionProvider"],
         )
 
+    def test_session_options_add_external_initializers_from_files_in_memory(self):
+        # Provide external initializer file content directly from memory
+        # The model references an external file named "Pads_not_on_disk.bin" for the initializer
+        pads_bytes = np.array([0, 0, 1, 1], dtype=np.int64).tobytes()
+
+        so = onnxrt.SessionOptions()
+        so.add_external_initializers_from_files_in_memory(
+            ["Pads_not_on_disk.bin"],
+            [pads_bytes],
+            [len(pads_bytes)],
+        )
+
+        # This should not throw
+        onnxrt.InferenceSession(
+            get_name("model_with_external_initializer_come_from_user.onnx"),
+            sess_options=so,
+            providers=["CPUExecutionProvider"],
+        )
+
     def test_register_custom_ops_library(self):
         if sys.platform.startswith("win"):
             shared_library = os.path.abspath("custom_op_library.dll")
@@ -1341,7 +1375,7 @@ class TestInferenceSession(unittest.TestCase):
         input_1 = np.zeros((3, 5)).astype(np.float32)
         res = sess1.run([output_name], {input_name_0: input_0, input_name_1: input_1})
         output_expected = np.ones((3, 5)).astype(np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         # Create an alias of SessionOptions instance
         # We will use this alias to construct another InferenceSession
@@ -1583,6 +1617,44 @@ class TestInferenceSession(unittest.TestCase):
             shape = np.array([2, 2], dtype=np.int64)
             for _iteration in range(100000):
                 session.run(output_names=["output"], input_feed={"shape": shape})
+
+    def test_ort_device(self):
+        cpu_device = onnxrt.OrtDevice.make("cpu", 0)
+        self.assertEqual(cpu_device.device_id(), 0)
+        self.assertEqual(cpu_device.device_type(), 0)
+        self.assertEqual(cpu_device.device_vendor_id(), 0)
+        self.assertEqual(cpu_device.device_mem_type(), 0)
+
+    def test_ort_memory_info(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo(
+            "Cpu",
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+            0,
+            onnxrt.OrtMemType.DEFAULT,
+        )
+        self.assertEqual(cpu_memory_info.name, "Cpu")
+        self.assertEqual(cpu_memory_info.device_id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
+
+    def test_ort_memory_info_create_v2(self):
+        cpu_memory_info = onnxrt.OrtMemoryInfo.create_v2(
+            "Test",
+            onnxrt.OrtMemoryInfoDeviceType.CPU,
+            0,  # vendor_id
+            0,  # device_id
+            onnxrt.OrtDeviceMemoryType.DEFAULT,
+            128,  # alignment
+            onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+        )
+        self.assertEqual(cpu_memory_info.name, "Test")
+        self.assertEqual(cpu_memory_info.device_id, 0)
+        self.assertEqual(cpu_memory_info.mem_type, onnxrt.OrtMemType.DEFAULT)
+        self.assertEqual(cpu_memory_info.allocator_type, onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR)
+        self.assertEqual(cpu_memory_info.device_mem_type, onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertEqual(cpu_memory_info.device_vendor_id, 0)
 
     def test_shared_allocator_using_create_and_register_allocator(self):
         # Create and register an arena based allocator
@@ -1897,7 +1969,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(value.is_tensor())
             self.assertEqual(expected_val.element_type(), value.element_type())
             self.assertEqual(expected_val.shape(), value.shape())
-            np.testing.assert_allclose(expected_val.numpy(), value.numpy())
+            np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
     def test_run_with_adapter(self):
         model_path = get_name("lora/two_params_lora_model.onnx")

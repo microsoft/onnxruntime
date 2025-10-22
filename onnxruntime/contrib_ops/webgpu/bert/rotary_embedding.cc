@@ -50,6 +50,57 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  // Inputs
+  const auto& q_input = shader.AddInput("q_input", ShaderUsage::UseUniform);
+  const auto& k_input = shader.AddInput("k_input", ShaderUsage::UseUniform);
+  const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::UseUniform);
+  const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
+  // Outputs
+  const auto& q_output = shader.AddOutput("q_output", ShaderUsage::UseUniform);
+  const auto& k_output = shader.AddOutput("k_output", ShaderUsage::UseUniform);
+  // Indices helper
+  const auto& dummy_indices = shader.AddIndices("dummy_indices", ShaderUsage::None);
+
+  const auto interleaved_str = interleaved_ ? "true" : "false";
+
+  shader.MainFunctionBody()
+      << "  if (global_idx >= uniforms.q_domain_size) { return; }\n"
+      << "  let half_rotary_dim = uniforms.cos_cache_shape[1];\n"
+      << "  let bsnh = global_idx / uniforms.q_global_stride % uniforms.q_global_shape;\n"
+      << "  if (bsnh[3] < half_rotary_dim) {\n"
+      << "    let pos_ids_idx = " << position_ids.BroadcastedIndicesToOffset("bsnh.xy", dummy_indices) << ";\n"
+      << "    let position_id = u32(" << position_ids.GetByOffset("pos_ids_idx") << ") + select(0u, bsnh[1], pos_ids_idx == 0u);\n"
+      << "    let cos_v = " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+      << "    let sin_v = " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+      << "    let qi = dot(bsnh, uniforms.q_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
+      << "    let qj = qi + select(half_rotary_dim, 1u, " << interleaved_str << ");\n"
+      << "    let q_re = " << q_input.GetByOffset("qi") << " * cos_v - " << q_input.GetByOffset("qj") << " * sin_v;\n"
+      << "    " << q_output.SetByOffset("qi", "q_re") << "\n"
+      << "    let q_im = " << q_input.GetByOffset("qi") << " * sin_v + " << q_input.GetByOffset("qj") << " * cos_v;\n"
+      << "    " << q_output.SetByOffset("qj", "q_im") << "\n"
+      // Conditionally process Key (only for heads that exist in K domain)
+      << "    if (bsnh[2] < uniforms.k_global_shape[2]) {\n"
+      << "      let ki = dot(bsnh, uniforms.k_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
+      << "      let kj = ki + select(half_rotary_dim, 1u, " << interleaved_str << ");\n"
+      << "      let k_re = " << k_input.GetByOffset("ki") << " * cos_v - " << k_input.GetByOffset("kj") << " * sin_v;\n"
+      << "      " << k_output.SetByOffset("ki", "k_re") << "\n"
+      << "      let k_im = " << k_input.GetByOffset("ki") << " * sin_v + " << k_input.GetByOffset("kj") << " * cos_v;\n"
+      << "      " << k_output.SetByOffset("kj", "k_im") << "\n"
+      << "    }\n"
+      << "  } else {\n"
+      << "    let qk = dot(bsnh, uniforms.q_input_output_stride) + half_rotary_dim;\n"
+      << "    " << q_output.SetByOffset("qk", q_input.GetByOffset("qk")) << "\n"
+      // Conditionally process Key (only for heads that exist in K domain)
+      << "    if (bsnh[2] < uniforms.k_global_shape[2]) {\n"
+      << "      let kk = dot(bsnh, uniforms.k_input_output_stride) + half_rotary_dim;\n"
+      << "      " << k_output.SetByOffset("kk", k_input.GetByOffset("kk")) << "\n"
+      << "    }\n"
+      << "  }\n";
+  return Status::OK();
+}
+
 RotaryEmbedding::RotaryEmbedding(const OpKernelInfo& info) : WebGpuKernel(info) {
   scale_ = info.GetAttrOrDefault<float>("scale", 1.0);
   rotary_embedding_dim_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));

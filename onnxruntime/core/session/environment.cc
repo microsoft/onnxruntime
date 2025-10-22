@@ -79,7 +79,7 @@ static bool AreOrtMemoryInfosEquivalent(
     bool ignore_alignment = false) {
   return left.mem_type == right.mem_type &&
          (ignore_alignment ? left.device.EqualIgnoringAlignment(right.device) : left.device == right.device) &&
-         (!match_name || strcmp(left.name, right.name) == 0);
+         (!match_name || left.name == right.name);
 }
 
 std::vector<AllocatorPtr>::const_iterator FindExistingAllocator(const std::vector<AllocatorPtr>& allocators,

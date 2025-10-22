@@ -32,6 +32,19 @@ parameters:
 - name: BuildId
   type: string
 
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
 stages:
 - template: nuget-linux-cuda-packaging-stage.yml
   parameters:
@@ -52,6 +65,8 @@ stages:
     win_trt_home: ${{ parameters.win_trt_home }}
     win_cuda_home: ${{ parameters.win_cuda_home }}
     buildJava: ${{ parameters.buildJava }}
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:

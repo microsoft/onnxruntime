@@ -20,11 +20,11 @@ permissions:
 
 jobs:
   build:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
     env:
       DOCFXVERSION: 2.62.2
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install DocFX
       run: |
         dotnet tool update -g docfx

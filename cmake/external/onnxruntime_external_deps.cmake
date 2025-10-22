@@ -20,7 +20,7 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
 
     if(ONNXRUNTIME_DEP_URL MATCHES "^https://")
       # Search a local mirror folder
-      string(REGEX REPLACE "^https://" "${REPO_ROOT}/mirror/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
+      string(REGEX REPLACE "^https://" "${onnxruntime_CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
 
       if(EXISTS "${LOCAL_URL}")
         cmake_path(ABSOLUTE_PATH LOCAL_URL)
@@ -186,7 +186,8 @@ endif()
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
   set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch)
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_s390x.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -313,35 +314,32 @@ onnxruntime_fetchcontent_makeavailable(nlohmann_json)
 if (onnxruntime_ENABLE_CPUINFO)
   # Adding pytorch CPU info library
   # TODO!! need a better way to find out the supported architectures
-  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
-  if (APPLE)
+  set(CPUINFO_SUPPORTED FALSE)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo.
+    if (onnxruntime_USE_XNNPACK)
+      set(CPUINFO_SUPPORTED TRUE)
+    endif()
+  elseif (APPLE)
+    list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
     if (CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
       set(CPUINFO_SUPPORTED TRUE)
-    elseif (onnxruntime_BUILD_APPLE_FRAMEWORK)
-      # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
-      # but that would not work for universal static libraries
-      message(FATAL_ERROR "universal binary is not supported for apple framework")
-    endif()
-  else()
-    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
-    # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
-    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_USE_XNNPACK)
-      set(CPUINFO_SUPPORTED FALSE)
     else()
-      set(CPUINFO_SUPPORTED TRUE)
+      message(WARNING "cpuinfo is not supported when CMAKE_OSX_ARCHITECTURES has more than one value.")
     endif()
-    if (WIN32)
+  elseif (WIN32)
+    set(CPUINFO_SUPPORTED TRUE)
+  else()
+    if (onnxruntime_target_platform MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       set(CPUINFO_SUPPORTED TRUE)
-    elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
-      message(WARNING
-        "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
-        "cpuinfo not included."
-      )
-      set(CPUINFO_SUPPORTED FALSE)
+    else()
+      message(WARNING "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo.")
     endif()
   endif()
-else()
-  set(CPUINFO_SUPPORTED FALSE)
+
+  if(NOT CPUINFO_SUPPORTED)
+    message(WARNING "onnxruntime_ENABLE_CPUINFO was set but cpuinfo is not supported.")
+  endif()
 endif()
 
 if (CPUINFO_SUPPORTED)
@@ -352,23 +350,26 @@ if (CPUINFO_SUPPORTED)
 
   # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved)
   # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_XNNPACK)
+  else()
+    add_compile_definitions(CPUINFO_SUPPORTED)
   endif()
-
 
   set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
   if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-    message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
+    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
     onnxruntime_fetchcontent_declare(
       pytorch_cpuinfo
       URL ${DEP_URL_pytorch_cpuinfo}
       URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
       EXCLUDE_FROM_ALL
-      PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch
+      PATCH_COMMAND
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
+        # https://github.com/pytorch/cpuinfo/pull/324
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   else()
@@ -578,8 +579,7 @@ endif()
 
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
                                    onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
-                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date
-                                   ${ONNXRUNTIME_CLOG_TARGET_NAME} Eigen3::Eigen)
+                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date Eigen3::Eigen)
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
@@ -590,10 +590,6 @@ if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
     target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
   endif()
-endif()
-
-if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
 if(onnxruntime_ENABLE_DLPACK)
@@ -639,7 +635,6 @@ if (onnxruntime_USE_WEBGPU)
     #
     set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
-    set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
     set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -720,6 +715,7 @@ if (onnxruntime_USE_WEBGPU)
     endif()
 
     if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      set(DAWN_FETCH_DEPENDENCIES OFF CACHE BOOL "" FORCE)
       # use the custom dawn source path if provided
       #
       # specified as:
@@ -730,6 +726,7 @@ if (onnxruntime_USE_WEBGPU)
         EXCLUDE_FROM_ALL
       )
     else()
+      set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
       set(ONNXRUNTIME_Dawn_PATCH_COMMAND
           # The dawn_destroy_buffer_on_destructor.patch contains the following changes:
           #

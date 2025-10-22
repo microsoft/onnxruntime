@@ -14,7 +14,7 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/check_intel.h"
     "${ONNXRUNTIME_ROOT}/core/platform/check_intel.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
-    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_common.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -32,18 +32,30 @@ set(onnxruntime_common_src_patterns
 
 if(WIN32)
     list(APPEND onnxruntime_common_src_patterns
-         "${ONNXRUNTIME_ROOT}/core/platform/windows/*.h"
-         "${ONNXRUNTIME_ROOT}/core/platform/windows/*.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/dll_load_error.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/dll_load_error.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/env_time.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/env.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/env.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/hardware_core_enumerator.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/hardware_core_enumerator.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/stacktrace.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
 
 else()
     list(APPEND onnxruntime_common_src_patterns
-         "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
-         "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/env_time.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/env.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
+    # logging files
     if (onnxruntime_USE_SYSLOG)
         list(APPEND onnxruntime_common_src_patterns
             "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
@@ -51,7 +63,7 @@ else()
         )
     endif()
 
-    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if (ANDROID)
         list(APPEND onnxruntime_common_src_patterns
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.h"
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
@@ -64,6 +76,21 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.mm"
             )
     endif()
+endif()
+
+# platform-specific device discovery files
+if (WIN32)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
+elseif (LINUX)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc")
+elseif (APPLE)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
+else()
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/device_discovery_default.cc")
 endif()
 
 if(onnxruntime_target_platform STREQUAL "ARM64EC")
@@ -167,61 +194,10 @@ if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
-if(MSVC)
-  if(onnxruntime_target_platform STREQUAL "ARM64")
-    set(ARM64 TRUE)
-  elseif (onnxruntime_target_platform STREQUAL "ARM")
-    set(ARM TRUE)
-  elseif(onnxruntime_target_platform STREQUAL "x64")
-    set(X64 TRUE)
-  elseif(onnxruntime_target_platform STREQUAL "x86")
-    set(X86 TRUE)
-  endif()
-elseif(APPLE)
-  if(CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
-    set(X64 TRUE)
-  endif()
-elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
-      set(ARM TRUE)
-    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
-      set(ARM64 TRUE)
-    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
-      set(X86_64 TRUE)
-    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
-      set(X86 TRUE)
-    endif()
-  else()
-    execute_process(
-      COMMAND ${CMAKE_C_COMPILER} -dumpmachine
-      OUTPUT_VARIABLE dumpmachine_output
-      ERROR_QUIET
-    )
-    if(dumpmachine_output MATCHES "^arm64.*")
-      set(ARM64 TRUE)
-    elseif(dumpmachine_output MATCHES "^arm.*")
-      set(ARM TRUE)
-    elseif(dumpmachine_output MATCHES "^aarch64.*")
-      set(ARM64 TRUE)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
-      set(RISCV64 TRUE)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
-      set(X86 TRUE)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-      set(X86_64 TRUE)
-    endif()
-  endif()
-endif()
-
-if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
-    # Link cpuinfo if supported
-    # Using it mainly in ARM with Android.
-    # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
-    if (CPUINFO_SUPPORTED)
-      onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo ${ONNXRUNTIME_CLOG_TARGET_NAME})
-    endif()
+if(CPUINFO_SUPPORTED)
+  # Link cpuinfo if supported
+  onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

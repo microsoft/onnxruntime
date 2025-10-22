@@ -4,7 +4,9 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
+#include <vector>
 
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
@@ -107,4 +109,7 @@ OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessio
                                           /*out*/ std::string& config_val);
 
 // Returns true (via output parameter) if the given OrtValueInfo represents a float tensor.
-OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result);
+void IsFloatTensor(Ort::ConstValueInfo value_info, bool& result);
+
+// Gets the tensor shape from `value_info`. Returns std::nullopt if `value_info` is not a tensor.
+std::optional<std::vector<int64_t>> GetTensorShape(Ort::ConstValueInfo value_info);

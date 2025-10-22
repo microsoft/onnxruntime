@@ -1,7 +1,7 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
 - name: buildJava
   type: boolean
 - name: buildNodejs
@@ -20,14 +20,18 @@ stages:
       os: linux
     variables:
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        value: '13'
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
     steps:
     - template: ../templates/set-version-number-variables-step.yml
+    - task: UsePythonVersion@0
+      displayName: Use Python 3.12
+      inputs:
+        versionSpec: 3.12
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
@@ -45,10 +49,8 @@ stages:
           arch: 'linux-x64'
           buildConfig: 'Release'
           artifactName: 'onnxruntime-java-linux-x64-cuda'
-          version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -70,21 +72,25 @@ stages:
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        value: '13'
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: '12'
     - name: CUDA_VERSION
       value: ${{ parameters.CudaVersion }}
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: ${{ variables.linux_trt_version_cuda11 }}
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        value: ${{ variables.linux_trt_version_cuda13 }}
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self
       clean: true
       submodules: recursive
+    - task: UsePythonVersion@0
+      displayName: Use Python 3.12
+      inputs:
+        versionSpec: 3.12
     - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}/Dockerfile
@@ -106,10 +112,8 @@ stages:
           arch: 'linux-x64'
           buildConfig: 'Release'
           artifactName: 'onnxruntime-java-linux-x64-tensorrt'
-          version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
-          is1ES: true
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -134,14 +138,14 @@ stages:
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: '11'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        value: '13'
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: '12'
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: ${{ variables.linux_trt_version_cuda11 }}
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        value: ${{ variables.linux_trt_version_cuda13 }}
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime

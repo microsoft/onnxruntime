@@ -280,21 +280,32 @@ class GQAAttentionBase {
                                           output, static_cast<int>(present_buffer_sequence_length), nullptr);
         }
 
+        // Pre-allocate buffer for attention mask to avoid allocating it for every processed token
+        float* attention_bias_thread_fp32 = nullptr;
+        if (attention_bias_thread != nullptr) {
+          if constexpr (!std::is_same_v<U, T>) {
+            static_assert(std::is_same_v<U, float> && std::is_same_v<T, MLFloat16>);
+
+            size_t bytes = attention_total_seqlen * sizeof(float);
+            attention_bias_thread_fp32 = static_cast<float*>(allocator->Alloc(bytes));
+          }
+        }
+        BufferUniquePtr scratch_buffer(attention_bias_thread_fp32, BufferDeleter(allocator));
+
         // compute Softmax
         U* output_softmax = output;
         for (size_t seq = 0; seq < sequence_length; seq++) {
           size_t seq_causal_length = past_seqlen + seq + 1;
 
-          // local_window_size does not include the current query token, while window_size includes it.
           const bool should_apply_local_window = local_window_size_ >= 0 &&
-                                                 seq_causal_length > static_cast<size_t>(local_window_size_) + 1;
+                                                 seq_causal_length > static_cast<size_t>(local_window_size_);
 
-          const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ - 1 : 0;
-          const size_t window_size = should_apply_local_window ? local_window_size_ + 1 : seq_causal_length;
+          const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ : 0;
+          const size_t window_size = should_apply_local_window ? local_window_size_ : seq_causal_length;
 
           // Mask everything before local window, if local window should be applied
           if (should_apply_local_window) {
-            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
+            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_; total_seq_id++) {
               if constexpr (std::is_same<U, float>::value) {
                 output_softmax[total_seq_id] = 0.f;
               } else {
@@ -316,9 +327,6 @@ class GQAAttentionBase {
                                  static_cast<int>(window_size));
             } else {
               static_assert(std::is_same_v<U, float> && std::is_same_v<T, MLFloat16>);
-              size_t bytes = window_size * sizeof(float);
-              auto attention_bias_thread_fp32 = static_cast<float*>(allocator->Alloc(bytes));
-              BufferUniquePtr scratch_buffer(attention_bias_thread_fp32, BufferDeleter(allocator));
 
               MlasConvertHalfToFloatBuffer(attention_bias_thread + start_offset, attention_bias_thread_fp32, window_size);
               ApplyAttentionBias(output_softmax + start_offset, attention_bias_thread_fp32, static_cast<int>(window_size));

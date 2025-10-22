@@ -13,18 +13,14 @@ struct OrtMemoryInfo {
   OrtMemoryInfo() = default;  // to allow default construction of Tensor
 
   // use string for name, so we could have customized allocator in execution provider.
-  const char* name = nullptr;
+  std::string name;
   OrtMemType mem_type = OrtMemTypeDefault;
   OrtAllocatorType alloc_type = OrtInvalidAllocator;
   OrtDevice device;
 
-  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(),
-                          OrtMemType mem_type_ = OrtMemTypeDefault)
-#if ((defined(__GNUC__) && __GNUC__ > 4) || defined(__clang__))
-      // this causes a spurious error in CentOS gcc 4.8 build so disable if GCC version < 5
-      __attribute__((nonnull))
-#endif
-      : name(name_),
+  OrtMemoryInfo(std::string name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(),
+                OrtMemType mem_type_ = OrtMemTypeDefault)
+      : name(std::move(name_)),
         mem_type(mem_type_),
         alloc_type(type_),
         device(device_) {
@@ -39,7 +35,7 @@ struct OrtMemoryInfo {
     if (device != other.device)
       return device < other.device;
 
-    return strcmp(name, other.name) < 0;
+    return name < other.name;
   }
 
   // This is to make OrtMemoryInfo a valid key in hash tables
@@ -68,7 +64,7 @@ inline bool operator==(const OrtMemoryInfo& left, const OrtMemoryInfo& other) {
   return left.mem_type == other.mem_type &&
          left.alloc_type == other.alloc_type &&
          left.device == other.device &&
-         strcmp(left.name, other.name) == 0;
+         left.name == other.name;
 }
 
 inline bool operator!=(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) { return !(lhs == rhs); }

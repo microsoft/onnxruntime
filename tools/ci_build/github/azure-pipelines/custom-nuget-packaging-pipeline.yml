@@ -1,17 +1,32 @@
 parameters:
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
 
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.37.0.250724
+  default: 2.39.0.250926
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
   type: boolean
   default: false
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
 
 - name: PackageName
   displayName: What is the package name? Override using an environment variable CustomPackageName.
@@ -23,10 +38,10 @@ variables:
   - name: ReleaseVersionSuffix
     value: ''
   - name: win_cuda_home
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\v11.8
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: $(Agent.TempDirectory)\v12.2
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: $(Agent.TempDirectory)\v13.0
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: $(Agent.TempDirectory)\v12.8
 
 resources:
   repositories:
@@ -47,7 +62,7 @@ extends:
         enabled: true
         scanOutputDirectoryOnly: true
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
       componentgovernance:
         ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
@@ -69,8 +84,16 @@ extends:
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
 
     stages:
+      - template: stages/set_packaging_variables_stage.yml
+        parameters:
+          IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
       - template: templates/win-ci.yml
         parameters:
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
           ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
           DoCompliance: false
           DoEsrp: true
@@ -103,7 +126,6 @@ extends:
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:
           AllowReleasedOpsetOnly: 1
-          BuildForAllArchs: true
           AdditionalBuildFlags: '--use_webgpu --skip_tests'
           DoEsrp: true
 
@@ -156,9 +178,6 @@ extends:
             inputs:
               targetType: 'inline'
               script: |
-                mkdir -p $(Build.BinariesDirectory)/osx-x64
-                Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
-
                 mkdir -p $(Build.BinariesDirectory)/osx-arm64
                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-arm64* -Destination $(Build.BinariesDirectory)/osx-arm64
 
@@ -177,12 +196,6 @@ extends:
                 $dirs = Get-ChildItem $(Build.BinariesDirectory) -Directory
                 foreach ($dir in $dirs) {
                   Write-Host "Directory: $($dir.FullName)"
-                }
-                $osx_x64_archive = Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*
-                if ($osx_x64_archive.Count -eq 0) {
-                  Write-Host "No osx-x64 archive found."
-                } else {
-                  Write-Host "osx-x64 archive found: $($osx_x64_archive[0].FullName)"
                 }
                 $osx_arm64_archive = Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*
                 if ($osx_arm64_archive.Count -eq 0) {
@@ -211,13 +224,10 @@ extends:
               script: |
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-x64/onnxruntime-win-x64-cuda*.zip -DestinationPath $(Build.BinariesDirectory)/win-x64
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-arm64x-qnn*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
-                $osx_x64_archive = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*)[0].FullName
                 $osx_arm64_archive = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
-                tar -xzf $osx_x64_archive -C $(Build.BinariesDirectory)/osx-x64 2>$null
                 tar -xzf $osx_arm64_archive -C $(Build.BinariesDirectory)/osx-arm64 2>$null
                 $win_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-x64 -Filter onnxruntime-win-x64-cuda*)[0].FullName
                 $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-arm64x-qnn*)[0].FullName
-                $osx_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*)[0].FullName
                 $osx_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
                 Write-Host "##vso[task.setvariable variable=win_x64;]$win_x64"
                 Write-Host "##vso[task.setvariable variable=win_arm64;]$win_arm64"
