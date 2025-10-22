@@ -56,7 +56,6 @@ stages:
 - stage: ReactNative_CI_iOS
   displayName: ReactNative_CI_iOS
   dependsOn: '${{parameters.InitialStageDependsOn}}'
-  variables:
   jobs:
   - job: ReactNative_CI_iOS_build
     pool:
