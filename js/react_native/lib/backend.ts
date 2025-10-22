@@ -51,9 +51,9 @@ const fillNamesAndMetadata = (
       }
       const shape: Array<number | string> = [];
       for (let i = 0; i < m.shape.length; ++i) {
-        const dim = m.shape[i]!;
+        const dim = m.shape[i];
         if (dim === -1) {
-          shape.push(m.symbolicDimensions[i]!);
+          shape.push(m.symbolicDimensions[i]);
         } else if (dim >= 0) {
           shape.push(dim);
         } else {
@@ -169,7 +169,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     fetches: SessionHandler.FetchesType,
     options: RunOptions,
   ): Promise<SessionHandler.ReturnType> {
-    return await this.#inferenceSession.run(feeds, fetches, options);
+    return this.#inferenceSession.run(feeds, fetches, options);
   }
 }
 
@@ -182,7 +182,7 @@ class OnnxruntimeBackend implements Backend {
     pathOrBuffer: string | Uint8Array,
     options?: SessionOptions,
   ): Promise<InferenceSessionHandler> {
-    return await OnnxruntimeSessionHandler.create(pathOrBuffer, {
+    return OnnxruntimeSessionHandler.create(pathOrBuffer, {
       ...options,
       ortExtLibPath: Module.ORT_EXTENSIONS_PATH,
     });

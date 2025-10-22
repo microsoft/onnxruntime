@@ -7,7 +7,7 @@ import type { OrtApi as OrtApiType } from './api';
 export const Module = NativeModules.Onnxruntime;
 
 declare global {
-  var OrtApi: OrtApiType;
+  const OrtApi: OrtApiType;
 }
 
 if (typeof globalThis.OrtApi === 'undefined') {
