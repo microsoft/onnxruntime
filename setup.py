@@ -374,11 +374,8 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
     ]
     dl_libs.extend(qnn_deps)
-    #NV TensorRT RTX
-    nv_tensorrt_rtx_deps = [
-        "libtensorrt_rtx.so.*",
-        "libtensorrt_onnxparser_rtx.so.*"
-    ]
+    # NV TensorRT RTX
+    nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
     dl_libs.extend(nv_tensorrt_rtx_deps)
     libs.extend(nv_tensorrt_rtx_deps)
     if nightly_build:
@@ -461,11 +458,8 @@ else:
         "migraphx_tf.dll",
     ]
     libs.extend(migraphx_deps)
-    #NV TensorRT RTX Libs
-    nv_tensorrt_rtx_deps = [
-        "tensorrt_onnxparser_rtx_*.dll",
-        "tensorrt_rtx_*.dll"
-    ]
+    # NV TensorRT RTX Libs
+    nv_tensorrt_rtx_deps = ["tensorrt_onnxparser_rtx_*.dll", "tensorrt_rtx_*.dll"]
     libs.extend(nv_tensorrt_rtx_deps)
 
 if is_manylinux:
@@ -509,8 +503,8 @@ else:
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)(TRT RTX and CUDA License for NV TRT RTX EP release packages)
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf", "TRT_RTX_LICENSE.txt", "TRT_RTX_Acknowledgements.txt"]
+# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf"]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
@@ -777,10 +771,11 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
-#Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
+# Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
 if package_name == "onnxruntime-trt-rtx":
     install_requires.append("nvidia-cuda-runtime-cu12~=12.0")
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
+
 
 def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
     sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
