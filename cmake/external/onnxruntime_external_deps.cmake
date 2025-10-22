@@ -186,7 +186,8 @@ endif()
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
   set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch)
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_s390x.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -314,17 +315,17 @@ if (onnxruntime_ENABLE_CPUINFO)
   # Adding pytorch CPU info library
   # TODO!! need a better way to find out the supported architectures
   set(CPUINFO_SUPPORTED FALSE)
-  if (APPLE)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo.
+    if (onnxruntime_USE_XNNPACK)
+      set(CPUINFO_SUPPORTED TRUE)
+    endif()
+  elseif (APPLE)
     list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
     if (CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
       set(CPUINFO_SUPPORTED TRUE)
     else()
       message(WARNING "cpuinfo is not supported when CMAKE_OSX_ARCHITECTURES has more than one value.")
-    endif()
-  elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo.
-    if (onnxruntime_USE_XNNPACK)
-      set(CPUINFO_SUPPORTED TRUE)
     endif()
   elseif (WIN32)
     set(CPUINFO_SUPPORTED TRUE)
@@ -634,7 +635,6 @@ if (onnxruntime_USE_WEBGPU)
     #
     set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
-    set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
     set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -715,6 +715,7 @@ if (onnxruntime_USE_WEBGPU)
     endif()
 
     if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      set(DAWN_FETCH_DEPENDENCIES OFF CACHE BOOL "" FORCE)
       # use the custom dawn source path if provided
       #
       # specified as:
@@ -725,6 +726,7 @@ if (onnxruntime_USE_WEBGPU)
         EXCLUDE_FROM_ALL
       )
     else()
+      set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
       set(ONNXRUNTIME_Dawn_PATCH_COMMAND
           # The dawn_destroy_buffer_on_destructor.patch contains the following changes:
           #

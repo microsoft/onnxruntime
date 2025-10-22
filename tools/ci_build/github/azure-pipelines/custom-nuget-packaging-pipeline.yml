@@ -38,8 +38,8 @@ variables:
   - name: ReleaseVersionSuffix
     value: ''
   - name: win_cuda_home
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\v11.8
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: $(Agent.TempDirectory)\v13.0
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: $(Agent.TempDirectory)\v12.8
 
