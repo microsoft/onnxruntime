@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    test_rope_neon_fp16.h
+    test_rope_neon_fp16.cpp
 
 Abstract:
 
