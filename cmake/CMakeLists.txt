@@ -720,7 +720,7 @@ endif()
 if(onnxruntime_USE_KLEIDIAI)
   # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
   if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE -DKLEIDIAI_DEBUG=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG=1)
     target_compile_definitions(onnxruntime_mlas PRIVATE -DKLEIDIAI_KERNEL=1)
   endif()
   if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
