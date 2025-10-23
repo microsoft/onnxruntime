@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string_view>
+
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
@@ -18,7 +20,7 @@ extern "C" {
 //
 // Public symbols
 //
-EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
                                            const OrtLogger* default_logger,
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
@@ -27,7 +29,16 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   // Manual init for the C++ API
   Ort::InitApi(ort_api);
 
+  // If the application used a registration name that ends with ".virtual", then this EP can create virtual
+  // hardware devices (e.g., for cross-compiling).
+  std::string_view lib_reg_name{registration_name};
+  std::string_view virtual_suffix = ".virtual";
+  bool allow_virtual_devices = lib_reg_name.size() >= virtual_suffix.size() &&
+                               lib_reg_name.compare(lib_reg_name.size() - virtual_suffix.size(),
+                                                    virtual_suffix.size(), virtual_suffix) == 0;
+
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<EpFactoryVirtualGpu>(*ort_api, *ep_api,
+                                                                                allow_virtual_devices,
                                                                                 *default_logger);
 
   if (max_factories < 1) {

@@ -728,9 +728,9 @@ Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDevi
 }
 
 namespace {
-InlinedVector<const OrtHardwareDevice*> SortDevicesByType() {
+std::vector<const OrtHardwareDevice*> SortDevicesByType() {
   auto& devices = DeviceDiscovery::GetDevices();
-  InlinedVector<const OrtHardwareDevice*> sorted_devices;
+  std::vector<const OrtHardwareDevice*> sorted_devices;
   sorted_devices.reserve(devices.size());
 
   const auto select_by_type = [&](OrtHardwareDeviceType type) {
@@ -746,73 +746,6 @@ InlinedVector<const OrtHardwareDevice*> SortDevicesByType() {
   select_by_type(OrtHardwareDeviceType_CPU);
 
   return sorted_devices;
-}
-
-InlinedVector<std::unique_ptr<OrtHardwareDevice>> FilterEpHardwareDevices(
-    const OrtEpFactory& ep_factory,
-    gsl::span<const OrtHardwareDevice* const> ort_hw_devices,
-    gsl::span<OrtHardwareDevice* const> ep_hw_devices,
-    const char* lib_registration_name) {
-  // ORT is not required to use all hw devices provided by the EP factory.
-  // This function filters out the following hw devices:
-  //  - HW devices that were already found during ORT's device discovery.
-
-  if (ep_hw_devices.empty()) {
-    return {};
-  }
-
-  auto have_ort_hw_device = [&ort_hw_devices](const OrtHardwareDevice* candidate) -> bool {
-    return std::find_if(ort_hw_devices.begin(), ort_hw_devices.end(),
-                        [&candidate](const OrtHardwareDevice* ort_device) {
-                          return candidate->device_id == ort_device->device_id &&
-                                 candidate->vendor_id == ort_device->vendor_id &&
-                                 candidate->type == ort_device->type;
-                        }) != ort_hw_devices.end();
-  };
-
-  InlinedVector<std::unique_ptr<OrtHardwareDevice>> devices_to_discard;
-  InlinedVector<std::unique_ptr<OrtHardwareDevice>> result;
-  result.reserve(ep_hw_devices.size());
-
-  const char* ep_factory_name = ep_factory.GetName(&ep_factory);
-  const uint32_t ep_vendor_id = ep_factory.GetVendorId(&ep_factory);
-
-  for (OrtHardwareDevice* candidate : ep_hw_devices) {
-    if (candidate == nullptr) {
-      continue;  // EP library provided a NULL hw device. Skip it.
-    }
-
-    // Skip hw device already found by ORT.
-    if (have_ort_hw_device(candidate)) {
-      LOGS_DEFAULT(VERBOSE) << "EP library registered under '" << lib_registration_name << "' with OrtEpFactory '"
-                            << ep_factory_name << "' attempted to register a OrtHardwareDevice that has already been "
-                            << "found by ONNX Runtime. OrtHardwareDevice info: vendor_id=" << ep_vendor_id
-                            << ", device_id=" << candidate->device_id << ", type=" << candidate->type << ". "
-                            << "ORT will not use this device.";
-      devices_to_discard.emplace_back(candidate);  // take ownership to discard on function return
-      continue;
-    }
-
-    const std::map<std::string, std::string>& metadata = candidate->metadata.Entries();
-
-    // Always set the "DiscoveredBy" metadata entry to the EP name.
-    if (auto discovered_by_iter = metadata.find(kOrtHardwareDevice_MetadataKey_DiscoveredBy);
-        discovered_by_iter == metadata.end()) {
-      candidate->metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, ep_factory_name);
-    } else if (discovered_by_iter->second != ep_factory_name) {
-      LOGS_DEFAULT(WARNING) << "EP library registered under '" << lib_registration_name << "' with OrtEpFactory '"
-                            << ep_factory_name << "' attempted to register a OrtHardwareDevice with an invalid entry "
-                            << "for metadata key '" << kOrtHardwareDevice_MetadataKey_DiscoveredBy << "'. "
-                            << "Expected '" << ep_factory_name << "' but got '" << discovered_by_iter->second << "'. "
-                            << "ORT will use the device but overwrite the metadata entry to the expected value.";
-
-      candidate->metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, ep_factory_name);  // overwrite
-    }
-
-    result.emplace_back(candidate);
-  }
-
-  return result;
 }
 }  // namespace
 
@@ -832,7 +765,7 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
 
   // OrtHardwareDevice instances to pass to GetSupportedDevices. sorted by type to be slightly more structured.
   // the set of hardware devices is static so this can also be static.
-  const static InlinedVector<const OrtHardwareDevice*> sorted_devices = SortDevicesByType();
+  const static std::vector<const OrtHardwareDevice*> sorted_devices = SortDevicesByType();
 
   for (auto* factory_ptr : instance.factories) {
     ORT_ENFORCE(factory_ptr != nullptr, "Factory pointer was null. EpLibrary should prevent this. Library:",
@@ -840,35 +773,10 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
 
     auto& factory = *factory_ptr;
 
-    // Allow EP factory to provide additional OrtHardwareDevice instances to:
-    //  - Enable EP library to provide hardware devices not discovered by ORT.
-    //  - EP may provide a virtual OrtHardwareDevice that represents a cross-compilation target.
-    std::array<OrtHardwareDevice*, 8> ep_hw_devices{nullptr};
-    size_t num_ep_hw_devices = 0;
-
-    if (factory.GetAdditionalHardwareDevices != nullptr) {
-      ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-          factory.GetAdditionalHardwareDevices(&factory, sorted_devices.data(), sorted_devices.size(),
-                                               ep_hw_devices.data(), ep_hw_devices.size(), &num_ep_hw_devices)));
-    }
-
-    InlinedVector<const OrtHardwareDevice*> all_hw_devices = sorted_devices;
-
-    if (num_ep_hw_devices > 0) {
-      InlinedVector<std::unique_ptr<OrtHardwareDevice>> valid_hw_devices = FilterEpHardwareDevices(
-          factory, sorted_devices, gsl::span<OrtHardwareDevice* const>(ep_hw_devices.data(), num_ep_hw_devices),
-          instance.library->RegistrationName());
-
-      for (std::unique_ptr<OrtHardwareDevice>& ep_hw_device : valid_hw_devices) {
-        all_hw_devices.push_back(ep_hw_device.get());                       // Add EP-specific HW devices to the end
-        instance.additional_hw_devices.push_back(std::move(ep_hw_device));  // take ownership
-      }
-    }
-
     std::array<OrtEpDevice*, 8> ep_devices{nullptr};
     size_t num_ep_devices = 0;
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-        factory.GetSupportedDevices(&factory, all_hw_devices.data(), all_hw_devices.size(),
+        factory.GetSupportedDevices(&factory, sorted_devices.data(), sorted_devices.size(),
                                     ep_devices.data(), ep_devices.size(), &num_ep_devices)));
 
     for (size_t i = 0; i < num_ep_devices; ++i) {

@@ -158,7 +158,6 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
     OrtHardwareDevice gpu_device{};
     ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
 
-    gpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, "ONNX Runtime");
     gpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "0");
 
     gpu_devices.emplace_back(std::move(gpu_device));

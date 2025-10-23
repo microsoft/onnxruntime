@@ -49,7 +49,6 @@ OrtHardwareDevice DeviceDiscovery::GetCpuDeviceFromCPUIDInfo() {
   cpu_device.vendor_id = cpuid_info.GetCPUVendorId();
   cpu_device.device_id = 0;
   cpu_device.type = OrtHardwareDeviceType_CPU;
-  cpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, "ONNX Runtime");
   cpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "0");
 
   return cpu_device;

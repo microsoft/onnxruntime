@@ -87,16 +87,6 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->ValidateCompiledModelCompatibilityInfo(devices, num_devices, compatibility_info, model_compatibility);
   }
 
-  OrtStatus* GetAdditionalHardwareDevices(
-      _In_reads_(num_found_devices) const OrtHardwareDevice* const* found_devices,
-      _In_ size_t num_found_devices,
-      _Inout_ OrtHardwareDevice** additional_devices,
-      _In_ size_t max_additional_devices,
-      _Out_ size_t* num_additional_devices) noexcept {
-    return impl_->GetAdditionalHardwareDevices(found_devices, num_found_devices, additional_devices,
-                                               max_additional_devices, num_additional_devices);
-  }
-
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* /*ep*/) noexcept {
     // we never create an OrtEp so we should never be trying to release one

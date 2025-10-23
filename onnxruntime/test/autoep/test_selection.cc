@@ -39,10 +39,6 @@ void DefaultDeviceSelection(const std::string& ep_name, std::vector<const OrtEpD
       const auto* hw_device = c_api->EpDevice_Device(device);
       const OrtKeyValuePairs* hw_kvps = c_api->HardwareDevice_Metadata(hw_device);
 
-      const char* discovered_by = c_api->GetKeyValue(hw_kvps, kOrtHardwareDevice_MetadataKey_DiscoveredBy);
-      ASSERT_NE(discovered_by, nullptr);
-      ASSERT_STREQ(discovered_by, "ONNX Runtime");
-
       const char* is_virtual = c_api->GetKeyValue(hw_kvps, kOrtHardwareDevice_MetadataKey_IsVirtual);
       ASSERT_NE(is_virtual, nullptr);
       ASSERT_STREQ(is_virtual, "0");

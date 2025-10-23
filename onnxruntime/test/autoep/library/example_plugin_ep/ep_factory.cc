@@ -21,7 +21,6 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   GetVendorId = GetVendorIdImpl;
   GetVersion = GetVersionImpl;
 
-  GetAdditionalHardwareDevices = GetAdditionalHardwareDevicesImpl;  // optional. can be null.
   GetSupportedDevices = GetSupportedDevicesImpl;
 
   CreateEp = CreateEpImpl;
@@ -98,21 +97,6 @@ uint32_t ORT_API_CALL ExampleEpFactory::GetVendorIdImpl(const OrtEpFactory* this
 const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
   return factory->ep_version_.c_str();
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::GetAdditionalHardwareDevicesImpl(OrtEpFactory* /*this_ptr*/,
-                                                                           const OrtHardwareDevice* const* /*found_devices*/,
-                                                                           size_t /*num_found_devices*/,
-                                                                           OrtHardwareDevice** /*additional_devices*/,
-                                                                           size_t /*max_additional_devices*/,
-                                                                           size_t* num_additional_devices) noexcept {
-  // EP factory can provide ORT with additional hardware devices that ORT did not find, or that are not
-  // available on the target machine but could serve as compilation targets.
-
-  // This example EP does not provide any additional hardware devices.
-  *num_additional_devices = 0;
-  return nullptr;
 }
 
 /*static*/

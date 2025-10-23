@@ -468,17 +468,17 @@ struct OrtEpApi {
 
   /** \brief Create an OrtHardwareDevice.
    *
-   * \note Called within OrtEpFactory::GetAdditionalHardwareDevices to augment the list of devices discovered by ORT.
+   * \note Called within OrtEpFactory::GetSupportedDevices to create a new hardware device (e.g., virtual).
    *
    * \param[in] type The hardware device type.
    * \param[in] vendor_id The hardware device's vendor identifier.
    * \param[in] device_id The hardware device's identifier.
    * \param[in] vendor_name The hardware device's vendor name as a null-terminated string. Copied by ORT.
    * \param[in] metadata Optional OrtKeyValuePairs instance for hardware device metadata that may be queried by
-   *                     applications via OrtApi::GetEpDevices() or the EP factory that receives this hardware device
-   *                     instance as input to OrtEpFactory::GetSupportedDevices().
+   *                     applications via OrtApi::GetEpDevices().
    *                     Refer to onnxruntime_ep_device_ep_metadata_keys.h for common OrtHardwareDevice metadata keys.
    * \param[out] hardware_device Output parameter set to the new OrtHardwareDevice instance that is created.
+   *                             Must be release with ReleaseHardwareDevice().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1008,39 +1008,6 @@ struct OrtEpFactory {
                   _In_ const OrtMemoryDevice* memory_device,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
-
-  /** \brief Get additional hardware devices from the execution provider to augment the devices discovered by ORT.
-   *
-   * \note Any returned devices that have already been found by ORT are ignored.
-   *
-   * \note New additional devices created by this EP factory are not provided to other EP factories. Only this
-   *       EP factory receives the new additional hardware devices via OrtEpFactory::GetSupportedDevices().
-   *       Any OrtEpDevice instances that this EP factory creates with an additional hardware device are visible to
-   *       applications that call OrtApi::GetEpDevices().
-   *
-   * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] found_devices Array of hardware devices that have already been found by ORT during device discovery.
-   * \param[in] num_found_devices Number of hardware devices that have already been found by ORT.
-   * \param[out] additional_devices Additional OrtHardwareDevice instances that the EP can use.
-   *                                The implementation should call OrtEpApi::CreateHardwareDevice to create the devices,
-   *                                and then add the new OrtHardwareDevice instances to this pre-allocated array.
-   *                                ORT will take ownership of the values returned. i.e. usage is:
-   *                                `additional_devices[0] = <OrtHardwareDevice created via CreateHardwareDevice>;`
-   * \param[in] max_additional_devices The maximum number of OrtHardwareDevice instances that can be added to
-   *                                   `additional_devices`. Current default is 8. This can be increased if needed.
-   * \param[out] num_additional_devices The number of additional hardware devices actually added
-   *                                    to `additional_devices`.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.24.
-   */
-  ORT_API2_STATUS(GetAdditionalHardwareDevices, _In_ OrtEpFactory* this_ptr,
-                  _In_reads_(num_found_devices) const OrtHardwareDevice* const* found_devices,
-                  _In_ size_t num_found_devices,
-                  _Inout_ OrtHardwareDevice** additional_devices,
-                  _In_ size_t max_additional_devices,
-                  _Out_ size_t* num_additional_devices);
 };
 
 #ifdef __cplusplus

@@ -15,7 +15,9 @@
 /// </summary>
 class EpFactoryVirtualGpu : public OrtEpFactory {
  public:
-  EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtLogger& default_logger);
+  EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api, bool allow_virtual_devices,
+                      const OrtLogger& default_logger);
+  ~EpFactoryVirtualGpu();
 
   const OrtApi& GetOrtApi() const { return ort_api_; }
   const OrtEpApi& GetEpApi() const { return ep_api_; }
@@ -28,13 +30,6 @@ class EpFactoryVirtualGpu : public OrtEpFactory {
   static uint32_t ORT_API_CALL GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept;
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept;
-
-  static OrtStatus* ORT_API_CALL GetAdditionalHardwareDevicesImpl(OrtEpFactory* this_ptr,
-                                                                  const OrtHardwareDevice* const* found_devices,
-                                                                  size_t num_found_devices,
-                                                                  OrtHardwareDevice** additional_devices,
-                                                                  size_t max_additional_devices,
-                                                                  size_t* num_additional_devices) noexcept;
 
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                          const OrtHardwareDevice* const* devices,
@@ -72,7 +67,9 @@ class EpFactoryVirtualGpu : public OrtEpFactory {
 
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
+  bool allow_virtual_devices_{false};
   const OrtLogger& default_logger_;
+  OrtHardwareDevice* virtual_hw_device_{};
   const std::string ep_name_{"EpVirtualGpu"};
   const std::string vendor_{"Contoso2"};   // EP vendor name
   const uint32_t vendor_id_{0xB358};       // EP vendor ID

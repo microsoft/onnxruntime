@@ -17,12 +17,6 @@ static const char* const kOrtModelMetadata_EpCompatibilityInfoPrefix = "ep_compa
 // Key for the execution provider library path (for dynamically loaded EPs)
 static const char* const kOrtEpDevice_EpMetadataKey_LibraryPath = "library_path";
 
-// Key to retrieve the identity of the entity that discovered and initialized the OrtHardwareDevice.
-// Possible values:
-//  - "ONNX Runtime" (devices discovered by ONNX Runtime).
-//  - <EP_NAME> (devices discovered by a plugin EP library registered with the OrtEnv).
-static const char* const kOrtHardwareDevice_MetadataKey_DiscoveredBy = "DiscoveredBy";
-
 // Key to determine if a OrtHardwareDevice represents a virtual (non-hardware) device.
 // Possible values:
 //  - "0": OrtHardwareDevice is not virtual; represents an actual hardware device.

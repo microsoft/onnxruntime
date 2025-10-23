@@ -95,45 +95,87 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   const std::string& registration_name = Utils::example_ep_virt_gpu_info.registration_name;
   const std::string& ep_name = Utils::example_ep_virt_gpu_info.ep_name;
 
-  // this should load the library and create OrtEpDevice
-  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+  auto get_plugin_ep_devices = [&ep_name]() -> std::vector<Ort::ConstEpDevice> {
+    std::vector<Ort::ConstEpDevice> all_ep_devices = ort_env->GetEpDevices();
+    std::vector<Ort::ConstEpDevice> ep_devices;
 
-  std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+    std::copy_if(all_ep_devices.begin(), all_ep_devices.end(), std::back_inserter(ep_devices),
+                 [&ep_name](Ort::ConstEpDevice& device) {
+                   return device.EpName() == ep_name;
+                 });
 
-  // should be one device for the example EP
-  auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
-                                     [&ep_name](Ort::ConstEpDevice& device) {
-                                       return device.EpName() == ep_name;
-                                     });
-  ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by " << ep_name;
+    return ep_devices;
+  };
 
-  // test all the C++ getters.
-  // expected values are from \onnxruntime\test\autoep\library\example_plugin_ep_virt_gpu\*.cc
-  ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso2");
+  auto is_hw_device_virtual = [](Ort::ConstHardwareDevice hw_device) -> bool {
+    std::unordered_map<std::string, std::string> metadata_entries = hw_device.Metadata().GetKeyValuePairs();
+    auto iter = metadata_entries.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
 
-  auto metadata = test_ep_device->EpMetadata();
-  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), "0.1.0");
-  ASSERT_STREQ(metadata.GetValue("ex_key"), "ex_value");
+    if (iter == metadata_entries.end()) {
+      return false;
+    }
 
-  auto options = test_ep_device->EpOptions();
-  ASSERT_STREQ(options.GetValue("compile_optimization"), "O3");
+    return iter->second == "1";
+  };
 
-  // Check the virtual GPU device info.
-  Ort::ConstHardwareDevice virt_gpu_device = test_ep_device->Device();
-  ASSERT_EQ(virt_gpu_device.Type(), OrtHardwareDeviceType_GPU);
-  ASSERT_EQ(virt_gpu_device.VendorId(), 0xB358);
-  ASSERT_EQ(virt_gpu_device.DeviceId(), 0);
-  ASSERT_STREQ(virt_gpu_device.Vendor(), test_ep_device->EpVendor());
+  // Test getting EP's supported OrtEpDevices. Do not allow virtual devices.
+  // The EP should only return a OrtEpDevice for a non-virtual CPU.
+  {
+    ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
 
-  // OrtHardwareDevice should have 2 metadata entries ("DiscoveredBy" and "IsVirtual")
-  Ort::ConstKeyValuePairs device_metadata = virt_gpu_device.Metadata();
-  std::unordered_map<std::string, std::string> metadata_entries = device_metadata.GetKeyValuePairs();
-  ASSERT_EQ(metadata_entries.size(), 2);
-  ASSERT_EQ(metadata_entries[kOrtHardwareDevice_MetadataKey_DiscoveredBy], ep_name);
-  ASSERT_EQ(metadata_entries[kOrtHardwareDevice_MetadataKey_IsVirtual], "1");
+    // Find ep devices for this EP. Should only get one for a real CPU.
+    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices();
+    ASSERT_EQ(ep_devices.size(), 1);
 
-  // and this should unload it without throwing
-  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+    Ort::ConstHardwareDevice real_cpu_device = ep_devices[0].Device();
+    ASSERT_EQ(real_cpu_device.Type(), OrtHardwareDeviceType_CPU);
+    ASSERT_FALSE(is_hw_device_virtual(real_cpu_device));  // Not marked as virtual.
+
+    ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+  }
+
+  // Test getting EP's supported OrtEpDevices, but ALLOW virtual devices.
+  // The EP should return a OrtEpDevice for a virtual GPU.
+  {
+    // Use a registration name ending with ".virtual" to indicate to the EP library (factory) that creating virtual
+    // devices is allowed.
+    std::string registration_name_for_virtual_devices = registration_name + ".virtual";
+    ort_env->RegisterExecutionProviderLibrary(registration_name_for_virtual_devices.c_str(), library_path.c_str());
+
+    // Find ep devices for this EP. Should get 2: real cpu, virtual gpu.
+    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices();
+    ASSERT_EQ(ep_devices.size(), 2);
+
+    auto real_cpu_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
+                                           [](Ort::ConstEpDevice& ep_device) {
+                                             return ep_device.Device().Type() == OrtHardwareDeviceType_CPU;
+                                           });
+    auto virt_gpu_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
+                                           [](Ort::ConstEpDevice& ep_device) {
+                                             return ep_device.Device().Type() == OrtHardwareDeviceType_GPU;
+                                           });
+
+    ASSERT_FALSE(is_hw_device_virtual(real_cpu_ep_device->Device()));  // Not marked as virtual.
+    ASSERT_TRUE(is_hw_device_virtual(virt_gpu_ep_device->Device()));   // Marked as virtual.
+
+    // test metadata and provider options attached to the virtual OrtEpDevice.
+    // expected values are from \onnxruntime\test\autoep\library\example_plugin_ep_virt_gpu\*.cc
+    ASSERT_STREQ(virt_gpu_ep_device->EpVendor(), "Contoso2");
+
+    auto metadata = virt_gpu_ep_device->EpMetadata();
+    ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), "0.1.0");
+    ASSERT_STREQ(metadata.GetValue("some_metadata"), "1");
+
+    auto options = virt_gpu_ep_device->EpOptions();
+    ASSERT_STREQ(options.GetValue("compile_optimization"), "O3");
+
+    // Check the virtual GPU hw device info.
+    ASSERT_EQ(virt_gpu_ep_device->Device().VendorId(), 0xB358);
+    ASSERT_EQ(virt_gpu_ep_device->Device().DeviceId(), 0);
+    ASSERT_STREQ(virt_gpu_ep_device->Device().Vendor(), virt_gpu_ep_device->EpVendor());
+
+    ort_env->UnregisterExecutionProviderLibrary(registration_name_for_virtual_devices.c_str());
+  }
 }
 }  // namespace test
 }  // namespace onnxruntime

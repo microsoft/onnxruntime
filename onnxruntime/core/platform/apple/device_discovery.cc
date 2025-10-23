@@ -28,7 +28,6 @@ std::vector<OrtHardwareDevice> GetGpuDevices() {
     gpu_device.type = OrtHardwareDeviceType_GPU;
     gpu_device.vendor_id = kApplePciVendorId;
     gpu_device.vendor = kAppleVendorName;
-    gpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, "ONNX Runtime");
     gpu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "0");
 
     result.emplace_back(std::move(gpu_device));
@@ -77,7 +76,6 @@ std::vector<OrtHardwareDevice> GetNpuDevices() {
     npu_device.type = OrtHardwareDeviceType_NPU;
     npu_device.vendor_id = kApplePciVendorId;
     npu_device.vendor = kAppleVendorName;
-    npu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_DiscoveredBy, "ONNX Runtime");
     npu_device.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "0");
 
     result.emplace_back(std::move(npu_device));
