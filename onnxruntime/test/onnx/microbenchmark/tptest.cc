@@ -35,7 +35,8 @@ BENCHMARK(BM_CreateThreadPool)
 #pragma GCC optimize("O0")
 #endif
 void SimpleForLoop(ptrdiff_t first, ptrdiff_t last) {
-  [[maybe_unused]] size_t sum = 0;
+  size_t sum = 0;
+  benchmark::DoNotOptimize(sum);
   for (; first != last; ++first) {
     ++sum;
   }
