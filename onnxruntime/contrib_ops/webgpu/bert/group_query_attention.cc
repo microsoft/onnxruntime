@@ -32,81 +32,103 @@ ONNX_OPERATOR_KERNEL_EX(
     GroupQueryAttention);
 
 Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
-  const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
-  const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  sh.MainFunctionBody() << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
-                        << "  let input_data = " << packed_qkv.GetByOffset("global_idx") << ";\n"
-                        << "  let index = " << packed_qkv.IndicesGet("packed_qkv_indices", "2") << ";\n"
-                        << "  if (index < uniforms.hidden_size) {\n"
-                        << "    " << query.SetByIndices("packed_qkv_indices", "input_data") << ";\n"
-                        << "  } else if (index < (uniforms.hidden_size + uniforms.kv_hidden_size)) {\n"
-                        << "    var key_indices = packed_qkv_indices;\n"
-                        << "   " << key.IndicesSet("key_indices", "2", "u32(index - uniforms.hidden_size)") << ";\n"
-                        << "   " << key.SetByIndices("key_indices", "input_data") << ";\n"
-                        << "  } else {\n"
-                        << "    var val_indices = packed_qkv_indices;\n"
-                        << "   " << value.IndicesSet("val_indices", "2", "u32(index - uniforms.hidden_size - uniforms.kv_hidden_size)") << ";\n"
-                        << "   " << value.SetByIndices("val_indices", "input_data") << ";\n"
-                        << "  }";
+  const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
+  const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
+  const auto& key = sh.AddOutput("key", ShaderUsage::UseUniform);
+  const auto& value = sh.AddOutput("val", ShaderUsage::UseUniform);
+
+  sh.MainFunctionBody() << "  // Dispatch over Q domain only\n"
+                        << "  let q_flat_idx = global_idx;\n"
+                        << "  let batch_idx = q_flat_idx / (uniforms.sequence_length * uniforms.hidden_size);\n"
+                        << "  let remainder = q_flat_idx % (uniforms.sequence_length * uniforms.hidden_size);\n"
+                        << "  let seq_idx = remainder / uniforms.hidden_size;\n"
+                        << "  let hidden_idx = remainder % uniforms.hidden_size;\n"
+                        << "\n"
+                        << "  // Calculate base offset for this (batch, seq) position in packed_qkv\n"
+                        << "  // Layout per token: [Q(hidden_size), K(kv_hidden_size), V(kv_hidden_size)]\n"
+                        << "  let token_size = uniforms.hidden_size + 2u * uniforms.kv_hidden_size;\n"
+                        << "  let base_offset = batch_idx * uniforms.sequence_length * token_size + seq_idx * token_size;\n"
+                        << "\n"
+                        << "  // Read and write Q\n"
+                        << "  let q_offset = base_offset + hidden_idx;\n"
+                        << "  let q_data = " << packed_qkv.GetByOffset("q_offset") << ";\n"
+                        << "  " << query.SetByIndices("vec3<u32>(batch_idx, seq_idx, hidden_idx)", "q_data") << ";\n"
+                        << "\n"
+                        << "  // Process K and V if within kv_hidden_size range\n"
+                        << "  if (hidden_idx < uniforms.kv_hidden_size) {\n"
+                        << "    let k_offset = base_offset + uniforms.hidden_size + hidden_idx;\n"
+                        << "    let k_data = " << packed_qkv.GetByOffset("k_offset") << ";\n"
+                        << "    " << key.SetByIndices("vec3<u32>(batch_idx, seq_idx, hidden_idx)", "k_data") << ";\n"
+                        << "\n"
+                        << "    let v_offset = base_offset + uniforms.hidden_size + uniforms.kv_hidden_size + hidden_idx;\n"
+                        << "    let v_data = " << packed_qkv.GetByOffset("v_offset") << ";\n"
+                        << "    " << value.SetByIndices("vec3<u32>(batch_idx, seq_idx, hidden_idx)", "v_data") << ";\n"
+                        << "  }\n";
   return Status::OK();
 }
 
 Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val) {
   SplitPackedQKVProgram program;
-  auto input_size = packedQKV->Shape().Size();
+  // Dispatch only over Q domain: batch_size * sequence_length * hidden_size
+  auto q_size = static_cast<uint32_t>(params.batch_size_ * params.sequence_length_ * params.hidden_size_);
   program
       .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank})
       .AddOutputs({{query, ProgramTensorMetadataDependency::Rank}, {key, ProgramTensorMetadataDependency::Rank}, {val, ProgramTensorMetadataDependency::Rank}})
       .AddUniformVariables({
+          {static_cast<uint32_t>(params.batch_size_)},
+          {static_cast<uint32_t>(params.sequence_length_)},
           {static_cast<uint32_t>(params.hidden_size_)},
           {static_cast<uint32_t>(params.kv_hidden_size_)},
       })
-      .SetDispatchGroupSize((input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+      .SetDispatchGroupSize((q_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
 
-Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
-  const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
-  const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  sh.MainFunctionBody() << "  var pos_id: i32 = 0;\n"
-                        << "  let batch_idx = global_idx / uniforms.sequence_length;\n"
-                        << "  let sequence_idx = i32(global_idx % uniforms.sequence_length);\n"
-                        << "  let seqlen = " << seqlens.GetByOffset("batch_idx") << ";\n";
-  if (is_first_prompt_) {
-    sh.MainFunctionBody() << "  let total_seqlen = seqlen + 1;\n"
-                          << "  if (sequence_idx < total_seqlen) {\n"
-                          << "    pos_id = sequence_idx;\n"
-                          << "  } else {\n"
-                          << "    pos_id = 1;\n"
-                          << "  }\n"
-                          << "  " << output.SetByOffset("global_idx", "pos_id") << "\n";
-  } else if (is_subsequent_prompt_) {
-    sh.MainFunctionBody() << "  let total_seqlen = seqlen + 1;\n"
-                          << "  let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
-                          << "  if (past_seqlen + sequence_idx < total_seqlen) {\n"
-                          << "    pos_id = past_seqlen + sequence_idx;\n"
-                          << "  } else {\n"
-                          << "    pos_id = 1;\n"
-                          << "  }\n"
-                          << "  " << output.SetByOffset("global_idx", "pos_id") << "\n";
-  } else {
-    sh.MainFunctionBody() << "  if (global_idx < uniforms.batch_size) {\n"
-                          << "    " << output.SetByOffset("global_idx", "seqlen") << "\n"
-                          << "  }\n";
-  }
-  return Status::OK();
-}
+// Split packed QKV with Q/K rotary embedding fusion
+Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
+                                            const WebgpuAttentionParameters& params,
+                                            const Tensor* packedQKV,
+                                            const Tensor* seqlen_k,
+                                            const Tensor* cos_cache,
+                                            const Tensor* sin_cache,
+                                            Tensor* query,
+                                            Tensor* key,
+                                            Tensor* val) {
+  const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
+  const auto head_size = params.head_size_;
 
-Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* seqlens, Tensor* output_tensor) {
-  GeneratePositionIDsProgram program(params.is_first_prompt_, params.is_subsequent_prompt_);
-  auto output_size = params.batch_size_ * params.sequence_length_;
-  program.CacheHint(params.is_first_prompt_, params.is_subsequent_prompt_)
-      .AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
-      .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)}, {static_cast<uint32_t>(params.sequence_length_)}})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  // Dispatch: batch_size * sequence_length * num_heads * (half_rotary_dim + need_copy_dim)
+  // work_per_head = half_rotary_dim + (head_size - 2 * half_rotary_dim)
+  //               = head_size - half_rotary_dim
+  const auto work_per_head = head_size - half_rotary_embedding_dim;
+  auto dispatch_size = static_cast<uint32_t>(params.batch_size_ * params.sequence_length_ * params.num_heads_ * work_per_head);
+
+  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_);
+  program
+      .CacheHint(params.rotary_interleaved_)
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank})
+      .AddInputs({
+          {seqlen_k, ProgramTensorMetadataDependency::Rank},
+          {cos_cache, ProgramTensorMetadataDependency::Rank},
+          {sin_cache, ProgramTensorMetadataDependency::Rank},
+      })
+      .AddOutputs({{query, ProgramTensorMetadataDependency::Rank},
+                   {key, ProgramTensorMetadataDependency::Rank},
+                   {val, ProgramTensorMetadataDependency::Rank}})
+      .AddUniformVariables({
+          {static_cast<uint32_t>(params.batch_size_)},
+          {static_cast<uint32_t>(params.sequence_length_)},
+          {static_cast<uint32_t>(params.hidden_size_)},
+          {static_cast<uint32_t>(params.kv_hidden_size_)},
+          {static_cast<uint32_t>(params.num_heads_)},
+          {static_cast<uint32_t>(params.kv_num_heads_)},
+          {static_cast<uint32_t>(head_size)},
+          {half_rotary_embedding_dim},
+          {static_cast<uint32_t>(params.is_first_prompt_ ? 1 : 0)},
+          {static_cast<uint32_t>(params.is_subsequent_prompt_ ? 1 : 0)},
+      })
+      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+
   return context.RunProgram(program);
 }
 
@@ -120,10 +142,6 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                  const Tensor* sin_cache,
                                  Tensor* query_out,
                                  Tensor* key_out) {
-  Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(),
-                                           TensorShape({params.batch_size_, params.sequence_length_}));
-  ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, params, seqlen_k, &pos_ids));
-
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -171,7 +189,7 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
       .AddInputs({
           {query_in, ProgramTensorMetadataDependency::Rank},
           {key_in, ProgramTensorMetadataDependency::Rank},
-          {&pos_ids, ProgramTensorMetadataDependency::Rank},
+          {seqlen_k, ProgramTensorMetadataDependency::Rank},
           {cos_cache, ProgramTensorMetadataDependency::Rank},
           {sin_cache, ProgramTensorMetadataDependency::Rank},
       })
@@ -187,9 +205,10 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {gsl::make_span(q_input_output_strides)},
           {gsl::make_span(k_global_dims)},
           {gsl::make_span(k_input_output_strides)},
+          {static_cast<uint32_t>(params.is_first_prompt_ ? 1 : 0)},
+          {static_cast<uint32_t>(params.is_subsequent_prompt_ ? 1 : 0)},
           {q_domain_size},
-      })
-      .AddIndices(TensorShape{1, 1});
+      });
 
   return context.RunProgram(program);
 }
@@ -255,30 +274,48 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor qSplit;
   Tensor kSplit;
   Tensor vSplit;
-  if (parameters.is_packed_qkv_) {
+  Tensor qRotary;
+  Tensor kRotary;
+
+  // Fuse split and rotary embedding when both are needed
+  if (parameters.is_packed_qkv_ && do_rotary_) {
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
     kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
     vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-    ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit));
+    ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbedding(context, parameters,
+                                                             query, seqlen_k,
+                                                             cos_cache, sin_cache,
+                                                             &qSplit, &kSplit, &vSplit));
     parameters.is_packed_qkv_ = false;
     parameters.qkv_format_ = Q_K_V_BSNH;
     query = &qSplit;
     key = &kSplit;
     value = &vSplit;
-  }
+  } else {
+    // Original separate path
+    if (parameters.is_packed_qkv_) {
+      qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
+      kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
+      vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
+      ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit));
+      parameters.is_packed_qkv_ = false;
+      parameters.qkv_format_ = Q_K_V_BSNH;
+      query = &qSplit;
+      key = &kSplit;
+      value = &vSplit;
+    }
 
-  Tensor qRotary;
-  Tensor kRotary;
-  if (do_rotary_) {
-    qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
-    kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
-    ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(context, parameters,
-                                                  query, key,
-                                                  seqlen_k,
-                                                  cos_cache, sin_cache,
-                                                  &qRotary, &kRotary));
-    query = &qRotary;
-    key = &kRotary;
+    if (do_rotary_) {
+      qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
+      kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
+      ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(context, parameters,
+                                                    query, key,
+                                                    seqlen_k,
+                                                    cos_cache, sin_cache,
+                                                    &qRotary, &kRotary));
+      query = &qRotary;
+      key = &kRotary;
+    }
   }
 
   // Use a sliding window if the total sequence exceeds the window's length.
