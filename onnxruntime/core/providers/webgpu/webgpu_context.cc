@@ -1016,12 +1016,9 @@ WGPUDevice GetDevice(int context_id) {
 // C API functions for external access
 extern "C" {
 
-ORT_WEBGPU_EXPORT const void* ORT_WEBGPU_API_CALL OrtWebGpuGetDawnProcTable(int context_id) {
+ORT_WEBGPU_EXPORT const void* ORT_WEBGPU_API_CALL OrtWebGpuGetDawnProcTable(int /* context_id */) {
 #if !defined(__wasm__) && !defined(BUILD_DAWN_SHARED_LIBRARY) && !defined(USE_EXTERNAL_DAWN)
   try {
-    // Ensure context is initialized
-    auto& context = onnxruntime::webgpu::WebGpuContextFactory::GetContext(context_id);
-    (void)context;  // Suppress unused variable warning
     return &dawn::native::GetProcs();
   } catch (...) {
     return nullptr;
