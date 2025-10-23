@@ -1994,7 +1994,7 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   float* output_data = Y->MutableData<float>();
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
-  const std::ptrdiff_t elem_count = X->Shape().Size();
+  const std::ptrdiff_t elem_count = onnxruntime::narrow<std::ptrdiff_t>(X->Shape().Size());
   constexpr std::ptrdiff_t length_per_task = 4096;  // this number comes from FastGelu.
   const std::ptrdiff_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
