@@ -4517,6 +4517,9 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   // changes during the layout transformation process.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
 
+  // MulAddFusion fuse Mul and Add into Batchnormalization and prevent the Transpose pushing
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "MulAddFusion"));
+
   using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
 
   // set the test EP to support all ops in the model so that the layout transform applies to all nodes
