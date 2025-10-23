@@ -162,18 +162,11 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
  * @param nbits          Number of bits used for quantization.
  * @param context        Compute context for WebGPU, providing device-specific information and execution facilities.
  * @param y              Pointer to the output tensor that will hold the result.
- * @param offsets        Pointer to an optional offsets tensor; may be nullptr if not used.
  *
  * @return Status indicating whether the operation was successful or if an error occurred.
  *
- * @note Use of offsets: this allows you to use stacked weights, input and outputs. If provided, offset is a
- *       on device tensor of shape [k, 4]. It contains k entries of vec4<uint32>. Entry.x is the offset of input,
- *       entry.y is the offset of weights and entry.z is the offset of output.
- *       For example: you want to multiply the same input a with 2 different weights (that are stacked) you'd pass
- *        [vec4<uint32>(0, 0, 0), vec4<uint32>(0, 1, 1)] and the output will contain 2 stacked results.
- *
  * @note Special optimizations are considered:
- *       - Subgroup matrix multiplication for eligible Apple/Intel GPUs without offsets or bias.
+ *       - Subgroup matrix multiplication for eligible Apple/Intel GPUs.
  *       - DP4A-based multiplication on FP32-only GPUs for specific dimensions and conditions.
  *       - A wide tile program is used when block size, component count, and other criteria are met.
  *       - Otherwise, a default matmul program is used.
