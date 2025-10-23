@@ -2919,24 +2919,21 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           ORT_THROW("Initializer ", input_name,
                     " has in-memory external data but cannot get OrtValue during shape inference");
         }
-      } else if (utils::HasRawData(*initializer)) {
-        const std::string& raw = initializer->raw_data();
-        const int64_t* data = reinterpret_cast<const int64_t*>(raw.data());
-        input_values.resize(element_cnt);
-        for (size_t i = 0; i < element_cnt; ++i) {
-          input_values[i] = data[i];
-        }
-      } else {
+      }
+      // Unpack tensor from raw data, external data (not in memory) or the type specific data field
+      else {
         if (initializer->data_type() == TensorProto_DataType_INT32) {
-          std::vector<int32_t> values;
-          values.assign(initializer->int32_data().begin(), initializer->int32_data().end());
+          std::vector<int32_t> tmp_values;
+          tmp_values.resize(element_cnt);
+          utils::UnpackTensor<int32_t>(*initializer, this->ModelPath(), tmp_values.data(), element_cnt);
+
           input_values.resize(element_cnt);
           for (size_t i = 0; i < element_cnt; ++i) {
-            input_values[i] = static_cast<int64_t>(values[0]);
+            input_values[i] = static_cast<int64_t>(tmp_values[i]);  // copy values
           }
         } else if (initializer->data_type() == TensorProto_DataType_INT64) {
           input_values.resize(element_cnt);
-          input_values.assign(initializer->int64_data().begin(), initializer->int64_data().end());
+          utils::UnpackTensor<int64_t>(*initializer, this->ModelPath(), input_values.data(), element_cnt);
         }
       }
     }
