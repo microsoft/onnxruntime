@@ -37,7 +37,10 @@
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
+#include "test/providers/qnn/qnn_test_env.h"
+
 std::unique_ptr<Ort::Env> ort_env;
+std::unique_ptr<QNNTestEnvironment> qnn_env;
 
 // define environment variable name constants here
 namespace env_var_names {
@@ -151,6 +154,7 @@ int TEST_MAIN(int argc, char** argv) {
   ORT_TRY {
     ortenv_setup();
     ::testing::InitGoogleTest(&argc, argv);
+    qnn_env = std::make_unique<QNNTestEnvironment>(argc, argv);
 
     status = RUN_ALL_TESTS();
   }
