@@ -285,6 +285,7 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, const ShaderVariableHelpe
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
