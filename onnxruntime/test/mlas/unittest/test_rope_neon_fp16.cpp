@@ -13,6 +13,7 @@ Abstract:
     Tests for MLAS fp16 RoPE on NEON.
 
 --*/
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
 #include <vector>
 #include <cmath>
@@ -21,8 +22,6 @@ Abstract:
 #include "core/mlas/lib/mlasi.h"
 #include "core/mlas/lib/rotary_embedding.h"
 #include "core/mlas/lib/rotary_embedding_kernel_neon.h"
-
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
 class MlasNeonFp16RoPETest : public MlasTestBase {
  private:
