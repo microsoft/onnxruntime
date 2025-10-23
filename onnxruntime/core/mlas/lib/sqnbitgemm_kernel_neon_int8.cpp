@@ -418,7 +418,7 @@ namespace
 // The ComputeRxC functions compute an R row by C column tile of the output matrix.
 //
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 MLAS_FORCEINLINE void
 SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
     const std::byte* QuantARowPtr,
@@ -517,23 +517,29 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
                 const int8x16_t av_row0 = vld1q_s8(QuantADataPtrRow0 + 0);
                 const int8x16_t av_row1 = vld1q_s8(QuantADataPtrRow1 + 0);
 
-                // quantized dot product
-                const int32x4_t dot00 = vdotq_s32(int32x4_t{}, av_row0, bv_col0);
-                const int32x4_t dot01 = vdotq_s32(int32x4_t{}, av_row0, bv_col1);
-                const int32x4_t dot10 = vdotq_s32(int32x4_t{}, av_row1, bv_col0);
-                const int32x4_t dot11 = vdotq_s32(int32x4_t{}, av_row1, bv_col1);
+                // Run with dot product support
+                if constexpr (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot00 = vdotq_s32(int32x4_t{}, av_row0, bv_col0);
+                    const int32x4_t dot01 = vdotq_s32(int32x4_t{}, av_row0, bv_col1);
+                    const int32x4_t dot10 = vdotq_s32(int32x4_t{}, av_row1, bv_col0);
+                    const int32x4_t dot11 = vdotq_s32(int32x4_t{}, av_row1, bv_col1);
 
-                // convert to float
-                const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
-                const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
-                const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
-                const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
+                    // convert to float
+                    const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
+                    const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
+                    const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
+                    const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
 
-                // multiply by scale and update accumulator
-                acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
-                acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
-                acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
-                acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));
+                    // multiply by scale and update accumulator
+                    acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
+                    acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
+                    acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
+                    acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));
+                } else {
+                  // Run with SMMLA support
+
+                }
             }
 
             // rows 2 and 3 of A
@@ -542,24 +548,28 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
                 const int8x16_t av_row2 = vld1q_s8(QuantADataPtrRow2 + 0);
                 const int8x16_t av_row3 = vld1q_s8(QuantADataPtrRow3 + 0);
 
-                // quantized dot product
-                const int32x4_t dot20 = vdotq_s32(int32x4_t{}, av_row2, bv_col0);
-                const int32x4_t dot21 = vdotq_s32(int32x4_t{}, av_row2, bv_col1);
-                const int32x4_t dot30 = vdotq_s32(int32x4_t{}, av_row3, bv_col0);
-                const int32x4_t dot31 = vdotq_s32(int32x4_t{}, av_row3, bv_col1);
+                // Run with dot product support
+                if constexpr (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot20 = vdotq_s32(int32x4_t{}, av_row2, bv_col0);
+                    const int32x4_t dot21 = vdotq_s32(int32x4_t{}, av_row2, bv_col1);
+                    const int32x4_t dot30 = vdotq_s32(int32x4_t{}, av_row3, bv_col0);
+                    const int32x4_t dot31 = vdotq_s32(int32x4_t{}, av_row3, bv_col1);
 
-                // convert to float
-                const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
-                const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
-                const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
-                const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
+                    // convert to float
+                    const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
+                    const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
+                    const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
+                    const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
 
-                // multiply by scale and update accumulator
-                acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
-                acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
-                acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
-                acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
-            }
+                    // multiply by scale and update accumulator
+                    acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
+                    acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
+                    acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
+                    acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
+                } else {
+                  // Run with SMMLA support
+                }
         }
 
         // increment block pointers
@@ -594,7 +604,7 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 MLAS_FORCEINLINE void
 SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
     size_t BlkLen,
@@ -690,23 +700,27 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
                 const int8x16_t av_row1_0 = vld1q_s8(QuantADataPtrRow1 + 0);
                 const int8x16_t av_row1_1 = vld1q_s8(QuantADataPtrRow1 + 16);
 
-                // quantized dot product
-                const int32x4_t dot00 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col0_0), av_row0_1, bv_col0_1);
-                const int32x4_t dot01 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col1_0), av_row0_1, bv_col1_1);
-                const int32x4_t dot10 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col0_0), av_row1_1, bv_col0_1);
-                const int32x4_t dot11 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col1_0), av_row1_1, bv_col1_1);
+                // Run with dot product support
+                if (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot00 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col0_0), av_row0_1, bv_col0_1);
+                    const int32x4_t dot01 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col1_0), av_row0_1, bv_col1_1);
+                    const int32x4_t dot10 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col0_0), av_row1_1, bv_col0_1);
+                    const int32x4_t dot11 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col1_0), av_row1_1, bv_col1_1);
 
-                // convert to float
-                const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
-                const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
-                const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
-                const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
+                    // convert to float
+                    const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
+                    const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
+                    const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
+                    const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
 
-                // multiply by scale and update accumulator
-                acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
-                acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
-                acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
-                acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));
+                    // multiply by scale and update accumulator
+                    acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
+                    acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
+                    acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
+                    acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));                
+                } else {
+                }
             }
 
             // rows 2 and 3 of A
@@ -717,23 +731,28 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
                 const int8x16_t av_row3_0 = vld1q_s8(QuantADataPtrRow3 + 0);
                 const int8x16_t av_row3_1 = vld1q_s8(QuantADataPtrRow3 + 16);
 
-                // quantized dot product
-                const int32x4_t dot20 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col0_0), av_row2_1, bv_col0_1);
-                const int32x4_t dot21 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col1_0), av_row2_1, bv_col1_1);
-                const int32x4_t dot30 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col0_0), av_row3_1, bv_col0_1);
-                const int32x4_t dot31 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col1_0), av_row3_1, bv_col1_1);
+                // Run with dot product support
+                if (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot20 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col0_0), av_row2_1, bv_col0_1);
+                    const int32x4_t dot21 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col1_0), av_row2_1, bv_col1_1);
+                    const int32x4_t dot30 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col0_0), av_row3_1, bv_col0_1);
+                    const int32x4_t dot31 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col1_0), av_row3_1, bv_col1_1);
 
-                // convert to float
-                const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
-                const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
-                const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
-                const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
+                    // convert to float
+                    const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
+                    const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
+                    const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
+                    const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
 
-                // multiply by scale and update accumulator
-                acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
-                acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
-                acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
-                acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
+                    // multiply by scale and update accumulator
+                    acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
+                    acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
+                    acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
+                    acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
+                } else {
+                    // Run with SMMLA support
+                }
             }
 
             // increment block data pointers to next sub-block
@@ -1157,7 +1176,7 @@ AdvanceRowPtrs(
     SumRowPtr += NumRows * ldc;
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_BlkLen16(
     const std::byte* QuantA,
@@ -1198,7 +1217,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
         size_t n_remaining = CountN;
         while (n_remaining > 1) {
             // Compute 4x2 tiles of output
-            SQ4BitGemm_CompInt8_Compute4x2_BlkLen16<HasZeroPoint>(
+            SQ4BitGemm_CompInt8_Compute4x2_BlkLen16<HasZeroPoint, HasI8MMSupport>(
                 QuantARowPtr,
                 QuantBDataColPtr,
                 QuantBScaleColPtr,
@@ -1287,7 +1306,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_BlkLen32(
     const std::byte* QuantA,
@@ -1328,7 +1347,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
         size_t n_remaining = CountN;
         while (n_remaining > 1) {
             // Compute 4x2 tiles of output
-            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint>(
+            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint, HasI8MMSupport>(
                 BlkLen,
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -1418,7 +1437,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
     size_t BlkLen,
@@ -1459,7 +1478,7 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
         size_t n_remaining = CountN;
         while (n_remaining > 1) {
             // Compute 4x2 tiles of output
-            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint>(
+            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint, HasI8MMSupport>(
                 BlkLen,
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -1551,7 +1570,7 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
     size_t BlkLen,
@@ -1568,7 +1587,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
 )
 {
     if (BlkLen == 16) {
-        SQ4BitGemmKernel_CompInt8_BlkLen16<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_BlkLen16<HasZeroPoint, HasI8MMSupport>(
             QuantA,
             QuantBData,
             QuantBScale,
@@ -1581,7 +1600,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
             Bias
         );
     } else if (BlkLen == 32) {
-        SQ4BitGemmKernel_CompInt8_BlkLen32<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_BlkLen32<HasZeroPoint, HasI8MMSupport>(
             QuantA,
             QuantBData,
             QuantBScale,
@@ -1594,7 +1613,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
             Bias
         );
     } else {
-        SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32<HasZeroPoint, HasI8MMSupport>(
             BlkLen,
             QuantA,
             QuantBData,
@@ -1612,6 +1631,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
 
 }  // namespace
 
+template <bool HasI8MMSupport>
 size_t
 SQ4BitGemmKernel_CompInt8(
     size_t BlkLen,
@@ -1630,7 +1650,7 @@ SQ4BitGemmKernel_CompInt8(
 {
     if (QuantBZeroPoint != nullptr) {
         constexpr bool HasZeroPoint = true;
-        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint, HasI8MMSupport>(
             BlkLen,
             QuantA,
             QuantBData,
@@ -1645,7 +1665,7 @@ SQ4BitGemmKernel_CompInt8(
         );
     } else {
         constexpr bool HasZeroPoint = false;
-        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint, HasI8MMSupport>(
             BlkLen,
             QuantA,
             QuantBData,
@@ -1662,6 +1682,15 @@ SQ4BitGemmKernel_CompInt8(
 
     return CountM;
 }
+
+//template size_t
+//SQ4BitGemmKernel_CompInt8<true>(size_t BlkLen, const std::byte* QuantA, const std::byte* QuantBData, const float* QuantBScale, const std::byte* QuantBZeroPoint, 
+//                                float* C, size_t CountM, size_t CountN, size_t /*CountK*/, size_t BlockCountK, size_t ldc, const float* Bias);
+
+
+//template size_t
+//SQ4BitGemmKernel_CompInt8<false>(size_t BlkLen, const std::byte* QuantA, const std::byte* QuantBData, const float* QuantBScale, const std::byte* QuantBZeroPoint, 
+//                                float* C, size_t CountM, size_t CountN, size_t /*CountK*/, size_t BlockCountK, size_t ldc, const float* Bias);
 
 MLAS_FORCEINLINE void
 Q8Int8GemmR2xC8DotProd(

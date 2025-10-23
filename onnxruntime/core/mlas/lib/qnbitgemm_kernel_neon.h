@@ -153,6 +153,7 @@ MlasQ8Int8GemmKernelNeon(
     const size_t ldc
 );
 
+template <bool HasI8MMSupport>
 size_t
 SQ4BitGemmKernel_CompInt8(
     size_t BlkLen,
