@@ -134,7 +134,7 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
-                                 uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias) {
+                                 uint32_t nbits, int32_t config_index, bool has_zero_points) {
   auto& config = intel_supported_subgroup_matrix_configs[config_index];
   shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))] << ";\n"
                                     << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<3>(config))] << ";\n"
@@ -303,10 +303,11 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  if (!vendor_.compare("apple")) {
+  // TODO: add support for bias to the shader for Intel. In the meantime, use the shader for Metal
+  if (!vendor_.compare("apple") || has_bias_) {
     return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_);
   } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, b, scales_b, nbits_, config_index_, has_zero_points_, has_bias_);
+    return GenerateShaderCodeOnIntel(shader, b, scales_b, nbits_, config_index_, has_zero_points_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
