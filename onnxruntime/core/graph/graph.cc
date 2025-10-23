@@ -2714,7 +2714,12 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     const auto& tensor_shape_proto = def->GetInferredShapeValues();
 
     // Make sure the returning shape tensor as a TensorProto has rank > 0 and all the dimensions
-    // have values (not symbolic)
+    // have values (not symbolic).
+    // Note: ONNX's getShapeInput() internally calls getInputData() to retrieve a TensorProto (if available)
+    //       and then extracts shape/dimension values from it. For this reason, we only return TensorProto
+    //       object representing a tensor (i.e., non-scalar), and not a scalar value.
+    //       For inferred scalr value, Graph::SaveShapeValuesFromDataPropagation() does support it for
+    //       some operators.
     if (tensor_shape_proto.has_value() && tensor_shape_proto->dim_size() > 0) {
       TensorProto tensor_proto;
       tensor_proto.set_data_type(TensorProto_DataType_INT64);
@@ -2840,24 +2845,14 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
     if (!def)
       return nullptr;
 
-    auto has_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> bool {
-      // The TensorShapeProto (inferred shape values) should have rank > 0 and
-      // all the dimensions have values (not symbolic)
-      if (tensor_shape_proto.dim_size() > 0) {
-        for (const auto& dim : tensor_shape_proto.dim()) {
-          if (!dim.has_dim_value()) {
-            return false;
-          }
-        }
-        return true;
-      }
-
-      return false;
-    };
-
-    // Try to get the previously inferred shape values that stored in NodeArg's inferred_shape_values_
-    auto& tensor_shape_proto = def->GetInferredShapeValues();
-    if (tensor_shape_proto.has_value() && has_shape_values(*tensor_shape_proto)) {
+    // Get the previously inferred shape values that stored in NodeArg's inferred_shape_values_ if any.
+    // Note: getInputData() only supports input data (shape values) that is a tensor not a scalar,
+    //       becase the returning TensorShapeProto can't store scalar value. Therefore, op's data propagation
+    //       defined in ONNX Op schema does not support scalar output.
+    //       However, Graph::SaveShapeValuesFromDataPropagation() does support output scalar value for
+    //       some operators.
+    const auto& tensor_shape_proto = def->GetInferredShapeValues();
+    if (tensor_shape_proto.has_value()) {
       return &*tensor_shape_proto;
     }
 
@@ -2872,13 +2867,13 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
   }
 
   void RunInferencing() {
-    auto schema = node_.Op();
+    auto* schema = node_.Op();
     if (nullptr != schema) {
       schema->GetDataPropagationFunction()(*this);
     }
   }
 
-  std::vector<TypeProto> InferredOutputTypes() const { return node_output_types_; }
+  const std::vector<TypeProto>& InferredOutputTypes() const { return node_output_types_; }
 
  private:
   Node& node_;
