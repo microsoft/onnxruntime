@@ -86,7 +86,7 @@ class MatMulNBits final : public WebGpuKernel {
 
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
                         int64_t K_op, int64_t N_op, int64_t block_size_op, int64_t accuracy_level, int64_t bits_op,
-                        onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weigth_offset = 0);
+                        onnxruntime::webgpu::ComputeContext& context, Tensor* y, const uint32_t weight_index = 0);
 
 }  // namespace webgpu
 }  // namespace contrib

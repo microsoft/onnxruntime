@@ -90,7 +90,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   uint32_t nbits,
                                   onnxruntime::webgpu::ComputeContext& context,
                                   Tensor* y,
-                                  const uint32_t weigth_offset) {
+                                  const uint32_t weight_index) {
   constexpr uint32_t kVec4Components = 4;
   constexpr uint32_t kVec2Components = 2;
   constexpr uint32_t kU32Components = 4;
@@ -129,7 +129,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
                            {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(b_components * kU32Components)},
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col, weigth_offset})
+        .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col, weight_index})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
         .CacheHint(nbits, tile_size_k_vec, tile_size_n, has_zero_points, single_scale_weights, has_bias);
     if (has_zero_points) {
@@ -160,7 +160,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {static_cast<uint32_t>(K / 16)},
                             {num_N_tile},
                             {zero_blocks_per_col},
-                            {weigth_offset}})
+                            {weight_index}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
       .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm, has_bias);
   if (has_zero_points) {
