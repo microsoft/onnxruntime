@@ -226,8 +226,6 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 #endif
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
-  // bool cond = M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"};
-  //if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
   if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, components_a)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weigth_offset);
