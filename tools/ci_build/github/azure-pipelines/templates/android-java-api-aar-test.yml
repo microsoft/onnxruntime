@@ -19,7 +19,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.38.0.250901'
+  default: '2.39.0.250926'
 
 - name: enableWebGpu
   displayName: Enable WebGPU test

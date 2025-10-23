@@ -59,7 +59,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.38.0.250901
+  default: 2.39.0.250926
 
 trigger: none
 

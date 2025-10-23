@@ -9,7 +9,7 @@ parameters:
   SpecificArtifact: false
   CustomOpArtifactName: 'onnxruntime-linux-x64'
   BuildId: '0'
-  CudaVersion: '11.8'
+  CudaVersion: '12.8'
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
@@ -41,7 +41,7 @@ stages:
     - script: |
         mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
         mv $(Pipeline.Workspace)/build/${{ parameters.CustomOpArtifactName }} $(Build.BinariesDirectory)/testdata
-   
+
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:

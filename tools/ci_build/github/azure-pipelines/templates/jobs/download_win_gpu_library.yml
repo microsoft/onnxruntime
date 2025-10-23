@@ -9,14 +9,14 @@ parameters:
     type: string
     default: '12.8'
     values:
-      - 11.8
+      - 13.0
       - 12.8
   - name: TrtVersion
     type: string
     default: '10.9.0.34'
     values:
-      - 8.6.1.6
       - 10.9.0.34
+      - 10.13.3.9
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -42,37 +42,48 @@ steps:
       displayName: 'Print PATH after download CUDA SDK'
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
-    - ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    - ${{ if eq(parameters.CudaVersion, '13.0') }}:
         - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]11.8"
+            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]13.0"
           displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
+    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '10.13.3.9')) }}:
         - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.0"
+            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.9"
           displayName: Set trtCudaVersion
     - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '10.9.0.34')) }}:
         - powershell: |
             Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.8"
           displayName: Set trtCudaVersion
 
-    - script: |
-        echo $(trtCudaVersion) && echo TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)
-      displayName: Get trtCudaVersion and Directory Name
+    - ${{ if eq(parameters.TrtVersion, '10.9.0.34') }}:
+      - powershell: |
+          Write-Host "##vso[task.setvariable variable=trtPlatformString;]Windows10.x86_64"
+        displayName: 'Set TRT platform string for 10.9.0.34'
 
+    - ${{ if eq(parameters.TrtVersion, '10.13.3.9') }}:
+      - powershell: |
+          Write-Host "##vso[task.setvariable variable=trtPlatformString;]Windows.win10"
+        displayName: 'Set TRT platform string for 10.13.3.9'
+
+    - powershell: |
+        $trtDirName = "TensorRT-${{ parameters.TrtVersion }}.$(trtPlatformString).cuda-$(trtCudaVersion)"
+        Write-Host "TensorRT Directory Name: $trtDirName"
+        Write-Host "##vso[task.setvariable variable=trtDirName;]$trtDirName"
+      displayName: 'Construct TensorRT Directory Name'
 
     - task: AzureCLI@2
-      displayName: 'Download TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)'
+      displayName: 'Download $(trtDirName)'
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptType: 'batch'
         scriptLocation: 'inlineScript'
         inlineScript: |
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion) $(Agent.TempDirectory)
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(trtDirName) $(Agent.TempDirectory)
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
-      displayName: 'Append TensorRT-${{ parameters.TrtVersion }} Directory to PATH'
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(trtDirName)\lib"
+      displayName: 'Append $(trtDirName) Directory to PATH'
 
     - task: CmdLine@2
       inputs:
