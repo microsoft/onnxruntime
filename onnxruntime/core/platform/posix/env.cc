@@ -556,13 +556,29 @@ class PosixEnv : public Env {
   }
 
   PathString GetRuntimePath() const override {
-    Dl_info dl_info{};
+    // Use dladdr() to look up the shared object that contains a particular address.
+
+    // `OrtGetApiBase` is exported by the onnxruntime shared library (libonnxruntime.so/dylib).
+    // Try to find that symbol's address first. It might be nullptr, e.g., if this code is not built as part of the
+    // onnxruntime shared library.
+    const void* const address_from_ort_library = dlsym(RTLD_DEFAULT, "OrtGetApiBase");
+
+    // Fall back to the address of another symbol in this binary.
     const void* const address_from_this_binary = reinterpret_cast<const void*>(Env::Default);
-    if (dladdr(address_from_this_binary, &dl_info) != 0 &&
-        dl_info.dli_fname != nullptr) {
-      auto runtime_path = std::filesystem::path{dl_info.dli_fname}.remove_filename();
-      runtime_path = std::filesystem::absolute(runtime_path);
-      return runtime_path;
+
+    const std::array addresses{address_from_ort_library, address_from_this_binary};
+
+    for (const void* address : addresses) {
+      if (Dl_info dl_info{};
+          address != nullptr &&
+          dladdr(address, &dl_info) != 0 &&
+          dl_info.dli_fname != nullptr) {
+        LOGS_DEFAULT(VERBOSE) << "Getting runtime path as parent directory of binary: " << dl_info.dli_fname;
+
+        auto runtime_path = std::filesystem::path{dl_info.dli_fname}.remove_filename();
+        runtime_path = std::filesystem::absolute(runtime_path);
+        return runtime_path;
+      }
     }
 
     return PathString{};
