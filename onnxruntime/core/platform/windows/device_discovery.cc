@@ -14,7 +14,6 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/session/abi_devices.h"
-#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 //// For SetupApi info
 #include <Windows.h>
@@ -618,8 +617,6 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
                                        DeviceInfo& device,
                                        std::unordered_map<std::wstring, std::wstring>* extra_metadata = nullptr) {
     OrtHardwareDevice ortdevice{device.type, device.vendor_id, device.device_id, to_safe_string(device.vendor)};
-
-    ortdevice.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "0");
 
     if (!device.description.empty()) {
       ortdevice.metadata.Add("Description", to_safe_string(device.description));

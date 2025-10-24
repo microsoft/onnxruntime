@@ -40,8 +40,7 @@ void DefaultDeviceSelection(const std::string& ep_name, std::vector<const OrtEpD
       const OrtKeyValuePairs* hw_kvps = c_api->HardwareDevice_Metadata(hw_device);
 
       const char* is_virtual = c_api->GetKeyValue(hw_kvps, kOrtHardwareDevice_MetadataKey_IsVirtual);
-      ASSERT_NE(is_virtual, nullptr);
-      ASSERT_STREQ(is_virtual, "0");
+      ASSERT_TRUE(is_virtual == nullptr || strcmp(is_virtual, "0") == 0);
 
       devices.push_back(device);
       break;

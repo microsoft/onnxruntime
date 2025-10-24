@@ -17,8 +17,9 @@ static const char* const kOrtModelMetadata_EpCompatibilityInfoPrefix = "ep_compa
 // Key for the execution provider library path (for dynamically loaded EPs)
 static const char* const kOrtEpDevice_EpMetadataKey_LibraryPath = "library_path";
 
-// Key to determine if a OrtHardwareDevice represents a virtual (non-hardware) device.
+// Optional metadata key to determine if a OrtHardwareDevice represents a virtual (non-hardware) device.
 // Possible values:
-//  - "0": OrtHardwareDevice is not virtual; represents an actual hardware device.
+//  - "0": OrtHardwareDevice is not virtual (i.e., actual hardware device). This is the assumed default value
+//         if this metadata key is not present.
 //  - "1": OrtHardwareDevice is virtual.
-static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "IsVirtual";
+static const char* const kOrtHardwareDevice_MetadataKey_IsVirtual = "is_virtual";

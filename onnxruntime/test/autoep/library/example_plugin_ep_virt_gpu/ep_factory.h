@@ -15,7 +15,7 @@
 /// </summary>
 class EpFactoryVirtualGpu : public OrtEpFactory {
  public:
-  EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api, bool allow_virtual_devices,
+  EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api,
                       const OrtLogger& default_logger);
   ~EpFactoryVirtualGpu();
 
@@ -64,6 +64,9 @@ class EpFactoryVirtualGpu : public OrtEpFactory {
                                                                const OrtMemoryDevice* memory_device,
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
+
+  static OrtStatus* ORT_API_CALL SetEnvironmentOptionsImpl(OrtEpFactory* this_ptr,
+                                                           const OrtKeyValuePairs* options) noexcept;
 
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
