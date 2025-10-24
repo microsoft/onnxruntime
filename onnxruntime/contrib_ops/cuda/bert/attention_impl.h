@@ -22,6 +22,12 @@ namespace cuda {
 
 constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
 
+// longlong4 is deprecated in cuda 13.
+// LongLong4 is similar to longlong4_32a, except this is also visible in Host compiler (longlong4_32a is only visible to nvcc);
+typedef struct __align__(32) {
+  long long int x, y, z, w;
+} LongLong4;
+
 // A cache for cumulated sequence length. It will be initialized in the first request, then become read-only after that.
 struct CumulatedSequenceLengthCache {
   onnxruntime::IAllocatorUniquePtr<void> buffer;
@@ -144,14 +150,14 @@ Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, i
 template <typename T>
 Status LaunchStridedCopy(
     cudaStream_t stream,
-    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
-    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    const T* in, int4 in_shape, LongLong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, LongLong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
     int max_threads_per_block);
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,
-                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
-                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         const T* in, int4 in_shape, LongLong4 in_strides,  // coord (b,n,s,h)
+                         T* out, LongLong4 out_strides,                     // coord (b,n,s,h)
                          int max_threads_per_block);
 
 }  // namespace cuda

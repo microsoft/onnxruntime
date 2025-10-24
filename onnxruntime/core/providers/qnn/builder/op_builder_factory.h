@@ -111,6 +111,8 @@ void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateRandomUniformLikeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateGatherNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -118,6 +120,8 @@ void CreateGatherNDOpBuilder(const std::string& op_type, OpBuilderRegistrations&
 void CreateModOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateThresholdedReluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateSTFTOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateInverseOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 

@@ -1088,14 +1088,19 @@ static GetTestModelFn BuildCastAddTestCase() {
   };
 }
 
+void VerifyFileExistsAndIsNonEmpty(const std::string& filepath) {
+  std::ifstream csv_file(filepath, std::ifstream::binary);
+  ASSERT_TRUE(csv_file.good());
+
+  csv_file.seekg(0, csv_file.end);
+  size_t buffer_size = static_cast<size_t>(csv_file.tellg());
+  EXPECT_NE(0, buffer_size);
+}
+
 TEST_F(QnnHTPBackendTests, ProfilingTest) {
   onnxruntime::ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";
   provider_options["profiling_level"] = "detailed";
@@ -1108,6 +1113,42 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
                   13,
                   ExpectedEPNodeAssignment::All,
                   0.008f);
+
+  VerifyFileExistsAndIsNonEmpty(provider_options["profiling_file_path"]);
+  std::remove(provider_options["profiling_file_path"].c_str());
+
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+  VerifyFileExistsAndIsNonEmpty("detailed_profile_qnn.log");
+  std::remove("detailed_profile_qnn.log");
+#endif
+}
+
+TEST_F(QnnHTPBackendTests, OptraceTest) {
+  onnxruntime::ProviderOptions provider_options;
+
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["enable_htp_fp16_precision"] = "1";
+  provider_options["profiling_level"] = "optrace";
+  provider_options["profiling_file_path"] = "optrace_profile.csv";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+
+  VerifyFileExistsAndIsNonEmpty(provider_options["profiling_file_path"]);
+  std::remove(provider_options["profiling_file_path"].c_str());
+
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+  VerifyFileExistsAndIsNonEmpty("optrace_profile_qnn.log");
+  std::remove("optrace_profile_qnn.log");
+#endif
 }
 
 TEST_F(QnnHTPBackendTests, CastAddQDQU8) {
@@ -1431,6 +1472,20 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
+}
+
+TEST_F(QnnGPUBackendTests, AutoEp_PreferGpu) {
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
+                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+
+  Ort::SessionOptions so;
+  so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx";
   Ort::Session session(*ort_env, ort_model_path, so);
   EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
 

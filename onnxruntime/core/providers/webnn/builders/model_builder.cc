@@ -229,7 +229,7 @@ Status ModelBuilder::RegisterInitializers() {
     desc.set("shape", emscripten::val::array(dims));
     const auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (IsSupportedDataType(data_type, wnn_limits_["constant"]["dataTypes"])) {
+    if (IsSupportedDataType(data_type, wnn_limits_, "constant", "")) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
       ORT_RETURN_IF_ERROR(RegisterConstant(tensor, operand, desc, logger_));
     } else {

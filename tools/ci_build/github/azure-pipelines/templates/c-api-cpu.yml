@@ -46,7 +46,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: 2.38.0.250901
+  default: 2.39.0.250926
 
 - name: is1ES
   displayName: Is 1ES pipeline
@@ -107,19 +107,14 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'Azure Pipelines'
-      image: 'macOS-15'
-      os: 'macOS'
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
 
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
-
-    - task: JavaToolInstaller@0
-      inputs:
-        versionSpec: "17"
-        jdkArchitectureOption: "x64"
-        jdkSourceOption: 'PreInstalled'
 
     - template: use-xcode-version.yml
       parameters:
@@ -143,7 +138,6 @@ stages:
 
     - script: |
         python3 tools/ci_build/github/apple/test_apple_packages.py \
-          --fail_if_cocoapods_missing \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
           --skip_macos_test \
@@ -209,13 +203,6 @@ stages:
       - input: pipelineArtifact
         artifactName: drop-onnxruntime-java-linux-aarch64
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
-
-      - input: pipelineArtifact
-        artifactName: drop-onnxruntime-java-osx-x86_64
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
-      - input: pipelineArtifact
-        artifactName: drop-onnxruntime-java-osx-arm64
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
@@ -448,7 +435,6 @@ stages:
     #  - Windows arm64 (CPU, DML, WebGPU)
     #  - Linux x64 (CPU, CUDA, TensorRT, WebGPU)
     #  - Linux arm64 (CPU only)
-    #  - macOS x64 (CPU, CoreML, WebGPU)
     #  - macOS arm64 (CPU, CoreML, WebGPU)
     #
     # File manifest:
@@ -485,12 +471,6 @@ stages:
     #      - onnxruntime_binding.node
     #      - libonnxruntime.so.1
     #
-    #  - macOS x64 (CPU, CoreML, WebGPU):
-    #    dependency: MacOS_C_API_Packaging_CPU_x86_64 (drop-onnxruntime-nodejs-osx-x86_64)
-    #    files:
-    #      - onnxruntime_binding.node
-    #      - libonnxruntime.{version}.dylib
-    #
     #  - macOS arm64 (CPU, CoreML, WebGPU):
     #    dependency: MacOS_C_API_Packaging_CPU_arm64 (drop-onnxruntime-nodejs-osx-arm64)
     #    files:
@@ -517,12 +497,6 @@ stages:
       inputs:
         artifactName: 'drop-onnxruntime-nodejs-win-arm64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - Nodejs (macOS x86_64)'
-      inputs:
-        artifactName: 'drop-onnxruntime-nodejs-osx-x86_64'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/x64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (macOS arm64)'
@@ -599,16 +573,6 @@ stages:
           libonnxruntime.so.1
           *.node
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\linux\arm64'
-
-    # Node.js binding darwin/x64
-    - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
-        Contents: |
-          libonnxruntime.*.dylib
-          *.node
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\darwin\x64'
 
     # Node.js binding darwin/arm64
     - task: CopyFiles@2

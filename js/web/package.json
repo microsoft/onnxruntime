@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.23.0",
+  "version": "1.24.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^25.1.24",
@@ -107,6 +107,14 @@
         "default": "./dist/ort.webgpu.bundle.min.mjs"
       },
       "require": "./dist/ort.webgpu.min.js"
+    },
+    "./jspi": {
+      "types": "./types.d.ts",
+      "import": {
+        "onnxruntime-web-use-extern-wasm": "./dist/ort.jspi.min.mjs",
+        "default": "./dist/ort.jspi.bundle.min.mjs"
+      },
+      "require": "./dist/ort.jspi.min.js"
     }
   },
   "types": "./types.d.ts",

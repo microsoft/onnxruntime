@@ -27,9 +27,9 @@ jobs:
       build_config: Release
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1 --build-arg TRT_VERSION=10.9.0.34-1.cuda12.8 --network=host'
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1 --build-arg TRT_VERSION=10.9.0.34-1.cuda12.8 --network=host'
       docker_image_repo: onnxruntimetensorrt86gpubuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --use_tensorrt --tensorrt_home /usr  --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --use_tensorrt --tensorrt_home /usr  --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory
@@ -57,7 +57,7 @@ jobs:
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimetensorrt86gpubuild
-          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1 --build-arg TRT_VERSION=10.9.0.34-1.cuda12.8 --network=host'
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1 --build-arg TRT_VERSION=10.9.0.34-1.cuda12.8 --network=host'
           push: true
           azure-container-registry-name: onnxruntimebuildcache
         env:
@@ -101,5 +101,5 @@ jobs:
           build_config: Release
           mode: 'test' # Set mode to test
           execution_providers: 'cuda tensorrt'
-          extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --use_tensorrt --tensorrt_home /usr  --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+          extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --use_tensorrt --tensorrt_home /usr  --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
           python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'

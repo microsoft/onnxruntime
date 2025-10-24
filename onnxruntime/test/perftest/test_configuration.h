@@ -69,6 +69,9 @@ struct RunConfig {
   std::basic_string<ORTCHAR_T> register_custom_op_path;
   bool enable_cuda_io_binding{false};
   bool use_extensions = false;
+  bool compile_ep_context{false};
+  std::basic_string<ORTCHAR_T> compile_model_path;
+  bool compile_binary_embed{false};
 };
 
 struct PerformanceTestConfig {
@@ -78,6 +81,7 @@ struct PerformanceTestConfig {
   std::basic_string<ORTCHAR_T> plugin_ep_names_and_libs;
   std::vector<std::string> registered_plugin_eps;
   std::string selected_ep_device_indices;
+  std::vector<std::pair<std::string, std::string>> filter_ep_device_kv_pairs;
   bool list_available_ep_devices = false;
 };
 

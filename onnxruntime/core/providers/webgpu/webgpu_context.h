@@ -40,6 +40,8 @@ struct WebGpuContextConfig {
   const void* dawn_proc_table;
   ValidationMode validation_mode;
   bool preserve_device;
+  bool small_storage_buffer_binding_size_for_testing;
+  int power_preference;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -166,7 +168,7 @@ class WebGpuContext final {
   //
   Status PopErrorScope();
 
-  Status Run(ComputeContext& context, const ProgramBase& program);
+  Status Run(ComputeContext& context, ProgramBase& program);
   void OnRunEnd();
 
  private:
@@ -176,12 +178,13 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device)
-      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
+  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device, bool small_storage_buffer_binding_size_for_testing = false, int power_preference = static_cast<int>(wgpu::PowerPreference::HighPerformance))
+      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device}, small_storage_buffer_binding_size_for_testing_{small_storage_buffer_binding_size_for_testing}, power_preference_{power_preference} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,
+                             const std::vector<uint32_t>& bind_buffers_segments,
                              const ProgramArtifact& program_artifact,
                              uint32_t x, uint32_t y, uint32_t z,
                              const Tensor* indirect_dispatch_tensor = nullptr);
@@ -264,6 +267,8 @@ class WebGpuContext final {
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
   bool preserve_device_;
+  bool small_storage_buffer_binding_size_for_testing_;
+  int power_preference_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP

@@ -182,13 +182,24 @@
 
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--relocatable-device-code=true>")
-      set_target_properties(${target} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>")
+
       if (MSVC)
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>")
       endif()
       # skip diagnosis error caused by cuda header files
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+    endif()
+
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+      if (UNIX)
+        # Suppress -Wattributes warning from protobuf headers with nvcc on Linux
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-attributes>")
+      endif()
+
+      if (MSVC)
+          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+      endif()
     endif()
 
     if (UNIX)

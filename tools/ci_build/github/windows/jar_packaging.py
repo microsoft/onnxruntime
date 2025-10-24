@@ -33,7 +33,12 @@ def find_7z_executable():
     if seven_zip_exe:
         return seven_zip_exe
 
-    # 2. Check the default installation directory under Program Files
+    # 2. Check if '7za' is in the PATH (common on Linux systems)
+    seven_zip_exe = shutil.which("7za")
+    if seven_zip_exe:
+        return seven_zip_exe
+
+    # 3. Check the default installation directory under Program Files
     program_files = os.environ.get("ProgramFiles")  # noqa: SIM112
     if program_files:
         default_path = Path(program_files) / "7-Zip" / "7z.exe"
@@ -226,9 +231,7 @@ def run_packaging(package_type: str, build_dir: str):
         "cpu": {
             "platforms": [
                 {"path": "onnxruntime-java-linux-x64", "lib": "libcustom_op_library.so", "archive_lib": True},
-                {"path": "onnxruntime-java-osx-x86_64", "lib": "libcustom_op_library.dylib", "archive_lib": True},
                 {"path": "onnxruntime-java-linux-aarch64", "lib": "libcustom_op_library.so", "archive_lib": False},
-                {"path": "onnxruntime-java-osx-arm64", "lib": "libcustom_op_library.dylib", "archive_lib": False},
             ]
         },
         "gpu": {
