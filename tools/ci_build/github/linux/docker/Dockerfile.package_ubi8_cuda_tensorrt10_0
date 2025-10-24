@@ -5,7 +5,7 @@
 # Dockerfile to Test ONNX Runtime on UBI8 with TensorRT 10 and CUDA 12 by default
 
 # Build base image with required system packages
-ARG BASEIMAGE=nvidia/cuda:12.5.1-cudnn-devel-ubi8
+ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
 ARG TRT_VERSION=10.9.0.34-1.cuda12.8
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION

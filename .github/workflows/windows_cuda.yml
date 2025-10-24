@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     name: Windows GPU CUDA CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -41,10 +41,10 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Download CUDA SDK v12.2
+      - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" .
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
 
@@ -52,11 +52,11 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.2\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\extras\CUPTI\lib64"
+          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
 
@@ -111,7 +111,7 @@ jobs:
             exit $lastExitCode
           }
           # Execute the build process
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -168,7 +168,7 @@ jobs:
           python-version: '3.12'
           architecture: x64
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
 
@@ -188,10 +188,10 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Download CUDA SDK v12.2
+      - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" .
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
 
@@ -199,9 +199,9 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.2\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.2\extras\CUPTI\lib64"
+          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
@@ -227,7 +227,7 @@ jobs:
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.2" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86  --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

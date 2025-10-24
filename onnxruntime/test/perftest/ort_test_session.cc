@@ -105,12 +105,34 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
             added_ep_devices[device.EpName()].push_back(device);
             added_ep_device_index_set.insert(index);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
+            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
           }
         } else {
           std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
                                 performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
           fprintf(stderr, "%s", err_msg.c_str());
+        }
+      }
+    } else if (!performance_test_config.filter_ep_device_kv_pairs.empty()) {
+      // Find and select the OrtEpDevice associated with the EP in "--filter_ep_devices".
+      for (size_t index = 0; index < ep_devices.size(); ++index) {
+        auto device = ep_devices[index];
+        if (ep_set.find(std::string(device.EpName())) == ep_set.end())
+          continue;
+
+        // Check both EP metadata and device metadata for a match
+        auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
+        auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
+        for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
+          auto ep_metadata_itr = ep_metadata_kv_pairs.find(kv.first);
+          auto device_metadata_itr = device_metadata_kv_pairs.find(kv.first);
+
+          if ((ep_metadata_itr != ep_metadata_kv_pairs.end() && kv.second == ep_metadata_itr->second) ||
+              (device_metadata_itr != device_metadata_kv_pairs.end() && kv.second == device_metadata_itr->second)) {
+            added_ep_devices[device.EpName()].push_back(device);
+            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
+            break;
+          }
         }
       }
     } else {

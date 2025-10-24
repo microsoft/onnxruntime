@@ -13,7 +13,7 @@ parameters:
 
 - name: CudaVersion
   type: string
-  default: '11.8'
+  default: '13.0'
 
 - name: win_cuda_home
   type: string
