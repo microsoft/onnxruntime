@@ -9,6 +9,7 @@
 
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
+#include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 
 class MlasDynamicQgemmTest {
  private:

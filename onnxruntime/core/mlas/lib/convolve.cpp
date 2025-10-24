@@ -938,9 +938,9 @@ Return Value:
 --*/
 {
     // Override
-    if(GetMlasPlatform().MlasConvOverride != nullptr &&
+    if(ArmKleidiAI::SMEInfo::CanUseSME2 && GetMlasPlatform().MlasConvOverride != nullptr &&
         GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool)){
-    return;
+        return;
     }
 
     const size_t FilterCount = Parameters->FilterCount;
@@ -1201,7 +1201,7 @@ Return Value:
 --*/
 {
     // Override
-    if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
+    if (ArmKleidiAI::SMEInfo::CanUseSME2 && GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
         Activation, WorkingBufferSize, Beta, ThreadPool)){

@@ -27,8 +27,8 @@ struct KaiTlsBuffers {
 };
 static thread_local KaiTlsBuffers g_kai_tls;
 
-kai_matmul_clamp_f32_f32p_f32p_ukernel sgemm_gemm = GetKleidiAISGemmUKernel();
-kai_matmul_clamp_f32_f32_f32p_ukernel sgemm_gemv = GetKleidiAISGemvUKernel();
+const kai_matmul_clamp_f32_f32p_f32p_ukernel sgemm_gemm = GetKleidiAISGemmUKernel();
+const kai_matmul_clamp_f32_f32_f32p_ukernel sgemm_gemv = GetKleidiAISGemvUKernel();
 
 
 // Helpers for GEMV

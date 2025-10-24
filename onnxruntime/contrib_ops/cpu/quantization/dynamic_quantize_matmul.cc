@@ -15,6 +15,10 @@
 #include <algorithm>
 #include <vector>
 
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
+#endif
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -215,7 +219,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       // Currently, MlasDynamicQGemmBatch() and associated functions require SME2 or else they are no-ops.
       // We check that here too before attempting to use them.
-      if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME2()) {
+      if (!ArmKleidiAI::SMEInfo::CanUseSME2) {
         can_use_dynamic_quant_mlas_ = false;
       }
 
