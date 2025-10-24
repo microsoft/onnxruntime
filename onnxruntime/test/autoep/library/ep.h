@@ -8,7 +8,7 @@
 #include "example_plugin_ep_utils.h"
 
 class ExampleEpFactory;
-struct MulKernel;
+struct CompiledMul;
 
 /// <summary>
 /// Example EP that can compile a single Mul operator.
@@ -24,8 +24,8 @@ class ExampleEp : public OrtEp, public ApiPtrs {
 
   ~ExampleEp();
 
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>>& Kernels() {
-    return kernels_;
+  std::unordered_map<std::string, std::unique_ptr<CompiledMul>>& CompiledSubgraphs() {
+    return compiled_subgraphs_;
   }
 
  private:
@@ -51,6 +51,10 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetKernelRegistryImpl(
+      _In_ OrtEp* this_ptr,
+      _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry) noexcept;
+
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
@@ -60,6 +64,6 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
+  std::unordered_map<std::string, std::unique_ptr<CompiledMul>> compiled_subgraphs_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;
 };
