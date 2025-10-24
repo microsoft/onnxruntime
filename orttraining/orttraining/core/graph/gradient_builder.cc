@@ -2320,59 +2320,177 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
 	std::vector<NodeDef> result;
 	auto attributes = SrcNodeAttributes();
-	std::vector<ONNX_NAMESPACE::AttributeProto> grad_attributes;
 
-	std::vector<ArgDef> inputs;
-	std::unordered_set<std::string> x;
-	std::unordered_set<std::string> y;
-	std::vector<ArgDef> outputs;
 	size_t input_size = GetSrcNodeInputSize();
 	size_t output_size = GetSrcNodeOutputSize();
-	size_t n_carries = (input_size - attributes.at("num_scan_inputs").i());
+	size_t num_scan_inputs = attributes.at("num_scan_inputs").i();
+	size_t n_carries = input_size - num_scan_inputs;
 	size_t n_inputs = input_size - n_carries;
 	size_t n_outputs = GetSrcNodeOutputSize() - (n_carries * 2);
+	std::vector<int64_t> scan_input_axes;
+	std::vector<int64_t> scan_input_directions;
+	std::vector<int64_t> scan_output_axes;
+	std::vector<int64_t> scan_output_directions;
 
-	// forward graph input: carries, inputs
-	// forward graph output: carries, outputs, all_timestep_carries
-	// backward graph input: carries, inputs, carries_grad, outputs_grad
-	// backward graph output: carries_grad, inputs_grad
+	ORT_ENFORCE(n_inputs == num_scan_inputs, "n_inputs and num_scan_inputs should be same in current version.");
+
+	if (attributes.find("scan_input_axes") != attributes.end())
+	{
+		auto a = attributes.at("scan_input_axes").ints();
+		scan_input_axes.insert(scan_input_axes.end(), a.begin(), a.end());
+	}
+	else
+	{
+		for (size_t i = 0; i < n_inputs; i++)
+			scan_input_axes.push_back(0);
+	}
+
+	if (attributes.find("scan_input_directions") != attributes.end())
+	{
+		auto a = attributes.at("scan_input_directions").ints();
+		scan_input_directions.insert(scan_input_directions.end(), a.begin(), a.end());
+	}
+	else
+	{
+		for (size_t i = 0; i < n_inputs; i++)
+			scan_input_directions.push_back(0);
+	}
+
+	if (attributes.find("scan_output_axes") != attributes.end())
+	{
+		auto a = attributes.at("scan_output_axes").ints();
+		scan_output_axes.insert(scan_output_axes.end(), a.begin(), a.end());
+	}
+	else
+	{
+		for (size_t i = 0; i < n_outputs; i++)
+			scan_output_axes.push_back(0);
+	}
+
+	if (attributes.find("scan_output_directions") != attributes.end())
+	{
+		auto a = attributes.at("scan_output_directions").ints();
+		scan_output_directions.insert(scan_output_directions.end(), a.begin(), a.end());
+	}
+	else
+	{
+		for (size_t i = 0; i < n_outputs; i++)
+			scan_output_directions.push_back(0);
+	}
+
+	// body graph:
+	// in  : carries_t, inputs_t
+	// out : carries_{t+1}, outputs_t, carries_{t+1}
+	Graph body = Subgraph("body");
+	// backward body graph:
+	// in  : carries_t, inputs_t, carries_{t+1}_grad, outputs_t_grad
+	// out : carries_{t+1}, outputs_t, carries_{t+1}, carries_t_grad, inputs_t_grad
+	GraphAugmenter::GraphDefs body_defs;
+	auto body_inputs = body.GetInputs();
+	auto body_outputs = body.GetOutputs();
+	std::vector<std::string> output_grad_name;
+	std::vector<std::string> carries_grad_name;
+
+	output_grad_name.reserve(n_outputs);
+	for (auto i = body_outputs.begin() + n_carries, e = body_outputs.end() - n_carries; i != e; i++)
+		output_grad_name.push_back(GradientName((*i)->Name()));
+
+	carries_grad_name.reserve(n_carries);
+	for (auto i = body_outputs.end() - n_carries, e = body_outputs.end(); i != e; i++)
+		carries_grad_name.push_back(GradientName((*i)->Name()));
+
+	body_defs.AddGraphOutputs(carries_grad_name);
+	body_defs.AddGraphOutputs(output_grad_name);
+	ORT_THROW_IF_ERROR(GraphAugmenter::AugmentGraph(body, body_defs));
+	SubgraphGradient(&body);
+	// Because backward is caclulated in reverse order, so need to modify inputs and outputs:
+	// in  : carries_{t+1}_grad, carries_t, inputs_t, output_t_grad
+	// out : carries_t_grad, inputs_t_grad
+	std::vector<const NodeArg *> modified_body_inputs;
+	modified_body_inputs.reserve(body_inputs.size());
+	modified_body_inputs.insert(modified_body_inputs.end(), body_inputs.begin() + input_size, body_inputs.begin() + input_size + n_carries);
+	modified_body_inputs.insert(modified_body_inputs.end(), body_inputs.begin(), body_inputs.begin() + input_size);
+	modified_body_inputs.insert(modified_body_inputs.end(), body_inputs.end() - n_outputs, body_inputs.end());
+	body.SetInputs(modified_body_inputs);
+
+	std::vector<const NodeArg *> modified_body_outputs(body_outputs.begin() + output_size, body_outputs.end());
+	body.SetOutputs(modified_body_outputs);
+	// Now, we need to setup attributes for backward Scan.
+	// Because backward Scan calculate reverse order from forward one, we need to flip direction for carries_t, and inputs_t.
+	// output_t_grad is also scan input, so need to copy scan direction and flip them.
+	// We need to do similar things to output.
+	int64_t training_num_scan_inputs = n_carries + n_inputs + n_outputs;
+	std::vector<int64_t> training_scan_input_axes;
+	std::vector<int64_t> training_scan_input_directions;
+	std::vector<int64_t> training_scan_output_axes;
+	std::vector<int64_t> training_scan_output_directions;
+
+	training_scan_input_axes.reserve(training_num_scan_inputs);
+	training_scan_input_directions.reserve(training_num_scan_inputs);
 
 	for (size_t i = 0; i < n_carries; i++)
 	{
-		ArgDef out = O(n_carries + n_outputs + i);
-		inputs.push_back(out);
-		outputs.push_back(GI(i));
-
-		x.insert(out.name);
-		y.insert(I(i).name);
+		training_scan_input_axes.push_back(0);
+		training_scan_input_directions.push_back(0); // Will be flipped to 1
 	}
+
+	training_scan_input_axes.insert(training_scan_input_axes.end(), scan_input_axes.begin(), scan_input_axes.end());
+	training_scan_input_axes.insert(training_scan_input_axes.end(), scan_output_axes.begin(), scan_output_axes.end());
+	training_scan_input_directions.insert(training_scan_input_directions.end(), scan_input_directions.begin(), scan_input_directions.end());
+	training_scan_input_directions.insert(training_scan_input_directions.end(), scan_output_directions.begin(), scan_output_directions.end());
+
+	// Flip directions
+	for (auto i = training_scan_input_directions.begin(); i != training_scan_input_directions.end(); i++)
+		*i = !*i;
+
+	training_scan_output_axes.reserve(num_scan_inputs);
+	training_scan_output_directions.reserve(num_scan_inputs);
+
+	for (size_t i = 0; i < n_carries; i++)
+	{
+		training_scan_output_axes.push_back(0);
+		training_scan_output_directions.push_back(0); // Will be flipped to 1
+	}
+
+	training_scan_output_axes.insert(training_scan_output_axes.end(), scan_input_axes.begin(), scan_input_axes.end());
+	training_scan_output_directions.insert(training_scan_output_directions.end(), scan_input_directions.begin(), scan_input_directions.end());
+	for (auto i = training_scan_output_directions.begin(); i != training_scan_output_directions.end(); i++)
+		*i = !*i;
+
+	std::vector<ONNX_NAMESPACE::AttributeProto> training_attributes;
+	training_attributes.push_back(MakeAttribute("body", body.ToGraphProto()));
+	training_attributes.push_back(MakeAttribute("num_scan_inputs", training_num_scan_inputs));
+	training_attributes.push_back(MakeAttribute("scan_input_axes", training_scan_input_axes));
+	training_attributes.push_back(MakeAttribute("scan_input_directions", training_scan_input_directions));
+	training_attributes.push_back(MakeAttribute("scan_output_axes", training_scan_output_axes));
+	training_attributes.push_back(MakeAttribute("scan_output_directions", training_scan_output_directions));
+	// Finally, setup inputs and outputs for Scan node:
+	// in  : carries_T_grad, carries, input, output_grad
+	// out : carries_0_grad, input_grad
+	std::vector<ArgDef> training_inputs;
+	std::vector<ArgDef> training_outputs;
+	training_inputs.reserve(n_carries + n_carries + n_inputs + n_outputs);
+	training_outputs.reserve(n_carries + n_inputs);
+
+	for (size_t i = 0; i < n_carries; i++)
+	{
+		training_inputs.push_back(GO(i));
+		training_outputs.push_back(GI(i));
+	}
+
+	for (size_t i = 0; i < n_carries; i++)
+		training_inputs.push_back(O(n_carries + n_outputs - n_inputs + i));
 
 	for (size_t i = 0; i < n_inputs; i++)
 	{
-		ArgDef in = I(n_carries + i);
-		inputs.push_back(in);
-		outputs.push_back(GI(n_carries + i));
-
-		x.insert(in.name);
-		y.insert(I(n_carries + i).name);
-	}
-
-	for (size_t i = 0; i < n_carries; i++)
-	{
-		ArgDef out = GO(n_carries + n_outputs + i);
-		inputs.push_back(out);
-		x.insert(out.name);
+		training_inputs.push_back(I(n_carries + i));
+		training_outputs.push_back(GI(n_carries + i));
 	}
 
 	for (size_t i = 0; i < n_outputs; i++)
-	{
-		ArgDef out = GO(n_carries + i);
-		inputs.push_back(out);
-		x.insert(out.name);
-	}
+		training_inputs.push_back(GO(n_carries + i));
 
-	grad_attributes.push_back(MakeAttribute("body", SubgraphGradient("body", y, x)));
-	result.push_back(NodeDef("Scan", inputs, outputs, grad_attributes));
+	result.push_back(NodeDef("Scan", training_inputs, training_outputs, training_attributes));
 
 	return result;
 }

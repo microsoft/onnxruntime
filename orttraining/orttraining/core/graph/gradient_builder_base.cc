@@ -175,14 +175,25 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
               {a_op, b_op}));
 }
 
-ONNX_NAMESPACE::GraphProto GradientBuilderBase::SubgraphGradient(const std::string &name, std::unordered_set<std::string>& y_node_arg_names, std::unordered_set<std::string>& x_node_arg_names) const
+void GradientBuilderBase::SubgraphGradient(Graph *graph) const
 {
-  Graph g = Subgraph(name);
-  auto config = GradientGraphConfiguration(gradient_graph_config_);
+  auto config = gradient_graph_config_;
+  std::unordered_set<std::string> grad_input;
+  std::unordered_set<std::string> grad_output;
   config.set_gradients_as_graph_outputs = true;
-  GradientGraphBuilder builder(&g, y_node_arg_names, x_node_arg_names, "", config, logger_);
+
+  for (auto o : node_->OutputDefs())
+	  grad_input.insert(o->Name());
+
+  for (auto i : node_->InputDefs())
+	  grad_output.insert(i->Name());
+
+  for (auto ii : node_->ImplicitInputDefs())
+	  grad_output.insert(ii->Name());
+
+
+  GradientGraphBuilder builder(graph, grad_input, grad_output, "", config, logger_);
   ORT_THROW_IF_ERROR(builder.Build());
-  return g.ToGraphProto();
 }
 
 void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
