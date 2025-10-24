@@ -3,7 +3,6 @@ beartype==0.15.0
 flatbuffers
 cerberus
 h5py
-onnx==1.19.1
 # Python dependencies required for pytorch development
 astunparse
 expecttest!=0.2.0
@@ -25,3 +24,9 @@ lintrunner
 setuptools ; python_version >= "3.12"
 packaging
 optree>=0.11.0
+
+# Use onnx for Python < 3.14
+onnx==1.19.1; python_version < "3.14"
+
+# Use onnx_weekly for Python >= 3.14
+onnx_weekly; python_version >= "3.14"
