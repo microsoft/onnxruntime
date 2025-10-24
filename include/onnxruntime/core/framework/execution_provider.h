@@ -38,10 +38,6 @@ class GraphOptimizerRegistry;
 #include "core/framework/tuning_context.h"
 #include "core/session/onnxruntime_c_api.h"
 
-#if DX_FOR_INTEROP
-#include <d3d12.h>
-#endif
-
 struct OrtEpDevice;
 struct OrtRunOptions;
 
@@ -97,30 +93,54 @@ class IExecutionProvider {
   virtual ~IExecutionProvider() = default;
 
   virtual Status GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, void** extSemFence) {
-
-    auto* interopParams = new struct GraphicsInteropParams(*graphicsInteropParams);
-    *extSemFence = interopParams;   //fall back path
+    auto interop_params_sptr = std::make_shared<GraphicsInteropParams>(*graphicsInteropParams);
+    *extSemFence = new std::shared_ptr<GraphicsInteropParams>(interop_params_sptr);
     return Status::OK();
   }
 
   virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
-    auto* interopParams = static_cast<struct GraphicsInteropParams*>(extSemFence);
+    auto* sptr_ptr = static_cast<std::shared_ptr<GraphicsInteropParams>*>(extSemFence);
+    std::shared_ptr<GraphicsInteropParams> interopWaitParamsSptr = *sptr_ptr;
+    delete sptr_ptr;
 
-    ExternalSyncPrimitive extSyncPrimitive = interopParams->extSyncPrimitive;
-    if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
+    auto* interopWaitParams = interopWaitParamsSptr.get();
+
+    ExternalSyncPrimitive extSyncPrimitive = interopWaitParams->extSyncPrimitive;
+    if (extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence) {
+#if DX_FOR_INTEROP && _WIN32
+      HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+      interopWaitParams->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
+      WaitForSingleObject(hEvent, INFINITE);
+      CloseHandle(hEvent);
+      return Status::OK();
+#endif
+    }
+    else if(extSyncPrimitive == ExternalSyncPrimitive_VulkanSemaphore)
     {
-#if DX_FOR_INTEROP
-        HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        interopParams->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
-        WaitForSingleObject(hEvent, INFINITE);
-        CloseHandle(hEvent);
-        delete interopParams;
-        return Status::OK();
+#if VULKAN_FOR_INTEROP
+      PFN_vkWaitOnFences pfnVkWaitOnFences = (PFN_vkWaitOnFences)interopWaitParams->DevicePtr.VulkanDeviceParams.pVkGetDeviceProcAddr(
+          interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, "vkWaitOnFences");
+
+      if (!pfnVkWaitOnFences) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get function pointer for vkWaitOnFences");
+      }
+      VkResult result = pfnVkWaitOnFences(interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence, 1, UINT64_MAX);
+
+      if (result != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "vkWaitOnFences failed with Vulkan error code: " + std::to_string(result));
+      }
+
+      PFN_vkResetFences pfnVkResetFences = (PFN_vkResetFences)interopWaitParams->DevicePtr.VulkanDeviceParams.pVkGetDeviceProcAddr(
+          interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, "vkResetFences");
+      if (pfnVkResetFences) {
+        pfnVkResetFences(interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence);
+      }
+
+      return Status::OK();
 #endif
     }
     ORT_UNUSED_PARAMETER(fenceValue);
-    delete interopParams;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
   }
   virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) {

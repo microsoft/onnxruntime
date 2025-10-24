@@ -801,6 +801,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     dx_group = parser.add_argument_group("DX for Interop Feature")
     dx_group.add_argument("--use_dx_for_interop", action="store_true", help="Enable DX for Interop feature.")
 
+    # --- Vulkan for Interop Feature ---
+    vulkan_group = parser.add_argument_group("Vulkan for Interop Feature")
+    vulkan_group.add_argument("--use_vulkan_for_interop", action="store_true", help="Enable VULKAN for Interop feature.")
+
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for other miscellaneous features."""
     parser.add_argument("--enable_lazy_tensor", action="store_true", help="Enable ORT backend for PyTorch LazyTensor.")

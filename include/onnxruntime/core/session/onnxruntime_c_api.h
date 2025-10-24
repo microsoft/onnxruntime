@@ -509,25 +509,64 @@ typedef enum OrtExecutionProviderDevicePolicy {
 
 typedef enum ExternalSyncPrimitive {
   ExternalSyncPrimitive_D3D12Fence,
-  ExternalSyncPrimitive_VulkanSemaphore,
+  ExternalSyncPrimitive_VulkanSemaphore,  // Vulkan timeline semaphore
 } ExternalSyncPrimitive;
 
-typedef class ID3D12Fence ID3D12Fence;
-typedef class ID3D12Device ID3D12Device;
-typedef struct GraphicsInteropParams
-{
-  ExternalSyncPrimitive extSyncPrimitive;
-  union FencePtr
-  {
-      ID3D12Fence* pFence;
-      // VkFence pFenceVulkan;    // Vulkan fence here
-  } FencePtr;
+#if DX_FOR_INTEROP && _WIN32
+#include <d3d12.h>
+#else
+struct ID3D12Fence;
+struct ID3D12Device;
+#endif
 
-  union DevicePtr
-  {
-    ID3D12Device* pDevice;
-    // VkDevice pVkDevice;
+#if VULKAN_FOR_INTEROP
+#include <vulkan/vulkan.h>
+#else
+// Manually defining the necessary Vulkan types and macros as opaque pointers when the full Vulkan header is not being included.
+#if defined(_WIN32)
+#define VKAPI_PTR __stdcall
+#else
+#define VKAPI_PTR
+#endif
+
+#if !defined(VK_DEFINE_HANDLE)
+#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
+#endif
+VK_DEFINE_HANDLE(VkFence);
+VK_DEFINE_HANDLE(VkSemaphore);
+VK_DEFINE_HANDLE(VkInstance);
+VK_DEFINE_HANDLE(VkDevice);
+VK_DEFINE_HANDLE(VkPhysicalDevice);
+VK_DEFINE_HANDLE(VkQueue);
+typedef uint32_t VkFormat;
+typedef uint32_t VkImageLayout;
+typedef uint32_t VkImageUsageFlags;
+
+typedef int VkResult;
+typedef uint32_t VkBool32;
+#endif
+
+typedef void (VKAPI_PTR *PFN_vkVoidFunction)(void);
+typedef PFN_vkVoidFunction (VKAPI_PTR *PFN_vkGetInstanceProcAddr)(VkInstance instance, const char* pName);
+typedef PFN_vkVoidFunction (VKAPI_PTR *PFN_vkGetDeviceProcAddr)(VkDevice device, const char* pName);
+typedef VkResult (VKAPI_PTR *PFN_vkWaitOnFences)(VkDevice device, uint32_t fenceCount, const VkFence* pFences, VkBool32 waitAll, uint64_t timeout);
+typedef VkResult (VKAPI_PTR *PFN_vkResetFences)(VkDevice device, uint32_t fenceCount, const VkFence* pFences);
+
+typedef struct GraphicsInteropParams {
+  ExternalSyncPrimitive extSyncPrimitive;
+  union FencePtr {
+    struct ID3D12Fence* pFence;
+    VkFence pVkFence;
+    VkSemaphore pVkSemaphore;
+  } FencePtr;
+  union DevicePtr {
+    struct ID3D12Device* pDevice;
+    struct VulkanDeviceParams {
+      VkDevice pVkDevice;
+      PFN_vkGetDeviceProcAddr pVkGetDeviceProcAddr;
+    } VulkanDeviceParams;
   } DevicePtr;
+
 } GraphicsInteropParams;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
