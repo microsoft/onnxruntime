@@ -418,7 +418,7 @@ namespace
 // The ComputeRxC functions compute an R row by C column tile of the output matrix.
 //
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 MLAS_FORCEINLINE void
 SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
     const std::byte* QuantARowPtr,
@@ -442,7 +442,12 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
     const float* QuantBScalePtr = QuantBScaleColPtr;
     const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
 
+    // Registers holding results for the dot product execution path
     float32x4_t acc00{}, acc01{}, acc10{}, acc11{}, acc20{}, acc21{}, acc30{}, acc31{};
+    
+    // Registers holding results for the smmla dot product execution path
+    float32x4_t scaled_float_mma_res_0 = vdupq_n_f32(0);    
+    float32x4_t scaled_float_mma_res_1 = vdupq_n_f32(0);
 
     for (size_t k_blk_idx = 0; k_blk_idx < BlockCountK; ++k_blk_idx) {
         const std::byte* QuantABlkRow0 = QuantAPtr;
@@ -517,23 +522,46 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
                 const int8x16_t av_row0 = vld1q_s8(QuantADataPtrRow0 + 0);
                 const int8x16_t av_row1 = vld1q_s8(QuantADataPtrRow1 + 0);
 
-                // quantized dot product
-                const int32x4_t dot00 = vdotq_s32(int32x4_t{}, av_row0, bv_col0);
-                const int32x4_t dot01 = vdotq_s32(int32x4_t{}, av_row0, bv_col1);
-                const int32x4_t dot10 = vdotq_s32(int32x4_t{}, av_row1, bv_col0);
-                const int32x4_t dot11 = vdotq_s32(int32x4_t{}, av_row1, bv_col1);
+                // Run with dot product support
+                if constexpr (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot00 = vdotq_s32(int32x4_t{}, av_row0, bv_col0);
+                    const int32x4_t dot01 = vdotq_s32(int32x4_t{}, av_row0, bv_col1);
+                    const int32x4_t dot10 = vdotq_s32(int32x4_t{}, av_row1, bv_col0);
+                    const int32x4_t dot11 = vdotq_s32(int32x4_t{}, av_row1, bv_col1);
 
-                // convert to float
-                const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
-                const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
-                const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
-                const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
+                    // convert to float
+                    const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
+                    const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
+                    const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
+                    const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
 
-                // multiply by scale and update accumulator
-                acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
-                acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
-                acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
-                acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));
+                    // multiply by scale and update accumulator
+                    acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
+                    acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
+                    acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
+                    acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));
+                } else {
+                    // Run with SMMLA support
+                    const int8x16_t av_low = vzip1q_s64(av_row0, av_row1);
+                    const int8x16_t av_high = vzip2q_s64(av_row0, av_row1);
+
+                    const int8x16_t bv_low = vzip1q_s64(bv_col0, bv_col1);
+                    const int8x16_t bv_high = vzip2q_s64(bv_col0, bv_col1);
+
+                    float block_scale[4] = {scale00, scale01, scale10, scale11};
+                    float32x4_t blk_scales_vec = MlasLoadFloat32x4(block_scale);
+
+                    int32x4_t mma_res = vdupq_n_s32(0);
+                    mma_res = vmmlaq_s32(mma_res, av_low, bv_low);
+                    mma_res = vmmlaq_s32(mma_res, av_high, bv_high);
+
+                    // convert unscaled result to float
+                    const float32x4_t float_mma_res = vcvtq_f32_s32(mma_res);
+
+                    // multiply by scale to generate scaled result
+                    scaled_float_mma_res_0 = vmlaq_f32(scaled_float_mma_res_0, float_mma_res, blk_scales_vec);
+                }
             }
 
             // rows 2 and 3 of A
@@ -542,23 +570,46 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
                 const int8x16_t av_row2 = vld1q_s8(QuantADataPtrRow2 + 0);
                 const int8x16_t av_row3 = vld1q_s8(QuantADataPtrRow3 + 0);
 
-                // quantized dot product
-                const int32x4_t dot20 = vdotq_s32(int32x4_t{}, av_row2, bv_col0);
-                const int32x4_t dot21 = vdotq_s32(int32x4_t{}, av_row2, bv_col1);
-                const int32x4_t dot30 = vdotq_s32(int32x4_t{}, av_row3, bv_col0);
-                const int32x4_t dot31 = vdotq_s32(int32x4_t{}, av_row3, bv_col1);
+                // Run with dot product support
+                if constexpr (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot20 = vdotq_s32(int32x4_t{}, av_row2, bv_col0);
+                    const int32x4_t dot21 = vdotq_s32(int32x4_t{}, av_row2, bv_col1);
+                    const int32x4_t dot30 = vdotq_s32(int32x4_t{}, av_row3, bv_col0);
+                    const int32x4_t dot31 = vdotq_s32(int32x4_t{}, av_row3, bv_col1);
 
-                // convert to float
-                const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
-                const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
-                const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
-                const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
+                    // convert to float
+                    const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
+                    const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
+                    const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
+                    const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
 
-                // multiply by scale and update accumulator
-                acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
-                acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
-                acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
-                acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
+                    // multiply by scale and update accumulator
+                    acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
+                    acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
+                    acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
+                    acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
+                } else {
+                    // Run with SMMLA support
+                    const int8x16_t av_low = vzip1q_s64(av_row2, av_row3);
+                    const int8x16_t av_high = vzip2q_s64(av_row2, av_row3);
+
+                    const int8x16_t bv_low = vzip1q_s64(bv_col0, bv_col1);
+                    const int8x16_t bv_high = vzip2q_s64(bv_col0, bv_col1);
+
+                    float block_scale[4] = {scale20, scale21, scale30, scale31};
+                    float32x4_t blk_scales_vec = MlasLoadFloat32x4(block_scale);
+
+                    int32x4_t mma_res = vdupq_n_s32(0);
+                    mma_res = vmmlaq_s32(mma_res, av_low, bv_low);
+                    mma_res = vmmlaq_s32(mma_res, av_high, bv_high);
+
+                    // convert unscaled result to float
+                    const float32x4_t float_mma_res = vcvtq_f32_s32(mma_res);
+
+                    // multiply by scale to generate scaled result
+                    scaled_float_mma_res_1 = vfmaq_f32(scaled_float_mma_res_1, float_mma_res, blk_scales_vec);
+                }
             }
         }
 
@@ -573,14 +624,26 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
         }
     }
 
-    SumPtr[ldc * 0 + 0] = vaddvq_f32(acc00);
-    SumPtr[ldc * 0 + 1] = vaddvq_f32(acc01);
-    SumPtr[ldc * 1 + 0] = vaddvq_f32(acc10);
-    SumPtr[ldc * 1 + 1] = vaddvq_f32(acc11);
-    SumPtr[ldc * 2 + 0] = vaddvq_f32(acc20);
-    SumPtr[ldc * 2 + 1] = vaddvq_f32(acc21);
-    SumPtr[ldc * 3 + 0] = vaddvq_f32(acc30);
-    SumPtr[ldc * 3 + 1] = vaddvq_f32(acc31);
+    if constexpr (!HasI8MMSupport)
+    {
+        SumPtr[ldc * 0 + 0] = vaddvq_f32(acc00);
+        SumPtr[ldc * 0 + 1] = vaddvq_f32(acc01);
+        SumPtr[ldc * 1 + 0] = vaddvq_f32(acc10);
+        SumPtr[ldc * 1 + 1] = vaddvq_f32(acc11);
+        SumPtr[ldc * 2 + 0] = vaddvq_f32(acc20);
+        SumPtr[ldc * 2 + 1] = vaddvq_f32(acc21);
+        SumPtr[ldc * 3 + 0] = vaddvq_f32(acc30);
+        SumPtr[ldc * 3 + 1] = vaddvq_f32(acc31);
+    } else {
+        SumPtr[ldc * 0 + 0] = vgetq_lane_f32(scaled_float_mma_res_0, 0);
+        SumPtr[ldc * 0 + 1] = vgetq_lane_f32(scaled_float_mma_res_0, 1);
+        SumPtr[ldc * 1 + 0] = vgetq_lane_f32(scaled_float_mma_res_0, 2);
+        SumPtr[ldc * 1 + 1] = vgetq_lane_f32(scaled_float_mma_res_0, 3);
+        SumPtr[ldc * 2 + 0] = vgetq_lane_f32(scaled_float_mma_res_1, 0);
+        SumPtr[ldc * 2 + 1] = vgetq_lane_f32(scaled_float_mma_res_1, 1);
+        SumPtr[ldc * 3 + 0] = vgetq_lane_f32(scaled_float_mma_res_1, 2);
+        SumPtr[ldc * 3 + 1] = vgetq_lane_f32(scaled_float_mma_res_1, 3); 
+    }
 
     if (BiasPtr != nullptr) {
         SumPtr[ldc * 0 + 0] += BiasPtr[0];
@@ -594,7 +657,7 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 MLAS_FORCEINLINE void
 SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
     size_t BlkLen,
@@ -620,7 +683,13 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
     const float* QuantBScalePtr = QuantBScaleColPtr;
     const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
 
+    // Registers holding results for the dot product execution path
     float32x4_t acc00{}, acc01{}, acc10{}, acc11{}, acc20{}, acc21{}, acc30{}, acc31{};
+
+    // Registers holding results for the smmla dot product execution path
+    float32x4_t scaled_float_mma_res_0 = vdupq_n_f32(0);
+    float32x4_t scaled_float_mma_res_1 = vdupq_n_f32(0);
+
 
     for (size_t k_blk_idx = 0; k_blk_idx < BlockCountK; ++k_blk_idx) {
         const std::byte* QuantABlkRow0 = QuantAPtr;
@@ -690,23 +759,54 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
                 const int8x16_t av_row1_0 = vld1q_s8(QuantADataPtrRow1 + 0);
                 const int8x16_t av_row1_1 = vld1q_s8(QuantADataPtrRow1 + 16);
 
-                // quantized dot product
-                const int32x4_t dot00 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col0_0), av_row0_1, bv_col0_1);
-                const int32x4_t dot01 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col1_0), av_row0_1, bv_col1_1);
-                const int32x4_t dot10 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col0_0), av_row1_1, bv_col0_1);
-                const int32x4_t dot11 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col1_0), av_row1_1, bv_col1_1);
+                // Run with dot product support
+                if constexpr (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot00 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col0_0), av_row0_1, bv_col0_1);
+                    const int32x4_t dot01 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col1_0), av_row0_1, bv_col1_1);
+                    const int32x4_t dot10 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col0_0), av_row1_1, bv_col0_1);
+                    const int32x4_t dot11 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col1_0), av_row1_1, bv_col1_1);
 
-                // convert to float
-                const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
-                const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
-                const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
-                const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
+                    // convert to float
+                    const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
+                    const float32x4_t dot_f32_01 = vcvtq_f32_s32(dot01);
+                    const float32x4_t dot_f32_10 = vcvtq_f32_s32(dot10);
+                    const float32x4_t dot_f32_11 = vcvtq_f32_s32(dot11);
 
-                // multiply by scale and update accumulator
-                acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
-                acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
-                acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
-                acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));
+                    // multiply by scale and update accumulator
+                    acc00 = vfmaq_f32(acc00, dot_f32_00, vdupq_n_f32(scale00));
+                    acc01 = vfmaq_f32(acc01, dot_f32_01, vdupq_n_f32(scale01));
+                    acc10 = vfmaq_f32(acc10, dot_f32_10, vdupq_n_f32(scale10));
+                    acc11 = vfmaq_f32(acc11, dot_f32_11, vdupq_n_f32(scale11));
+                } else {
+                    // Run with SMMLA support
+                    const int8x16_t av0_low = vzip1q_s64(av_row0_0, av_row1_0);
+                    const int8x16_t av0_high = vzip2q_s64(av_row0_0, av_row1_0);
+
+                    const int8x16_t bv0_low = vzip1q_s64(bv_col0_0, bv_col1_0);
+                    const int8x16_t bv0_high = vzip2q_s64(bv_col0_0, bv_col1_0);
+
+                    const int8x16_t av1_low = vzip1q_s64(av_row0_1, av_row1_1);
+                    const int8x16_t av1_high = vzip2q_s64(av_row0_1, av_row1_1);
+
+                    const int8x16_t bv1_low = vzip1q_s64(bv_col0_1, bv_col1_1);
+                    const int8x16_t bv1_high = vzip2q_s64(bv_col0_1, bv_col1_1);
+
+                    float block_scale[4] = {scale00, scale01, scale10, scale11};
+                    float32x4_t blk_scales_vec = MlasLoadFloat32x4(block_scale);
+
+                    int32x4_t mma_res = vdupq_n_s32(0);
+                    mma_res = vmmlaq_s32(mma_res, av0_low, bv0_low);
+                    mma_res = vmmlaq_s32(mma_res, av0_high, bv0_high);
+                    mma_res = vmmlaq_s32(mma_res, av1_low, bv1_low);
+                    mma_res = vmmlaq_s32(mma_res, av1_high, bv1_high);
+
+                    // convert unscaled result to float
+                    const float32x4_t float_mma_res = vcvtq_f32_s32(mma_res);
+
+                    // multiply by scale to generate scaled result
+                    scaled_float_mma_res_0 = vmlaq_f32(scaled_float_mma_res_0, float_mma_res, blk_scales_vec);
+                }
             }
 
             // rows 2 and 3 of A
@@ -717,23 +817,54 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
                 const int8x16_t av_row3_0 = vld1q_s8(QuantADataPtrRow3 + 0);
                 const int8x16_t av_row3_1 = vld1q_s8(QuantADataPtrRow3 + 16);
 
-                // quantized dot product
-                const int32x4_t dot20 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col0_0), av_row2_1, bv_col0_1);
-                const int32x4_t dot21 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col1_0), av_row2_1, bv_col1_1);
-                const int32x4_t dot30 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col0_0), av_row3_1, bv_col0_1);
-                const int32x4_t dot31 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col1_0), av_row3_1, bv_col1_1);
+                // Run with dot product support
+                if constexpr (!HasI8MMSupport) {
+                    // quantized dot product
+                    const int32x4_t dot20 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col0_0), av_row2_1, bv_col0_1);
+                    const int32x4_t dot21 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col1_0), av_row2_1, bv_col1_1);
+                    const int32x4_t dot30 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col0_0), av_row3_1, bv_col0_1);
+                    const int32x4_t dot31 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col1_0), av_row3_1, bv_col1_1);
 
-                // convert to float
-                const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
-                const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
-                const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
-                const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
+                    // convert to float
+                    const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
+                    const float32x4_t dot_f32_21 = vcvtq_f32_s32(dot21);
+                    const float32x4_t dot_f32_30 = vcvtq_f32_s32(dot30);
+                    const float32x4_t dot_f32_31 = vcvtq_f32_s32(dot31);
 
-                // multiply by scale and update accumulator
-                acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
-                acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
-                acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
-                acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
+                    // multiply by scale and update accumulator
+                    acc20 = vfmaq_f32(acc20, dot_f32_20, vdupq_n_f32(scale20));
+                    acc21 = vfmaq_f32(acc21, dot_f32_21, vdupq_n_f32(scale21));
+                    acc30 = vfmaq_f32(acc30, dot_f32_30, vdupq_n_f32(scale30));
+                    acc31 = vfmaq_f32(acc31, dot_f32_31, vdupq_n_f32(scale31));
+                } else {
+                    // Run with SMMLA support
+                    const int8x16_t av0_low = vzip1q_s64(av_row2_0, av_row3_0);
+                    const int8x16_t av0_high = vzip2q_s64(av_row2_0, av_row3_0);
+
+                    const int8x16_t bv0_low = vzip1q_s64(bv_col0_0, bv_col1_0);
+                    const int8x16_t bv0_high = vzip2q_s64(bv_col0_0, bv_col1_0);
+
+                    const int8x16_t av1_low = vzip1q_s64(av_row2_1, av_row3_1);
+                    const int8x16_t av1_high = vzip2q_s64(av_row2_1, av_row3_1);
+
+                    const int8x16_t bv1_low = vzip1q_s64(bv_col0_1, bv_col1_1);
+                    const int8x16_t bv1_high = vzip2q_s64(bv_col0_1, bv_col1_1);
+
+                    float block_scale[4] = {scale20, scale21, scale30, scale31};
+                    float32x4_t blk_scales_vec = MlasLoadFloat32x4(block_scale);
+
+                    int32x4_t mma_res = vdupq_n_s32(0);
+                    mma_res = vmmlaq_s32(mma_res, av0_low, bv0_low);
+                    mma_res = vmmlaq_s32(mma_res, av0_high, bv0_high);
+                    mma_res = vmmlaq_s32(mma_res, av1_low, bv1_low);
+                    mma_res = vmmlaq_s32(mma_res, av1_high, bv1_high);
+
+                    // convert unscaled result to float
+                    const float32x4_t float_mma_res = vcvtq_f32_s32(mma_res);
+
+                    // multiply by scale to generate scaled result
+                    scaled_float_mma_res_1 = vmlaq_f32(scaled_float_mma_res_1, float_mma_res, blk_scales_vec);
+                }
             }
 
             // increment block data pointers to next sub-block
@@ -754,14 +885,25 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
         }
     }
 
-    SumPtr[ldc * 0 + 0] = vaddvq_f32(acc00);
-    SumPtr[ldc * 0 + 1] = vaddvq_f32(acc01);
-    SumPtr[ldc * 1 + 0] = vaddvq_f32(acc10);
-    SumPtr[ldc * 1 + 1] = vaddvq_f32(acc11);
-    SumPtr[ldc * 2 + 0] = vaddvq_f32(acc20);
-    SumPtr[ldc * 2 + 1] = vaddvq_f32(acc21);
-    SumPtr[ldc * 3 + 0] = vaddvq_f32(acc30);
-    SumPtr[ldc * 3 + 1] = vaddvq_f32(acc31);
+    if constexpr (!HasI8MMSupport) {
+        SumPtr[ldc * 0 + 0] = vaddvq_f32(acc00);
+        SumPtr[ldc * 0 + 1] = vaddvq_f32(acc01);
+        SumPtr[ldc * 1 + 0] = vaddvq_f32(acc10);
+        SumPtr[ldc * 1 + 1] = vaddvq_f32(acc11);
+        SumPtr[ldc * 2 + 0] = vaddvq_f32(acc20);
+        SumPtr[ldc * 2 + 1] = vaddvq_f32(acc21);
+        SumPtr[ldc * 3 + 0] = vaddvq_f32(acc30);
+        SumPtr[ldc * 3 + 1] = vaddvq_f32(acc31);
+    } else {
+        SumPtr[ldc * 0 + 0] = vgetq_lane_f32(scaled_float_mma_res_0, 0);
+        SumPtr[ldc * 0 + 1] = vgetq_lane_f32(scaled_float_mma_res_0, 1);
+        SumPtr[ldc * 1 + 0] = vgetq_lane_f32(scaled_float_mma_res_0, 2);
+        SumPtr[ldc * 1 + 1] = vgetq_lane_f32(scaled_float_mma_res_0, 3);
+        SumPtr[ldc * 2 + 0] = vgetq_lane_f32(scaled_float_mma_res_1, 0);
+        SumPtr[ldc * 2 + 1] = vgetq_lane_f32(scaled_float_mma_res_1, 1);
+        SumPtr[ldc * 3 + 0] = vgetq_lane_f32(scaled_float_mma_res_1, 2);
+        SumPtr[ldc * 3 + 1] = vgetq_lane_f32(scaled_float_mma_res_1, 3);
+    }
 
     if (BiasPtr != nullptr) {
         SumPtr[ldc * 0 + 0] += BiasPtr[0];
@@ -1157,7 +1299,7 @@ AdvanceRowPtrs(
     SumRowPtr += NumRows * ldc;
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_BlkLen16(
     const std::byte* QuantA,
@@ -1198,7 +1340,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
         size_t n_remaining = CountN;
         while (n_remaining > 1) {
             // Compute 4x2 tiles of output
-            SQ4BitGemm_CompInt8_Compute4x2_BlkLen16<HasZeroPoint>(
+            SQ4BitGemm_CompInt8_Compute4x2_BlkLen16<HasZeroPoint, HasI8MMSupport>(
                 QuantARowPtr,
                 QuantBDataColPtr,
                 QuantBScaleColPtr,
@@ -1287,7 +1429,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_BlkLen32(
     const std::byte* QuantA,
@@ -1328,7 +1470,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
         size_t n_remaining = CountN;
         while (n_remaining > 1) {
             // Compute 4x2 tiles of output
-            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint>(
+            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint, HasI8MMSupport>(
                 BlkLen,
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -1418,7 +1560,7 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
     size_t BlkLen,
@@ -1459,7 +1601,7 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
         size_t n_remaining = CountN;
         while (n_remaining > 1) {
             // Compute 4x2 tiles of output
-            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint>(
+            SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16<HasZeroPoint, HasI8MMSupport>(
                 BlkLen,
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -1551,7 +1693,7 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
     }
 }
 
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool HasI8MMSupport>
 void
 SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
     size_t BlkLen,
@@ -1568,7 +1710,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
 )
 {
     if (BlkLen == 16) {
-        SQ4BitGemmKernel_CompInt8_BlkLen16<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_BlkLen16<HasZeroPoint, HasI8MMSupport>(
             QuantA,
             QuantBData,
             QuantBScale,
@@ -1581,7 +1723,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
             Bias
         );
     } else if (BlkLen == 32) {
-        SQ4BitGemmKernel_CompInt8_BlkLen32<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_BlkLen32<HasZeroPoint, HasI8MMSupport>(
             QuantA,
             QuantBData,
             QuantBScale,
@@ -1594,7 +1736,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
             Bias
         );
     } else {
-        SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32<HasZeroPoint, HasI8MMSupport>(
             BlkLen,
             QuantA,
             QuantBData,
@@ -1612,6 +1754,7 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
 
 }  // namespace
 
+template <bool HasI8MMSupport>
 size_t
 SQ4BitGemmKernel_CompInt8(
     size_t BlkLen,
@@ -1630,7 +1773,7 @@ SQ4BitGemmKernel_CompInt8(
 {
     if (QuantBZeroPoint != nullptr) {
         constexpr bool HasZeroPoint = true;
-        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint, HasI8MMSupport>(
             BlkLen,
             QuantA,
             QuantBData,
@@ -1645,7 +1788,7 @@ SQ4BitGemmKernel_CompInt8(
         );
     } else {
         constexpr bool HasZeroPoint = false;
-        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint>(
+        SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen<HasZeroPoint, HasI8MMSupport>(
             BlkLen,
             QuantA,
             QuantBData,
@@ -1662,6 +1805,40 @@ SQ4BitGemmKernel_CompInt8(
 
     return CountM;
 }
+
+// Instantiate templated functions
+template size_t
+SQ4BitGemmKernel_CompInt8<false>(
+    size_t,
+    const std::byte*,
+    const std::byte*,
+    const float*,
+    const std::byte*,
+    float*,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    const float*
+);
+
+template size_t
+SQ4BitGemmKernel_CompInt8<true>(
+    size_t,
+    const std::byte*,
+    const std::byte*,
+    const float*,
+    const std::byte*,
+    float*,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    const float*
+);
+
 
 MLAS_FORCEINLINE void
 Q8Int8GemmR2xC8DotProd(

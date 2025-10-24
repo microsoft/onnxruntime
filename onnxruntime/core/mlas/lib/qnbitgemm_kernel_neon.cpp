@@ -570,7 +570,7 @@ GetMlasQNBitGemmDispatchNeon(
         d.SQ4BitBlkDequantBForSgemm_CompFp32 = sqnbitgemm_neon::SQ4BitBlkDequantBForSgemm_CompFp32;
 
         if (InitializeWithDotSupport) {
-            d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8;
+            d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8<false>;
             d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
             d.UsePacked_CompInt8 = sqnbitgemm_neon::UsePacked_CompInt8;
 
@@ -584,6 +584,7 @@ GetMlasQNBitGemmDispatchNeon(
         }
 
         if (InitializeWithI8MMSupport) {
+            d.SQ4BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_CompInt8<true>;
             d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
             d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
