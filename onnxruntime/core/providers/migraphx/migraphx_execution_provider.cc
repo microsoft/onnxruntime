@@ -1083,8 +1083,12 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   if (dump_model_ops_) {
     std::string model_name = graph_viewer.Name() + ".onnx";
     std::ofstream ofs(model_name, std::ios::binary);
+    if (!ofs.is_open()) {
+      ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
+    }
     ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
     ofs.close();
+    LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
   }
 
   // This is a list of initializers that migraphx considers as constants.
@@ -1336,8 +1340,12 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     if (dump_model_ops_) {
       std::string onnx_name = fused_node.Name() + ".onnx";
       std::ofstream ofs(onnx_name, std::ios::binary);
+      if (!ofs.is_open()) {
+        ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
+      }
       ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
       ofs.close();
+      LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
     }
 
     std::vector<std::string> input_names, output_names;
