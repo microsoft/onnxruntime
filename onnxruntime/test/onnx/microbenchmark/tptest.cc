@@ -36,9 +36,8 @@ BENCHMARK(BM_CreateThreadPool)
 #endif
 void SimpleForLoop(ptrdiff_t first, ptrdiff_t last) {
   size_t sum = 0;
-  benchmark::DoNotOptimize(sum);
   for (; first != last; ++first) {
-    ++sum;
+    benchmark::DoNotOptimize(++sum);
   }
 }
 #ifdef _WIN32
