@@ -337,19 +337,20 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ### Prerequisites
 {: .no_toc }
 
-1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2024.3** for the appropriate OS and target hardware:
-   * [Windows - CPU, GPU, NPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?PACKAGE=OPENVINO_BASE&VERSION=v_2024_3_0&OP_SYSTEM=WINDOWS&DISTRIBUTION=ARCHIVE).
-   * [Linux - CPU, GPU, NPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?PACKAGE=OPENVINO_BASE&VERSION=v_2024_3_0&OP_SYSTEM=LINUX&DISTRIBUTION=ARCHIVE)
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2025.3** for the appropriate OS and target hardware:
+   * [Windows - CPU, GPU, NPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?PACKAGE=OPENVINO_BASE&VERSION=v_2025_3_0&OP_SYSTEM=WINDOWS&DISTRIBUTION=ARCHIVE).
+   * [Linux - CPU, GPU, NPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?PACKAGE=OPENVINO_BASE&VERSION=v_2025_3_0&OP_SYSTEM=LINUX&DISTRIBUTION=ARCHIVE)
+   
+   Follow [documentation](https://docs.openvino.ai/2025/index.html) for detailed instructions.
+   
+   *2025.3 is the current recommended OpenVINO™ version. [OpenVINO™ 2025.0](https://docs.openvino.ai/2025/index.html) is minimal OpenVINO™ version requirement.*
 
-   Follow [documentation](https://docs.openvino.ai/2024/home.html) for detailed instructions.
+2. Install CMake 3.28 or higher. Download from the [official CMake website](https://cmake.org/download/).
 
-  *2024.5 is the current recommended OpenVINO™ version. [OpenVINO™ 2024.5](https://docs.openvino.ai/2024/index.html) is minimal OpenVINO™ version requirement.*
+3. Configure the target hardware with specific follow on instructions:
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/2025/get-started/install-openvino/configurations/configurations-intel-gpu.html#windows), [Linux](https://docs.openvino.ai/2025/get-started/install-openvino/configurations/configurations-intel-gpu.html#linux)
 
-2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/2024/get-started/configurations/configurations-intel-gpu.html#windows), [Linux](https://docs.openvino.ai/2024/get-started/configurations/configurations-intel-gpu.html#linux)
-
-
-3. Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
+4. Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
    * For Windows:
    ```
       C:\<openvino_install_directory>\setupvars.bat
@@ -358,7 +359,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
    ```
       $ source <openvino_install_directory>/setupvars.sh
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
+
 
 ### Build Instructions
 {: .no_toc }
@@ -366,7 +367,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 #### Windows
 
 ```
-.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_wheel
+.\build.bat --config Release --use_openvino <hardware_option> --build_shared_lib --build_wheel
 ```
 
 *Note: The default Windows CMake Generator is Visual Studio 2019, but you can also use the newer Visual Studio 2022 by passing `--cmake_generator "Visual Studio 17 2022"` to `.\build.bat`*
@@ -374,14 +375,14 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 #### Linux
 
 ```bash
-./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_wheel
+./build.sh --config Release --use_openvino <hardware_option> --build_shared_lib --build_wheel
 ```
 
 * `--build_wheel` Creates python wheel file in dist/ folder. Enable it when building from source.
 * `--use_openvino` builds the OpenVINO™ Execution Provider in ONNX Runtime.
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
-Refer to [Intel GPU device naming convention](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
+Refer to [Intel GPU device naming convention](https://docs.openvino.ai/2025/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -390,37 +391,20 @@ Refer to [Intel GPU device naming convention](https://docs.openvino.ai/2024/open
 | <code>GPU.0</code> | Intel<sup>®</sup> Integrated Graphics |
 | <code>GPU.1</code> | Intel<sup>®</sup> Discrete Graphics |
 | <code>NPU</code> | Intel<sup>®</sup> Neural Processor Unit |
-| <code>HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
-| <code>MULTI:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
-| <code>AUTO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 
-Specifying Hardware Target for HETERO or Multi or AUTO device Build:
-
-HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...
-The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU', 'NPU']
-
-A minimum of two device's should be specified for a valid HETERO or MULTI or AUTO device build.
-
-```
-Example's: HETERO:GPU,CPU or AUTO:GPU,CPU or MULTI:GPU,CPU
-```
 
 #### Disable subgraph partition Feature
-* Builds the OpenVINO™ Execution Provider in ONNX Runtime with sub graph partitioning disabled.
-
-* With this option enabled. Fully supported models run on OpenVINO Execution Provider else they completely fall back to default CPU EP.
+* Builds the OpenVINO™ Execution Provider in ONNX Runtime with graph partitioning disabled, which will run fully supported models on OpenVINO Execution Provider else they completely fall back to default CPU EP,
 
 * To enable this feature during build time. Use `--use_openvino ` `<hardware_option>_NO_PARTITION`
 
 ```
-Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTITION or
-       --use_openvino GPU_FP16_NO_PARTITION 
+Usage: --use_openvino CPU_NO_PARTITION or --use_openvino GPU_NO_PARTITION or --use_openvino NPU_NO_PARTITION 
 ```
 
-For more information on OpenVINO™ Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
+For more information on OpenVINO™ Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#support-coverage)
 
 ---
-
 ## QNN
 See more information on the QNN execution provider [here](../execution-providers/QNN-ExecutionProvider.md).
 
