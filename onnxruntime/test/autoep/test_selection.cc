@@ -16,6 +16,7 @@
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -168,7 +169,8 @@ TEST(AutoEpSelection, CpuEP) {
 TEST(AutoEpSelection, CudaEP) {
   Ort::KeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
-  RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda", provider_options);
+  const auto cuda_ep_lib_path = std::filesystem::path{GetSharedLibraryFileName("onnxruntime_providers_cuda")};
+  RunBasicTest(kCudaExecutionProvider, cuda_ep_lib_path, provider_options);
 }
 #endif
 
