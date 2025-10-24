@@ -14,6 +14,11 @@
 
 namespace onnxruntime {
 namespace qnn {
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+#define QNN_SYSTEM_PROFILE_API_ENABLED
+#endif
+
 // QNN only support subset of POSIX of dlopen/dlsym/dladdr/dlerror/dlclose
 // except the following flags for dlopen, others should be done only
 // when we really need them
@@ -32,7 +37,24 @@ enum class ProfilingLevel : uint8_t {
   OFF = 0,
   BASIC,
   DETAILED,
+  OPTRACE,
   INVALID
+};
+
+enum class ProfilingMethodType : uint8_t {
+  UNKNOWN = 0,
+  EXECUTE,
+  FINALIZE,
+  EXECUTE_ASYNC,
+  CREATE_FROM_BINARY,
+  DEINIT,
+  CONTEXT_CREATE,
+  COMPOSE_GRAPHS,
+  EXECUTE_IPS,
+  GRAPH_COMPONENT,
+  LIB_LOAD,
+  APPLY_BINARY_SECTION,
+  CONTEXT_FINALIZE
 };
 
 // Defines performance modes available for HTP backend.

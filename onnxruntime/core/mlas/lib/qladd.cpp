@@ -552,6 +552,113 @@ MlasQLinearAddKernelHelper(
           InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
     }
 }
+#elif defined(MLAS_TARGET_S390X)
+template<typename DataType, bool IsScalarB>
+static
+void
+MlasQLinearAddKernelHelper(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N
+    )
+{
+    if (N >= 16) {
+        float ScaleRatio_AC = ScaleA / ScaleC;
+        float ScaleRatio_BC = ScaleB / ScaleC;
+        MLAS_FLOAT32X4 VectorScaleRatio_AC = MlasBroadcastFloat32x4(ScaleRatio_AC);
+        MLAS_FLOAT32X4 VectorScaleRatio_BC = MlasBroadcastFloat32x4(ScaleRatio_BC);
+        MLAS_FLOAT32X4 VectorFixedPart = MlasBroadcastFloat32x4((float)ZeroPointC - (ScaleRatio_AC * ZeroPointA + ScaleRatio_BC * ZeroPointB));
+        MLAS_FLOAT32X4 vb0_lo, vb0_hi, vb1_lo, vb1_hi;
+        const uint8_t flip = 128;
+        MLAS_UNREFERENCED_PARAMETER(flip);
+        __vector unsigned char vmask = reinterpret_cast<__vector unsigned char>(vec_splats(flip));
+        __vector signed short vmask1 = reinterpret_cast<__vector signed short>(vec_splats((short)flip));
+
+        if (IsScalarB) {
+            vb0_lo = MlasBroadcastFloat32x4((float)*InputB);
+            VectorFixedPart = __builtin_s390_vfmasb(vb0_lo, VectorScaleRatio_BC, VectorFixedPart);
+        }
+        while (N >= 16) {
+            MLAS_INT32X4 r_lo, r_hi;
+            MLAS_FLOAT32X4 va_lo, va_hi;
+            MLAS_UNREFERENCED_PARAMETER(VectorScaleRatio_AC);
+            MLAS_UNREFERENCED_PARAMETER(VectorScaleRatio_BC);
+            auto va = MlasPackL8<DataType>(InputA, vmask);
+            auto vshort = vec_unpackh(va);
+            vshort = MlasPackS16<DataType>(vshort, vmask1);
+            auto va1 = vec_unpackl(vshort);
+            auto va0 = vec_unpackh(vshort);
+            va_lo = vec_float(va0);
+            va_hi = vec_float(va1);
+            if (!IsScalarB) {
+                auto vb = MlasPackL8<DataType>(InputB, vmask);
+                vshort = vec_unpackh(vb);
+                vshort = MlasPackS16<DataType>(vshort, vmask1);
+                auto vb1 = vec_unpackl(vshort);
+                auto vb0 = vec_unpackh(vshort);
+                vb0_lo = vec_float(vb0);
+                vb0_hi = vec_float(vb1);
+                vshort = vec_unpackl(vb);
+                vshort = MlasPackS16<DataType>(vshort, vmask1);
+                vb1 = vec_unpackl(vshort);
+                vb0 = vec_unpackh(vshort);
+                vb1_lo = vec_float(vb0);
+                vb1_hi = vec_float(vb1);
+                InputB += 16;
+            }
+            va_lo = va_lo * VectorScaleRatio_AC;
+            va_hi = va_hi * VectorScaleRatio_AC;
+            if (IsScalarB) {
+                r_lo = vec_signed(vec_round(va_lo + VectorFixedPart));
+                r_hi = vec_signed(vec_round(va_hi + VectorFixedPart));
+            } else {
+                vb0_lo = vb0_lo * VectorScaleRatio_BC;
+                vb0_hi = vb0_hi * VectorScaleRatio_BC;
+                r_lo = vec_signed(vec_round(VectorFixedPart + va_lo + vb0_lo));
+                r_hi = vec_signed(vec_round(VectorFixedPart + va_hi + vb0_hi));
+            }
+            const auto vc0 = vec_packs(r_lo, r_hi);
+            vshort = vec_unpackl(va);
+            vshort = MlasPackS16<DataType>(vshort, vmask1);
+            va1 = vec_unpackl(vshort);
+            va0 = vec_unpackh(vshort);
+            va_lo = vec_float(va0);
+            va_hi = vec_float(va1);
+            va_lo = va_lo * VectorScaleRatio_AC;
+            va_hi = va_hi * VectorScaleRatio_AC;
+            if (IsScalarB) {
+                r_lo = vec_signed(vec_round(VectorFixedPart + va_lo));
+                r_hi = vec_signed(vec_round(VectorFixedPart + va_hi));
+            } else {
+                vb1_lo = vb1_lo * VectorScaleRatio_BC;
+                vb1_hi = vb1_hi * VectorScaleRatio_BC;
+                r_lo = vec_signed(vec_round(VectorFixedPart + va_lo + vb1_lo));
+                r_hi = vec_signed(vec_round(VectorFixedPart + va_hi + vb1_hi));
+            }
+            const auto vc1 = vec_packs(r_lo, r_hi);
+            MLAS_INT32X4 vc = MlasPackS16_128<DataType>(vc0, vc1);
+            vec_xst(vc, 0, reinterpret_cast<int32_t*>(OutputC));
+
+            // Workaround for bad GCC warning that variable is set but not used.
+            MLAS_UNREFERENCED_PARAMETER(vc);
+
+            N -= 16;
+            InputA += 16;
+            OutputC += 16;
+        }
+    }
+    if (N > 0) {
+        MlasQLinearAddKernelRawHelper<DataType, IsScalarB>(
+          InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+    }
+}
 #elif defined(MLAS_LSX_INTRINSICS)
 
 template<typename DataType, bool IsScalarB>

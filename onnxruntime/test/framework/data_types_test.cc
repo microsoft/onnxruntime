@@ -7,8 +7,8 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
-#include "core/framework/float16.h"
-#include "core/framework/float8.h"
+#include "core/common/float16.h"
+#include "core/common/float8.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
