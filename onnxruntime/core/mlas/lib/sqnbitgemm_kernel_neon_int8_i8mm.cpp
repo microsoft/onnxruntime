@@ -172,6 +172,7 @@ Q8Int8GemmR1xC8I8MM(
     constexpr size_t NCols4 = 4;
     constexpr size_t NCols8 = 8;
     constexpr size_t KStep16 = 16;
+    constexpr size_t KStep32 = 32;
 
     const size_t lda = BlockCountK * BlkLen;
     const size_t StrideQuantBDataCol8 = BlockCountK * BlkLen * NCols8;
@@ -205,30 +206,52 @@ Q8Int8GemmR1xC8I8MM(
                 int32x4_t acc0_03 = vdupq_n_s32(0);
                 int32x4_t acc0_47 = vdupq_n_s32(0);
 
-                for (size_t k = 0; k < BlkLen; k += KStep16) {
-                    const int8x16_t av0_16_i8 = vld1q_s8(QuantAPtr);
+                for (size_t k = 0; k < BlkLen; k += KStep32) {
+                    const int8x16_t av0_16_i8_0 = vld1q_s8(QuantAPtr);
+                    const int8x16_t av0_16_i8_1 = vld1q_s8(QuantAPtr+16);
 
-                    uint8x16_t bv_packed_0_03 = vld1q_u8(QuantBDataPtr);
-                    uint8x16_t bv_packed_0_47 = vld1q_u8(QuantBDataPtr + 16);
-                    uint8x16_t bv_packed_1_03 = vld1q_u8(QuantBDataPtr + 32);
-                    uint8x16_t bv_packed_1_47 = vld1q_u8(QuantBDataPtr + 48);
-                    uint8x16_t bv_packed_2_03 = vld1q_u8(QuantBDataPtr + 64);
-                    uint8x16_t bv_packed_2_47 = vld1q_u8(QuantBDataPtr + 80);
-                    uint8x16_t bv_packed_3_03 = vld1q_u8(QuantBDataPtr + 96);
-                    uint8x16_t bv_packed_3_47 = vld1q_u8(QuantBDataPtr + 112);
+                    uint8x16_t bv_packed_0_03_0 = vld1q_u8(QuantBDataPtr);
+                    uint8x16_t bv_packed_0_47_0 = vld1q_u8(QuantBDataPtr + 16);
+                    uint8x16_t bv_packed_1_03_0 = vld1q_u8(QuantBDataPtr + 32);
+                    uint8x16_t bv_packed_1_47_0 = vld1q_u8(QuantBDataPtr + 48);
+                    uint8x16_t bv_packed_2_03_0 = vld1q_u8(QuantBDataPtr + 64);
+                    uint8x16_t bv_packed_2_47_0 = vld1q_u8(QuantBDataPtr + 80);
+                    uint8x16_t bv_packed_3_03_0 = vld1q_u8(QuantBDataPtr + 96);
+                    uint8x16_t bv_packed_3_47_0 = vld1q_u8(QuantBDataPtr + 112);
 
-                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_0_03, av0_16_i8, 0);
-                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_1_03, av0_16_i8, 1);
-                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_2_03, av0_16_i8, 2);
-                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_3_03, av0_16_i8, 3);
+                    const uint8_t* new_ptr = QuantBDataPtr + NCols8 * KStep16;
 
-                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_0_47, av0_16_i8, 0);
-                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_1_47, av0_16_i8, 1);
-                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_2_47, av0_16_i8, 2);
-                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_3_47, av0_16_i8, 3);
+                    uint8x16_t bv_packed_0_03_1 = vld1q_u8(new_ptr);
+                    uint8x16_t bv_packed_0_47_1 = vld1q_u8(new_ptr + 16);
+                    uint8x16_t bv_packed_1_03_1 = vld1q_u8(new_ptr + 32);
+                    uint8x16_t bv_packed_1_47_1 = vld1q_u8(new_ptr + 48);
+                    uint8x16_t bv_packed_2_03_1 = vld1q_u8(new_ptr + 64);
+                    uint8x16_t bv_packed_2_47_1 = vld1q_u8(new_ptr + 80);
+                    uint8x16_t bv_packed_3_03_1 = vld1q_u8(new_ptr + 96);
+                    uint8x16_t bv_packed_3_47_1 = vld1q_u8(new_ptr + 112);
 
-                    QuantAPtr += KStep16;
-                    QuantBDataPtr += NCols8 * KStep16;
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_0_03_0, av0_16_i8_0, 0);
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_1_03_0, av0_16_i8_0, 1);
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_2_03_0, av0_16_i8_0, 2);
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_3_03_0, av0_16_i8_0, 3);
+
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_0_47_0, av0_16_i8_0, 0);
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_1_47_0, av0_16_i8_0, 1);
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_2_47_0, av0_16_i8_0, 2);
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_3_47_0, av0_16_i8_0, 3);
+
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_0_03_1, av0_16_i8_1, 0);
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_1_03_1, av0_16_i8_1, 1);
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_2_03_1, av0_16_i8_1, 2);
+                    acc0_03 = vusdotq_laneq_s32(acc0_03, bv_packed_3_03_1, av0_16_i8_1, 3);
+
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_0_47_1, av0_16_i8_1, 0);
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_1_47_1, av0_16_i8_1, 1);
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_2_47_1, av0_16_i8_1, 2);
+                    acc0_47 = vusdotq_laneq_s32(acc0_47, bv_packed_3_47_1, av0_16_i8_1, 3);
+
+                    QuantAPtr += KStep32;
+                    QuantBDataPtr += NCols8 * KStep32;
                 }
 
                 accf0_03 = vfmaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
