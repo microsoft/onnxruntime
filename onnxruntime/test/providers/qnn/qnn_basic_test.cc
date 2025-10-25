@@ -18,6 +18,7 @@
 
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "test/util/include/api_asserts.h"
+#include "test/util/include/file_util.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -1420,12 +1421,12 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
 }
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
-#if defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
+#if !BUILD_QNN_EP_STATIC_LIB
 // Tests autoEP feature to automatically select an EP that supports the NPU.
-// Currently only works on Windows.
 TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
+  const auto qnn_ep_lib_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_qnn"));
   ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
-                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+                                                                     qnn_ep_lib_path.c_str()));
 
   Ort::SessionOptions so;
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
@@ -1438,8 +1439,9 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
 }
 
 TEST_F(QnnGPUBackendTests, AutoEp_PreferGpu) {
+  const auto qnn_ep_lib_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_qnn"));
   ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
-                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+                                                                     qnn_ep_lib_path.c_str()));
 
   Ort::SessionOptions so;
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
@@ -1450,7 +1452,7 @@ TEST_F(QnnGPUBackendTests, AutoEp_PreferGpu) {
 
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
 }
-#endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 
 // Test whether QNN EP can handle the case where the number of graph inputs and
 // the number of tensor wrappers do not match.
