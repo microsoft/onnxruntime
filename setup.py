@@ -374,6 +374,10 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
     ]
     dl_libs.extend(qnn_deps)
+    # NV TensorRT RTX
+    nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
+    dl_libs.extend(nv_tensorrt_rtx_deps)
+    libs.extend(nv_tensorrt_rtx_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -454,6 +458,9 @@ else:
         "migraphx_tf.dll",
     ]
     libs.extend(migraphx_deps)
+    # NV TensorRT RTX Libs
+    nv_tensorrt_rtx_deps = ["tensorrt_onnxparser_rtx_*.dll", "tensorrt_rtx_*.dll"]
+    libs.extend(nv_tensorrt_rtx_deps)
 
 if is_manylinux:
     if is_openvino:
@@ -763,6 +770,11 @@ if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+# Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
+if package_name == "onnxruntime-trt-rtx":
+    install_requires.append("nvidia-cuda-runtime-cu12~=12.0")
+    cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
 
 
 def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
