@@ -47,7 +47,8 @@ set(RN_INCLUDES
     "${NODE_MODULES_DIR}/react-native/ReactCommon"
     "${NODE_MODULES_DIR}/react-native/ReactCommon/jsi"
     "${NODE_MODULES_DIR}/react-native/ReactCommon/callinvoker")
-if(${ReactAndroid_VERSION_MINOR} VERSION_GREATER_EQUAL "0.76")
+
+if(${REACT_NATIVE_VERSION} VERSION_GREATER_EQUAL "0.76")
   set(RN_LIBS
       ReactAndroid::reactnative
       ReactAndroid::jsi)

@@ -127,6 +127,9 @@ android {
       "META-INF",
       "META-INF/**",
       "**/libjsi.so",
+      "**/libfbjni.so",
+      "**/libreact_nativemodule_core.so",
+      "**/libturbomodulejsijni.so"
     ]
   }
 
