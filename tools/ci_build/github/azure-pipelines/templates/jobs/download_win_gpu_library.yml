@@ -11,12 +11,6 @@ parameters:
     values:
       - 13.0
       - 12.8
-  - name: TrtVersion
-    type: string
-    default: '10.9.0.34'
-    values:
-      - 10.9.0.34
-      - 10.13.3.9
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -44,32 +38,12 @@ steps:
   - ${{ if eq(parameters.DownloadTRT, true) }}:
     - ${{ if eq(parameters.CudaVersion, '13.0') }}:
         - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]13.0"
-          displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '10.13.3.9')) }}:
+            Write-Host "##vso[task.setvariable variable=trtDirName;]TensorRT-10.13.3.9.Windows.win10.cuda-13.0"
+          displayName: Set trtDirName
+    - ${{ if eq(parameters.CudaVersion, '12.8') }}:
         - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.9"
-          displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '10.9.0.34')) }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.8"
-          displayName: Set trtCudaVersion
-
-    - ${{ if eq(parameters.TrtVersion, '10.9.0.34') }}:
-      - powershell: |
-          Write-Host "##vso[task.setvariable variable=trtPlatformString;]Windows10.x86_64"
-        displayName: 'Set TRT platform string for 10.9.0.34'
-
-    - ${{ if eq(parameters.TrtVersion, '10.13.3.9') }}:
-      - powershell: |
-          Write-Host "##vso[task.setvariable variable=trtPlatformString;]Windows.win10"
-        displayName: 'Set TRT platform string for 10.13.3.9'
-
-    - powershell: |
-        $trtDirName = "TensorRT-${{ parameters.TrtVersion }}.$(trtPlatformString).cuda-$(trtCudaVersion)"
-        Write-Host "TensorRT Directory Name: $trtDirName"
-        Write-Host "##vso[task.setvariable variable=trtDirName;]$trtDirName"
-      displayName: 'Construct TensorRT Directory Name'
+            Write-Host "##vso[task.setvariable variable=trtDirName;]TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"
+          displayName: Set trtDirName
 
     - task: AzureCLI@2
       displayName: 'Download $(trtDirName)'
