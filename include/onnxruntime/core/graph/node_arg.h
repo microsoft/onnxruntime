@@ -9,6 +9,8 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 
+#include <optional>
+
 namespace onnxruntime {
 
 // Node argument definition, for both input and output,
