@@ -5,8 +5,6 @@
 
 #include <cassert>
 
-#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
-
 #include "ep.h"
 #include "ep_allocator.h"
 #include "ep_arena.h"

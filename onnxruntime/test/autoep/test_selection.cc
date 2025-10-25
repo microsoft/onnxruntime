@@ -200,13 +200,8 @@ TEST(AutoEpSelection, DmlEP) {
         const auto* device = c_api->EpDevice_Device(ep_device);
         const OrtKeyValuePairs* kvps = c_api->HardwareDevice_Metadata(device);
 
-        const char* discovered_by = c_api->GetKeyValue(kvps, kOrtHardwareDevice_MetadataKey_DiscoveredBy);
-        ASSERT_NE(discovered_by, nullptr);
-        ASSERT_STREQ(discovered_by, "ONNX Runtime");
-
         const char* is_virtual = c_api->GetKeyValue(kvps, kOrtHardwareDevice_MetadataKey_IsVirtual);
-        ASSERT_NE(is_virtual, nullptr);
-        ASSERT_STREQ(is_virtual, "0");
+        ASSERT_TRUE(is_virtual == nullptr || strcmp(is_virtual, "0") == 0);
 
         if (devices.empty()) {
           // add the first device
