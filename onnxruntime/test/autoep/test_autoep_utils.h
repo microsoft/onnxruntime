@@ -16,8 +16,10 @@ using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::func
 struct Utils {
   struct ExamplePluginInfo {
     const std::filesystem::path library_path =
-#if _WIN32
+#if defined(_WIN32)
         "example_plugin_ep.dll";
+#elif defined(__APPLE__)
+        "libexample_plugin_ep.dylib";
 #else
         "libexample_plugin_ep.so";
 #endif

@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include "test/autoep/test_autoep_utils.h"
 
 #include <algorithm>
@@ -47,11 +44,9 @@ void Utils::RegisterAndGetExampleEp(Ort::Env& env, RegisteredEpDeviceUniquePtr& 
   ASSERT_NE(example_ep, nullptr);
 
   registered_ep = RegisteredEpDeviceUniquePtr(example_ep, [&env, c_api](const OrtEpDevice* /*ep*/) {
-    c_api.UnregisterExecutionProviderLibrary(env, example_ep_info.registration_name.c_str());
+    Ort::Status ignored{c_api.UnregisterExecutionProviderLibrary(env, example_ep_info.registration_name.c_str())};
   });
 }
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32

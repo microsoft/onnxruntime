@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include <filesystem>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,7 +32,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
   // should be one device for the example EP
   auto num_test_ep_devices = std::count_if(ep_devices, ep_devices + num_devices,
-                                           [&registration_name, &c_api](const OrtEpDevice* device) {
+                                           [&](const OrtEpDevice* device) {
                                              // the example uses the registration name for the EP name
                                              // but that is not a requirement and the two can differ.
                                              return c_api->EpDevice_EpName(device) == registration_name;
@@ -58,7 +55,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
 
   // should be one device for the example EP
   auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
-                                     [&registration_name](Ort::ConstEpDevice& device) {
+                                     [&](Ort::ConstEpDevice& device) {
                                        // the example uses the registration name for the EP name
                                        // but that is not a requirement and the two can differ.
                                        return device.EpName() == registration_name;
@@ -83,7 +80,9 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_NE(device.Vendor(), nullptr);
   Ort::ConstKeyValuePairs device_metadata = device.Metadata();
   std::unordered_map<std::string, std::string> metadata_entries = device_metadata.GetKeyValuePairs();
+#if defined(_WIN32)
   ASSERT_GT(metadata_entries.size(), 0);  // should have at least SPDRP_HARDWAREID on Windows
+#endif
 
   // and this should unload it without throwing
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
@@ -91,5 +90,3 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32

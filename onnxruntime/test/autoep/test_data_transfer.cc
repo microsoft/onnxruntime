@@ -3,9 +3,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include <algorithm>
 #include <gsl/gsl>
 #include <gmock/gmock.h>
@@ -73,5 +70,3 @@ TEST(OrtEpLibrary, DataTransfer) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32

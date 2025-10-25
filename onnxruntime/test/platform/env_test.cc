@@ -3,6 +3,7 @@
 
 #include "core/platform/env.h"
 
+#include <filesystem>
 #include <fstream>
 
 #include "gtest/gtest.h"
@@ -52,6 +53,22 @@ TEST(PlatformEnvTest, GetErrnoInfo) {
 #if defined(_WIN32)
 #pragma warning(pop)
 #endif
+}
+
+TEST(PlatformEnvTest, GetRuntimePath) {
+  const auto runtime_path_str = Env::Default().GetRuntimePath();
+  ASSERT_FALSE(runtime_path_str.empty());
+
+  const auto runtime_path = std::filesystem::path{runtime_path_str};
+  EXPECT_TRUE(runtime_path.is_absolute());
+  EXPECT_TRUE(std::filesystem::is_directory(runtime_path));
+
+  auto is_dir_separator = [](ORTCHAR_T c) {
+    constexpr std::array dir_separators{ORTCHAR_T{'/'}, std::filesystem::path::preferred_separator};
+    return std::find(dir_separators.begin(), dir_separators.end(), c) != dir_separators.end();
+  };
+
+  EXPECT_TRUE(is_dir_separator(runtime_path_str.back()));
 }
 }  // namespace test
 }  // namespace onnxruntime
