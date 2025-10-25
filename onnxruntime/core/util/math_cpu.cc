@@ -181,6 +181,53 @@ void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, pt
 #endif
 
 template <>
+void Gemm<BFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                                ptrdiff_t N, ptrdiff_t K, BFloat16 alpha, const BFloat16* A, const BFloat16* B, BFloat16 beta,
+                                BFloat16* C, ThreadPool*) {
+  auto C_mat = EigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<Eigen::bfloat16*>(C), N, M);
+  if (beta == BFloat16(0.f)) {
+    C_mat.setZero();
+  } else {
+    Eigen::bfloat16 beta_bfloat(static_cast<float>(beta));
+    C_mat *= beta_bfloat;
+  }
+  Eigen::bfloat16 alpha_bfloat(static_cast<float>(alpha));
+
+  switch (TransA) {
+    case CblasNoTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha_bfloat * (ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(B), N, K) *
+                                             ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(A), K, M));
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha_bfloat * (ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(B), K, N).transpose() *
+                                             ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(A), K, M));
+          return;
+        default:
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    case CblasTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha_bfloat * (ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(B), N, K) *
+                                             ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(A), M, K).transpose());
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha_bfloat * (ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(B), K, N).transpose() *
+                                             ConstEigenMatrixMap<Eigen::bfloat16>(reinterpret_cast<const Eigen::bfloat16*>(A), M, K).transpose());
+          return;
+        default:
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    default:
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+  }
+}
+
+template <>
 void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
 }
@@ -193,6 +240,11 @@ void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, cons
 #else
 EIGEN_MATMUL_FUNCTION(double)
 #endif
+
+template <>
+void MatMul<BFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const BFloat16* A, const BFloat16* B, BFloat16* C, ThreadPool* threadpool) {
+  Gemm<BFloat16, ThreadPool>(CblasNoTrans, CblasNoTrans, M, N, K, BFloat16(1.f), A, B, BFloat16(0.f), C, threadpool);
+}
 
 template <>
 void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
