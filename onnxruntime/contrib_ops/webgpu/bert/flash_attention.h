@@ -18,8 +18,8 @@ using namespace onnxruntime::webgpu;
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
   CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH,
-                     bool prepare_indirect_dispatch = false)
-      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), prepare_indirect_dispatch_(prepare_indirect_dispatch) {
+                     bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -34,6 +34,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   bool has_past_;
   bool kv_BNSH_;
   bool prepare_indirect_dispatch_;
+  bool use_seqlen_k_;
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
@@ -45,7 +46,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         int qkv_head_size,
                         int qkv_num_heads,
                         bool is_unidirectional,
-                        bool is_nvidia)
+                        bool is_nvidia,
+                        bool use_seqlen_k = false)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -53,7 +55,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
-        is_nvidia_(is_nvidia) {
+        is_nvidia_(is_nvidia),
+        use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -61,7 +64,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32});
@@ -74,6 +76,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
   bool is_unidirectional_;
   bool is_nvidia_;
+  bool use_seqlen_k_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {

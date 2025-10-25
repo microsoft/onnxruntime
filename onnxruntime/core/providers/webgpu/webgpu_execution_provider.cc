@@ -780,7 +780,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23>(enable_graph_capture)));
 
 #ifndef DISABLE_CONTRIB_OPS
-  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry);
+  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
   ORT_ENFORCE(status.IsOK(), "Failed to register WebGPU contrib kernels: " + status.ErrorMessage());
 #endif
 
