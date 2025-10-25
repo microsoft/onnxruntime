@@ -12,14 +12,6 @@ parameters:
       - 13.0
       - 12.8
 
-variables:
-- template: ../templates/common-variables.yml
-- name: TrtFolder
-  ${{ if eq(parameters.CudaVersion, '13.0') }}:
-    value: ${{ variables.win_trt_folder_cuda13 }}
-  ${{ if eq(parameters.CudaVersion, '12.8') }}:
-    value: ${{ variables.win_trt_folder_cuda12 }}
-
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
     - task: AzureCLI@2
@@ -43,19 +35,39 @@ steps:
           dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
+
+  - ${{ if eq(parameters.DownloadTRT, true) }}:
+    - powershell: |
+        # These values are copied from common-variables.yml
+        $cuda12_trt_version = '10.9.0.34'
+        $cuda13_trt_version = '10.13.3.9'
+
+        $trtFolder = ""
+        if ("${{ parameters.CudaVersion }}" -eq "13.0") {
+          $trtFolder = "TensorRT-$cuda13_trt_version.Windows10.win10.cuda-13.0"
+        }
+        elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
+          $trtFolder = "TensorRT-$cuda12_trt_version.Windows10.x86_64.cuda-12.8"
+        }
+
+        Write-Host "Setting TrtFolderRuntime variable to: $trtFolder"
+        # This makes the variable available to subsequent steps in this job
+        Write-Host "##vso[task.setvariable variable=TrtFolderRuntime;]$trtFolder"
+      displayName: 'Set TensorRT Folder Variable'
+
     - task: AzureCLI@2
-      displayName: 'Download ${{ variables.TrtFolder }}'
+      displayName: 'Download $(TrtFolderRuntime)'
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptType: 'batch'
         scriptLocation: 'inlineScript'
         inlineScript: |
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/${{ variables.TrtFolder }} $(Agent.TempDirectory)
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(TrtFolderRuntime) $(Agent.TempDirectory)
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ variables.TrtFolder }}\lib"
-      displayName: 'Append ${{ variables.TrtFolder }} Directory to PATH'
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\lib"
+      displayName: 'Append $(TrtFolderRuntime) Directory to PATH'
 
     - task: CmdLine@2
       inputs:
