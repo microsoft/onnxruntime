@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param n_bits
+#param has_bias
 #param has_zero_points
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"

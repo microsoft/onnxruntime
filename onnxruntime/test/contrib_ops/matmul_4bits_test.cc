@@ -342,6 +342,14 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     RunTest<AType>(opts);
   }
 #endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
+#if defined(USE_WEBGPU)
+  {
+    // WebGPU does support bias but no g_idx
+    TestOptions opts = base_opts;
+    opts.has_bias = true;
+    RunTest<AType>(opts);
+  }
+#endif
 }
 
 #if !defined(USE_OPENVINO)
