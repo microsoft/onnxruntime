@@ -12,6 +12,9 @@ parameters:
       - 13.0
       - 12.8
 
+variables:
+- template: ../templates/common-variables.yml
+
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
     - task: AzureCLI@2
@@ -38,11 +41,11 @@ steps:
   - ${{ if eq(parameters.DownloadTRT, true) }}:
     - ${{ if eq(parameters.CudaVersion, '13.0') }}:
         - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtDirName;]TensorRT-10.13.3.9.Windows.win10.cuda-13.0"
+            Write-Host "##vso[task.setvariable variable=trtDirName;]${{ variables.win_trt_folder_cuda13 }}"
           displayName: Set trtDirName
     - ${{ if eq(parameters.CudaVersion, '12.8') }}:
         - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtDirName;]TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8"
+            Write-Host "##vso[task.setvariable variable=trtDirName;]${{ variables.win_trt_folder_cuda12 }}"
           displayName: Set trtDirName
 
     - task: AzureCLI@2
