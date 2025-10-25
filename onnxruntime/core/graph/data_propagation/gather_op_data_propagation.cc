@@ -7,7 +7,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 
-
 namespace onnxruntime {
 
 Status GatherOpDataPropagation::infer() {
@@ -44,4 +43,4 @@ Status GatherOpDataPropagation::infer() {
   return Status::OK();
 }
 
-}
+}  // namespace onnxruntime

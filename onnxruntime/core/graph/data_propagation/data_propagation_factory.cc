@@ -19,9 +19,9 @@ namespace onnxruntime {
 // Moreover, ONNX operator's PartialDataPropagationFunction() does not handle scalar inputs or outputs.
 // Therefore, for those cases, we run our own data propagation.
 std::unique_ptr<OrtDataPropagation> CreateOrtDataPropagation(const Node& node,
-                                                       NodeArg& output_def,
-                                                       std::function<Status(const std::string&, TensorShapeVector&)> func,
-                                                       const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation) {
+                                                             NodeArg& output_def,
+                                                             std::function<Status(const std::string&, TensorShapeVector&)> func,
+                                                             const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation) {
   auto dim_size = output_from_onnx_op_data_propagation.tensor_type().shape().dim_size();
 
   if (node.OpType() == "Size") {
@@ -42,8 +42,8 @@ std::unique_ptr<OrtDataPropagation> CreateOrtDataPropagation(const Node& node,
     } else if (node.OpType() == "Div") {
       return std::make_unique<DivOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
     }
-  } 
+  }
   return nullptr;
 }
 
-} // namespace onnxruntime
+}  // namespace onnxruntime

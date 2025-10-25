@@ -16,4 +16,4 @@ class SqueezeOpDataPropagation : public OrtDataPropagation {
   Status infer() override;
 };
 
-}
+}  // namespace onnxruntime

@@ -9,8 +9,8 @@
 namespace onnxruntime {
 
 std::unique_ptr<OrtDataPropagation> CreateOrtDataPropagation(const Node& node,
-                                                       NodeArg& output_def,
-                                                       std::function<Status(const std::string&, TensorShapeVector&)> funcs,
-                                                       const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation);
+                                                             NodeArg& output_def,
+                                                             std::function<Status(const std::string&, TensorShapeVector&)> funcs,
+                                                             const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation);
 
 }  // namespace onnxruntime

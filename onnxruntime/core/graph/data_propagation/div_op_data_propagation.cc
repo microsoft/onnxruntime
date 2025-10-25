@@ -7,11 +7,9 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 
-
 namespace onnxruntime {
 
 Status DivOpDataPropagation::infer() {
-
   // Get "A" input
   const auto* input_0 = node_.InputDefs()[0];
   // Get "B" input
@@ -24,4 +22,4 @@ Status DivOpDataPropagation::infer() {
   return Status::OK();
 }
 
-}
+}  // namespace onnxruntime

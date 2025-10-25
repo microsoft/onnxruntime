@@ -7,7 +7,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 
-
 namespace onnxruntime {
 
 Status SqueezeOpDataPropagation::infer() {
@@ -82,4 +81,4 @@ Status SqueezeOpDataPropagation::infer() {
   return Status::OK();
 }
 
-}
+}  // namespace onnxruntime

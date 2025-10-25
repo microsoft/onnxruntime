@@ -2884,7 +2884,6 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
 Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
-
   // Helper function to get the input value if it's a initializer.
   auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values) -> Status {
     const TensorProto* initializer = this->GetConstantInitializer(input_name, true);

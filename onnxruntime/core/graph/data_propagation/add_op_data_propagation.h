@@ -16,4 +16,4 @@ class AddOpDataPropagation : public OrtDataPropagation {
   Status infer() override;
 };
 
-}
+}  // namespace onnxruntime

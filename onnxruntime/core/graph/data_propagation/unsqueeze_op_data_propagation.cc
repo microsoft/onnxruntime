@@ -7,7 +7,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 
-
 namespace onnxruntime {
 
 Status UnsqueezeOpDataPropagation::infer() {
@@ -25,8 +24,7 @@ Status UnsqueezeOpDataPropagation::infer() {
     inferred_shape_values->clear_dim();
 
     inferred_shape_values->add_dim()->set_dim_value(input_0->GetInferredShapeScalarValue().value());
-  }
-  else if (input_0->GetInferredShapeValues().has_value()) {
+  } else if (input_0->GetInferredShapeValues().has_value()) {
     const auto& tensor_shape_proto = input_0->GetInferredShapeValues().value();
 
     // The TensorShapeProto (inferred shape values) should have rank > 0 and
@@ -94,4 +92,4 @@ Status UnsqueezeOpDataPropagation::infer() {
   return Status::OK();
 }
 
-}
+}  // namespace onnxruntime
