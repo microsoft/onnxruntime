@@ -1153,6 +1153,8 @@ struct MLAS_GEMM_QUANT_DISPATCH;
 
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchLSX;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchLSX;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8U8DispatchLSX;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
@@ -1337,6 +1339,8 @@ struct MLAS_PLATFORM {
 #if defined(MLAS_TARGET_LARCH64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8U8Dispatch;
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
