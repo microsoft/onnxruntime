@@ -2885,7 +2885,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
   // Helper function to get the input value if it's a initializer.
-  auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values) -> Status {
+  auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values)
+      -> Status {
     const TensorProto* initializer = this->GetConstantInitializer(input_name, true);
 
     if (initializer) {
@@ -2924,7 +2925,10 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
         if (initializer->data_type() == TensorProto_DataType_INT32) {
           std::vector<int32_t> tmp_values;
           tmp_values.resize(element_cnt);
-          ORT_RETURN_IF_ERROR(utils::UnpackTensor<int32_t>(*initializer, this->ModelPath(), tmp_values.data(), element_cnt));
+          ORT_RETURN_IF_ERROR(utils::UnpackTensor<int32_t>(*initializer,
+                                                           this->ModelPath(),
+                                                           tmp_values.data(),
+                                                           element_cnt));
 
           input_values.resize(element_cnt);
           for (size_t i = 0; i < element_cnt; ++i) {
@@ -2932,7 +2936,10 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           }
         } else if (initializer->data_type() == TensorProto_DataType_INT64) {
           input_values.resize(element_cnt);
-          ORT_RETURN_IF_ERROR(utils::UnpackTensor<int64_t>(*initializer, this->ModelPath(), input_values.data(), element_cnt));
+          ORT_RETURN_IF_ERROR(utils::UnpackTensor<int64_t>(*initializer,
+                                                           this->ModelPath(),
+                                                           input_values.data(),
+                                                           element_cnt));
         }
       }
     }
@@ -2940,13 +2947,19 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
     return Status::OK();
   };
 
-  // For certain operators (e.g., Size, Squeeze, Unsqueeze), invoking ONNX operator's PartialDataPropagationFunction()
-  // alone does not yield fully accurate inferred shape values.
-  // Moreover, ONNX operator's PartialDataPropagationFunction() does not handle scalar inputs or outputs.
-  // Therefore, for those cases, we run our own data propagation.
-  auto dp = CreateOrtDataPropagation(node, output_def,
-                                     get_initialized_input_values_func,
-                                     onnx_inferred_type_after_data_propagation);
+  // For certain operators (e.g., Size, Squeeze, Unsqueeze), ONNX's
+  // PartialDataPropagationFunction() does not always produce complete or accurate
+  // inferred shape values.
+  //
+  // In particular:
+  //  - Scalar inputs and outputs are not handled correctly.
+  //  - Some operators require additional logic that is not covered by the default function.
+  //
+  // Therefore, for these cases, we perform custom data propagation to ensure
+  // correct and complete inference.
+  auto dp = CreateCustomDataPropagation(node, output_def,
+                                        get_initialized_input_values_func,
+                                        onnx_inferred_type_after_data_propagation);
   if (dp) {
     ORT_RETURN_IF_ERROR(dp->infer());
     return Status::OK();
@@ -2954,7 +2967,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
 
   auto dim_size = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim_size();
 
-  // ONNX operator's PartialDataPropagationFunction() yields shape values
+  // If no custom data propagation is defined for the operator,
+  // fall back to using ONNX�s PartialDataPropagationFunction(), if available.
   if (dim_size > 0) {
     // Only handle that the inferred shape values (from ONNX operator's PartialDataPropagationFunction() ) has rank > 0
     // and all dimensions have concrete (non-symbolic) values.

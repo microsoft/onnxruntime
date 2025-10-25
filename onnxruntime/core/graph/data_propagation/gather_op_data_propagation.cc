@@ -22,11 +22,16 @@ Status GatherOpDataPropagation::infer() {
   const auto* input_0 = node_.InputDefs()[0];
 
   // Get "indices" input
-  // Note: The "indices" input should be a scalar, otherwise, if it's a tensor with dimension size > 0,
-  //       the operator's type and shape inference should have inferred the output shape value.
+  // Note: The "indices" input could be one of the three cases:
+  //       1. A tensor with rank > 0 and all tensor values are known.
+  //       2. A tensor with rank > 0 but not all tensor values are know.
+  //       3. A scalar.
+  //
+  //       If it's case #1, ONNX operator's PartialDataPropagationFunction()
+  //       should have inferred the output shape value.
+  //       This Gather's custom data propagation handles case #3.
   const auto* input_1 = node_.InputDefs()[1];
 
-  // The "indices" should be an initializer because it's a scalar in this case.
   TensorShapeVector indices;
   ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), indices));
 
@@ -34,9 +39,13 @@ Status GatherOpDataPropagation::infer() {
   // Index value is expected to be within bounds [-s, s-1] along axis of size s
   if (input_0->GetInferredShapeValues().has_value()) {
     const auto& tensor_shape_proto = input_0->GetInferredShapeValues().value();
-    auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(HandleNegativeAxis(indices[0], tensor_shape_proto.dim_size())));
-    if (dim.has_dim_value()) {
-      output_def_.SetInferredShapeScalarValue(dim.dim_value());
+
+    // If "indices" input is a scalar, then the size of indices is 1.
+    if (indices.size() == 1) {
+      auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(HandleNegativeAxis(indices[0], tensor_shape_proto.dim_size())));
+      if (dim.has_dim_value()) {
+        output_def_.SetInferredShapeScalarValue(dim.dim_value());
+      }
     }
   }
 

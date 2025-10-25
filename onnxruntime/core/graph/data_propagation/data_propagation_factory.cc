@@ -14,14 +14,20 @@
 
 namespace onnxruntime {
 
-// For certain operators (e.g., Size, Squeeze, Unsqueeze), invoking ONNX operator's PartialDataPropagationFunction()
-// alone does not yield fully accurate inferred shape values.
-// Moreover, ONNX operator's PartialDataPropagationFunction() does not handle scalar inputs or outputs.
-// Therefore, for those cases, we run our own data propagation.
-std::unique_ptr<OrtDataPropagation> CreateOrtDataPropagation(const Node& node,
-                                                             NodeArg& output_def,
-                                                             std::function<Status(const std::string&, TensorShapeVector&)> func,
-                                                             const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation) {
+// For certain operators (e.g., Size, Squeeze, Unsqueeze), ONNX's
+// PartialDataPropagationFunction() does not always produce complete or accurate
+// inferred shape values.
+//
+// In particular:
+//  - Scalar inputs and outputs are not handled correctly.
+//  - Some operators require additional logic that is not covered by the default function.
+//
+// Therefore, for these cases, we perform custom data propagation to ensure
+// correct and complete inference.
+std::unique_ptr<CustomDataPropagation> CreateCustomDataPropagation(const Node& node,
+                                                                   NodeArg& output_def,
+                                                                   std::function<Status(const std::string&, TensorShapeVector&)> func,
+                                                                   const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation) {
   auto dim_size = output_from_onnx_op_data_propagation.tensor_type().shape().dim_size();
 
   if (node.OpType() == "Size") {
