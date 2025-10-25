@@ -16,13 +16,13 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
+#include "core/providers/common.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensor_shape.h"
-#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/graph/function_utils.h"
@@ -37,6 +37,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
+#include "data_propagation/data_propagation_factory.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -2718,7 +2719,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     // Note: ONNX's getShapeInput() internally calls getInputData() to retrieve a TensorProto (if available)
     //       and then extracts shape/dimension values from it. For this reason, we only return TensorProto
     //       object representing a tensor (i.e., non-scalar), and not a scalar value.
-    //       For inferred scalr value, Graph::SaveShapeValuesFromDataPropagation() does support it for
+    //       For inferred scalar value, Graph::SaveShapeValuesFromDataPropagation() does support it for
     //       some operators.
     if (tensor_shape_proto.has_value() && tensor_shape_proto->dim_size() > 0) {
       TensorProto tensor_proto;
@@ -2883,10 +2884,9 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
 Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
-  auto dim_size = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim_size();
 
   // Helper function to get the input value if it's a initializer.
-  auto get_initialized_input_values = [&](const std::string& input_name, std::vector<int64_t>& input_values) -> void {
+  auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values) -> Status {
     const TensorProto* initializer = this->GetConstantInitializer(input_name, true);
 
     if (initializer) {
@@ -2925,7 +2925,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
         if (initializer->data_type() == TensorProto_DataType_INT32) {
           std::vector<int32_t> tmp_values;
           tmp_values.resize(element_cnt);
-          utils::UnpackTensor<int32_t>(*initializer, this->ModelPath(), tmp_values.data(), element_cnt);
+          ORT_RETURN_IF_ERROR(utils::UnpackTensor<int32_t>(*initializer, this->ModelPath(), tmp_values.data(), element_cnt));
 
           input_values.resize(element_cnt);
           for (size_t i = 0; i < element_cnt; ++i) {
@@ -2933,53 +2933,62 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           }
         } else if (initializer->data_type() == TensorProto_DataType_INT64) {
           input_values.resize(element_cnt);
-          utils::UnpackTensor<int64_t>(*initializer, this->ModelPath(), input_values.data(), element_cnt);
+          ORT_RETURN_IF_ERROR(utils::UnpackTensor<int64_t>(*initializer, this->ModelPath(), input_values.data(), element_cnt));
         }
       }
-    }
-  };
-
-  // For certain operators (e.g., Size, Squeeze, Unsqueeze), invoking PartialDataPropagationFunction()
-  // alone does not yield fully accurate inferred shape values.
-  // Therefore, we ignore the inferred output shape values produced by PartialDataPropagationFunction() and manually infer
-  // the output shape values here.
-
-  if (node.OpType() == "Size") {
-    // Size operator generates a scalar output
-    const auto* input_0 = node.GetDefinitions().input_defs[0];
-    auto& tensor_shape_proto = input_0->inferred_shape_values_;
-    auto get_num_elements = [&](const TensorShapeProto& tensor_shape_proto) -> void {
-      int64_t num_elements = 1;
-      // The TensorShapeProto (inferred shape values) should have rank > 0 and
-      // all the dimensions have values (not symbolic)
-      if (tensor_shape_proto.dim_size() > 0) {
-        for (const auto& dim : tensor_shape_proto.dim()) {
-          if (!dim.has_dim_value()) {
-            return;
-          }
-          num_elements *= dim.dim_value();
-        }
-        output_def.inferred_scalar_value_ = num_elements;
-      }
-    };
-
-    if (tensor_shape_proto.has_value()) {
-      get_num_elements(*tensor_shape_proto);
     }
 
     return Status::OK();
+  };
 
+  // For certain operators (e.g., Size, Squeeze, Unsqueeze), invoking ONNX operator's PartialDataPropagationFunction()
+  // alone does not yield fully accurate inferred shape values.
+  // Moreover, ONNX operator's PartialDataPropagationFunction() does not handle scalar inputs or outputs.
+  // Therefore, for those cases, we run our own data propagation.
+  auto dp = CreateOrtDataPropagation(node, output_def,
+                                     get_initialized_input_values_func,
+                                     onnx_inferred_type_after_data_propagation);
+  if (dp) {
+    ORT_RETURN_IF_ERROR(dp->infer());
+    return Status::OK();
+  }
+
+  auto dim_size = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim_size();
+
+  // ONNX operator's PartialDataPropagationFunction() yields shape values
+  if (dim_size > 0) {
+    // Only handle that the inferred shape values (from ONNX operator's PartialDataPropagationFunction() ) has rank > 0
+    // and all dimensions have concrete (non-symbolic) values.
+    for (int i = 0; i < dim_size; ++i) {
+      if (!onnx_inferred_type_after_data_propagation.tensor_type().shape().dim(i).has_dim_value()) {
+        return Status::OK();
+      }
+    }
+
+    if (!output_def.inferred_shape_values_.has_value()) {
+      output_def.inferred_shape_values_.emplace();
+    }
+
+    output_def.inferred_shape_values_->clear_dim();
+    for (int i = 0; i < dim_size; ++i) {
+      auto value = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim(i).dim_value();
+      output_def.inferred_shape_values_->add_dim()->set_dim_value(value);
+    }
+  }
+
+  /*
+  if (node.OpType() == "Size") {
   } else if (node.OpType() == "Squeeze") {
     const auto* input_0 = node.GetDefinitions().input_defs[0];
     auto& tensor_shape_proto = input_0->inferred_shape_values_;
 
-    auto update_output_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> void {
+    auto update_output_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> Status {
       // The TensorShapeProto (inferred shape values) should have rank > 0 and
       // all the dimensions have values (not symbolic)
       if (tensor_shape_proto.dim_size() > 0) {
         for (const auto& dim : tensor_shape_proto.dim()) {
           if (!dim.has_dim_value()) {
-            return;
+            return Status::OK();
           }
         }
       }
@@ -2988,14 +2997,14 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
         output_def.inferred_scalar_value_ = tensor_shape_proto.dim(0).dim_value();
       } else if (tensor_shape_proto.dim_size() > 1) {
         // Get axes value
-        std::vector<int64_t> axes;
-        std::unordered_set<int64_t> axes_set;
+        TensorShapeVector axes;
+        InlinedHashSet<int64_t> axes_set;
 
         // Note: Starting from opset 13, "axes" is provided as a second input to the Squeeze operator.
         //       In opset 11 and earlier, "axes" is defined as a node attribute instead.
         if (node.GetDefinitions().input_defs.size() > 1) {
           const auto* input_1 = node.GetDefinitions().input_defs[1];
-          get_initialized_input_values(input_1->Name(), axes);
+          ORT_RETURN_IF_ERROR(get_initialized_input_values_func(input_1->Name(), axes));
         } else {
           const auto& attrs = node.GetAttributes();
           auto it = attrs.find("axes");
@@ -3009,11 +3018,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
 
         for (size_t i = 0; i < axes.size(); ++i) {
           // Negative value means counting dimensions from the back.
-          if (axes[i] < 0) {
-            axes_set.insert(axes[i] + tensor_shape_proto.dim_size());
-          } else {
-            axes_set.insert(axes[i]);
-          }
+          axes_set.insert(HandleNegativeAxis(axes[i], tensor_shape_proto.dim_size()));
         }
 
         if (!output_def.inferred_shape_values_.has_value()) {
@@ -3037,10 +3042,12 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           dim_index++;
         }
       }
+
+      return Status::OK();
     };
 
     if (tensor_shape_proto.has_value()) {
-      update_output_shape_values(*tensor_shape_proto);
+      ORT_RETURN_IF_ERROR(update_output_shape_values(*tensor_shape_proto));
     }
 
     return Status::OK();
@@ -3049,27 +3056,27 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
     const auto* input_0 = node.GetDefinitions().input_defs[0];
     auto& tensor_shape_proto = input_0->inferred_shape_values_;
 
-    auto update_output_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> void {
+    auto update_output_shape_values = [&](const TensorShapeProto& tensor_shape_proto) -> Status {
       // The TensorShapeProto (inferred shape values) should have rank > 0 and
       // all the dimensions have values (not symbolic)
       if (tensor_shape_proto.dim_size() > 0) {
         for (const auto& dim : tensor_shape_proto.dim()) {
           if (!dim.has_dim_value()) {
-            return;
+            return Status::OK();
           }
         }
       }
 
       if (tensor_shape_proto.dim_size() > 0) {
         // Get axes value
-        std::vector<int64_t> axes;
+        TensorShapeVector axes;
         std::unordered_set<int64_t> axes_set;
 
         // Note: Starting from opset 13, "axes" is provided as a second input to the Squeeze operator.
         //       In opset 11 and earlier, "axes" is defined as a node attribute instead.
         if (node.GetDefinitions().input_defs.size() > 1) {
           const auto* input_1 = node.GetDefinitions().input_defs[1];
-          get_initialized_input_values(input_1->Name(), axes);
+          ORT_RETURN_IF_ERROR(get_initialized_input_values_func(input_1->Name(), axes));
         } else {
           const auto& attrs = node.GetAttributes();
           auto it = attrs.find("axes");
@@ -3083,7 +3090,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
 
         // axes is required, if not provided just do nothing and return.
         if (axes.empty()) {
-          return;
+          return Status::OK();
         }
 
         for (size_t i = 0; i < axes.size(); ++i) {
@@ -3112,6 +3119,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
           axis += 1;
         }
       }
+
+      return Status::OK();
     };
 
     if (dim_size == 0 && input_0->inferred_scalar_value_.has_value()) {
@@ -3124,7 +3133,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       output_def.inferred_shape_values_->add_dim()->set_dim_value(*input_0->inferred_scalar_value_);
 
     } else if (tensor_shape_proto.has_value()) {
-      update_output_shape_values(*tensor_shape_proto);
+      ORT_RETURN_IF_ERROR(update_output_shape_values(*tensor_shape_proto));
     }
 
     return Status::OK();
@@ -3144,18 +3153,18 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       // shape data is [1, 3, 64, 64] -> gets 64 if the index is 2.
       // shape data is [1, 3, 64, 64] -> gets 3 if the index is 1.
 
-      // Try to get the "data" input
+      // Get "data" input
       // Note: The "data" input should be a one dimension array in this case.
       const auto* input_0 = node.GetDefinitions().input_defs[0];
 
-      // Try to get the "indices" input
+      // Get "indices" input
       // Note: The "indices" input should be a scalar, otherwise, if it's a tensor with dimension size > 0,
       //       the operator's type and shape inference should have inferred the output shape value.
       const auto* input_1 = node.GetDefinitions().input_defs[1];
 
       // The "indices" should be an initializer because it's a scalar in this case.
-      std::vector<int64_t> indices;
-      get_initialized_input_values(input_1->Name(), indices);
+      TensorShapeVector indices;
+      ORT_RETURN_IF_ERROR(get_initialized_input_values_func(input_1->Name(), indices));
 
       // Get the previously inferred dimension values
       auto& tensor_shape_proto = input_0->inferred_shape_values_;
@@ -3177,36 +3186,36 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       }
 
     } else if (node.OpType() == "Add") {
-      // Try to get the "A" input
+      // Get "A" input
       const auto* input_0 = node.GetDefinitions().input_defs[0];
-      // Try to get the "B" input
+      // Get "B" input
       const auto* input_1 = node.GetDefinitions().input_defs[1];
 
       if (input_0->inferred_scalar_value_.has_value() && input_1->inferred_scalar_value_.has_value()) {
         output_def.inferred_scalar_value_ = *input_0->inferred_scalar_value_ + *input_1->inferred_scalar_value_;
       }
     } else if (node.OpType() == "Sub") {
-      // Try to get the "A" input
+      // Get "A" input
       const auto* input_0 = node.GetDefinitions().input_defs[0];
-      // Try to get the "B" input
+      // Get "B" input
       const auto* input_1 = node.GetDefinitions().input_defs[1];
 
       if (input_0->inferred_scalar_value_.has_value() && input_1->inferred_scalar_value_.has_value()) {
         output_def.inferred_scalar_value_ = *input_0->inferred_scalar_value_ - *input_1->inferred_scalar_value_;
       }
     } else if (node.OpType() == "Mul") {
-      // Try to get the "A" input
+      // Get "A" input
       const auto* input_0 = node.GetDefinitions().input_defs[0];
-      // Try to get the "B" input
+      // Get "B" input
       const auto* input_1 = node.GetDefinitions().input_defs[1];
 
       if (input_0->inferred_scalar_value_.has_value() && input_1->inferred_scalar_value_.has_value()) {
         output_def.inferred_scalar_value_ = *input_0->inferred_scalar_value_ * (*input_1->inferred_scalar_value_);
       }
     } else if (node.OpType() == "Div") {
-      // Try to get the "A" input
+      // Get "A" input
       const auto* input_0 = node.GetDefinitions().input_defs[0];
-      // Try to get the "B" input
+      // Get "B" input
       const auto* input_1 = node.GetDefinitions().input_defs[1];
 
       if (input_0->inferred_scalar_value_.has_value() && input_1->inferred_scalar_value_.has_value()) {
@@ -3235,6 +3244,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
     }
   }
 
+  */
   return Status::OK();
 }
 
@@ -3801,12 +3811,10 @@ Status Graph::CleanUpShapeValuesFromDataPropagation() {
 
     for (auto node_arg : node.MutableInputDefs()) {
       node_arg->inferred_shape_values_.reset();
-      node_arg->inferred_scalar_value_.reset();
     }
 
     for (auto node_arg : node.MutableOutputDefs()) {
       node_arg->inferred_shape_values_.reset();
-      node_arg->inferred_scalar_value_.reset();
     }
   }
 

@@ -110,6 +110,15 @@ class NodeArg {
   /** Gets the inferred shape values as a TensorShapeProto. */
   const std::optional<ONNX_NAMESPACE::TensorShapeProto>& GetInferredShapeValues() const noexcept { return inferred_shape_values_; }
 
+  /** Gets mutable inferred shape values as a TensorShapeProto. */
+  std::optional<ONNX_NAMESPACE::TensorShapeProto>& GetMutableInferredShapeValues() noexcept { return inferred_shape_values_; }
+
+  /** Gets the inferred shape scalar value */
+  const std::optional<int64_t> GetInferredShapeScalarValue() const noexcept { return inferred_scalar_value_; }
+
+  /** Sets the inferred shape scalar value */
+  void SetInferredShapeScalarValue(int64_t value) noexcept { inferred_scalar_value_ = value; }
+
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
