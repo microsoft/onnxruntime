@@ -3,7 +3,12 @@ mypy
 pytest
 setuptools>=68.2.2
 wheel
-onnx==1.19.1
 protobuf==4.25.8
 sympy==1.14
 flatbuffers
+
+# Use onnx for Python < 3.14
+onnx==1.19.1; python_version < "3.14"
+
+# Use onnx_weekly for Python >= 3.14
+onnx_weekly; python_version >= "3.14"
