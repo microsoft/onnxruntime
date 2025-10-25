@@ -85,6 +85,7 @@ class WebGpuContext final {
 
   Status Wait(wgpu::Future f);
 
+  const wgpu::Instance& Instance() const { return instance_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
