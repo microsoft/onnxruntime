@@ -5,7 +5,7 @@
 
 #include <gsl/span>
 
-#include "example_plugin_ep_utils.h"
+#include "../plugin_ep_utils.h"
 
 class ExampleEpFactory;
 struct MulKernel;
