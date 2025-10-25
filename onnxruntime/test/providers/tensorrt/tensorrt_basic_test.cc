@@ -299,7 +299,9 @@ void RunWithOneSessionMultiThreadsInference(PathString model_name, std::string s
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
 
-TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
+// The test is disabled due to the issue described at
+// https://github.com/microsoft/onnxruntime/issues/26366
+TEST(TensorrtExecutionProviderTest, DISABLED_SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";

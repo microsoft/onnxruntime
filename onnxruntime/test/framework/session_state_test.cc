@@ -311,35 +311,39 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   }
 }
 
+#ifdef USE_CUDA
 // Test that we allocate memory for an initializer from non-arena memory even if we provide an arena-based allocator
 // if the relevant session option config flag is set
 TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
   // For this test we need to enable the arena-based allocator.
-  if (!DoesCpuAllocatorSupportArenaUsage()) {
-    GTEST_SKIP() << "CPU allocator does not support arena usage.";
-  }
 
   AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
+  const auto& default_logger = DefaultLoggingManager().DefaultLogger();
   // Part 1: Feature turned ON (i.e.) allocate from non-arena memory
   {
     std::basic_ostringstream<ORTCHAR_T> oss;
     oss << ORT_TSTR("testdata/mul_1.onnx");
     Status status;
     std::shared_ptr<Model> model;
-    ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, DefaultLoggingManager().DefaultLogger())).IsOK())
+    ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, default_logger)).IsOK())
         << status;
     Graph& graph = model->MainGraph();
 
+    DataTransferManager dtm;
     ExecutionProviders execution_providers;
-    CPUExecutionProviderInfo epi{true};  // use an arena-based allocator for this EP
-    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
-    ASSERT_TRUE(status.IsOK()) << status;
+    auto tmp_cpu_execution_provider = DefaultCudaExecutionProvider();
+    tmp_cpu_execution_provider->SetLogger(&default_logger);
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(tmp_cpu_execution_provider->GetDataTransfer()));
+    ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_cpu_execution_provider)));
+    // Make sure CPU allocator is registered
+    auto cpu_execution_provider = DefaultCpuExecutionProvider();
+    cpu_execution_provider->SetLogger(&default_logger);
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_execution_provider->GetDataTransfer()));
+    ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
 
     KernelRegistryManager krm;
-    status = krm.RegisterKernels(execution_providers);
-    ASSERT_TRUE(status.IsOK()) << status;
+    ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
 
-    DataTransferManager dtm;
     ExternalDataLoaderManager edlm;
     profiling::Profiler profiler;
 
@@ -353,12 +357,12 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
                                                                 "1"));
 
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
-                               DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+                               default_logger, profiler, sess_options);
 
     // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
     auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
-                                                                             execution_providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                             &DefaultLoggingManager().DefaultLogger());
+                                                                             execution_providers.Get(kCudaExecutionProvider),
+                                                                             &default_logger);
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry));
     ASSERT_STATUS_OK(partitioner.Partition(
@@ -369,21 +373,21 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
                                                              cpu_allocator, debug_graph_fn);
         },
         sess_options.config_options,
-        DefaultLoggingManager().DefaultLogger()));
+        default_logger));
 
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
     // Fetch the CPU arena-allocator from the session state
-    OrtMemoryInfo mem_info(CPU, OrtArenaAllocator);
+    OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
     AllocatorPtr alloc = session_state.GetAllocator(mem_info);
     ASSERT_TRUE(alloc != nullptr);
 
-    // Get stats for the CPU arena-based allocator
+    // Get stats for the CUDA arena-based allocator
     AllocatorStats alloc_stats;
     static_cast<BFCArena*>(alloc.get())->GetStats(&alloc_stats);
 
     // Assert that we have made 1 Reserve() call (for allocating memory for the sole initializer in the model)
-    ASSERT_EQ(alloc_stats.num_reserves, 1);
+    ASSERT_EQ(1, alloc_stats.num_reserves);
   }
 
   // Part 2: Feature turned OFF (i.e.) allocate from arena memory (default behavior)
@@ -392,20 +396,25 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     oss << ORT_TSTR("testdata/mul_1.onnx");
     Status status;
     std::shared_ptr<Model> model;
-    ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, DefaultLoggingManager().DefaultLogger())).IsOK())
+    ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, default_logger)).IsOK())
         << status;
     Graph& graph = model->MainGraph();
 
+    DataTransferManager dtm;
     ExecutionProviders execution_providers;
-    CPUExecutionProviderInfo epi{true};  // use an arena-based allocator for this EP
-    status = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
-    ASSERT_TRUE(status.IsOK()) << status;
+    auto tmp_cpu_execution_provider = DefaultCudaExecutionProvider();
+    tmp_cpu_execution_provider->SetLogger(&default_logger);
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(tmp_cpu_execution_provider->GetDataTransfer()));
+    ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_cpu_execution_provider)));
+    // Make sure CPU allocator is registered
+    auto cpu_execution_provider = DefaultCpuExecutionProvider();
+    cpu_execution_provider->SetLogger(&default_logger);
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_execution_provider->GetDataTransfer()));
+    ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
 
     KernelRegistryManager krm;
-    status = krm.RegisterKernels(execution_providers);
-    ASSERT_TRUE(status.IsOK()) << status;
+    ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
 
-    DataTransferManager dtm;
     ExternalDataLoaderManager edlm;
     profiling::Profiler profiler;
 
@@ -416,12 +425,12 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     sess_options.enable_mem_reuse = true;
 
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
-                               DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+                               default_logger, profiler, sess_options);
 
     // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
     auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
-                                                                             execution_providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                             &DefaultLoggingManager().DefaultLogger());
+                                                                             execution_providers.Get(kCudaExecutionProvider),
+                                                                             &default_logger);
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry));
@@ -439,24 +448,22 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Finalize the session state
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
-    // Fetch the CPU arena-allocator from the session state
-    OrtMemoryInfo mem_info(CPU, OrtArenaAllocator);
+    // Fetch the CUDA arena-allocator from the session state
+    OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
     AllocatorPtr alloc = session_state.GetAllocator(mem_info);
     ASSERT_TRUE(alloc != nullptr);
 
-    // Get stats for the CPU arena-based allocator
+    // Get stats for the CUDA arena-based allocator
     AllocatorStats alloc_stats;
     static_cast<BFCArena*>(alloc.get())->GetStats(&alloc_stats);
 
-    // Assert that we have made no Reserve() calls
-    ASSERT_EQ(alloc_stats.num_reserves, 0);
+    // One reserve call should have been made (for allocating memory for the sole initializer in the model)
+    ASSERT_EQ(1, alloc_stats.num_reserves);
 
-    // Assert to ensure an allocation was made for the initializer through the arena allocator (Alloc() was invoked)
-    ASSERT_EQ(alloc_stats.num_allocs, 1);
+    // This counter comes from Reserve(). The actual call for arena based allocator went to StreamAwareArena instance
+    ASSERT_EQ(1, alloc_stats.num_allocs);
   }
 }
-
-#ifdef USE_CUDA
 
 namespace {
 
