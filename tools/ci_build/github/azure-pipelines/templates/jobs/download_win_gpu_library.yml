@@ -14,6 +14,11 @@ parameters:
 
 variables:
 - template: ../templates/common-variables.yml
+- name: TrtFolder
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: ${{ variables.win_trt_folder_cuda13 }}
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: ${{ variables.win_trt_folder_cuda12 }}
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -38,29 +43,19 @@ steps:
           dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
-  - ${{ if eq(parameters.DownloadTRT, true) }}:
-    - ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtDirName;]${{ variables.win_trt_folder_cuda13 }}"
-          displayName: Set trtDirName
-    - ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtDirName;]${{ variables.win_trt_folder_cuda12 }}"
-          displayName: Set trtDirName
-
     - task: AzureCLI@2
-      displayName: 'Download $(trtDirName)'
+      displayName: 'Download ${{ variables.TrtFolder }}'
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptType: 'batch'
         scriptLocation: 'inlineScript'
         inlineScript: |
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(trtDirName) $(Agent.TempDirectory)
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/${{ variables.TrtFolder }} $(Agent.TempDirectory)
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(trtDirName)\lib"
-      displayName: 'Append $(trtDirName) Directory to PATH'
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ variables.TrtFolder }}\lib"
+      displayName: 'Append ${{ variables.TrtFolder }} Directory to PATH'
 
     - task: CmdLine@2
       inputs:
