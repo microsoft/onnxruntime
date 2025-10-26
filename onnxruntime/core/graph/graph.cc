@@ -2959,7 +2959,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
   // correct and complete inference.
   auto dp = CreateCustomDataPropagation(node, output_def,
                                         get_initialized_input_values_func,
-                                        onnx_inferred_type_after_data_propagation);
+                                        onnx_inferred_type_after_data_propagation,
+                                        logger_);
   if (dp) {
     ORT_RETURN_IF_ERROR(dp->infer());
     return Status::OK();
@@ -3555,10 +3556,12 @@ Status Graph::CleanUpShapeValuesFromDataPropagation() {
 
     for (auto node_arg : node.MutableInputDefs()) {
       node_arg->inferred_shape_values_.reset();
+      node_arg->inferred_scalar_value_.reset();
     }
 
     for (auto node_arg : node.MutableOutputDefs()) {
       node_arg->inferred_shape_values_.reset();
+      node_arg->inferred_scalar_value_.reset();
     }
   }
 

@@ -70,29 +70,34 @@ Status UnsqueezeOpDataPropagation::infer() {
       if (axes.empty()) {
         return Status::OK();
       }
-
-      for (size_t i = 0; i < axes.size(); ++i) {
-        // Negative value means counting dimensions from the back.
-        axes_set.insert(HandleNegativeAxis(axes[i], tensor_shape_proto.dim_size()));
-      }
-
-      auto& inferred_shape_values = output_def_.GetMutableInferredShapeValues();
-
-      if (!inferred_shape_values.has_value()) {
-        inferred_shape_values.emplace();
-      }
-      inferred_shape_values->clear_dim();
-
-      int64_t axis = 0;
-      for (const auto& dim : tensor_shape_proto.dim()) {
-        if (axes_set.find(axis) != axes_set.end()) {
-          inferred_shape_values->add_dim()->set_dim_value(1);
+      ORT_TRY {
+        for (size_t i = 0; i < axes.size(); ++i) {
+          // Negative value means counting dimensions from the back.
+          axes_set.insert(HandleNegativeAxis(axes[i], tensor_shape_proto.dim_size()));
         }
 
-        auto value = dim.dim_value();
-        inferred_shape_values->add_dim()->set_dim_value(value);
+        auto& inferred_shape_values = output_def_.GetMutableInferredShapeValues();
 
-        axis += 1;
+        if (!inferred_shape_values.has_value()) {
+          inferred_shape_values.emplace();
+        }
+        inferred_shape_values->clear_dim();
+
+        int64_t axis = 0;
+        for (const auto& dim : tensor_shape_proto.dim()) {
+          if (axes_set.find(axis) != axes_set.end()) {
+            inferred_shape_values->add_dim()->set_dim_value(1);
+          }
+
+          auto value = dim.dim_value();
+          inferred_shape_values->add_dim()->set_dim_value(value);
+
+          axis += 1;
+        }
+      }
+      ORT_CATCH(const std::exception& ex) {
+        LOGS(logger_, ERROR) << ex.what();
+        LOGS(logger_, WARNING) << "Skip Unsqueeze op custom data propagation.";
       }
     }
   }

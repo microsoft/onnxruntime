@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "data_propagation_factory.h"
+#include "core/common/logging/logging.h"
 #include "size_op_data_propagation.h"
 #include "squeeze_op_data_propagation.h"
 #include "unsqueeze_op_data_propagation.h"
@@ -27,26 +28,27 @@ namespace onnxruntime {
 std::unique_ptr<CustomDataPropagation> CreateCustomDataPropagation(const Node& node,
                                                                    NodeArg& output_def,
                                                                    std::function<Status(const std::string&, TensorShapeVector&)> func,
-                                                                   const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation) {
+                                                                   const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
+                                                                   const logging::Logger& logger) {
   auto dim_size = output_from_onnx_op_data_propagation.tensor_type().shape().dim_size();
 
   if (node.OpType() == "Size") {
-    return std::make_unique<SizeOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+    return std::make_unique<SizeOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
   } else if (node.OpType() == "Squeeze") {
-    return std::make_unique<SqueezeOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+    return std::make_unique<SqueezeOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
   } else if (node.OpType() == "Unsqueeze") {
-    return std::make_unique<UnsqueezeOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+    return std::make_unique<UnsqueezeOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
   } else if (dim_size == 0) {
     if (node.OpType() == "Gather") {
-      return std::make_unique<GatherOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+      return std::make_unique<GatherOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
     } else if (node.OpType() == "Add") {
-      return std::make_unique<AddOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+      return std::make_unique<AddOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
     } else if (node.OpType() == "Sub") {
-      return std::make_unique<SubOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+      return std::make_unique<SubOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
     } else if (node.OpType() == "Mul") {
-      return std::make_unique<MulOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+      return std::make_unique<MulOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
     } else if (node.OpType() == "Div") {
-      return std::make_unique<DivOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation);
+      return std::make_unique<DivOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);
     }
   }
   return nullptr;

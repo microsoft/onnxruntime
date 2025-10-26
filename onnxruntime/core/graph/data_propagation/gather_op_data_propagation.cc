@@ -42,9 +42,15 @@ Status GatherOpDataPropagation::infer() {
 
     // If "indices" input is a scalar, then the size of indices is 1.
     if (indices.size() == 1) {
-      auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(HandleNegativeAxis(indices[0], tensor_shape_proto.dim_size())));
-      if (dim.has_dim_value()) {
-        output_def_.SetInferredShapeScalarValue(dim.dim_value());
+      ORT_TRY {
+        auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(HandleNegativeAxis(indices[0], tensor_shape_proto.dim_size())));
+        if (dim.has_dim_value()) {
+          output_def_.SetInferredShapeScalarValue(dim.dim_value());
+        }
+      }
+      ORT_CATCH(const std::exception& ex) {
+        LOGS(logger_, ERROR) << ex.what();
+        LOGS(logger_, WARNING) << "Skip Gather op custom data propagation.";
       }
     }
   }

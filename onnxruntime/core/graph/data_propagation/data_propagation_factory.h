@@ -11,6 +11,7 @@ namespace onnxruntime {
 std::unique_ptr<CustomDataPropagation> CreateCustomDataPropagation(const Node& node,
                                                                    NodeArg& output_def,
                                                                    std::function<Status(const std::string&, TensorShapeVector&)> funcs,
-                                                                   const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation);
+                                                                   const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
+                                                                   const logging::Logger& logger);
 
 }  // namespace onnxruntime
