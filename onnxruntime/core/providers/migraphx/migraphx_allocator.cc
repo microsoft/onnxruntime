@@ -5,7 +5,7 @@
 #include "core/providers/migraphx/migraphx_call.h"
 #include "core/providers/migraphx/migraphx_allocator.h"
 #include "core/common/status.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/providers/migraphx/gpu_data_transfer.h"
 
 namespace onnxruntime {

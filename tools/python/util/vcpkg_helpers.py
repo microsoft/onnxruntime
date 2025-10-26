@@ -437,6 +437,7 @@ def generate_vcpkg_triplets_for_emscripten(
     configs: set[str],
     emscripten_root: str,
     # Parameters defining the specific build configuration
+    enable_jspi: bool,
     enable_rtti: bool,
     enable_wasm_exception_catching: bool,  # Controls -sDISABLE_EXCEPTION_CATCHING=...
     enable_minimal_onnx_build: bool,  # Controls ONNX port setting AND C++ exceptions (-fno-exceptions)
@@ -451,18 +452,22 @@ def generate_vcpkg_triplets_for_emscripten(
     - If enable_minimal_onnx_build=True, C++ exceptions are disabled (-fno-exceptions).
     - If enable_minimal_onnx_build=False, C++ exceptions are assumed enabled (-fexceptions).
 
-    This supports three main effective EH scenarios depending on the combination of
-    'enable_minimal_onnx_build' and 'enable_wasm_exception_catching':
+    This supports 4 main effective EH scenarios depending on the combination of
+    'enable_minimal_onnx_build', 'enable_jspi' and 'enable_wasm_exception_catching':
     1. No EH (-fno-exceptions, -sDISABLE_EXCEPTION_CATCHING=1):
        Set enable_minimal_onnx_build=True, enable_wasm_exception_catching=False
     2. Full EH (-fexceptions, -sDISABLE_EXCEPTION_CATCHING=0):
        Set enable_minimal_onnx_build=False, enable_wasm_exception_catching=True
     3. Throw Only EH (-fexceptions, -sDISABLE_EXCEPTION_CATCHING=1):
        Set enable_minimal_onnx_build=False, enable_wasm_exception_catching=False
+    4. Use the new Wasm EH (-fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0):
+       Set enable_minimal_onnx_build=False, enable_jspi=True
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
         emscripten_root (str): The root path of Emscripten.
+        enable_jspi (bool): Flag indicating if JSPI is enabled. If JSPI is enabled, the new
+                          Wasm EH will be used and enable_wasm_exception_catching is ignored.
         enable_rtti (bool): Flag indicating if RTTI is enabled for dependencies.
         enable_wasm_exception_catching (bool): Flag indicating if the Emscripten runtime
                                              exception catching mechanism should be enabled
@@ -478,6 +483,12 @@ def generate_vcpkg_triplets_for_emscripten(
 
     # Derive C++ exception enablement from the minimal build flag
     cpp_exceptions_enabled = not enable_minimal_onnx_build
+
+    # When JSPI is enabled, use the new Wasm EH
+    if enable_jspi:
+        if enable_minimal_onnx_build:
+            # TODO: support minimal build with JSPI if needed
+            raise ValueError("Currently minimal build cannot be used with JSPI.")
 
     for target_abi in ["wasm32", "wasm64"]:
         os_name = "emscripten"
@@ -522,7 +533,9 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
 
                 # Wasm Exception Catching Runtime (-s flag, apply to Base and Linker flags)
                 exception_catching_flag = ""
-                if enable_wasm_exception_catching:
+                if enable_jspi:
+                    exception_catching_flag = "-fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0"
+                elif enable_wasm_exception_catching:
                     exception_catching_flag = "-sDISABLE_EXCEPTION_CATCHING=0"
                 else:
                     exception_catching_flag = "-sDISABLE_EXCEPTION_CATCHING=1"
