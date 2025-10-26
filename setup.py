@@ -503,8 +503,15 @@ else:
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf"]
+# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)(and TensorRT RTX License and Acknowledgements for TRT RTX EP)
+extra = [
+    "LICENSE",
+    "ThirdPartyNotices.txt",
+    "Privacy.md",
+    "Qualcomm_LICENSE.pdf",
+    "TRT_RTX_LICENSE.txt",
+    "TRT_RTX_Acknowledgements.txt",
+]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
