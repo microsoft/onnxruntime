@@ -5,7 +5,6 @@
 #define OnnxruntimeModule_h
 
 #import <React/RCTBridgeModule.h>
-#import <React/RCTBlobManager.h>
 
 @interface OnnxruntimeModule : NSObject <RCTBridgeModule>
 

@@ -5,7 +5,7 @@
 #include <functional>
 #include <jsi/jsi.h>
 #include <memory>
-#include <onnxruntime_cxx_api.h>
+#include "onnxruntime_cxx_api.h"
 #include <vector>
 
 namespace onnxruntimejsi {

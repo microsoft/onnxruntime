@@ -1,13 +1,13 @@
 #include "SessionUtils.h"
 #include "JsiUtils.h"
-#include <cpu_provider_factory.h>
+#include "cpu_provider_factory.h"
 #include <jsi/jsi.h>
-#include <onnxruntime_cxx_api.h>
+#include "onnxruntime_cxx_api.h"
 #ifdef USE_NNAPI
-#include <nnapi_provider_factory.h>
+#include "nnapi_provider_factory.h"
 #endif
 #ifdef USE_COREML
-#include <coreml_provider_factory.h>
+#include "coreml_provider_factory.h"
 #endif
 
 // Note: Using below syntax for including ort c api and ort extensions headers to resolve a compiling error happened

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <jsi/jsi.h>
-#include <onnxruntime_cxx_api.h>
+#include "onnxruntime_cxx_api.h"
 
 namespace onnxruntimejsi {
 

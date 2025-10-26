@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Env.h"
-#include "log.h"
 #include <atomic>
 #include <jsi/jsi.h>
 #include <memory>

@@ -6,13 +6,21 @@
 
 #import <Foundation/Foundation.h>
 #import <React/RCTBridge+Private.h>
-#import <React/RCTLog.h>
+#import <React/RCTUtils.h>
+#import <ReactCommon/RCTTurboModule.h>
+#import <jsi/jsi.h>
 
 @implementation OnnxruntimeModule
+
+@synthesize bridge = _bridge;
 
 static std::shared_ptr<onnxruntimejsi::Env> env;
 
 RCT_EXPORT_MODULE(Onnxruntime)
+
+- (void)setBridge:(RCTBridge*)bridge {
+  _bridge = bridge;
+}
 
 /**
  * React native binding API to install onnxruntime JSI API
@@ -29,8 +37,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
       return @false;
     }
     auto& runtime = *jsiRuntime;
-    auto jsiInvoker = std::make_shared<facebook::react::CallInvoker>(
-        [cxxBridge.jsInvoker getModuleRegistry()]);
+    auto jsiInvoker = _bridge.jsCallInvoker;
 
     env = onnxruntimejsi::install(runtime, jsiInvoker);
 

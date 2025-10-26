@@ -21,10 +21,16 @@ Pod::Spec.new do |spec|
   spec.source               = { :git => "https://github.com/Microsoft/onnxruntime.git", :tag => "rel-#{spec.version}" }
 
   spec.source_files         = "ios/*.{h,mm}", "cpp/*.{h,cpp}"
+  spec.private_header_files = "ios/*.h", "cpp/*.h"
 
-  spec.dependency "React-Core"
-  spec.dependency "React-callinvoker"
   spec.dependency "onnxruntime-c"
+
+  if respond_to?(:install_modules_dependencies, true)
+    install_modules_dependencies(s)
+  else
+    s.dependency "React-Core"
+    s.dependency "React-callinvoker"
+  end
 
   spec.xcconfig = {
     'OTHER_CPLUSPLUSFLAGS' => common_cpp_flags,
