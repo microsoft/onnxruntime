@@ -981,6 +981,54 @@ struct OrtEpFactory {
                   _In_ const OrtMemoryDevice* memory_device,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
+
+  /** \brief Check if the execution provider can import external memory of the specified type.
+   *
+   * This allows querying whether the execution provider supports importing memory from external sources
+   * such as D3D12 resources, CUDA external memory handles, or other interop memory handles.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_device The OrtMemoryDevice to check support for.
+   * \param[in] handle_type The type of external memory handle (e.g., D3D12_RESOURCE, CUDA_EXTERNAL_MEMORY).
+   * \return True if the execution provider can import the specified external memory type on this device.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, CanImportExternalMemory, _In_ const OrtEpFactory* this_ptr,
+            _In_ const OrtMemoryDevice* memory_device,
+            OrtExternalMemoryHandleType handle_type);
+
+  /** \brief Import external memory and return a device pointer that can be used with the execution provider.
+   *
+   * This function imports memory from an external source (e.g., D3D12, CUDA) and makes it accessible
+   * to the execution provider. The returned device pointer can be used to create tensors or bind to IOBinding.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_device The OrtMemoryDevice that will access the memory.
+   * \param[in] external_mem_desc Descriptor containing the external memory handle and properties.
+   * \param[out] device_ptr The device pointer that can be used by the execution provider.
+   *                        Caller is responsible for calling ReleaseExternalMemory when done.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ImportExternalMemory, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtMemoryDevice* memory_device,
+                  _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                  _Outptr_ void** device_ptr);
+
+  /** \brief Release external memory previously imported with ImportExternalMemory.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_device The OrtMemoryDevice associated with the imported memory.
+   * \param[in] device_ptr The device pointer returned by ImportExternalMemory.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(void, ReleaseExternalMemory, _In_ OrtEpFactory* this_ptr,
+            _In_ const OrtMemoryDevice* memory_device,
+            _In_ void* device_ptr);
 };
 
 #ifdef __cplusplus

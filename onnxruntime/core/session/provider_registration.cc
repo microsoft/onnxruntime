@@ -15,6 +15,11 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
+#include "core/session/inference_session.h"
+#include "core/session/IOBinding.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/tensor.h"
+#include "core/framework/tensor_shape.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
 #ifdef _WIN32

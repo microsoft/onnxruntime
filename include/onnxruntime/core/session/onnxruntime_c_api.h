@@ -507,6 +507,63 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
 
+/** \brief External memory handle types for GPU memory sharing
+ *
+ * Modeled after Vulkan's VkExternalMemoryHandleTypeFlagBits to enable
+ * zero-copy GPU memory sharing between graphics APIs (D3D12) and compute APIs (CUDA/HIP).
+ *
+ * \since Version 1.23
+ */
+typedef enum OrtExternalMemoryHandleType {
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_NONE = 0,           ///< Invalid/no external memory
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 1, ///< Windows D3D12 resource (ID3D12Resource*)
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 2,     ///< Windows D3D12 heap (ID3D12Heap*)
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_CUDA = 3,           ///< CUDA device pointer (cudaExternalMemory_t or raw pointer)
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HIP = 4,            ///< HIP device pointer (hipExternalMemory_t or raw pointer)
+  
+  // Deprecated names for backward compatibility
+  ORT_EXTERNAL_MEMORY_HANDLE_D3D12_RESOURCE = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE,
+  ORT_EXTERNAL_MEMORY_HANDLE_CUDA = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_CUDA,
+  ORT_EXTERNAL_MEMORY_HANDLE_HIP = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HIP,
+} OrtExternalMemoryHandleType;
+
+/** \brief Access mode for external memory
+ *
+ * Specifies how the execution provider will access external memory, allowing
+ * synchronization optimization by avoiding unnecessary semaphore operations.
+ *
+ * \since Version 1.23
+ */
+typedef enum OrtExternalMemoryAccessMode {
+  ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE = 0, ///< Memory will be both read and written (full sync)
+  ORT_EXTERNAL_MEMORY_ACCESS_READ_ONLY = 1,  ///< Memory will only be read (wait before, no signal)
+  ORT_EXTERNAL_MEMORY_ACCESS_WRITE_ONLY = 2, ///< Memory will only be written (no wait, signal after)
+} OrtExternalMemoryAccessMode;
+
+/** \brief Descriptor for importing external GPU memory into ORT
+ *
+ * This structure describes external memory without exposing graphics API types in the public API.
+ * The native_handle is an opaque pointer whose interpretation depends on handle_type.
+ *
+ * External memory sharing requires explicit synchronization between graphics API (D3D12)
+ * and compute API (CUDA/HIP) using timeline semaphores (shared D3D12 fences).
+ * This follows the same pattern as Vulkan's VK_KHR_external_semaphore.
+ *
+ * \since Version 1.23
+ */
+typedef struct OrtExternalMemoryDescriptor {
+  OrtExternalMemoryHandleType handle_type; ///< Type of external memory handle
+  void* native_handle;                     ///< Platform-specific resource handle (ID3D12Resource*, ID3D12Heap*)
+  size_t size;                             ///< Size of memory region in bytes
+  size_t offset;                           ///< Offset into memory (for heap-based imports)
+  uint64_t flags;                          ///< Optional platform-specific flags
+  OrtExternalMemoryAccessMode access_mode; ///< How EP will access the memory (affects sync)
+  void* wait_semaphore_handle;             ///< HANDLE to shared fence to wait on (D3D12 fence on Windows)
+  uint64_t wait_semaphore_value;           ///< Timeline value to wait for
+  void* signal_semaphore_handle;           ///< HANDLE to shared fence to signal (D3D12 fence on Windows)
+  uint64_t signal_semaphore_value;         ///< Timeline value to signal when done
+} OrtExternalMemoryDescriptor;
+
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
  * This delegate is called by the EP selection code to allow the user to provide custom device selection logic.
@@ -6579,7 +6636,6 @@ struct OrtApi {
   ORT_API2_STATUS(CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath, _In_ int64_t file_offset,
                   _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out);
 
-  /// @}
   /** \brief Fetch whether the tensor has shape information.
    * \param[in] info The OrtTensorTypeAndShapeInfo instance.
    * \return true if the tensor has shape information, false otherwise.
@@ -6587,6 +6643,71 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /// @}
+  /// \name External Memory
+  /// @{
+
+  /** \brief Query if the execution provider in a session supports external memory import
+   *
+   * Allows client code to check if a specific execution provider supports importing
+   * external memory of a given type before attempting to create tensors from it.
+   *
+   * \param[in] session The inference session
+   * \param[in] handle_type Type of external memory handle to query
+   * \param[out] out_supported Output: 1 if supported, 0 otherwise
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(QueryExternalMemorySupport, _In_ const OrtSession* session,
+                  OrtExternalMemoryHandleType handle_type, _Out_ int* out_supported);
+
+  /** \brief Create a tensor from externally managed memory (D3D12/CUDA/HIP)
+   *
+   * Creates an OrtValue tensor that references externally managed GPU memory.
+   * The caller must ensure the external memory remains valid for the lifetime
+   * of the tensor and any operations using it.
+   *
+   * \param[in] info Shape and type information for the tensor
+   * \param[in] external_mem_desc Descriptor for the external memory resource
+   * \param[in] allocator Allocator to use for tensor metadata (not for the data buffer)
+   * \param[out] out Receives the created OrtValue containing the tensor
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(CreateTensorFromExternalMemory,
+                  _In_ const OrtTensorTypeAndShapeInfo* info,
+                  _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                  _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtValue** out);
+
+  /** \brief Bind externally managed memory buffer to an IOBinding for input/output
+   *
+   * Binds an external GPU memory buffer to a named input or output in an IOBinding.
+   * The external memory must remain valid until the Run call completes.
+   *
+   * \param[in] binding The IOBinding instance
+   * \param[in] name Input or output name to bind to
+   * \param[in] info Shape and type information for the tensor
+   * \param[in] external_mem_desc Descriptor for the external memory resource
+   * \param[in] access_mode Read/write access mode for the binding
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(IOBindingBindExternalMemory,
+                  _Inout_ OrtIoBinding* binding,
+                  _In_ const char* name,
+                  _In_ const OrtTensorTypeAndShapeInfo* info,
+                  _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                  OrtExternalMemoryAccessMode access_mode);
+
+  /// @}
 };
 
 /*
@@ -7382,6 +7503,8 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
+
+  /// @}
 };
 
 /*

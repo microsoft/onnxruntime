@@ -221,6 +221,10 @@ struct MigraphXEpFactory : OrtEpFactory {
 
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+
+    CanImportExternalMemory = CanImportExternalMemoryImpl;
+    ImportExternalMemory = ImportExternalMemoryImpl;
+    ReleaseExternalMemory = ReleaseExternalMemoryImpl;
   }
 
   // Returns the name for the EP. Each unique factory configuration must have a unique name.
@@ -324,6 +328,61 @@ struct MigraphXEpFactory : OrtEpFactory {
     *stream = nullptr;
     return factory->ort_api.CreateStatus(
         ORT_INVALID_ARGUMENT, "CreateSyncStreamForDevice should not be called as IsStreamAware returned false.");
+  }
+
+  static bool ORT_API_CALL CanImportExternalMemoryImpl(OrtEpFactory* /*this_ptr*/,
+                                                        const OrtMemoryDevice* /*memory_device*/,
+                                                        OrtExternalMemoryHandleType handle_type) noexcept {
+    // MIGraphX/HIP supports importing from D3D12 on Windows and other HIP allocations
+    switch (handle_type) {
+#ifdef _WIN32
+      case ORT_EXTERNAL_MEMORY_HANDLE_D3D12_RESOURCE:
+        return true;
+#endif
+      case ORT_EXTERNAL_MEMORY_HANDLE_HIP:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static OrtStatus* ORT_API_CALL ImportExternalMemoryImpl(OrtEpFactory* this_ptr,
+                                                          const OrtMemoryDevice* memory_device,
+                                                          const void* native_handle,
+                                                          OrtExternalMemoryHandleType handle_type,
+                                                          size_t size_in_bytes,
+                                                          void** device_ptr) noexcept {
+    auto* factory = static_cast<MigraphXEpFactory*>(this_ptr);
+    ORT_UNUSED_PARAMETER(memory_device);
+    ORT_UNUSED_PARAMETER(size_in_bytes);
+
+    switch (handle_type) {
+#ifdef _WIN32
+      case ORT_EXTERNAL_MEMORY_HANDLE_D3D12_RESOURCE: {
+        // HIP supports importing D3D12 resources on Windows via hipImportExternalMemory
+        // This would require HIP external memory APIs similar to CUDA
+        // For now, return not implemented
+        return factory->ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+            "D3D12 resource import for HIP is not yet implemented");
+      }
+#endif
+      case ORT_EXTERNAL_MEMORY_HANDLE_HIP: {
+        // For HIP-to-HIP, the handle is already a device pointer
+        *device_ptr = const_cast<void*>(native_handle);
+        return nullptr;
+      }
+      default:
+        return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported external memory handle type");
+    }
+  }
+
+  static void ORT_API_CALL ReleaseExternalMemoryImpl(OrtEpFactory* /*this_ptr*/,
+                                                     const OrtMemoryDevice* /*memory_device*/,
+                                                     void* device_ptr) noexcept {
+    // For HIP-to-HIP handles, we don't own the memory, so we don't free it.
+    // The original allocator is responsible for cleanup.
+    // For D3D12 imports, proper cleanup would be needed once implemented.
+    ORT_UNUSED_PARAMETER(device_ptr);
   }
 
   const OrtApi& ort_api;

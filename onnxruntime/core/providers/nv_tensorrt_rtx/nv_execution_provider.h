@@ -345,6 +345,13 @@ class NvExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  // External memory import support (D3D12 ↔ CUDA)
+  bool CanImportExternalMemory(OrtExternalMemoryHandleType handle_type) const override;
+  Status ImportExternalMemory(const OrtExternalMemoryDescriptor& mem_desc,
+                              const TensorShape& shape,
+                              ONNXTensorElementDataType element_type,
+                              OrtValue& out_tensor) override;
+
  private:
   mutable NvExecutionProviderInfo info_;
   bool external_stream_ = false;

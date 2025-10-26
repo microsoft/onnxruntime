@@ -751,4 +751,24 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
+
+// External Memory APIs
+ORT_API_STATUS_IMPL(QueryExternalMemorySupport,
+                    _In_ const OrtSession* session,
+                    OrtExternalMemoryHandleType handle_type,
+                    _Out_ int* out_supported);
+
+ORT_API_STATUS_IMPL(CreateTensorFromExternalMemory,
+                    _In_ const OrtTensorTypeAndShapeInfo* info,
+                    _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                    _In_ OrtAllocator* allocator,
+                    _Outptr_ OrtValue** out);
+
+ORT_API_STATUS_IMPL(IOBindingBindExternalMemory,
+                    _Inout_ OrtIoBinding* binding,
+                    _In_ const char* name,
+                    _In_ const OrtTensorTypeAndShapeInfo* info,
+                    _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                    OrtExternalMemoryAccessMode access_mode);
+
 }  // namespace OrtApis

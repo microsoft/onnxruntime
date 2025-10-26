@@ -3530,6 +3530,249 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
   API_IMPL_END
 }
 
+// External Memory APIs
+ORT_API_STATUS_IMPL(OrtApis::QueryExternalMemorySupport,
+                    _In_ const OrtSession* session,
+                    OrtExternalMemoryHandleType handle_type,
+                    _Out_ int* out_supported) {
+  API_IMPL_BEGIN
+  if (!session || !out_supported) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "session and out_supported must not be null");
+  }
+
+  *out_supported = 0;
+
+  // Get the EP devices from the session
+  InlinedVector<const OrtEpDevice*> ep_devices;
+  auto* inf_session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(session);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(inf_session->GetEpDeviceForInputs(ep_devices));
+
+  // Check if any EP supports this handle type
+  for (const auto* ep_device : ep_devices) {
+    if (ep_device) {
+      OrtEpFactory* factory = ep_device->GetMutableFactory();
+      if (factory && factory->CanImportExternalMemory) {
+        const OrtDevice* device = ep_device->device_memory_info ? &ep_device->device_memory_info->device : nullptr;
+        if (device && factory->CanImportExternalMemory(factory, 
+                                                        static_cast<const OrtMemoryDevice*>(device),
+                                                        handle_type)) {
+          *out_supported = 1;
+          return nullptr;
+        }
+      }
+    }
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+// Helper function to get size of data type in bytes
+static size_t SizeOfDataType(ONNXTensorElementDataType type) {
+  switch (type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return 4;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return 1;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return 1;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return 2;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return 2;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return 4;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return 8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: return 1;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return 2;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return 8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return 4;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return 8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: return 2;
+    default: return 0;
+  }
+}
+
+// Helper structure for external memory cleanup
+struct ExternalMemoryDeleter {
+  OrtEpFactory* factory;
+  const OrtMemoryDevice* memory_device;
+  void* device_ptr;
+
+  static void ORT_API_CALL Free(OrtAllocator* this_, void* p) {
+    ORT_UNUSED_PARAMETER(p);
+    auto* deleter = reinterpret_cast<ExternalMemoryDeleter*>(this_);
+    if (deleter && deleter->factory && deleter->factory->ReleaseExternalMemory && deleter->device_ptr) {
+      deleter->factory->ReleaseExternalMemory(deleter->factory, deleter->memory_device, deleter->device_ptr);
+    }
+    // Free the deleter itself
+    delete deleter;
+  }
+
+  static const OrtMemoryInfo* ORT_API_CALL Info(const OrtAllocator* this_) {
+    ORT_UNUSED_PARAMETER(this_);
+    // Return a basic CPU memory info - the actual device info doesn't matter for the deleter
+    static OrtMemoryInfo cpu_info("Cpu", OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
+    return &cpu_info;
+  }
+};
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorFromExternalMemory,
+                    _In_ const OrtTensorTypeAndShapeInfo* info,
+                    _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                    _In_ OrtAllocator* allocator,
+                    _Outptr_ OrtValue** out) {
+  API_IMPL_BEGIN
+  if (!info || !external_mem_desc || !allocator || !out) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "All parameters must not be null");
+  }
+
+  // Get the OrtMemoryInfo from the allocator to find the right EP factory
+  const OrtMemoryInfo* mem_info = nullptr;
+  ORT_API_RETURN_IF_ERROR(OrtApis::AllocatorGetInfo(allocator, &mem_info));
+
+  if (!mem_info) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Failed to get memory info from allocator");
+  }
+
+  // TODO: Need a way to map from OrtMemoryInfo to the correct OrtEpFactory
+  // This requires additional infrastructure to maintain this mapping
+  // For now, return NOT_IMPLEMENTED with clear message
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, 
+                               "CreateTensorFromExternalMemory requires additional infrastructure. "
+                               "Use IOBindingBindExternalMemory with a session context instead.");
+  
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::IOBindingBindExternalMemory,
+                    _Inout_ OrtIoBinding* binding,
+                    _In_ const char* name,
+                    _In_ const OrtTensorTypeAndShapeInfo* info,
+                    _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                    OrtExternalMemoryAccessMode access_mode) {
+  API_IMPL_BEGIN
+  if (!binding || !name || !info || !external_mem_desc) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "binding, name, info, and external_mem_desc must not be null");
+  }
+
+  auto* io_binding = reinterpret_cast<SessionIOBinding*>(binding);
+  auto* session = io_binding->GetInferenceSession();
+  
+  if (!session) {
+    return OrtApis::CreateStatus(ORT_FAIL, "IOBinding has no associated session");
+  }
+
+  // Get the EP devices from the session
+  InlinedVector<const OrtEpDevice*> ep_devices;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->GetEpDeviceForInputs(ep_devices));
+
+  if (ep_devices.empty()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "No execution provider devices found in session");
+  }
+
+  // Try to import the external memory using the first EP that supports it
+  void* device_ptr = nullptr;
+  OrtEpFactory* successful_factory = nullptr;
+  const OrtMemoryDevice* successful_device = nullptr;
+
+  for (const auto* ep_device : ep_devices) {
+    if (ep_device) {
+      OrtEpFactory* factory = ep_device->GetMutableFactory();
+      const OrtDevice* device = ep_device->device_memory_info ? &ep_device->device_memory_info->device : nullptr;
+      
+      if (factory && device && factory->CanImportExternalMemory && factory->ImportExternalMemory) {
+        const OrtMemoryDevice* mem_device = static_cast<const OrtMemoryDevice*>(device);
+        
+        if (factory->CanImportExternalMemory(factory, mem_device, external_mem_desc->handle_type)) {
+          OrtStatus* import_status = factory->ImportExternalMemory(factory, mem_device, 
+                                                                   external_mem_desc, &device_ptr);
+          if (import_status == nullptr && device_ptr != nullptr) {
+            successful_factory = factory;
+            successful_device = mem_device;
+            break;
+          } else if (import_status != nullptr) {
+            OrtApis::ReleaseStatus(import_status);
+          }
+        }
+      }
+    }
+  }
+
+  if (!device_ptr) {
+    return OrtApis::CreateStatus(ORT_FAIL, "No execution provider could import the external memory");
+  }
+
+  // Get tensor shape information
+  size_t dim_count = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::GetDimensionsCount(info, &dim_count));
+
+  InlinedVector<int64_t> shape(dim_count);
+  ORT_API_RETURN_IF_ERROR(OrtApis::GetDimensions(info, shape.data(), dim_count));
+
+  ONNXTensorElementDataType element_type;
+  ORT_API_RETURN_IF_ERROR(OrtApis::GetTensorElementType(info, &element_type));
+
+  size_t element_size = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::GetTensorShapeElementCount(info, &element_size));
+
+  // Calculate total size
+  size_t total_size = element_size * SizeOfDataType(element_type);
+
+  // Create a custom deleter that will clean up the external memory via EP
+  auto* deleter = new ExternalMemoryDeleter{successful_factory, successful_device, device_ptr};
+  
+  // Setup the deleter as an OrtAllocator
+  OrtAllocator* persistent_deleter = reinterpret_cast<OrtAllocator*>(deleter);
+  persistent_deleter->version = ORT_API_VERSION;
+  persistent_deleter->Alloc = nullptr;  // Not used
+  persistent_deleter->Free = &ExternalMemoryDeleter::Free;
+  persistent_deleter->Info = &ExternalMemoryDeleter::Info;
+
+  // Create OrtValue with the device pointer and custom deleter
+  OrtValue* ort_value = nullptr;
+  OrtStatus* create_status = OrtApis::CreateTensorWithDataAndDeleterAsOrtValue(
+      persistent_deleter,
+      device_ptr,
+      total_size,
+      shape.data(),
+      dim_count,
+      element_type,
+      &ort_value);
+
+  if (create_status != nullptr) {
+    // Cleanup on failure
+    if (successful_factory && successful_factory->ReleaseExternalMemory) {
+      successful_factory->ReleaseExternalMemory(successful_factory, successful_device, device_ptr);
+    }
+    delete deleter;
+    return create_status;
+  }
+
+  // Bind the OrtValue to the IOBinding
+  auto* io_binding_impl = io_binding->Get();
+  if (!io_binding_impl) {
+    OrtApis::ReleaseValue(ort_value);
+    return OrtApis::CreateStatus(ORT_FAIL, "Failed to get IOBinding implementation");
+  }
+
+  OrtValue internal_ort_value = *reinterpret_cast<::OrtValue*>(ort_value);
+  
+  Status bind_status;
+  if (access_mode == ORT_EXTERNAL_MEMORY_ACCESS_READ_ONLY) {
+    bind_status = io_binding_impl->BindInput(name, internal_ort_value);
+  } else if (access_mode == ORT_EXTERNAL_MEMORY_ACCESS_WRITE_ONLY || 
+             access_mode == ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE) {
+    bind_status = io_binding_impl->BindOutput(name, internal_ort_value);
+  } else {
+    OrtApis::ReleaseValue(ort_value);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid access mode");
+  }
+
+  OrtApis::ReleaseValue(ort_value);
+
+  if (!bind_status.IsOK()) {
+    return ToOrtStatus(bind_status);
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 #else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
@@ -3560,6 +3803,37 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
                     _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetModelCompatibilityForEpDevices is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// Minimal build stubs for External Memory APIs
+ORT_API_STATUS_IMPL(OrtApis::QueryExternalMemorySupport,
+                    _In_ const OrtSession* /*session*/,
+                    OrtExternalMemoryHandleType /*handle_type*/,
+                    _Out_ int* /*out_supported*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "QueryExternalMemorySupport is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorFromExternalMemory,
+                    _In_ const OrtTensorTypeAndShapeInfo* /*info*/,
+                    _In_ const OrtExternalMemoryDescriptor* /*external_mem_desc*/,
+                    _In_ OrtAllocator* /*allocator*/,
+                    _Outptr_ OrtValue** /*out*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateTensorFromExternalMemory is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::IOBindingBindExternalMemory,
+                    _Inout_ OrtIoBinding* /*binding*/,
+                    _In_ const char* /*name*/,
+                    _In_ const OrtTensorTypeAndShapeInfo* /*info*/,
+                    _In_ const OrtExternalMemoryDescriptor* /*external_mem_desc*/,
+                    OrtExternalMemoryAccessMode /*access_mode*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "IOBindingBindExternalMemory is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4229,6 +4503,12 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::GetModelCompatibilityForEpDevices,
     &OrtApis::CreateExternalInitializerInfo,
     &OrtApis::TensorTypeAndShape_HasShape,
+    
+    // External Memory APIs - Added to Version 23
+    &OrtApis::QueryExternalMemorySupport,
+    &OrtApis::CreateTensorFromExternalMemory,
+    &OrtApis::IOBindingBindExternalMemory,
+    // End of Version 23 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -67,6 +67,19 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 
+  static bool ORT_API_CALL CanImportExternalMemoryImpl(OrtEpFactory* this_ptr,
+                                                        const OrtMemoryDevice* memory_device,
+                                                        OrtExternalMemoryHandleType handle_type) noexcept;
+
+  static OrtStatus* ORT_API_CALL ImportExternalMemoryImpl(OrtEpFactory* this_ptr,
+                                                          const OrtMemoryDevice* memory_device,
+                                                          const OrtExternalMemoryDescriptor* external_mem_desc,
+                                                          void** device_ptr) noexcept;
+
+  static void ORT_API_CALL ReleaseExternalMemoryImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryDevice* memory_device,
+                                                     void* device_ptr) noexcept;
+
   const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name

@@ -82,6 +82,25 @@ struct ForwardToFactoryImpl {
     return static_cast<TFactory*>(this_ptr)->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
+  static bool ORT_API_CALL CanImportExternalMemory(_In_ const OrtEpFactory* this_ptr,
+                                                   _In_ const OrtMemoryDevice* memory_device,
+                                                   OrtExternalMemoryHandleType handle_type) noexcept {
+    return static_cast<const TFactory*>(this_ptr)->CanImportExternalMemory(memory_device, handle_type);
+  }
+
+  static OrtStatus* ORT_API_CALL ImportExternalMemory(_In_ OrtEpFactory* this_ptr,
+                                                      _In_ const OrtMemoryDevice* memory_device,
+                                                      _In_ const OrtExternalMemoryDescriptor* external_mem_desc,
+                                                      _Outptr_ void** device_ptr) noexcept {
+    return static_cast<TFactory*>(this_ptr)->ImportExternalMemory(memory_device, external_mem_desc, device_ptr);
+  }
+
+  static void ORT_API_CALL ReleaseExternalMemory(_In_ OrtEpFactory* this_ptr,
+                                                 _In_ const OrtMemoryDevice* memory_device,
+                                                 _In_ void* device_ptr) noexcept {
+    static_cast<TFactory*>(this_ptr)->ReleaseExternalMemory(memory_device, device_ptr);
+  }
+
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }

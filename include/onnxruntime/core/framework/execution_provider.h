@@ -416,6 +416,47 @@ class IExecutionProvider {
     return InlinedVector<const Node*>();
   }
 
+  /**
+   * Query if this EP can import external memory of the given type.
+   * Used for zero-copy GPU memory sharing between graphics APIs (D3D12) and compute APIs (CUDA/HIP).
+   * @param handle_type Type of external memory handle (D3D12_RESOURCE, D3D12_HEAP, etc.)
+   * @return true if this EP supports importing external memory of this type
+   */
+  virtual bool CanImportExternalMemory(OrtExternalMemoryHandleType handle_type) const {
+    ORT_UNUSED_PARAMETER(handle_type);
+    return false;  // Default: not supported
+  }
+
+  /**
+   * Import external GPU memory and create a tensor wrapping it.
+   * Enables zero-copy sharing of GPU memory between D3D12 and CUDA/HIP.
+   * 
+   * The implementation should:
+   * 1. Import the platform-specific external memory handle (e.g., D3D12 resource)
+   * 2. Map it to EP-specific device memory (e.g., CUDA device pointer)
+   * 3. Import synchronization semaphores if provided (timeline fences)
+   * 4. Create a tensor that wraps the external memory
+   * 5. Register cleanup callbacks to signal semaphores when done
+   *
+   * @param mem_desc Descriptor containing native handle, size, offset, sync semaphores
+   * @param shape Tensor shape
+   * @param element_type Tensor data type
+   * @param out_tensor Output OrtValue containing the tensor
+   * @return Status indicating success or failure
+   */
+  virtual Status ImportExternalMemory(
+      const OrtExternalMemoryDescriptor& mem_desc,
+      const TensorShape& shape,
+      ONNXTensorElementDataType element_type,
+      OrtValue& out_tensor) {
+    ORT_UNUSED_PARAMETER(mem_desc);
+    ORT_UNUSED_PARAMETER(shape);
+    ORT_UNUSED_PARAMETER(element_type);
+    ORT_UNUSED_PARAMETER(out_tensor);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "External memory import not supported by this execution provider");
+  }
+
  private:
   const std::string type_;
 

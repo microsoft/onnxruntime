@@ -106,6 +106,13 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
         {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_path_)}};
   }
 
+  // External memory import support (D3D12 ↔ HIP)
+  bool CanImportExternalMemory(OrtExternalMemoryHandleType handle_type) const override;
+  Status ImportExternalMemory(const OrtExternalMemoryDescriptor& mem_desc,
+                              const TensorShape& shape,
+                              ONNXTensorElementDataType element_type,
+                              OrtValue& out_tensor) override;
+
  private:
   OrtDevice::DeviceId device_id_{0};
   bool fp16_enable_ = false;

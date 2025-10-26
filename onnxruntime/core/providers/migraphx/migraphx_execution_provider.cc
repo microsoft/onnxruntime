@@ -1641,4 +1641,193 @@ Status MIGraphXExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxrunti
   return Status::OK();
 }
 
+// External memory import support for D3D12 ↔ HIP interop
+bool MIGraphXExecutionProvider::CanImportExternalMemory(OrtExternalMemoryHandleType handle_type) const {
+#ifdef _WIN32
+  // Only support D3D12 resources and heaps on Windows with HIP
+  return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
+         handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+#else
+  ORT_UNUSED_PARAMETER(handle_type);
+  return false;
+#endif
+}
+
+#ifdef _WIN32
+namespace {
+// Helper to get element size from ONNXTensorElementDataType
+size_t GetElementSizeFromType(ONNXTensorElementDataType elem_type) {
+  switch (elem_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return sizeof(float);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return sizeof(double);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return sizeof(int8_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return sizeof(int16_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return sizeof(int32_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return sizeof(int64_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return sizeof(uint8_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return sizeof(uint16_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return sizeof(uint32_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return sizeof(uint64_t);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return 2;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: return 2;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: return sizeof(bool);
+    default: return 0;
+  }
+}
+}  // namespace
+#endif
+
+Status MIGraphXExecutionProvider::ImportExternalMemory(const OrtExternalMemoryDescriptor& mem_desc,
+                                                       const TensorShape& shape,
+                                                       ONNXTensorElementDataType element_type,
+                                                       OrtValue& out_tensor) {
+#ifdef _WIN32
+  // Validate handle type
+  if (mem_desc.handle_type != ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE &&
+      mem_desc.handle_type != ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "MIGraphX EP only supports D3D12_RESOURCE and D3D12_HEAP handle types");
+  }
+
+  // Calculate tensor size
+  size_t element_size = GetElementSizeFromType(element_type);
+  if (element_size == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported element type");
+  }
+  size_t tensor_size = shape.Size() * element_size;
+  if (tensor_size > mem_desc.size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Tensor size exceeds external memory size");
+  }
+
+  // Import D3D12 resource using HIP external memory API
+  hipExternalMemoryHandleDesc ext_mem_desc = {};
+  ext_mem_desc.type = (mem_desc.handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE)
+                          ? hipExternalMemoryHandleTypeD3D12Resource
+                          : hipExternalMemoryHandleTypeD3D12Heap;
+  ext_mem_desc.handle.win32.handle = mem_desc.native_handle;
+  ext_mem_desc.handle.win32.name = nullptr;
+  ext_mem_desc.size = mem_desc.size;
+  ext_mem_desc.flags = 0;
+
+  hipExternalMemory_t ext_mem = nullptr;
+  hipError_t hip_result = hipImportExternalMemory(&ext_mem, &ext_mem_desc);
+  if (hip_result != hipSuccess) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "hipImportExternalMemory failed with error ", hip_result);
+  }
+
+  // Map the external memory to get device pointer
+  hipExternalMemoryBufferDesc buf_desc = {};
+  buf_desc.offset = mem_desc.offset;
+  buf_desc.size = tensor_size;
+  buf_desc.flags = 0;
+
+  void* device_ptr = nullptr;
+  hip_result = hipExternalMemoryGetMappedBuffer(&device_ptr, ext_mem, &buf_desc);
+  if (hip_result != hipSuccess) {
+    hipDestroyExternalMemory(ext_mem);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "hipExternalMemoryGetMappedBuffer failed with error ", hip_result);
+  }
+
+  // Import timeline semaphores for synchronization
+  hipExternalSemaphore_t wait_semaphore = nullptr;
+  hipExternalSemaphore_t signal_semaphore = nullptr;
+
+  if (mem_desc.wait_semaphore_handle != nullptr) {
+    hipExternalSemaphoreHandleDesc sem_desc = {};
+    sem_desc.type = hipExternalSemaphoreHandleTypeD3D12Fence;
+    sem_desc.handle.win32.handle = mem_desc.wait_semaphore_handle;
+    sem_desc.handle.win32.name = nullptr;
+    sem_desc.flags = 0;
+
+    hip_result = hipImportExternalSemaphore(&wait_semaphore, &sem_desc);
+    if (hip_result != hipSuccess) {
+      hipDestroyExternalMemory(ext_mem);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "hipImportExternalSemaphore (wait) failed with error ", hip_result);
+    }
+  }
+
+  if (mem_desc.signal_semaphore_handle != nullptr &&
+      mem_desc.access_mode != ORT_EXTERNAL_MEMORY_ACCESS_READ_ONLY) {
+    hipExternalSemaphoreHandleDesc sem_desc = {};
+    sem_desc.type = hipExternalSemaphoreHandleTypeD3D12Fence;
+    sem_desc.handle.win32.handle = mem_desc.signal_semaphore_handle;
+    sem_desc.handle.win32.name = nullptr;
+    sem_desc.flags = 0;
+
+    hip_result = hipImportExternalSemaphore(&signal_semaphore, &sem_desc);
+    if (hip_result != hipSuccess) {
+      if (wait_semaphore) hipDestroyExternalSemaphore(wait_semaphore);
+      hipDestroyExternalMemory(ext_mem);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "hipImportExternalSemaphore (signal) failed with error ", hip_result);
+    }
+  }
+
+  // Wait on external semaphore if needed
+  if (wait_semaphore != nullptr &&
+      mem_desc.access_mode != ORT_EXTERNAL_MEMORY_ACCESS_WRITE_ONLY) {
+    hipExternalSemaphoreWaitParams wait_params = {};
+    wait_params.params.fence.value = mem_desc.wait_semaphore_value;
+    wait_params.flags = 0;
+
+    hip_result = hipWaitExternalSemaphoresAsync(&wait_semaphore, &wait_params, 1, stream_);
+    if (hip_result != hipSuccess) {
+      if (signal_semaphore) hipDestroyExternalSemaphore(signal_semaphore);
+      if (wait_semaphore) hipDestroyExternalSemaphore(wait_semaphore);
+      hipDestroyExternalMemory(ext_mem);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "hipWaitExternalSemaphoresAsync failed with error ", hip_result);
+    }
+  }
+
+  // Create tensor wrapping the external memory
+  // Get allocator for the device
+  AllocatorPtr allocator = GetAllocator(device_id_, OrtMemTypeDefault);
+  if (!allocator) {
+    if (signal_semaphore) hipDestroyExternalSemaphore(signal_semaphore);
+    if (wait_semaphore) hipDestroyExternalSemaphore(wait_semaphore);
+    hipDestroyExternalMemory(ext_mem);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get allocator for device");
+  }
+
+  // Create tensor with external buffer
+  // TODO: Need to add custom deleter to handle cleanup of external memory handles
+  auto ml_tensor = Tensor::Create(element_type, shape, device_ptr, allocator->Info());
+  
+  out_tensor.Init(ml_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  // Signal external semaphore after access (if applicable)
+  if (signal_semaphore != nullptr) {
+    hipExternalSemaphoreSignalParams signal_params = {};
+    signal_params.params.fence.value = mem_desc.signal_semaphore_value;
+    signal_params.flags = 0;
+
+    hip_result = hipSignalExternalSemaphoresAsync(&signal_semaphore, &signal_params, 1, stream_);
+    if (hip_result != hipSuccess) {
+      // Log error but don't fail since tensor creation succeeded
+      LOGS_DEFAULT(WARNING) << "hipSignalExternalSemaphoresAsync failed with error " << hip_result;
+    }
+  }
+
+  // NOTE: Proper lifecycle management of ext_mem, wait_semaphore, and signal_semaphore
+  // would require custom deleter on the OrtValue. For production, this needs to be
+  // refactored to store handles and clean up in the tensor's deleter.
+  // This is a simplified implementation for initial integration.
+
+  return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(mem_desc);
+  ORT_UNUSED_PARAMETER(shape);
+  ORT_UNUSED_PARAMETER(element_type);
+  ORT_UNUSED_PARAMETER(out_tensor);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "External memory import is only supported on Windows");
+#endif
+}
+
 }  // namespace onnxruntime

@@ -32,6 +32,10 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
+  CanImportExternalMemory = CanImportExternalMemoryImpl;
+  ImportExternalMemory = ImportExternalMemoryImpl;
+  ReleaseExternalMemory = ReleaseExternalMemoryImpl;
+
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
   OrtMemoryInfo* mem_info = nullptr;
@@ -312,3 +316,36 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
 
   return nullptr;
 }
+
+/*static*/
+bool ORT_API_CALL ExampleEpFactory::CanImportExternalMemoryImpl(OrtEpFactory* /*this_ptr*/,
+                                                                 const OrtMemoryDevice* /*memory_device*/,
+                                                                 OrtExternalMemoryHandleType handle_type) noexcept {
+  // Example EP doesn't support importing external memory
+  // In a real EP, you would check if the handle_type is supported
+  ORT_UNUSED_PARAMETER(handle_type);
+  return false;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::ImportExternalMemoryImpl(OrtEpFactory* this_ptr,
+                                                                   const OrtMemoryDevice* memory_device,
+                                                                   const OrtExternalMemoryDescriptor* external_mem_desc,
+                                                                   void** device_ptr) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  ORT_UNUSED_PARAMETER(memory_device);
+  ORT_UNUSED_PARAMETER(external_mem_desc);
+  ORT_UNUSED_PARAMETER(device_ptr);
+  
+  return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, 
+                                     "Example EP does not support external memory import");
+}
+
+/*static*/
+void ORT_API_CALL ExampleEpFactory::ReleaseExternalMemoryImpl(OrtEpFactory* /*this_ptr*/,
+                                                              const OrtMemoryDevice* /*memory_device*/,
+                                                              void* device_ptr) noexcept {
+  // No cleanup needed - Example EP doesn't import external memory
+  ORT_UNUSED_PARAMETER(device_ptr);
+}
+
