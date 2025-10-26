@@ -17,13 +17,18 @@ namespace onnxruntime {
 
 bool IsPatternBatchnorm(const NodeArg* inp,
                         const ONNX_NAMESPACE::TensorProto* scale,
-                        const ONNX_NAMESPACE::TensorProto* bias) {
+                        const ONNX_NAMESPACE::TensorProto* bias,
+                        const logging::Logger& logger) {
+  if (!inp->Shape()) {
+    LOGS(logger, VERBOSE) << "Skip MulAddFusion since " << inp->Name() << " has nullptr on shape";
+    return false;
+  }
   int inp_rank = inp->Shape()->dim_size();
   int scale_rank = scale->dims_size();
   int bias_rank = bias->dims_size();
   int max_rank = std::max({inp_rank, scale_rank, bias_rank});
-  // Currently we do not support mul + add with rank-1 inputs
   if (max_rank <= 1) {
+    LOGS(logger, VERBOSE) << "Skip MulAddFusion since the max rank among " << inp->Name() << ", " << scale->name() << " and " << bias->name() << "is <= 1";
     return false;
   }
   std::vector<int64_t> broadcast_inp(max_rank);
@@ -39,20 +44,23 @@ bool IsPatternBatchnorm(const NodeArg* inp,
   // Note: The num_channel can be 1
   int64_t num_channel = broadcast_inp[1];
   if ((broadcast_scale[0] != 1) || (broadcast_scale[1] != 1 && broadcast_scale[1] != num_channel)) {
+    LOGS(logger, VERBOSE) << "Skip MulAddFusion since " << scale->name() << " has unsupported shape.";
     return false;
   }
   if ((broadcast_bias[0] != 1) || (broadcast_bias[1] != 1 && broadcast_bias[1] != num_channel)) {
+    LOGS(logger, VERBOSE) << "Skip MulAddFusion since " << bias->name() << " has unsupported shape.";
     return false;
   }
   for (int idx = 2; idx < max_rank; ++idx) {
     if (broadcast_scale[idx] != 1 || broadcast_bias[idx] != 1) {
+      LOGS(logger, VERBOSE) << "Skip MulAddFusion since " << scale->name() << " or " << bias->name() << " has unsupported shape.";
       return false;
     }
   }
   return true;
 }
 
-bool MulAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
+bool MulAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   auto& mul_node = node;
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7}) ||
       mul_node.GetOutputEdgesCount() != 1) {
@@ -66,6 +74,7 @@ bool MulAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
   }
   // Pattern: Input -> Mul -> Add
   if (mul_node.InputDefs().size() != 2 || add_node.InputDefs().size() != 2) {
+    LOGS(logger, VERBOSE) << "Skip MulAddFusion since " << mul_node.Name() << " or " << add_node.Name() << " has more than 2 inputs.";
     return false;
   }
 
@@ -76,9 +85,11 @@ bool MulAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
   bool is_const_add_in0 = graph_utils::NodeArgIsConstant(graph, *add_node.InputDefs()[0]);
   bool is_const_add_in1 = graph_utils::NodeArgIsConstant(graph, *add_node.InputDefs()[1]);
   if ((is_const_mul_in0 && is_const_mul_in1) || (!is_const_mul_in0 && !is_const_mul_in1)) {
+    LOGS(logger, VERBOSE) << "Skip MulAddFusion since " << mul_node.Name() << " should have exactly 1 constant and 1 non-contant input.";
     return false;
   }
   if ((is_const_add_in0 && is_const_add_in1) || (!is_const_add_in0 && !is_const_add_in1)) {
+    LOGS(logger, VERBOSE) << "Skip MulAddFusion since " << add_node.Name() << " should have exactly 1 constant and 1 non-contant input.";
     return false;
   }
 
@@ -87,7 +98,8 @@ bool MulAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
   return IsPatternBatchnorm(
       mul_node.InputDefs()[1 - mul_const_idx],
       graph_utils::GetConstantInitializer(graph, mul_node.InputDefs()[mul_const_idx]->Name()),
-      graph_utils::GetConstantInitializer(graph, add_node.InputDefs()[add_const_idx]->Name()));
+      graph_utils::GetConstantInitializer(graph, add_node.InputDefs()[add_const_idx]->Name()),
+      logger);
 }
 
 Status MulAddFusion::FuseMulAdd(Node& node, Graph& graph, bool& modified, const logging::Logger&) const {
