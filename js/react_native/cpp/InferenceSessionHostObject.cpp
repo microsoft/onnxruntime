@@ -18,8 +18,11 @@ class InferenceSessionHostObject::LoadModelAsyncWorker : public AsyncWorker {
       throw JSError(runtime, "loadModel requires at least 1 argument");
     if (arguments[0].isString()) {
       modelPath_ = arguments[0].asString(runtime).utf8(runtime);
-      if (modelPath_.find("file://") == 0) {
-        modelPath_ = modelPath_.substr(7);
+      if (modelPath_.find("file:/") == 0) {
+        modelPath_ = modelPath_.substr(5);
+        if (modelPath_.find("//") == 0) {
+          modelPath_ = modelPath_.substr(2);
+        }
       }
     } else if (arguments[0].isObject() &&
                arguments[0].asObject(runtime).isArrayBuffer(runtime)) {
