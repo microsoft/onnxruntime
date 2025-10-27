@@ -6,7 +6,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.38.0.250901
+  default: 2.39.0.250926
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
@@ -38,8 +38,8 @@ variables:
   - name: ReleaseVersionSuffix
     value: ''
   - name: win_cuda_home
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\v11.8
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: $(Agent.TempDirectory)\v13.0
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: $(Agent.TempDirectory)\v12.8
 

@@ -107,6 +107,14 @@
         "default": "./dist/ort.webgpu.bundle.min.mjs"
       },
       "require": "./dist/ort.webgpu.min.js"
+    },
+    "./jspi": {
+      "types": "./types.d.ts",
+      "import": {
+        "onnxruntime-web-use-extern-wasm": "./dist/ort.jspi.min.mjs",
+        "default": "./dist/ort.jspi.bundle.min.mjs"
+      },
+      "require": "./dist/ort.jspi.min.js"
     }
   },
   "types": "./types.d.ts",

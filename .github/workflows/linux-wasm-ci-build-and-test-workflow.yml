@@ -37,7 +37,15 @@ jobs:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     env:
       buildArch: x64
-      common_build_args: --parallel ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} --config ${{ inputs.build_config }} --skip_submodule_sync --build_wasm --enable_wasm_simd ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }} ${{ inputs.extra_build_args }}
+      common_build_args: >-
+        --parallel
+        ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
+        --config ${{ inputs.build_config }}
+        --skip_submodule_sync
+        --build_wasm
+        --enable_wasm_simd
+        ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }}
+        ${{ inputs.extra_build_args }}
 
     steps:
       - name: Checkout code
@@ -46,7 +54,7 @@ jobs:
           submodules: recursive
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -70,6 +78,7 @@ jobs:
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -82,6 +91,7 @@ jobs:
             --use_jsep \
             --use_webnn \
             --target onnxruntime_webassembly \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -93,6 +103,20 @@ jobs:
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu \
             --use_webgpu \
             --use_webnn \
+            --target onnxruntime_webassembly \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
+            --skip_tests
+        working-directory: ${{ github.workspace }}
+
+      - name: Build (simd + threads + WebGPU experimental, JSPI)
+        if: ${{ inputs.build_webgpu == true }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi \
+            --use_webgpu \
+            --use_webnn \
+            --enable_wasm_jspi \
             --target onnxruntime_webassembly \
             --skip_tests
         working-directory: ${{ github.workspace }}
@@ -110,6 +134,10 @@ jobs:
           if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu ]; then
             cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.wasm ${{ github.workspace }}/artifacts/wasm/
             cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.mjs ${{ github.workspace }}/artifacts/wasm/
+          fi
+          if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi ]; then
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.wasm ${{ github.workspace }}/artifacts/wasm/
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu_jspi/${{ inputs.build_config }}/ort-wasm-simd-threaded.jspi.mjs ${{ github.workspace }}/artifacts/wasm/
           fi
 
       - name: Upload WASM artifacts

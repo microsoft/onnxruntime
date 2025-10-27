@@ -9,7 +9,7 @@
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/allocator.h"
 #include "core/platform/threadpool.h"
 #include "core/common/narrow.h"

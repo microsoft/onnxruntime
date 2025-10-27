@@ -4,9 +4,9 @@
 
 #include <math.h>
 
-#include "endian.h"
+#include "core/common/endian.h"
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#include "cuda_bf16.h"
+#include "cuda_bf16.h"  // from CUDA SDK
 #endif
 
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
