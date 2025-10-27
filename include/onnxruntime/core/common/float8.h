@@ -16,7 +16,7 @@
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#include "endian.h"
+#include "core/common/endian.h"
 
 #if defined(__CUDACC__)
 // Needed for CUDA_VERSION check below

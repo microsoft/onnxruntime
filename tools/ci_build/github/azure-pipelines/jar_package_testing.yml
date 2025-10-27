@@ -45,7 +45,7 @@ stages:
         DownloadTRT: true
 
     - template: templates/setup-maven.yml
-    
+
     - task: Maven@4
       displayName: 'Download Java Dependencies'
       inputs:
@@ -105,7 +105,7 @@ stages:
     - name: runCodesignValidationInjection
       value: false
     - name: docker_base_image
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20251008.2
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
     timeoutInMinutes: 60
     steps:
     - checkout: self
