@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "core/common/semver.h"

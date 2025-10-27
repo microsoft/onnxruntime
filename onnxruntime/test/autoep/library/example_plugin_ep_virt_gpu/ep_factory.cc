@@ -8,12 +8,14 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "ep.h"
+#include "../plugin_ep_utils.h"
 
 EpFactoryVirtualGpu::EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api,
-                                         const OrtLogger& default_logger)
+                                         const OrtModelEditorApi& model_editor_api, const OrtLogger& default_logger)
     : OrtEpFactory{},
       ort_api_(ort_api),
       ep_api_(ep_api),
+      model_editor_api_(model_editor_api),
       allow_virtual_devices_{false},
       default_logger_{default_logger} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
@@ -82,46 +84,18 @@ OrtStatus* ORT_API_CALL EpFactoryVirtualGpu::SetEnvironmentOptionsImpl(OrtEpFact
 
 /*static*/
 OrtStatus* ORT_API_CALL EpFactoryVirtualGpu::GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
-                                                                     const OrtHardwareDevice* const* devices,
-                                                                     size_t num_devices,
+                                                                     const OrtHardwareDevice* const* /*devices*/,
+                                                                     size_t /*num_devices*/,
                                                                      OrtEpDevice** ep_devices,
                                                                      size_t max_ep_devices,
                                                                      size_t* p_num_ep_devices) noexcept {
   size_t& num_ep_devices = *p_num_ep_devices;
   auto* factory = static_cast<EpFactoryVirtualGpu*>(this_ptr);
 
-  for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
-    const OrtHardwareDevice& device = *devices[i];
-    if (factory->ort_api_.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
-      // these can be returned as nullptr if you have nothing to add.
-      OrtKeyValuePairs* ep_metadata = nullptr;
-      OrtKeyValuePairs* ep_options = nullptr;
-      factory->ort_api_.CreateKeyValuePairs(&ep_metadata);
-      factory->ort_api_.CreateKeyValuePairs(&ep_options);
-
-      // random example using made up values
-      factory->ort_api_.AddKeyValuePair(ep_metadata, "ex_key", "ex_value");
-      factory->ort_api_.AddKeyValuePair(ep_options, "ex_key_2", "ex_value_2");
-
-      // OrtEpDevice copies ep_metadata and ep_options.
-      OrtEpDevice* ep_device = nullptr;
-      auto* status = factory->ort_api_.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
-                                                                  &ep_device);
-
-      factory->ort_api_.ReleaseKeyValuePairs(ep_metadata);
-      factory->ort_api_.ReleaseKeyValuePairs(ep_options);
-
-      if (status != nullptr) {
-        return status;
-      }
-
-      ep_devices[num_ep_devices++] = ep_device;
-    }
-  }
+  num_ep_devices = 0;
 
   // Create a virtual OrtHardwareDevice if application indicated it is allowed (e.g., for cross-compiling).
-  // This example EP creates a virtual GPU OrtHardwareDevice and adds a new
-  // OrtEpDevice that uses the virutal GPU.
+  // This example EP creates a virtual GPU OrtHardwareDevice and adds a new OrtEpDevice that uses the virtual GPU.
   if (factory->allow_virtual_devices_ && num_ep_devices < max_ep_devices) {
     OrtKeyValuePairs* hw_metadata = nullptr;
     factory->ort_api_.CreateKeyValuePairs(&hw_metadata);
@@ -170,7 +144,7 @@ OrtStatus* ORT_API_CALL EpFactoryVirtualGpu::CreateEpImpl(OrtEpFactory* this_ptr
                                                           const OrtHardwareDevice* const* /*devices*/,
                                                           const OrtKeyValuePairs* const* /*ep_metadata*/,
                                                           size_t num_devices,
-                                                          const OrtSessionOptions* /*session_options*/,
+                                                          const OrtSessionOptions* session_options,
                                                           const OrtLogger* logger,
                                                           OrtEp** ep) noexcept {
   auto* factory = static_cast<EpFactoryVirtualGpu*>(this_ptr);
@@ -182,7 +156,13 @@ OrtStatus* ORT_API_CALL EpFactoryVirtualGpu::CreateEpImpl(OrtEpFactory* this_ptr
                                           "EpFactoryVirtualGpu only supports selection for one device.");
   }
 
-  auto actual_ep = std::make_unique<EpVirtualGpu>(*factory, *logger);
+  std::string ep_context_enable;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.context_enable", "0", ep_context_enable));
+
+  EpVirtualGpu::Config config = {};
+  config.enable_ep_context = ep_context_enable == "1";
+
+  auto actual_ep = std::make_unique<EpVirtualGpu>(*factory, config, *logger);
 
   *ep = actual_ep.release();
   return nullptr;

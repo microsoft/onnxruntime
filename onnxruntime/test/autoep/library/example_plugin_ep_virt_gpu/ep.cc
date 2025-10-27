@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include <array>
+#include <cassert>
 #include <memory>
 #include <optional>
 #include <string>
@@ -14,71 +15,17 @@
 #include "../plugin_ep_utils.h"
 
 /// <summary>
-/// Example implementation of ONNX Add. Does not handle many things like broadcasting.
-/// Used as the implementation of a compiled subgraph with a single Add node.
+/// Empty (not implemented) computation functor for a compiled Add.
+/// This EP only supports a virtual GPU device that cannot run inference, but can create a compiled model.
 /// </summary>
-struct AddImpl {
-  AddImpl(const OrtApi& ort_api, const OrtLogger& logger) : ort_api(ort_api), logger(logger) {}
+struct VirtualCompiledAdd {
+  VirtualCompiledAdd(const OrtApi& ort_api, const OrtLogger& logger) : ort_api(ort_api), logger(logger) {}
 
-  void GetInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
-                            /*out*/ gsl::span<const float>& data,
-                            /*out*/ std::vector<int64_t>& shape) const {
-    Ort::ConstValue input = kernel_context.GetInput(index);
-    auto type_shape = input.GetTensorTypeAndShapeInfo();
-
-    ONNXTensorElementDataType elem_type = type_shape.GetElementType();
-    if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-      throw Ort::Exception("EP Expected float32 inputs", ORT_EP_FAIL);
-
-    const float* float_data = input.GetTensorData<float>();
-    size_t num_elems = type_shape.GetElementCount();
-    data = gsl::span<const float>(float_data, num_elems);
-    shape = type_shape.GetShape();
-  }
-
-  OrtStatus* Compute(OrtKernelContext* kernel_ctx) {
+  OrtStatus* Compute(OrtKernelContext* /*kernel_ctx*/) {
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
                                               OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                              "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
-    Ort::KernelContext kernel_context(kernel_ctx);
-    try {
-      gsl::span<const float> input0;
-      gsl::span<const float> input1;
-      std::vector<int64_t> shape0;
-      std::vector<int64_t> shape1;
-
-      size_t num_inputs = kernel_context.GetInputCount();
-      if (num_inputs != 2) {
-        throw Ort::Exception("Expected 2 inputs for AddImpl", ORT_INVALID_ARGUMENT);
-      }
-
-      GetInputDataAndShape(kernel_context, 0, input0, shape0);
-      GetInputDataAndShape(kernel_context, 1, input1, shape1);
-
-      if (shape0 != shape1) {
-        throw Ort::Exception("Expected same dimensions for both inputs", ORT_INVALID_ARGUMENT);
-      }
-
-      size_t num_outputs = kernel_context.GetOutputCount();
-      if (num_outputs != 1) {
-        throw Ort::Exception("Expected 1 output for AddImpl", ORT_INVALID_ARGUMENT);
-      }
-
-      auto output = kernel_context.GetOutput(0, shape0);
-      float* output_data = output.GetTensorMutableData<float>();
-
-      for (size_t i = 0; i < input0.size(); ++i) {
-        output_data[i] = input0[i] + input1[i];
-      }
-    } catch (const Ort::Exception& ex) {
-      Ort::Status status(ex);
-      return status.release();
-    } catch (const std::exception& ex) {
-      Ort::Status status(ex.what(), ORT_EP_FAIL);
-      return status.release();
-    }
-
-    return nullptr;
+                                              "VirtualCompiledAdd::Compute", ORT_FILE, __LINE__, __FUNCTION__));
+    return ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "EP only supports a virtual GPU that cannot run ops.");
   }
 
   const OrtApi& ort_api;
@@ -101,11 +48,13 @@ struct AddNodeComputeInfo : OrtNodeComputeInfo {
   EpVirtualGpu& ep;
 };
 
-EpVirtualGpu::EpVirtualGpu(EpFactoryVirtualGpu& factory, const OrtLogger& logger)
+EpVirtualGpu::EpVirtualGpu(EpFactoryVirtualGpu& factory, const EpVirtualGpu::Config& config, const OrtLogger& logger)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       factory_{factory},
+      config_{config},
       ort_api_{factory.GetOrtApi()},
       ep_api_{factory.GetEpApi()},
+      model_editor_api_{factory.GetModelEditorApi()},
       name_{factory.GetEpName()},
       logger_{logger} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
@@ -140,6 +89,7 @@ OrtStatus* ORT_API_CALL EpVirtualGpu::GetCapabilityImpl(OrtEp* this_ptr, const O
 
     Ort::ConstGraph graph{ort_graph};
     std::vector<Ort::ConstNode> nodes = graph.GetNodes();
+
     if (nodes.empty()) {
       return nullptr;  // No nodes to process
     }
@@ -150,41 +100,6 @@ OrtStatus* ORT_API_CALL EpVirtualGpu::GetCapabilityImpl(OrtEp* this_ptr, const O
       auto op_type = node.GetOperatorType();
 
       if (op_type == "Add") {
-        // Check that Add has inputs/output of type float
-        std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
-        std::vector<Ort::ConstValueInfo> outputs = node.GetOutputs();
-
-        RETURN_IF(inputs.size() != 2 || outputs.size() != 1, ep->ort_api_, "Add should have 2 inputs and 1 output");
-
-        std::array<bool, 3> is_float = {false, false, false};
-        IsFloatTensor(inputs[0], is_float[0]);
-        IsFloatTensor(inputs[1], is_float[1]);
-        IsFloatTensor(outputs[0], is_float[2]);
-        if (!is_float[0] || !is_float[1] || !is_float[2]) {
-          continue;  // Input or output is not of type float
-        }
-
-        {
-          const auto input_0_shape = GetTensorShape(inputs[0]),
-                     input_1_shape = GetTensorShape(inputs[1]);
-
-          if (!input_0_shape.has_value() || !input_1_shape.has_value()) {
-            continue;  // unable to get input shape
-          }
-
-          const auto is_static_shape = [](gsl::span<const int64_t> shape) -> bool {
-            return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim >= 0; });
-          };
-
-          if (!is_static_shape(*input_0_shape) || !is_static_shape(*input_1_shape)) {
-            continue;  // input shape has dynamic dimensions
-          }
-
-          if (*input_0_shape != *input_1_shape) {
-            continue;  // input shapes do not match (no broadcasting support for now)
-          }
-        }
-
         supported_nodes.push_back(node);  // Only support a single Add for now.
         break;
       }
@@ -218,7 +133,7 @@ OrtStatus* ORT_API_CALL EpVirtualGpu::GetCapabilityImpl(OrtEp* this_ptr, const O
 OrtStatus* ORT_API_CALL EpVirtualGpu::CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** ort_graphs,
                                                   _In_ const OrtNode** fused_nodes, _In_ size_t count,
                                                   _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
-                                                  _Out_writes_(count) OrtNode** /*ep_context_nodes*/) noexcept {
+                                                  _Out_writes_(count) OrtNode** ep_context_nodes) noexcept {
   try {
     if (count != 1) {
       Ort::Status status("Expected to compile a single graph", ORT_EP_FAIL);
@@ -249,14 +164,99 @@ OrtStatus* ORT_API_CALL EpVirtualGpu::CompileImpl(_In_ OrtEp* this_ptr, _In_ con
       return status.release();
     }
 
-    // Associate the name of the fused node with our AddImpl.
+    // Associate the name of the fused node with our VirtualCompiledAdd.
     auto fused_node_name = fused_node.GetName();
     ep->compiled_subgraphs_.emplace(std::move(fused_node_name),
-                                    std::make_unique<AddImpl>(ep->ort_api_, ep->logger_));
+                                    std::make_unique<VirtualCompiledAdd>(ep->ort_api_, ep->logger_));
 
     // Update the OrtNodeComputeInfo associated with the graph.
     auto node_compute_info = std::make_unique<AddNodeComputeInfo>(*ep);
     node_compute_infos[0] = node_compute_info.release();
+
+    // Create EpContext nodes for the fused nodes we compiled (if enabled by user via session options).
+    if (ep->config_.enable_ep_context) {
+      assert(ep_context_nodes != nullptr);
+      RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
+                                               gsl::span<OrtNode*>(ep_context_nodes, count)));
+    }
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
+  }
+
+  return nullptr;
+}
+
+// Creates EPContext nodes from the given fused nodes.
+// This is an example implementation that can be used to generate an EPContext model. However, this example EP
+// cannot currently run the EPContext model.
+OrtStatus* EpVirtualGpu::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+                                              /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
+  try {
+    assert(fused_nodes.size() == ep_context_nodes.size());
+
+    // Helper to collect input or output names from an array of OrtValueInfo instances.
+    auto collect_input_output_names = [&](gsl::span<Ort::ConstValueInfo const> value_infos,
+                                          std::vector<std::string>& result) {
+      std::vector<std::string> value_names;
+      value_names.reserve(value_infos.size());
+
+      for (const auto vi : value_infos) {
+        value_names.push_back(vi.GetName());
+      }
+
+      result = std::move(value_names);
+    };
+
+    // Create an "EPContext" node for every fused node.
+    for (size_t i = 0; i < fused_nodes.size(); ++i) {
+      Ort::ConstNode fused_node{fused_nodes[i]};
+      auto fused_node_name = fused_node.GetName();
+
+      std::vector<Ort::ConstValueInfo> fused_node_inputs = fused_node.GetInputs();
+      std::vector<Ort::ConstValueInfo> fused_node_outputs = fused_node.GetOutputs();
+
+      std::vector<std::string> input_names;
+      std::vector<std::string> output_names;
+
+      collect_input_output_names(fused_node_inputs, /*out*/ input_names);
+      collect_input_output_names(fused_node_outputs, /*out*/ output_names);
+
+      int64_t is_main_context = (i == 0);
+      int64_t embed_mode = 1;
+
+      // Create node attributes. The CreateNode() function copies the attributes.
+      std::array<Ort::OpAttr, 6> attributes = {};
+      std::string ep_ctx = "binary_data";
+      attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),
+                                  ORT_OP_ATTR_STRING);
+
+      attributes[1] = Ort::OpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT);
+      attributes[2] = Ort::OpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT);
+      attributes[3] = Ort::OpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING);
+      attributes[4] = Ort::OpAttr("partition_name", fused_node_name.data(), static_cast<int>(fused_node_name.size()),
+                                  ORT_OP_ATTR_STRING);
+
+      attributes[5] = Ort::OpAttr("source", this->name_.data(), static_cast<int>(this->name_.size()),
+                                  ORT_OP_ATTR_STRING);
+
+      std::vector<const char*> c_input_names;
+      std::transform(input_names.begin(), input_names.end(), std::back_inserter(c_input_names),
+                     [](const std::string& s) { return s.c_str(); });
+      std::vector<const char*> c_output_names;
+      std::transform(output_names.begin(), output_names.end(), std::back_inserter(c_output_names),
+                     [](const std::string& s) { return s.c_str(); });
+
+      OrtOpAttr** op_attrs = reinterpret_cast<OrtOpAttr**>(attributes.data());
+      RETURN_IF_ERROR(model_editor_api_.CreateNode("EPContext", "com.microsoft", fused_node_name.c_str(),
+                                                   c_input_names.data(), c_input_names.size(),
+                                                   c_output_names.data(), c_output_names.size(),
+                                                   op_attrs, attributes.size(),
+                                                   &ep_context_nodes[i]));
+    }
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
     return status.release();
@@ -301,7 +301,7 @@ OrtStatus* AddNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
     return ep.GetOrtApi().CreateStatus(ORT_EP_FAIL, message.c_str());
   }
 
-  AddImpl& add_impl = *subgraph_it->second;
+  VirtualCompiledAdd& add_impl = *subgraph_it->second;
   *compute_state = &add_impl;
   return nullptr;
 }
@@ -309,13 +309,13 @@ OrtStatus* AddNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
 OrtStatus* AddNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
                                            OrtKernelContext* kernel_context) {
   (void)this_ptr;
-  AddImpl& add_impl = *reinterpret_cast<AddImpl*>(compute_state);
+  VirtualCompiledAdd& add_impl = *reinterpret_cast<VirtualCompiledAdd*>(compute_state);
   return add_impl.Compute(kernel_context);
 }
 
 void AddNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
   (void)this_ptr;
-  AddImpl& add_impl = *reinterpret_cast<AddImpl*>(compute_state);
+  VirtualCompiledAdd& add_impl = *reinterpret_cast<VirtualCompiledAdd*>(compute_state);
   (void)add_impl;
   // Do nothing for this example.
 }

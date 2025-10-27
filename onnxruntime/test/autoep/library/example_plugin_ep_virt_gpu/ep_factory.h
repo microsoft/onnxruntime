@@ -15,12 +15,13 @@
 /// </summary>
 class EpFactoryVirtualGpu : public OrtEpFactory {
  public:
-  EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api,
+  EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtModelEditorApi& model_editor_api,
                       const OrtLogger& default_logger);
   ~EpFactoryVirtualGpu();
 
   const OrtApi& GetOrtApi() const { return ort_api_; }
   const OrtEpApi& GetEpApi() const { return ep_api_; }
+  const OrtModelEditorApi& GetModelEditorApi() const { return model_editor_api_; }
   const std::string& GetEpName() const { return ep_name_; }
 
  private:
@@ -70,6 +71,7 @@ class EpFactoryVirtualGpu : public OrtEpFactory {
 
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
+  const OrtModelEditorApi& model_editor_api_;
   bool allow_virtual_devices_{false};
   const OrtLogger& default_logger_;
   OrtHardwareDevice* virtual_hw_device_{};

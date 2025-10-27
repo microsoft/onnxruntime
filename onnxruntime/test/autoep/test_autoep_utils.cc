@@ -34,7 +34,7 @@ const Utils::ExamplePluginInfo Utils::example_ep_virt_gpu_info(
 #else
     "libexample_plugin_ep_virt_gpu.so",
 #endif
-    "example_plugin_ep_virt_gpu",
+    "example_plugin_ep_virt_gpu.virtual",  // Ends in ".virtual" to allow creation of virtual devices.
     // This EP's name is hardcoded to the following
     "EpVirtualGpu");
 

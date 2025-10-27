@@ -3,12 +3,14 @@
 
 #pragma once
 
+#include <gsl/span>
+
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
 class EpFactoryVirtualGpu;
-struct AddImpl;
+struct VirtualCompiledAdd;
 
 /// <summary>
 /// Example EP for a virtual GPU OrtHardwareDevice that was created by the EP factory itself (not ORT).
@@ -16,13 +18,18 @@ struct AddImpl;
 /// </summary>
 class EpVirtualGpu : public OrtEp {
  public:
-  EpVirtualGpu(EpFactoryVirtualGpu& factory, const OrtLogger& logger);
+  struct Config {
+    bool enable_ep_context = false;
+    // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
+  };
+
+  EpVirtualGpu(EpFactoryVirtualGpu& factory, const Config& config, const OrtLogger& logger);
   ~EpVirtualGpu();
 
   const OrtApi& GetOrtApi() const { return ort_api_; }
   const OrtEpApi& GetEpApi() const { return ep_api_; }
 
-  std::unordered_map<std::string, std::unique_ptr<AddImpl>>& GetCompiledSubgraphs() {
+  std::unordered_map<std::string, std::unique_ptr<VirtualCompiledAdd>>& GetCompiledSubgraphs() {
     return compiled_subgraphs_;
   }
 
@@ -41,10 +48,15 @@ class EpVirtualGpu : public OrtEp {
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos) noexcept;
 
+  OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+                                  /*out*/ gsl::span<OrtNode*> ep_context_nodes);
+
   EpFactoryVirtualGpu& factory_;
+  Config config_{};
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
+  const OrtModelEditorApi& model_editor_api_;
   std::string name_;
   const OrtLogger& logger_;
-  std::unordered_map<std::string, std::unique_ptr<AddImpl>> compiled_subgraphs_;
+  std::unordered_map<std::string, std::unique_ptr<VirtualCompiledAdd>> compiled_subgraphs_;
 };

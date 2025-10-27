@@ -154,6 +154,36 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
 }
+
+// Generate an EPContext model with a plugin EP that uses a virtual GPU.
+TEST(OrtEpLibrary, PluginEp_VirtGpu_GenEpContextModel) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep);
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  {
+    const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/add_mul_add.onnx");
+    const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_virt_gpu_add_mul_add_ctx.onnx");
+    std::filesystem::remove(output_model_file);
+
+    // Create session with example plugin EP
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Create model compilation options from the session options.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    // Compile the model.
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    // Make sure the compiled model was generated.
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
 

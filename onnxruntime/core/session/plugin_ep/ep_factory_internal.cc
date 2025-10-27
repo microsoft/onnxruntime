@@ -3,6 +3,8 @@
 
 #include "core/session/plugin_ep/ep_factory_internal.h"
 
+#include <utility>
+
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
