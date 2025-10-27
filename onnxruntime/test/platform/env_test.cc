@@ -56,6 +56,10 @@ TEST(PlatformEnvTest, GetErrnoInfo) {
 }
 
 TEST(PlatformEnvTest, GetRuntimePath) {
+#if defined(__wasm__)
+  GTEST_SKIP() << "Not supported in WebAssembly build.";
+#endif
+
   const auto runtime_path_str = Env::Default().GetRuntimePath();
   ASSERT_FALSE(runtime_path_str.empty());
 
