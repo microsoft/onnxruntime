@@ -756,6 +756,7 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
 }
 
 Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes) {
+#if !defined(_WIN32)
   if constexpr (endian::native == endian::little) {
     return Ort::Status{nullptr};
   }
@@ -772,6 +773,7 @@ Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size
   if (element_size != 1) {
     SwapByteOrderInplace(data, bytes, element_size);
   }
+#endif
   return Ort::Status{nullptr};
 }
 
