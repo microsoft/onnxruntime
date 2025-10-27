@@ -4,7 +4,7 @@
 #include <vector>
 #include <iterator>
 #include <algorithm>
-#include "core/providers/webgpu/nn/conv2d_mm_webgpu.h"
+#include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/activation_util.h"
@@ -103,7 +103,7 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
     }
   } else {
     sample_w << "let col = colIn * " << inner_element_size_w << ";\n"
-             << "if (row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_b_outer)) {\n"
+             << "if (row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_a_outer)) {\n"
              << "  " << get_w_snippet(inner_element_size_w) << "\n"
              << "}\n"
              << "return " << TypeSnippet(inner_element_size_w, data_type) << "(0.0);\n";

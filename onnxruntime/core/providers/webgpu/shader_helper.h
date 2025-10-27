@@ -75,6 +75,11 @@ class ShaderHelper final {
 
   Status Init();
 
+  // Finalize inputs by automatically adding the indirect buffer if needed.
+  // This should be called after GenerateShaderCode() to ensure the indirect buffer
+  // is registered as the last input.
+  void FinalizeInputs();
+
   // Add an input variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.
@@ -128,10 +133,11 @@ class ShaderHelper final {
     }
   }
 
-  const ShaderVariableHelper& AddVariableImpl(bool is_input,
-                                              const std::string& name,
-                                              ShaderUsage usage,
-                                              const TensorShape& dims);
+  ShaderVariableHelper& AddVariableImpl(bool is_input,
+                                        const std::string& name,
+                                        ShaderUsage usage,
+                                        const TensorShape& dims,
+                                        uint32_t segments);
 
 #ifndef NDEBUG  // if debug build
   Status ValidateVariable(const ProgramInput& input, const ShaderVariableHelper& var) const;
@@ -164,6 +170,8 @@ class ShaderHelper final {
 
   const ProgramBase& program_;
   const ProgramMetadata& program_metadata_;
+
+  uint32_t numbers_storage_buffers_ = 0;
 
   std::vector<std::unique_ptr<ShaderVariableHelper>> input_vars_;
   std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;

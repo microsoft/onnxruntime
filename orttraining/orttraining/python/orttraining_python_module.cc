@@ -300,6 +300,8 @@ Status CreateTrainingPybindStateModule(py::module& m) {
   return Status::OK();
 }
 
+void CreateQuantPybindModule(py::module& m);
+
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto st = CreateTrainingPybindStateModule(m);
   if (!st.IsOK())
@@ -332,6 +334,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "Clean the execution provider instances used in ort training module.");
 
   m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
+  CreateQuantPybindModule(m);
 }
 
 }  // namespace python

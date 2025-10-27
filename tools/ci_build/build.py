@@ -505,6 +505,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_JSPI=" + ("ON" if args.enable_wasm_jspi else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
@@ -621,6 +622,7 @@ def generate_build_tree(
                 build_dir,
                 configs,
                 emscripten_root_path,
+                args.enable_wasm_jspi,
                 not args.disable_rtti,
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,
@@ -866,6 +868,12 @@ def generate_build_tree(
     # if args.use_jsep and args.use_webgpu:
     #     raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
 
+    if args.enable_wasm_jspi:
+        if args.use_jsep:
+            raise BuildError("JSEP (--use_jsep) and WASM JSPI (--enable_wasm_jspi) cannot be enabled at the same time.")
+        if args.disable_wasm_exception_catching:
+            raise BuildError("Cannot set WebAssembly exception catching in JSPI build.")
+
     if not args.use_webgpu:
         if args.use_external_dawn:
             raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
@@ -1014,6 +1022,9 @@ def generate_build_tree(
 
     if path_to_protoc_exe:
         cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
+
+    if args.cmake_deps_mirror_dir:
+        cmake_args += [f"-Donnxruntime_CMAKE_DEPS_MIRROR_DIR={args.cmake_deps_mirror_dir}"]
 
     if args.fuzz_testing:
         if not (
@@ -1330,7 +1341,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
             cmd_args.extend(["--target", *targets])
 
         build_tool_args = []
-        if num_parallel_jobs != 1:
+        if num_parallel_jobs != 0:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
                 # https://github.com/Microsoft/checkedc-clang/wiki/Parallel-builds-of-clang-on-Windows suggests
                 # not maxing out CL_MPCount
@@ -1748,7 +1759,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
                 run_subprocess(
-                    [sys.executable, "-m", "pip", "install", "torch", *extra],
+                    [sys.executable, "-m", "pip", "install", "torch==2.8.0", "torchvision==0.23.0", *extra],
                     cwd=cwd,
                     dll_path=dll_path,
                     python_path=python_path,
@@ -1994,6 +2005,10 @@ def build_python_wheel(
                 args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
+        elif wheel_name_suffix == "trt-rtx":
+            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
+            if cuda_version:
+                args.append(f"--cuda_version={cuda_version}")
 
         run_subprocess(args, cwd=cwd)
 

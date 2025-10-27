@@ -15,6 +15,7 @@ constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGr
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
 constexpr const char* kDawnBackendType = "ep.webgpuexecutionprovider.dawnBackendType";
+constexpr const char* kPowerPreference = "ep.webgpuexecutionprovider.powerPreference";
 
 constexpr const char* kDeviceId = "ep.webgpuexecutionprovider.deviceId";
 constexpr const char* kWebGpuInstance = "ep.webgpuexecutionprovider.webgpuInstance";
@@ -32,10 +33,15 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
+constexpr const char* kSmallStorageBufferBindingSizeForTesting = "ep.webgpuexecutionprovider.smallStorageBufferBindingSizeForTesting";
+
 // The following are the possible values for the provider options.
 
 constexpr const char* kDawnBackendType_D3D12 = "D3D12";
 constexpr const char* kDawnBackendType_Vulkan = "Vulkan";
+
+constexpr const char* kPowerPreference_HighPerformance = "high-performance";
+constexpr const char* kPowerPreference_LowPower = "low-power";
 
 constexpr const char* kPreferredLayout_NCHW = "NCHW";
 constexpr const char* kPreferredLayout_NHWC = "NHWC";
