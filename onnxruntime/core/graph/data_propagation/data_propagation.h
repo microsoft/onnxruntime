@@ -9,6 +9,10 @@
 
 namespace onnxruntime {
 
+/**
+ * @class CustomDataPropagation
+ * Custom data propagation for the operator to help enhance shape inference.
+ */
 class CustomDataPropagation {
  public:
   virtual ~CustomDataPropagation() = default;

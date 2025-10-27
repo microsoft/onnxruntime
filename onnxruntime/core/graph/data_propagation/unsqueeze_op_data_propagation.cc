@@ -96,8 +96,10 @@ Status UnsqueezeOpDataPropagation::infer() {
         }
       }
       ORT_CATCH(const std::exception& ex) {
-        LOGS(logger_, ERROR) << ex.what();
-        LOGS(logger_, WARNING) << "Skip Unsqueeze op custom data propagation.";
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(logger_, ERROR) << ex.what();
+          LOGS(logger_, INFO) << "Skip Unsqueeze op custom data propagation.";
+        });
       }
     }
   }
