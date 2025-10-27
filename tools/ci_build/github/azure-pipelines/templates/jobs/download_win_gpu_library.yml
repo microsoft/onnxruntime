@@ -11,6 +11,9 @@ parameters:
     values:
       - 13.0
       - 12.8
+  - name: CudnnFolder
+    type: string
+    default: '9.13.0.50_cuda13'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -35,6 +38,27 @@ steps:
           dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
+    - ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      - task: AzureCLI@2
+        displayName: 'Download CUDNN ${{ parameters.CudnnFolder }}'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/${{ parameters.CudnnFolder }} $(Agent.TempDirectory)
+
+      - powershell: |
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ parameters.CudnnFolder }}\bin"
+        displayName: 'Append CUDNN Directory to PATH'
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            echo %PATH%
+            dir $(Agent.TempDirectory)
+        displayName: 'Print PATH after download CUDNN SDK'
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
     - powershell: |
