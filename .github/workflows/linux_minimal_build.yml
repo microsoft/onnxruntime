@@ -512,7 +512,7 @@ jobs:
         with:
           node-version: 20
       - name: Download Test Data Artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: test_data
           path: ${{ runner.temp }}/.test_data/
