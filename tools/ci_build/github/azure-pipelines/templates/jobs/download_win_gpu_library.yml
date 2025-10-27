@@ -80,7 +80,7 @@ steps:
       displayName: 'Set TensorRT Folder Variable'
 
     - task: AzureCLI@2
-      displayName: 'Download $(TrtFolderRuntime)'
+      displayName: 'Download TensorRT Directory'
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptType: 'batch'
@@ -91,7 +91,7 @@ steps:
 
     - powershell: |
         Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\lib"
-      displayName: 'Append $(TrtFolderRuntime) Directory to PATH'
+      displayName: 'Append TensorRT Directory to PATH'
 
     - task: CmdLine@2
       inputs:
