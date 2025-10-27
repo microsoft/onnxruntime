@@ -4228,6 +4228,8 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::Graph_GetModelMetadata,
     &OrtApis::GetModelCompatibilityForEpDevices,
     &OrtApis::CreateExternalInitializerInfo,
+    // End of Version 23 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::TensorTypeAndShape_HasShape,
 };
 
