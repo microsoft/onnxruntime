@@ -52,7 +52,7 @@ auto ProbeDevice(const std::string& device) {
   }
   return is_present[device];
 }
-}  // namespace detail
+}  // namespace
 
 namespace onnxruntime {
 namespace test {
@@ -62,7 +62,7 @@ TEST_P(OVEP_ExtInit_Tests, DISABLED_ModelFromExtInit) {
   const auto& device = GetParam();
   if (!ProbeDevice(device))
     GTEST_SKIP() << device + " is not available on this machine";
-       
+
   // Model and weights file paths
   const std::string model_path = "ovep_ext_init_test.onnx";
   const std::string weights_path = "ovep_ext_init_test.onnx.data";
@@ -174,7 +174,7 @@ TEST_P(OVEP_ExtInit_Tests, DISABLED_ModelFromExtInit) {
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   session_options.SetIntraOpNumThreads(1);
-  std::unordered_map<std::string, std::string> ov_options = { {"device_type", device } };
+  std::unordered_map<std::string, std::string> ov_options = {{"device_type", device}};
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
   session_options.AddExternalInitializersFromFilesInMemory(names_path, buffers, buffer_sizes);
 

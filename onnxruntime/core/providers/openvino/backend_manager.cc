@@ -85,7 +85,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   subgraph_context_.subgraph_name = fused_node.Name();
 
   if (ModelHasSymbolicInputDims(subgraph)) {
-      subgraph_context_.has_dynamic_input_shape = true;
+    subgraph_context_.has_dynamic_input_shape = true;
   }
 
   ptr_stream_t model_stream;
@@ -171,9 +171,7 @@ BackendManager::BackendManager(SessionContext& session_context,
           exception_str.find("intel_npu") != std::string::npos) {
         // Handle NPU device related errors
 #ifndef NDEBUG
-        std::string suffix = session_context_.so_disable_cpu_ep_fallback ?
-          "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" :
-          "\nModel needs to be recompiled\n";
+        std::string suffix = session_context_.so_disable_cpu_ep_fallback ? "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" : "\nModel needs to be recompiled\n";
         ORT_THROW(exception_str + suffix);
 #else
         std::string error_message = "UNKNOWN NPU ERROR";
@@ -187,9 +185,7 @@ BackendManager::BackendManager(SessionContext& session_context,
         if (std::regex_search(exception_str, matches, error_code_pattern)) {
           error_code = matches[0];
         }
-        std::string suffix = session_context_.so_disable_cpu_ep_fallback ?
-          "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" :
-          "\nModel needs to be recompiled\n";
+        std::string suffix = session_context_.so_disable_cpu_ep_fallback ? "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" : "\nModel needs to be recompiled\n";
         throw std::runtime_error(error_message + ", " + error_code + suffix);
 #endif
       } else {
@@ -645,12 +641,11 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     const bool include_initializer_data_in_proto = true;
 #endif
 
-
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/true,
-                     /*include_outer_scope_args*/true, /*execution_order*/0, /*include_initializer_data*/include_initializer_data_in_proto);
+    subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/ true,
+                     /*include_outer_scope_args*/ true, /*execution_order*/ 0, /*include_initializer_data*/ include_initializer_data_in_proto);
 
     print_model_proto_duration();
 
@@ -684,9 +679,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                 << ", data_type: " << src_init->data_type()
                                 << ", raw_data size: " << src_init->raw_data().size();
           if (src_init->raw_data().size() > 0)
-              SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
+            SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
           else
-              LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
+            LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
         } else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
           auto it_ext = external_initializers_offset_and_length.find(name);
           if (it_ext == external_initializers_offset_and_length.end()) {
@@ -889,7 +884,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
           }
         } else {
           std::string exception_str = ex.what();
-          if (session_context_.so_disable_cpu_ep_fallback){
+          if (session_context_.so_disable_cpu_ep_fallback) {
             std::string error_message = "UNKNOWN NPU ERROR";
             std::string error_code = "code 0x0";
             std::regex error_message_pattern(R"(\bZE_\w*\b)");
@@ -901,10 +896,9 @@ void BackendManager::Compute(OrtKernelContext* context) {
             if (std::regex_search(exception_str, matches, error_code_pattern)) {
               error_code = matches[0];
             }
-            std::string suffix = "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" ;
+            std::string suffix = "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n";
             throw std::runtime_error(error_message + ", " + error_code + suffix);
-          }
-          else{
+          } else {
             ORT_THROW(exception_str);
           }
         }

@@ -383,7 +383,7 @@ struct TensorCheck<uint16_t> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& ) const {
+                  const std::string&) const {
     const bool has_abs_err = params.absolute_error.has_value();
     const bool has_rel_err = params.relative_error.has_value();
 

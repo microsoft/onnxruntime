@@ -25,8 +25,8 @@
 // Usage: #if OPENVINO_VERSION_AT_LEAST(2025, 3)
 // Falls back to 0 if OPENVINO_VERSION_MAJOR/MINOR are not defined.
 #if defined(OPENVINO_VERSION_MAJOR) && defined(OPENVINO_VERSION_MINOR)
-#define OPENVINO_VERSION_AT_LEAST(major, minor)                         \
-  ((OPENVINO_VERSION_MAJOR > (major)) ||                                \
+#define OPENVINO_VERSION_AT_LEAST(major, minor) \
+  ((OPENVINO_VERSION_MAJOR > (major)) ||        \
    (OPENVINO_VERSION_MAJOR == (major) && OPENVINO_VERSION_MINOR >= (minor)))
 #else
 #define OPENVINO_VERSION_AT_LEAST(major, minor) 0
