@@ -169,7 +169,8 @@ TEST(AutoEpSelection, CpuEP) {
 TEST(AutoEpSelection, CudaEP) {
   Ort::KeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
-  const auto cuda_ep_lib_path = std::filesystem::path{GetSharedLibraryFileName("onnxruntime_providers_cuda")};
+  const auto cuda_ep_lib_path =
+      std::filesystem::path{GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"))};
   RunBasicTest(kCudaExecutionProvider, cuda_ep_lib_path, provider_options);
 }
 #endif
