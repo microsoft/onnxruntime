@@ -46,7 +46,7 @@ extends:
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
 
     stages:
-      - template: stages/py-cuda13-packaging-stage.yml
+      - template: stages/py-gpu-packaging-stage.yml
         parameters:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: '13.0'
