@@ -773,6 +773,10 @@ Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size
   if (element_size != 1) {
     SwapByteOrderInplace(data, bytes, element_size);
   }
+#else
+  (value_info);
+  (data);
+  (bytes);
 #endif
   return Ort::Status{nullptr};
 }
