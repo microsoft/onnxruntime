@@ -1232,9 +1232,10 @@ Graph::Graph(const Model& owning_model,
   const auto& model_path = ModelPath();
 
   // If the tensor proto data is large enough, move data from TensorProto to an OrtValue
-  // Add external data reference to TensorProto that points to an OrtValue.
+  // - Add external data reference to TensorProto that points to an OrtValue.
   // This lambda should not be used on initializers that already have external data reference.
-  auto put_weight_maybe_in_ortvalue = [this, &model_path](ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  // Otherwise, this function does nothing.
+  auto put_large_tensor_in_ort_value = [this, &model_path](ONNX_NAMESPACE::TensorProto& tensor_proto) {
     size_t size_in_bytes = 0;
     ORT_THROW_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
     if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
@@ -1271,7 +1272,7 @@ Graph::Graph(const Model& owning_model,
       }
     }
 
-    put_weight_maybe_in_ortvalue(*tensor);
+    put_large_tensor_in_ort_value(*tensor);
 
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
@@ -1355,11 +1356,14 @@ Graph::Graph(const Model& owning_model,
     // or during session state finalization.
     // If data is already in memory, do nothing.
     if (!utils::HasExternalData(tensor)) {
+      // sparse_tensor_names_ contain references to strings to save memory
+      // in case we replace the tensor_proto, we want to make sure we remove
+      // the old reference first, and then add a new one.
       const bool is_sparse = sparse_tensor_names_.count(tensor.name());
       if (is_sparse) {
         sparse_tensor_names_.erase(tensor.name());
       }
-      put_weight_maybe_in_ortvalue(tensor);
+      put_large_tensor_in_ort_value(tensor);
       if (is_sparse) {
         sparse_tensor_names_.emplace(tensor.name());
       }
