@@ -44,7 +44,7 @@ steps:
 
         $trtFolder = ""
         if ("${{ parameters.CudaVersion }}" -eq "13.0") {
-          $trtFolder = "TensorRT-$cuda13_trt_version.Windows10.win10.cuda-13.0"
+          $trtFolder = "TensorRT-$cuda13_trt_version.Windows.win10.cuda-13.0"
         }
         elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
           $trtFolder = "TensorRT-$cuda12_trt_version.Windows10.x86_64.cuda-12.8"
