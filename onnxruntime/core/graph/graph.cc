@@ -1231,9 +1231,10 @@ Graph::Graph(const Model& owning_model,
   ArgNameToTypeMap name_to_type_map;
   const auto& model_path = ModelPath();
 
-  // If the tensor proto data is large enough, externalize it and replace with a tensor_proto
-  // with external data reference pointing to an OrtValue, otherwise do nothing.
-  auto put_data_maybe_in_memory = [this, &model_path](ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  // If the tensor proto data is large enough, move data from TensorProto to an OrtValue
+  // Add external data reference to TensorProto that points to an OrtValue.
+  // This lambda should not be used on initializers that already have external data reference.
+  auto put_weight_maybe_in_ortvalue = [this, &model_path](ONNX_NAMESPACE::TensorProto& tensor_proto) {
     size_t size_in_bytes = 0;
     ORT_THROW_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
     if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
@@ -1270,7 +1271,7 @@ Graph::Graph(const Model& owning_model,
       }
     }
 
-    put_data_maybe_in_memory(*tensor);
+    put_weight_maybe_in_ortvalue(*tensor);
 
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
@@ -1358,7 +1359,7 @@ Graph::Graph(const Model& owning_model,
       if (is_sparse) {
         sparse_tensor_names_.erase(tensor.name());
       }
-      put_data_maybe_in_memory(tensor);
+      put_weight_maybe_in_ortvalue(tensor);
       if (is_sparse) {
         sparse_tensor_names_.emplace(tensor.name());
       }

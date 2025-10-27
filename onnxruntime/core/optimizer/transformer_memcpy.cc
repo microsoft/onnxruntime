@@ -445,8 +445,8 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       if (utils::HasExternalDataInMemory(new_tensor_proto) &&
           graph_.GetOrtValueInitializer(name, ort_value, check_outer_scope_true)) {
         // Re-use the same ort_value and proto that points to the same buffer
-        ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializerWithExternalData(graph_, new_tensor_proto,
-                                                                            std::move(ort_value)));
+        ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializerWithOrtValue(graph_, new_tensor_proto,
+                                                                        std::move(ort_value)));
       } else {
         ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializer(graph_, new_tensor_proto));
       }

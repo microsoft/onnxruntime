@@ -95,7 +95,7 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
     ONNX_NAMESPACE::TensorShapeProto result_shape;
     result_shape.add_dim()->set_dim_value(clamped_slice_length);
     constant_arg_out->SetShape(result_shape);
-    graph_utils::AddInitializerWithExternalData(graph, shape_constant);
+    graph_utils::AddInitializerWithOrtValue(graph, shape_constant);
   }
 
   return is_concrete_shape;  // convert to constant if this is true
