@@ -20,17 +20,148 @@
 namespace onnxruntime {
 namespace qnn {
 
-// Forward declarations.
-#define ValidateOnQnn(qnn_model_wrapper, node_units, root_input, final_output) \
-  CreateOrValidateOnQnn((qnn_model_wrapper), (node_units), (root_input), (final_output), true)
-#define CreateOnQnn(qnn_model_wrapper, node_units, root_input, final_output) \
-  CreateOrValidateOnQnn((qnn_model_wrapper), (node_units), (root_input), (final_output), false)
+// Helper function to extract value from raw data based on QNN data type
+static Status GetValueOnQnnDataType(const Qnn_DataType_t qnn_data_type,
+                                    const uint8_t* raw_ptr,
+                                    double& value) {
+  switch (qnn_data_type) {
+    case QNN_DATATYPE_INT_8:
+    case QNN_DATATYPE_SFIXED_POINT_8: {
+      value = static_cast<double>(*reinterpret_cast<const int8_t*>(raw_ptr));
+      break;
+    }
+    case QNN_DATATYPE_INT_16:
+    case QNN_DATATYPE_SFIXED_POINT_16: {
+      value = static_cast<double>(*reinterpret_cast<const int16_t*>(raw_ptr));
+      break;
+    }
+    case QNN_DATATYPE_INT_32:
+    case QNN_DATATYPE_SFIXED_POINT_32: {
+      value = static_cast<double>(*reinterpret_cast<const int32_t*>(raw_ptr));
+      break;
+    }
+    case QNN_DATATYPE_UINT_8:
+    case QNN_DATATYPE_UFIXED_POINT_8: {
+      value = static_cast<double>(*reinterpret_cast<const uint8_t*>(raw_ptr));
+      break;
+    }
+    case QNN_DATATYPE_UINT_16:
+    case QNN_DATATYPE_UFIXED_POINT_16: {
+      value = static_cast<double>(*reinterpret_cast<const uint16_t*>(raw_ptr));
+      break;
+    }
+    case QNN_DATATYPE_UINT_32:
+    case QNN_DATATYPE_UFIXED_POINT_32: {
+      value = static_cast<double>(*reinterpret_cast<const uint32_t*>(raw_ptr));
+      break;
+    }
+    case QNN_DATATYPE_FLOAT_32: {
+      value = static_cast<double>(*reinterpret_cast<const float*>(raw_ptr));
+      break;
+    }
+    case QNN_DATATYPE_FLOAT_16: {
+      value = static_cast<double>(reinterpret_cast<const MLFloat16*>(raw_ptr)->ToFloat());
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Qnn Data Type: ", qnn_data_type, " not supported.");
+  }
+  return Status::OK();
+}
 
+// Helper function to extract a scalar float value from a constant initializer
+// Handles both float and quantized (INT type) constant inputs
+static std::optional<float> GetConstantInitializerFloatScalar(QnnModelWrapper& qnn_model_wrapper,
+                                                              const NodeUnitIODef& io_def) {
+  const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
+  const auto& name = io_def.node_arg.Name();
+
+  if (!graph_viewer.IsConstantInitializer(name, true)) {
+    return std::nullopt;
+  }
+
+  // Get tensor info to check if it's quantized
+  TensorInfo tensor_info = {};
+  if (!qnn_model_wrapper.GetTensorInfo(io_def, tensor_info).IsOK()) {
+    return std::nullopt;
+  }
+
+  // Must be an initializer
+  if (!tensor_info.is_initializer || !tensor_info.initializer_tensor) {
+    return std::nullopt;
+  }
+
+  // Unpack the initializer data
+  std::vector<uint8_t> unpacked_tensor;
+  if (!qnn_model_wrapper.UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor).IsOK()) {
+    return std::nullopt;
+  }
+
+  if (unpacked_tensor.empty()) {
+    return std::nullopt;
+  }
+
+  // Extract the value using GetValueOnQnnDataType
+  double extracted_value = 0.0;
+  if (!GetValueOnQnnDataType(tensor_info.qnn_data_type, unpacked_tensor.data(), extracted_value).IsOK()) {
+    return std::nullopt;
+  }
+
+  // Check if quantized and dequantize if needed
+  const bool is_quantized = tensor_info.quant_param.IsQuantized();
+  if (is_quantized) {
+    // For quantized tensors, dequantize the value
+    if (!tensor_info.quant_param.IsPerTensor()) {
+      return std::nullopt;  // Only support per-tensor quantization
+    }
+
+    const Qnn_QuantizeParams_t& quant_param = tensor_info.quant_param.Get();
+    double dequantized_value = utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                 quant_param.scaleOffsetEncoding.scale,
+                                                 extracted_value);
+    return static_cast<float>(dequantized_value);
+  }
+
+  // For non-quantized tensors, return the extracted value directly
+  return static_cast<float>(extracted_value);
+}
+
+// Helper function to check if a constant initializer has the expected float value
+static bool IsInitializerWithExpectedValue(QnnModelWrapper& qnn_model_wrapper,
+                                           const NodeUnitIODef& io_def,
+                                           float expected_value,
+                                           float tolerance = 1e-5f) {
+  std::optional<float> actual_value = GetConstantInitializerFloatScalar(qnn_model_wrapper, io_def);
+  if (!actual_value.has_value()) {
+    return false;
+  }
+
+  // Compare with expected value within tolerance
+  return std::abs(actual_value.value() - expected_value) <= tolerance;
+}
+
+// Forward declaration.
 static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                     gsl::span<const NodeUnit* const> node_units,
                                     const NodeUnitIODef& root_input,
                                     const NodeUnitIODef& final_output,
                                     bool validate);
+
+// Helper function to validate on QNN
+static Status ValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
+                            gsl::span<const NodeUnit* const> node_units,
+                            const NodeUnitIODef& root_input,
+                            const NodeUnitIODef& final_output) {
+  return CreateOrValidateOnQnn(qnn_model_wrapper, node_units, root_input, final_output, true);
+}
+
+// Helper function to create on QNN
+static Status CreateOnQnn(QnnModelWrapper& qnn_model_wrapper,
+                          gsl::span<const NodeUnit* const> node_units,
+                          const NodeUnitIODef& root_input,
+                          const NodeUnitIODef& final_output) {
+  return CreateOrValidateOnQnn(qnn_model_wrapper, node_units, root_input, final_output, false);
+}
 
 std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     QnnModelWrapper& qnn_model_wrapper,
@@ -39,14 +170,12 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(logger);
-  // Looking for an Erf node (can be SingleNode or QDQGroup).
   if (erf_node_unit.OpType() != "Erf") {
     return nullptr;
   }
 
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
 
-  // Erf must have a Div parent on its input
   const auto& erf_inputs = erf_node_unit.Inputs();
   if (erf_inputs.empty()) {
     return nullptr;
@@ -61,6 +190,12 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
   // Div must have 2 inputs
   const auto& div_inputs = div_node_unit->Inputs();
   if (div_inputs.size() < 2) {
+    return nullptr;
+  }
+
+  // Check second input of Div is sqrt(2) ≈ 1.4142
+  // Use a larger tolerance to handle approximations used in some models
+  if (!IsInitializerWithExpectedValue(qnn_model_wrapper, div_inputs[1], static_cast<float>(M_SQRT2), 1e-4f)) {
     return nullptr;
   }
 
@@ -79,6 +214,13 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
   // Add must have 2 inputs
   const auto& add_inputs = add_node_unit->Inputs();
   if (add_inputs.size() < 2) {
+    return nullptr;
+  }
+
+  // Check the other input node (e.g. not the Erf) is 1.0f
+  bool is_erf_first_input = (add_inputs[0].node_arg.Name() == erf_outputs[0].node_arg.Name());
+  const auto& add_const_input = add_inputs[is_erf_first_input ? 1 : 0];
+  if (!IsInitializerWithExpectedValue(qnn_model_wrapper, add_const_input, 1.0f)) {
     return nullptr;
   }
 
@@ -102,7 +244,7 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     return nullptr;
   }
 
-  // Try to match Pattern 1: root -> Mul -> ... -> Mul
+  // Try to match Pattern 1: root -> Mul(0.5) -> ... -> Mul
   // In this case, one input to the final Mul should be from a Mul node
   const NodeUnit* mul2_node_unit = nullptr;
 
@@ -124,15 +266,21 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
             const NodeUnit* producer_unit = it->second;
             if (producer_unit->OpType() == "Mul" &&
                 node_unit_to_qnn_node_group.find(producer_unit) == node_unit_to_qnn_node_group.end()) {
-              // Check if this Mul has root as one input (no longer checking for constant 0.5)
+              // Check if this Mul has root as one input
               const auto& mul2_inputs = producer_unit->Inputs();
               if (mul2_inputs.size() >= 2) {
                 bool has_root_input = (mul2_inputs[0].node_arg.Name() == root_input_name ||
                                        mul2_inputs[1].node_arg.Name() == root_input_name);
 
                 if (has_root_input) {
-                  mul2_node_unit = producer_unit;
-                  break;
+                  // Check the other input is 0.5f
+                  int root_index = (mul2_inputs[0].node_arg.Name() == root_input_name) ? 0 : 1;
+                  const auto& mul_const_input = mul2_inputs[1 - root_index];
+
+                  if (IsInitializerWithExpectedValue(qnn_model_wrapper, mul_const_input, 0.5f)) {
+                    mul2_node_unit = producer_unit;
+                    break;
+                  }
                 }
               }
             }
@@ -148,11 +296,11 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
   const NodeUnit* final_mul_node_unit = nullptr;
 
   if (mul2_node_unit != nullptr) {
-    // Pattern 1: root -> Mul -> ... -> Mul
+    // Pattern 1: root -> Mul(0.5) -> ... -> Mul
     node_units = {div_node_unit, &erf_node_unit, add_node_unit, mul2_node_unit, mul_node_unit};
     final_mul_node_unit = mul_node_unit;
   } else {
-    // Try Pattern 2: root -> ... -> Mul -> Mul
+    // Try Pattern 2: root -> ... -> Mul -> Mul(0.5)
     // Check if one input to mul_node_unit is root
     bool has_root_input = (mul_inputs[0].node_arg.Name() == root_input_name ||
                            mul_inputs[1].node_arg.Name() == root_input_name);
@@ -176,6 +324,16 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     // Verify this final Mul has 2 inputs
     const auto& mul2_inputs = mul2_node_unit_pattern2->Inputs();
     if (mul2_inputs.size() < 2) {
+      return nullptr;
+    }
+
+    // Check the constant input is 0.5f
+    int mul_const_input_index = 0;
+    if (mul2_inputs[0].node_arg.Name() == mul_outputs[0].node_arg.Name()) {
+      mul_const_input_index = 1;
+    }
+    const auto& mul_const_input = mul2_inputs[mul_const_input_index];
+    if (!IsInitializerWithExpectedValue(qnn_model_wrapper, mul_const_input, 0.5f)) {
       return nullptr;
     }
 

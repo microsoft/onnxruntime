@@ -19,7 +19,7 @@ namespace test {
 
 namespace {
 
-// Helper function to build GELU Pattern 1: root -> Mul -> Div -> Erf -> Add -> Mul
+// Helper function to build GELU Pattern 1: Mul(0.5) before the main sequence
 // Pattern 1:
 //                   +-------Mul(0.5)---------------------+
 //                   |                                    |
@@ -54,9 +54,9 @@ GetTestModelFn BuildGeluPattern1TestCase(const TestInputDef<float>& input_def) {
     NodeArg* add_output = builder.MakeIntermediate();
     builder.AddNode("Add", {erf_output, one_initializer}, {add_output});
 
-    // Final Mul: (add_output) * (mul_half_output)
+    // Final Mul: (mul_half_output) * (add_output)
     NodeArg* output = builder.MakeOutput();
-    builder.AddNode("Mul", {add_output, mul_half_output}, {output});
+    builder.AddNode("Mul", {mul_half_output, add_output}, {output});
   };
 }
 
@@ -109,75 +109,45 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern1TestCase(const TestInputDef<flo
     constexpr float half = 0.5f;
     constexpr float one = 1.0f;
 
-    // Create input
+    // Create input with QDQ
     NodeArg* input = MakeTestInput<float>(builder, input_def);
     QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
-    // Quantize input once
-    NodeArg* input_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(input, input_qparams.scale, input_qparams.zero_point, input_q);
-
-    // Create quantized constants
-    QuantParams<QuantType> const_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, sqrt_2, sqrt_2));
-    NodeArg* sqrt2_initializer = builder.MakeScalarInitializer<float>(sqrt_2);
-    NodeArg* sqrt2_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(sqrt2_initializer, const_qparams.scale, const_qparams.zero_point, sqrt2_q);
-
-    NodeArg* one_initializer = builder.MakeScalarInitializer<float>(one);
-    NodeArg* one_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(one_initializer, const_qparams.scale, const_qparams.zero_point, one_q);
-
-    NodeArg* half_initializer = builder.MakeScalarInitializer<float>(half);
-    NodeArg* half_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(half_initializer, const_qparams.scale, const_qparams.zero_point, half_q);
-
-    NodeArg* input_dq_1 = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(input_q, input_qparams.scale, input_qparams.zero_point, input_dq_1);
-    NodeArg* sqrt2_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(sqrt2_q, const_qparams.scale, const_qparams.zero_point, sqrt2_dq);
-    NodeArg* div_output = builder.MakeIntermediate();
-    builder.AddNode("Div", {input_dq_1, sqrt2_dq}, {div_output});
-    NodeArg* div_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(div_output, input_qparams.scale, input_qparams.zero_point, div_q);
-
-    // DQ -> Erf -> Q
-    NodeArg* div_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(div_q, input_qparams.scale, input_qparams.zero_point, div_dq);
-    NodeArg* erf_output = builder.MakeIntermediate();
-    builder.AddNode("Erf", {div_dq}, {erf_output});
-    NodeArg* erf_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(erf_output, input_qparams.scale, input_qparams.zero_point, erf_q);
-
-    // DQ -> Add -> Q
-    NodeArg* erf_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(erf_q, input_qparams.scale, input_qparams.zero_point, erf_dq);
-    NodeArg* one_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(one_q, const_qparams.scale, const_qparams.zero_point, one_dq);
-    NodeArg* add_output = builder.MakeIntermediate();
-    builder.AddNode("Add", {erf_dq, one_dq}, {add_output});
-    NodeArg* add_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(add_output, input_qparams.scale, input_qparams.zero_point, add_q);
-
-    // DQ -> Mul (with input) -> Q
-    NodeArg* input_dq_2 = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(input_q, input_qparams.scale, input_qparams.zero_point, input_dq_2);
-    NodeArg* add_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(add_q, input_qparams.scale, input_qparams.zero_point, add_dq);
-    NodeArg* mul_output = builder.MakeIntermediate();
-    builder.AddNode("Mul", {input_dq_2, add_dq}, {mul_output});
-    NodeArg* mul_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(mul_output, input_qparams.scale, input_qparams.zero_point, mul_q);
-
-    // Final DQ -> Mul (with 0.5) -> Q
-    NodeArg* mul_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(mul_q, input_qparams.scale, input_qparams.zero_point, mul_dq);
+    // Create Mul(0.5) branch: input * 0.5
+    // Quantize half constant with DequantizeLinear node (quant_value=255, scale=half/255)
+    NodeArg* half_initializer_quant = builder.MakeInitializer<QuantType>({}, {static_cast<QuantType>(255)});
     NodeArg* half_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(half_q, const_qparams.scale, const_qparams.zero_point, half_dq);
-    NodeArg* mul_final_output = builder.MakeIntermediate();
-    builder.AddNode("Mul", {mul_dq, half_dq}, {mul_final_output});
+    builder.AddDequantizeLinearNode<QuantType>(half_initializer_quant, half / 255.0f, 0, half_dq);
+    NodeArg* mul_half_output = builder.MakeIntermediate();
+    builder.AddNode("Mul", {input_qdq, half_dq}, {mul_half_output});
+
+    // Create main branch: input / sqrt(2)
+    // Quantize sqrt(2) constant with DequantizeLinear node (quant_value=255, scale=sqrt_2/255)
+    NodeArg* sqrt2_initializer_quant = builder.MakeInitializer<QuantType>({}, {static_cast<QuantType>(255)});
+    NodeArg* sqrt2_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(sqrt2_initializer_quant, sqrt_2 / 255.0f, 0, sqrt2_dq);
+    NodeArg* div_output = builder.MakeIntermediate();
+    builder.AddNode("Div", {input_qdq, sqrt2_dq}, {div_output});
+
+    // Erf
+    NodeArg* erf_output = builder.MakeIntermediate();
+    builder.AddNode("Erf", {div_output}, {erf_output});
+
+    // Add 1.0
+    // Quantize one constant with DequantizeLinear node (quant_value=255, scale=one/255)
+    NodeArg* one_initializer_quant = builder.MakeInitializer<QuantType>({}, {static_cast<QuantType>(255)});
+    NodeArg* one_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(one_initializer_quant, one / 255.0f, 0, one_dq);
+    NodeArg* add_output = builder.MakeIntermediate();
+    builder.AddNode("Add", {erf_output, one_dq}, {add_output});
+
+    // Final Mul: (mul_half_output) * (add_output)
+    NodeArg* mul_output = builder.MakeIntermediate();
+    builder.AddNode("Mul", {mul_half_output, add_output}, {mul_output});
 
     // Add output QDQ
-    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, mul_final_output, output_qparams[0].scale,
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, mul_output, output_qparams[0].scale,
                                                      output_qparams[0].zero_point);
   };
 }
@@ -190,73 +160,42 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern2TestCase(const TestInputDef<flo
     constexpr float half = 0.5f;
     constexpr float one = 1.0f;
 
-    // Create input
+    // Create input with QDQ
     NodeArg* input = MakeTestInput<float>(builder, input_def);
     QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
+    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
-    // Quantize input once
-    NodeArg* input_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(input, input_qparams.scale, input_qparams.zero_point, input_q);
-
-    // Create quantized constants
-    QuantParams<QuantType> const_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, sqrt_2, sqrt_2));
-    NodeArg* sqrt2_initializer = builder.MakeScalarInitializer<float>(sqrt_2);
-    NodeArg* sqrt2_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(sqrt2_initializer, const_qparams.scale, const_qparams.zero_point, sqrt2_q);
-
-    NodeArg* one_initializer = builder.MakeScalarInitializer<float>(one);
-    NodeArg* one_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(one_initializer, const_qparams.scale, const_qparams.zero_point, one_q);
-
-    NodeArg* half_initializer = builder.MakeScalarInitializer<float>(half);
-    NodeArg* half_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(half_initializer, const_qparams.scale, const_qparams.zero_point, half_q);
-
-    // Main branch: DQ -> Div -> Q
-    NodeArg* input_dq_1 = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(input_q, input_qparams.scale, input_qparams.zero_point, input_dq_1);
+    // Main branch: input / sqrt(2)
+    // Quantize sqrt(2) constant with DequantizeLinear node (quant_value=255, scale=sqrt_2/255)
+    NodeArg* sqrt2_initializer_quant = builder.MakeInitializer<QuantType>({}, {static_cast<QuantType>(255)});
     NodeArg* sqrt2_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(sqrt2_q, const_qparams.scale, const_qparams.zero_point, sqrt2_dq);
+    builder.AddDequantizeLinearNode<QuantType>(sqrt2_initializer_quant, sqrt_2 / 255.0f, 0, sqrt2_dq);
     NodeArg* div_output = builder.MakeIntermediate();
-    builder.AddNode("Div", {input_dq_1, sqrt2_dq}, {div_output});
-    NodeArg* div_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(div_output, input_qparams.scale, input_qparams.zero_point, div_q);
+    builder.AddNode("Div", {input_qdq, sqrt2_dq}, {div_output});
 
-    // DQ -> Erf -> Q
-    NodeArg* div_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(div_q, input_qparams.scale, input_qparams.zero_point, div_dq);
+    // Erf
     NodeArg* erf_output = builder.MakeIntermediate();
-    builder.AddNode("Erf", {div_dq}, {erf_output});
-    NodeArg* erf_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(erf_output, input_qparams.scale, input_qparams.zero_point, erf_q);
+    builder.AddNode("Erf", {div_output}, {erf_output});
 
-    // DQ -> Add -> Q
-    NodeArg* erf_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(erf_q, input_qparams.scale, input_qparams.zero_point, erf_dq);
+    // Add 1.0
+    // Quantize one constant with DequantizeLinear node (quant_value=255, scale=one/255)
+    NodeArg* one_initializer_quant = builder.MakeInitializer<QuantType>({}, {static_cast<QuantType>(255)});
     NodeArg* one_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(one_q, const_qparams.scale, const_qparams.zero_point, one_dq);
+    builder.AddDequantizeLinearNode<QuantType>(one_initializer_quant, one / 255.0f, 0, one_dq);
     NodeArg* add_output = builder.MakeIntermediate();
-    builder.AddNode("Add", {erf_dq, one_dq}, {add_output});
-    NodeArg* add_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(add_output, input_qparams.scale, input_qparams.zero_point, add_q);
+    builder.AddNode("Add", {erf_output, one_dq}, {add_output});
 
-    // DQ -> Mul (with input) -> Q
-    NodeArg* input_dq_2 = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(input_q, input_qparams.scale, input_qparams.zero_point, input_dq_2);
-    NodeArg* add_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(add_q, input_qparams.scale, input_qparams.zero_point, add_dq);
+    // Mul with input: input * add_output
     NodeArg* mul_output = builder.MakeIntermediate();
-    builder.AddNode("Mul", {input_dq_2, add_dq}, {mul_output});
-    NodeArg* mul_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(mul_output, input_qparams.scale, input_qparams.zero_point, mul_q);
+    builder.AddNode("Mul", {input_qdq, add_output}, {mul_output});
 
-    // Final DQ -> Mul (with 0.5)
-    NodeArg* mul_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(mul_q, input_qparams.scale, input_qparams.zero_point, mul_dq);
+    // Final Mul with 0.5
+    // Quantize half constant with DequantizeLinear node (quant_value=255, scale=half/255)
+    NodeArg* half_initializer_quant = builder.MakeInitializer<QuantType>({}, {static_cast<QuantType>(255)});
     NodeArg* half_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(half_q, const_qparams.scale, const_qparams.zero_point, half_dq);
+    builder.AddDequantizeLinearNode<QuantType>(half_initializer_quant, half / 255.0f, 0, half_dq);
     NodeArg* mul_final_output = builder.MakeIntermediate();
-    builder.AddNode("Mul", {mul_dq, half_dq}, {mul_final_output});
+    builder.AddNode("Mul", {mul_output, half_dq}, {mul_final_output});
 
     // Add output QDQ
     AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, mul_final_output, output_qparams[0].scale,
@@ -282,7 +221,7 @@ TEST_F(QnnHTPBackendTests, GeluFusionPattern1_Float32) {
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/1e-3f);
+                  /*fp32_abs_err=*/1e-4f);
 }
 
 // Test GELU Pattern 2 with float32 model (for baseline comparison)
@@ -294,55 +233,107 @@ TEST_F(QnnHTPBackendTests, GeluFusionPattern2_Float32) {
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/1e-3f);
+                  /*fp32_abs_err=*/1e-4f);
+}
+
+// Test GELU Pattern 1 with QDQ (uint8)
+TEST_F(QnnHTPBackendTests, GeluFusionPattern1_QDQ_U8) {
+  ProviderOptions provider_options = GetProviderOptions();
+  auto input_def = TestInputDef<float>({1, 2, 3, 4}, false, -1.0f, 1.0f);
+
+  TestQDQModelAccuracy(BuildGeluPattern1TestCase(input_def),
+                       BuildQDQGeluPattern1TestCase<uint8_t>(input_def),
+                       provider_options,
+                       /*opset_version=*/13,
+                       /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
+                       /*tolerance=*/QDQTolerance(0.005f));
+}
+
+// Test GELU Pattern 2 with QDQ (uint8)
+TEST_F(QnnHTPBackendTests, GeluFusionPattern2_QDQ_U8) {
+  ProviderOptions provider_options = GetProviderOptions();
+  auto input_def = TestInputDef<float>({1, 2, 3, 4}, false, -1.0f, 1.0f);
+
+  TestQDQModelAccuracy(BuildGeluPattern2TestCase(input_def),
+                       BuildQDQGeluPattern2TestCase<uint8_t>(input_def),
+                       provider_options,
+                       /*opset_version=*/13,
+                       /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
+                       /*tolerance=*/QDQTolerance(0.005f));
+}
+
+// Test GELU Pattern 1 with QDQ (uint16)
+TEST_F(QnnHTPBackendTests, GeluFusionPattern1_QDQ_U16) {
+  ProviderOptions provider_options = GetProviderOptions();
+  auto input_def = TestInputDef<float>({1, 2, 3, 4}, false, -1.0f, 1.0f);
+
+  TestQDQModelAccuracy(BuildGeluPattern1TestCase(input_def),
+                       BuildQDQGeluPattern1TestCase<uint16_t>(input_def),
+                       provider_options,
+                       /*opset_version=*/13,
+                       /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
+                       /*tolerance=*/QDQTolerance(0.002f));
+}
+
+// Test GELU Pattern 2 with QDQ (uint16)
+TEST_F(QnnHTPBackendTests, GeluFusionPattern2_QDQ_U16) {
+  ProviderOptions provider_options = GetProviderOptions();
+  auto input_def = TestInputDef<float>({1, 2, 3, 4}, false, -1.0f, 1.0f);
+
+  TestQDQModelAccuracy(BuildGeluPattern2TestCase(input_def),
+                       BuildQDQGeluPattern2TestCase<uint16_t>(input_def),
+                       provider_options,
+                       /*opset_version=*/13,
+                       /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
+                       /*tolerance=*/QDQTolerance(0.002f));
 }
 
 // Test GELU Pattern 1 with larger input shape
 TEST_F(QnnHTPBackendTests, GeluFusionPattern1_LargeInput) {
   ProviderOptions provider_options = GetProviderOptions();
-  auto input_def = TestInputDef<float>({1, 128, 768}, false, -1.5f, 1.5f);
+  auto input_def = TestInputDef<float>({1, 128, 768}, false, -2.0f, 2.0f);
 
   RunQnnModelTest(BuildGeluPattern1TestCase(input_def),
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/2e-3f);
+                  /*fp32_abs_err=*/1e-4f);
 }
 
 // Test GELU Pattern 2 with larger input shape
 TEST_F(QnnHTPBackendTests, GeluFusionPattern2_LargeInput) {
   ProviderOptions provider_options = GetProviderOptions();
-  auto input_def = TestInputDef<float>({1, 128, 768}, false, -1.5f, 1.5f);
+  auto input_def = TestInputDef<float>({1, 128, 768}, false, -2.0f, 2.0f);
 
   RunQnnModelTest(BuildGeluPattern2TestCase(input_def),
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/2e-3f);
+                  /*fp32_abs_err=*/1e-4f);
 }
 
-// Test GELU Pattern 1 with 3D input
-TEST_F(QnnHTPBackendTests, GeluFusionPattern1_3D) {
+// Test GELU Pattern 1 with different input ranges
+TEST_F(QnnHTPBackendTests, GeluFusionPattern1_DifferentRange) {
   ProviderOptions provider_options = GetProviderOptions();
-  auto input_def = TestInputDef<float>({1, 16, 32}, false, -1.0f, 1.0f);
+  auto input_def = TestInputDef<float>({1, 16, 32}, false, -3.0f, 3.0f);
 
   RunQnnModelTest(BuildGeluPattern1TestCase(input_def),
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/1e-3f);
+                  /*fp32_abs_err=*/1e-4f);
 }
 
-// Test GELU Pattern 2 with 3D input
-TEST_F(QnnHTPBackendTests, GeluFusionPattern2_3D) {
+// Test GELU Pattern 2 with different input ranges
+TEST_F(QnnHTPBackendTests, GeluFusionPattern2_DifferentRange) {
   ProviderOptions provider_options = GetProviderOptions();
-  auto input_def = TestInputDef<float>({1, 16, 32}, false, -1.0f, 1.0f);
+  auto input_def = TestInputDef<float>({1, 16, 32}, false, -3.0f, 3.0f);
 
   RunQnnModelTest(BuildGeluPattern2TestCase(input_def),
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/1e-3f);
+                  /*fp32_abs_err=*/1e-4f);
 }
 
 // Test GELU Pattern 1 with 2D input (typical for linear layers)
@@ -354,7 +345,7 @@ TEST_F(QnnHTPBackendTests, GeluFusionPattern1_2D) {
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/2e-3f);
+                  /*fp32_abs_err=*/1e-4f);
 }
 
 // Test GELU Pattern 2 with 2D input (typical for linear layers)
@@ -366,31 +357,7 @@ TEST_F(QnnHTPBackendTests, GeluFusionPattern2_2D) {
                   provider_options,
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
-                  /*fp32_abs_err=*/2e-3f);
-}
-
-// Test GELU Pattern 1 with QDQ
-TEST_F(QnnHTPBackendTests, GeluFusionPattern1_QDQ_U8) {
-  ProviderOptions provider_options = GetProviderOptions();
-  auto input_def = TestInputDef<float>({1, 2, 3, 4}, false, -1.0f, 1.0f);
-
-  TestQDQModelAccuracy(BuildGeluPattern1TestCase(input_def),
-                       BuildQDQGeluPattern1TestCase<uint8_t>(input_def),
-                       provider_options,
-                       /*opset_version=*/13,
-                       /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All);
-}
-
-// Test GELU Pattern 2 with QDQ
-TEST_F(QnnHTPBackendTests, GeluFusionPattern2_QDQ_U8) {
-  ProviderOptions provider_options = GetProviderOptions();
-  auto input_def = TestInputDef<float>({1, 2, 3, 4}, false, -1.0f, 1.0f);
-
-  TestQDQModelAccuracy(BuildGeluPattern2TestCase(input_def),
-                       BuildQDQGeluPattern2TestCase<uint8_t>(input_def),
-                       provider_options,
-                       /*opset_version=*/13,
-                       /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All);
+                  /*fp32_abs_err=*/1e-4f);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
