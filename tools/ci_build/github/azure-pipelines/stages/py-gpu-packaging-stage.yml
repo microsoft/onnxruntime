@@ -38,7 +38,7 @@ parameters:
     - '3.13'
 
 stages:
-    - ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    - ${{ if eq(parameters.cuda_version, '12.8') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
         - template: py-win-gpu-stage.yml
           parameters:
@@ -48,7 +48,7 @@ stages:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;86-real;89-real;90-virtual"
             use_tensorrt: True
 
-    - ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    - ${{ if eq(parameters.cuda_version, '13.0') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
         - template: py-win-gpu-stage.yml
           parameters:
