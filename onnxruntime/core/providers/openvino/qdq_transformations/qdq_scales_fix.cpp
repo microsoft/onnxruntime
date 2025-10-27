@@ -4,7 +4,7 @@
 #include "qdq_scales_fix.h"
 #include "core/providers/openvino/ov_protobuf_utils.h"
 #include "core/framework/ort_value.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 #include <fstream>
 #include <list>

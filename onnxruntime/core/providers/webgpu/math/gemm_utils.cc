@@ -158,9 +158,9 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   int output_components,
                                   uint32_t tile_inner,
                                   bool split_k,
-                                  uint32_t splitted_dim_inner) {
+                                  uint32_t split_dim_inner) {
   ORT_UNUSED_PARAMETER(split_k);
-  ORT_UNUSED_PARAMETER(splitted_dim_inner);
+  ORT_UNUSED_PARAMETER(split_dim_inner);
 
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
@@ -356,9 +356,9 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                               bool need_handle_matmul,
                               uint32_t tile_inner,
                               bool split_k,
-                              uint32_t splitted_dim_inner) {
+                              uint32_t split_dim_inner) {
   ORT_UNUSED_PARAMETER(split_k);
-  ORT_UNUSED_PARAMETER(splitted_dim_inner);
+  ORT_UNUSED_PARAMETER(split_dim_inner);
 
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];

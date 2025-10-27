@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "mlasi.h"
+#include "../mlasi.h"
 
 // Fix to ensure compatibility with MSVC build
 #if defined(_MSC_VER)
