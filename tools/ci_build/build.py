@@ -2005,6 +2005,10 @@ def build_python_wheel(
                 args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
+        elif wheel_name_suffix == "trt-rtx":
+            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
+            if cuda_version:
+                args.append(f"--cuda_version={cuda_version}")
 
         run_subprocess(args, cwd=cwd)
 

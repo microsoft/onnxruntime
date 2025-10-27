@@ -10,6 +10,7 @@
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
+#include "test/common/random_generator.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <limits>
@@ -3923,6 +3924,14 @@ TEST(MathOpTest, Erf) {
   test.Run();
 }
 
+TEST(MathOpTest, Erf_f16) {
+  OpTester test("Erf", 9);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<MLFloat16>("A", dims, MakeMLFloat16({0.5f, 1.0f, 0.7f, 2.0f}));
+  test.AddOutput<MLFloat16>("B", dims, MakeMLFloat16({0.5204999f, 0.8427008f, 0.6778012f, 0.9953223f}));
+  test.Run();
+}
+
 TEST(MathOpTest, ErfMoreData) {
   OpTester test("Erf", 9);
   std::vector<float> inputs{
@@ -3945,6 +3954,21 @@ TEST(MathOpTest, ErfMoreData) {
       -0.999433f, -0.00105786f, 0.00133995f};
   std::vector<int64_t> dims{static_cast<int64_t>(inputs.size())};
 
+  test.AddInput<float>("A", dims, inputs);
+  test.AddOutput<float>("B", dims, outputs);
+  test.Run();
+}
+
+TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
+  OpTester test("Erf", 9);
+  static constexpr int64_t size = 100;
+  std::vector<int64_t> dims{size};
+  RandomValueGenerator random(42);
+  std::vector<float> inputs = random.Uniform<float>(dims, -5.0f, 5.0f);
+  std::vector<float> outputs(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    outputs[i] = std::erf(inputs[i]);
+  }
   test.AddInput<float>("A", dims, inputs);
   test.AddOutput<float>("B", dims, outputs);
   test.Run();

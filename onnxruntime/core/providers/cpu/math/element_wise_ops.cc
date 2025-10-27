@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/element_wise_ops.h"
-
 #include "core/common/narrow.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/math.h"
@@ -175,6 +174,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint8_t, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint16_t, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint32_t, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, uint64_t, Add);
+REG_ELEMENTWISE_TYPED_KERNEL(Add, 14, MLFloat16, Add);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 12, float, Sub);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sub, 7, 12, double, Sub);
@@ -198,6 +198,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint8_t, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint16_t, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint32_t, Sub);
 REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, uint64_t, Sub);
+REG_ELEMENTWISE_TYPED_KERNEL(Sub, 14, MLFloat16, Sub);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 12, float, Mul);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mul, 7, 12, double, Mul);
@@ -221,6 +222,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint8_t, Mul);
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint16_t, Mul);
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint32_t, Mul);
 REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, uint64_t, Mul);
+REG_ELEMENTWISE_TYPED_KERNEL(Mul, 14, MLFloat16, Mul);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 12, float, Div);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Div, 7, 12, double, Div);
@@ -244,6 +246,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint8_t, Div);
 REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint16_t, Div);
 REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint32_t, Div);
 REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, uint64_t, Div);
+REG_ELEMENTWISE_TYPED_KERNEL(Div, 14, MLFloat16, Div);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 12, float, Abs);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Abs, 6, 12, double, Abs);
@@ -528,6 +531,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, uint64_t, BitwiseXor);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Erf, 9, 12, float, Erf);
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
 REG_ELEMENTWISE_TYPED_KERNEL(Erf, 13, float, Erf);
+REG_ELEMENTWISE_TYPED_KERNEL(Erf, 13, MLFloat16, Erf);
 
 // REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Not, 1, bool, Not);
 // REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(And, 7, bool, And);
@@ -590,6 +594,22 @@ Status Add<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <>
+Status Add<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() + per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() + per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>() + per_iter_bh.EigenInput1<Eigen::half>();
+      }};
+  UntypedBroadcastTwo(*context, funcs, 1.0f);
+  return Status::OK();
+}
+
 template <typename T>
 Status Sub<T>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
@@ -603,6 +623,22 @@ Status Sub<T>::Compute(OpKernelContext* context) const {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() - per_iter_bh.EigenInput1<T>();
       }};
 
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
+}
+
+template <>
+Status Sub<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() - per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() - per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>() - per_iter_bh.EigenInput1<Eigen::half>();
+      }};
   UntypedBroadcastTwo(*context, funcs, 1.0);
   return Status::OK();
 }
@@ -624,6 +660,22 @@ Status Mul<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <>
+Status Mul<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() * per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() * per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().cwiseProduct(per_iter_bh.EigenInput1<Eigen::half>());
+      }};
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
+}
+
 template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
@@ -637,6 +689,21 @@ Status Div<T>::Compute(OpKernelContext* context) const {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().cwiseQuotient(per_iter_bh.EigenInput1<T>());
       }};
 
+  UntypedBroadcastTwo(*context, funcs, 1.0);
+  return Status::OK();
+}
+template <>
+Status Div<MLFloat16>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.ScalarInput0<Eigen::half>() / per_iter_bh.EigenInput1<Eigen::half>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().array() / per_iter_bh.ScalarInput1<Eigen::half>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<Eigen::half>() = per_iter_bh.EigenInput0<Eigen::half>().cwiseQuotient(per_iter_bh.EigenInput1<Eigen::half>());
+      }};
   UntypedBroadcastTwo(*context, funcs, 1.0);
   return Status::OK();
 }
@@ -1923,9 +1990,66 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto& x_shape = X->Shape();
   auto* Y = context->Output(0, x_shape);
-  const size_t N = static_cast<size_t>(x_shape.Size());
+  const float* input_data = X->Data<float>();
+  float* output_data = Y->MutableData<float>();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
-  MlasComputeErf(X->Data<float>(), Y->MutableData<float>(), N);
+  const std::ptrdiff_t elem_count = onnxruntime::narrow<std::ptrdiff_t>(X->Shape().Size());
+  constexpr std::ptrdiff_t length_per_task = 4096;  // this number comes from FastGelu.
+  const std::ptrdiff_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+
+  concurrency::ThreadPool::TryBatchParallelFor(
+      tp, task_count,
+      [&](ptrdiff_t task_idx) {
+        const std::ptrdiff_t start = task_idx * length_per_task;
+        const float* p_input = input_data + start;
+        float* p_output = output_data + start;
+        const std::ptrdiff_t count = std::min(length_per_task, elem_count - start);
+        MlasComputeErf(p_input, p_output, count);
+      },
+      0);
+
+  return Status::OK();
+}
+
+template <>
+Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const auto* input_data = X->Data<MLFloat16>();
+  auto* output_data = Y->MutableData<MLFloat16>();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  int64_t elem_count = X->Shape().Size();
+  constexpr int64_t length_per_task = 4096;
+  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+
+  const auto narrow_task_count = onnxruntime::narrow<std::ptrdiff_t>(task_count);
+
+  // get allocator for temporary buffers
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  concurrency::ThreadPool::TryBatchParallelFor(
+      tp, narrow_task_count,
+      [&](ptrdiff_t task_idx) {
+        const auto start = task_idx * length_per_task;
+        const int64_t count = std::min(length_per_task, elem_count - start);
+        const auto narrow_count = onnxruntime::narrow<std::ptrdiff_t>(count);
+
+        const MLFloat16* p_input = input_data + start;
+        MLFloat16* p_output = output_data + start;
+
+        // allocate temp buffers using ORT allocator
+        IAllocatorUniquePtr<float> input_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
+        IAllocatorUniquePtr<float> output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
+
+        // convert, compute, convert back
+        MlasConvertHalfToFloatBuffer(p_input, input_fp32.get(), narrow_count);
+        MlasComputeErf(input_fp32.get(), output_fp32.get(), narrow_count);
+        MlasConvertFloatToHalfBuffer(output_fp32.get(), p_output, narrow_count);
+      },
+      0);
 
   return Status::OK();
 }
