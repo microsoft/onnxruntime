@@ -140,7 +140,6 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         const b_weight_offset : u32 = 0;
         let b_value = b.getByOffset(b_global * uniforms.K16 + kidx_v + col);
 #endif
-        let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
         let block_idx = kidx_v/(block_size/16);
         let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K/block_size);
