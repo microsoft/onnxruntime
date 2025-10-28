@@ -10,6 +10,7 @@ param(
 )
 
 $RootDir = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)").Path
+$RepoRoot= (Resolve-Path -Path ("$RootDir\..\..\.."))
 
 if (-not $OnnxModelsRoot) {
     $OnnxModelsRoot = (Join-Path $RootDir (Join-Path "model_tests" "onnx_models"))
@@ -119,7 +120,7 @@ Write-Host "--=-=-=- Running ONNX model tests -=--=-=-"
     -j 1 `
     -e qnn `
     -i "backend_type|cpu" `
-    "_deps\onnx-src\onnx\backend\test\data\node"
+    "$RepoRoot\cmake\external\onnx\onnx\backend\test\data\node"
 if (-not $?) {
     $Failed = $true
 }

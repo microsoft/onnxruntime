@@ -1403,12 +1403,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   }
 
   if (provider_name == "qnn") {
-    // TODO: [AISW-156097] Use node tests from ONNX submodule instead of _deps
-    // DO NOT UPSTREAM
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded", "upstream changed source of node tests"});
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "upstream changed source of node tests"});
-    // END DO NOT UPSTREAM
-
     broken_tests->insert({"resize_downsample_scales_linear", "result differs"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});

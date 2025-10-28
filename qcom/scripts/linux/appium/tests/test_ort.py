@@ -9,10 +9,10 @@ import pytest
 from adb_utils import Adb
 from ctest_plan import CTestPlan
 from qdc_helpers import (
-    ORT_BUILD_CONFIG,
+    ORT_DEVICE_BUILD_ROOT,
     ORT_DEVICE_PATH,
+    ORT_HOST_BUILD_ROOT,
     ORT_TEST_RESULTS_DEVICE_LOG,
-    QDC_HOST_PATH,
     QNN_ADSP_LIBRARY_PATH,
     QNN_LD_LIBRARY_PATH,
     TestBase,
@@ -28,15 +28,15 @@ class ModelTestDef(NamedTuple):
 
 
 CTEST_PLAN = CTestPlan(
-    Path(QDC_HOST_PATH) / ORT_BUILD_CONFIG / "CTestTestfile.cmake",
-    str(PurePosixPath(ORT_DEVICE_PATH) / ORT_BUILD_CONFIG),
+    Path(ORT_HOST_BUILD_ROOT) / "CTestTestfile.cmake",
+    str(PurePosixPath(ORT_DEVICE_BUILD_ROOT)),
 )
 
 MODEL_TEST_DEFINITIONS = [
     ModelTestDef(
         "node",
         "cpu",
-        Path(ORT_DEVICE_PATH) / ORT_BUILD_CONFIG / "_deps" / "onnx-src" / "onnx" / "backend" / "test" / "data" / "node",
+        Path(ORT_DEVICE_PATH) / "cmake" / "external" / "onnx" / "onnx" / "backend" / "test" / "data" / "node",
     ),
     ModelTestDef(
         "float32",
@@ -75,8 +75,7 @@ class TestOrt(TestBase):
 
     @pytest.mark.parametrize("test_def", MODEL_TEST_DEFINITIONS, ids=MODEL_TEST_IDS)
     def test_onnx_models(self, test_def: ModelTestDef) -> None:
-        build_root = Path(ORT_DEVICE_PATH) / ORT_BUILD_CONFIG
-        runner_exe = build_root / "onnx_test_runner"
+        runner_exe = Path(ORT_DEVICE_BUILD_ROOT) / "onnx_test_runner"
 
         # fmt: off
         test_cmd = [
@@ -94,7 +93,7 @@ class TestOrt(TestBase):
     @staticmethod
     def __get_test_cmd(test_cmd: list[str], working_dir: Path | None = None) -> str:
         if working_dir is None:
-            working_dir = Path(ORT_DEVICE_PATH) / ORT_BUILD_CONFIG
+            working_dir = Path(ORT_DEVICE_BUILD_ROOT)
         test_str = " ".join(test_cmd)
         return (
             f"set -euo pipefail && "

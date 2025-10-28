@@ -24,7 +24,7 @@ jobs:
         with:
           # Set fetch-depth to 0 (pulls in full history) to allow the histories to be merged
           fetch-depth: 0
-          submodules: false
+          submodules: recursive
           token: ${{ secrets.ORTQNNEPCI_PAT }}
       - name: Configure git as ortqnnepci
         run: |

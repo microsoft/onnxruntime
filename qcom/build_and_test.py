@@ -455,7 +455,7 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Linux",
                 REPO_ROOT / "build" / "onnxruntime-tests-linux-x86_64.tar.bz2",
-                REPO_ROOT / "build" / "linux-x86_64" / self.__config,
+                REPO_ROOT,
             )
         )
 
@@ -465,7 +465,7 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Windows on ARM64",
                 REPO_ROOT / "build" / "onnxruntime-tests-windows-arm64.zip",
-                REPO_ROOT / "build" / "windows-arm64" / self.__config,
+                REPO_ROOT,
             )
         )
 
@@ -475,7 +475,7 @@ class TaskLibrary:
             ExtractArchiveTask(
                 "Extracting ONNX Runtime for Windows on x86_64",
                 REPO_ROOT / "build" / "onnxruntime-tests-windows-x86_64.zip",
-                REPO_ROOT / "build" / "windows-x86_64" / self.__config,
+                REPO_ROOT,
             )
         )
 

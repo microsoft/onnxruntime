@@ -229,7 +229,7 @@ else
         -j 1 \
         -e qnn \
         -i "backend_type|cpu" \
-        "${build_dir}/${config}/_deps/onnx-src/onnx/backend/test/data/node"
+        "${REPO_ROOT}/cmake/external/onnx/onnx/backend/test/data/node"
 
     log_info "-=-=-=- Running onnx/models float32 tests -=-=-=-=-"
     cd "${onnx_models_root}"

@@ -32,7 +32,7 @@ DEFAULT_PACKAGE_CACHE_DIR = Path(
         str((Path("~") / ".ort-package-cache").expanduser()),
     )
 )
-DEFAULT_MAX_CACHE_SIZE_BYTES = int(os.environ.get("ORT_BUILD_PACKAGE_CACHE_SIZE", f"{5 * 1024 * 1024 * 1024}"))  # 5 GiB
+DEFAULT_MAX_CACHE_SIZE_BYTES = int(os.environ.get("ORT_BUILD_PACKAGE_CACHE_SIZE", f"{7 * 1024 * 1024 * 1024}"))  # 7 GiB
 
 DEFAULT_TOOLS_DIR = Path(os.environ.get("ORT_BUILD_TOOLS_PATH", REPO_ROOT / "build" / "tools"))
 
