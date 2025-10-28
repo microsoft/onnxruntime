@@ -168,10 +168,22 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
     //
     // TODO: Revert this change once the driver issue is fixed.
     if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      ORT_ENFORCE(rank == static_cast<size_t>(4), "Input tensor must have rank 4.");
-      dispatch_x = ceil_div(input_shape[0] * input_shape[1], 2);
-      dispatch_y = ceil_div(input_shape[2], 4);
-      dispatch_z = ceil_div(input_shape[3], 8);
+      ORT_ENFORCE(rank == static_cast<size_t>(4) || rank == static_cast<size_t>(3), "Input tensor must have rank 3 or 4.");
+      if (rank == static_cast<size_t>(4)) {
+        dispatch_x = ceil_div(input_shape[0] * input_shape[1], 2);
+        dispatch_y = ceil_div(input_shape[2], 4);
+        dispatch_z = ceil_div(input_shape[3], 8);
+      }
+      if (rank == static_cast<size_t>(3)) {
+        dispatch_x = ceil_div(input_shape[0], 1);
+        if (input_shape[2] > 4) {
+          dispatch_y = ceil_div(input_shape[1], 16);
+          dispatch_z = ceil_div(input_shape[2], 4);
+        } else {
+          dispatch_y = ceil_div(input_shape[1], 64);
+          dispatch_z = ceil_div(input_shape[2], 1);
+        }
+      }
     }
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z);
   }
