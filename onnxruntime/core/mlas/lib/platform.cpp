@@ -601,7 +601,7 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    if (ArmKleidiAI::SMEInfo::IsSMEAvailable) {
+    if (SMEInfo::IsSMEAvailable) {
         this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;

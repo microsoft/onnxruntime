@@ -139,7 +139,7 @@ const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& GetKleidiAIGemvUKernel() {
 }
 
 const kai_matmul_clamp_f32_f32p_f32p_ukernel& GetKleidiAISGemmUKernel() {
-    if (ArmKleidiAI::SMEInfo::CanUseSME2) {
+    if (SMEInfo::CanUseSME2) {
         return sgemm_gemm_sme2;
     } else {
         return sgemm_gemm_sme;
@@ -147,7 +147,7 @@ const kai_matmul_clamp_f32_f32p_f32p_ukernel& GetKleidiAISGemmUKernel() {
 }
 
 const kai_matmul_clamp_f32_f32_f32p_ukernel& GetKleidiAISGemvUKernel() {
-    if (ArmKleidiAI::SMEInfo::CanUseSME2) {
+    if (SMEInfo::CanUseSME2) {
         return sgemm_gemv_sme2;
     } else {
         return sgemm_gemv_sme;
