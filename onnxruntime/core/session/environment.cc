@@ -756,7 +756,8 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
 }
 
 Status SetEpFactoryEnvironmentOptions(OrtEpFactory& factory, std::string_view lib_registration_name) {
-  if (factory.SetEnvironmentOptions == nullptr) {
+  // OrtEpFactory::SetEnvironmentOptions was added in ORT 1.24
+  if (factory.ort_version_supported < 24 || factory.SetEnvironmentOptions == nullptr) {
     return Status::OK();
   }
 
