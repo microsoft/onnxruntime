@@ -7,6 +7,7 @@
 #param n_bits
 #param has_zero_points
 #param has_bias
+#param has_weight_idx
 
 #use .getByOffset .setByOffset
 
@@ -47,9 +48,14 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     var col = c_idx * 16;
     // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
     // Stored in column major fashion.
+#if has_weight_idx
     let b_base_offset = uniforms.weight_idx * uniforms.K * uniforms.N;
-    let b_idx = u32((b_global*uniforms.K + k_idx + col)/8) + b_base_offset / 8;
     let scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#else
+    const b_base_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let b_idx = u32((b_global*uniforms.K + k_idx + col)/8) + b_base_offset / 8;
     let scale = compute_precision(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size + scale_offset));
     let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
     for (var step:u32 = 0; step < 2; step++) {
@@ -79,9 +85,14 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     var col = c_idx * 16;
     // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
     // Stored in column major fashion.
+#if has_weight_idx
     let b_base_offset = uniforms.weight_idx * uniforms.K * uniforms.N;
-    let b_idx = u32((b_global*uniforms.K + k_idx + col)/8) + b_base_offset / 8;
     let scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#else
+    const b_base_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let b_idx = u32((b_global*uniforms.K + k_idx + col)/8) + b_base_offset / 8;
     let scale = compute_precision(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size + scale_offset));
     let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
     for (var step : u32 = 0; step < 2; step++) {

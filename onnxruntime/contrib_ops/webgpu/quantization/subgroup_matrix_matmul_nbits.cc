@@ -280,9 +280,10 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelpe
 
 Status GenerateShaderCodeOnApple(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
-                                 const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias) {
+                                 const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_apple.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
                              WGSL_TEMPLATE_PARAMETER(n_bits, nbits),
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
@@ -306,7 +307,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
 
   // TODO: add support for bias to the shader for Intel. In the meantime, use the shader for Metal
   if (!vendor_.compare("apple") || has_bias_) {
-    return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_);
+    return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_);
   } else if (!vendor_.compare("intel")) {
     return GenerateShaderCodeOnIntel(shader, b, scales_b, nbits_, config_index_, has_zero_points_);
   } else {
@@ -362,7 +363,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   TensorShape y_shape{1, M, N};
   const bool has_zero_points = zero_points != nullptr;
   const bool has_bias = bias != nullptr;
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points, has_bias};
+  const bool has_weight_idx = weight_index > 0;
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points, has_bias, has_weight_idx};
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
     tile_size_a = 64;
     work_group_size = 256;
@@ -376,7 +378,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}, {weight_index}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
-      .CacheHint(nbits, has_zero_points, has_bias);
+      .CacheHint(nbits, has_zero_points, has_bias, has_weight_idx);
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

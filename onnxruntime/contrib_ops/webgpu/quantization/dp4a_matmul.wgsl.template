@@ -6,6 +6,7 @@
 #param has_bias
 #param has_zero_points
 #param is_qualcomm
+#param has_weight_idx
 
 #use .getByOffset .setByOffset
 
@@ -76,9 +77,12 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             return;
         }
-
+#if has_weight_idx
         let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
-        let b_value = b.getByOffset(b_weight_offset + b_global*uniforms.K16+kidx_v+col);
+        let b_value = b.getByOffset(b_weight_offset + b_global * uniforms.K16 + kidx_v + col);
+#else
+        let b_value = b.getByOffset(b_global * uniforms.K16+kidx_v + col);
+#endif
         let block_idx = kidx_v/(block_size/16);
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value, zero);
@@ -100,8 +104,13 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             return;
         }
 
+#if has_weight_idx
         let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
-        let b_value = b.getByOffset(b_weight_offset + b_global*uniforms.K16+kidx_v+col);
+        let b_value = b.getByOffset(b_weight_offset + b_global * uniforms.K16 + kidx_v + col);
+#else
+        const b_weight_offset : u32 = 0;
+        let b_value = b.getByOffset(b_global * uniforms.K16 + kidx_v + col);
+#endif
         tile_B[col][row] = AlignWithZeroPoint(b_value);
         if (col == 0)
         {
@@ -124,8 +133,14 @@ fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             return;
         }
+#if has_weight_idx
         let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
-        let b_value = b.getByOffset(b_weight_offset + b_global*uniforms.K16+kidx_v+col);
+        let b_value = b.getByOffset(b_weight_offset + b_global * uniforms.K16 + kidx_v + col);
+#else
+        const b_weight_offset : u32 = 0;
+        let b_value = b.getByOffset(b_global * uniforms.K16 + kidx_v + col);
+#endif
+        let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
         let block_idx = kidx_v/(block_size/16);
         let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K/block_size);
@@ -137,9 +152,6 @@ $MAIN {
 #if n_bits == 2
     LoadDequantizationTable(local_idx);
     workgroupBarrier();
-#endif
-#if has_bias
-    let b_bias_offset = uniforms.weight_idx * uniforms.N;
 #endif
     // During the load phase we use all 256 threads to load 64 rows of A/B.
     // For each row we load tile_size_k_vec (2) vectorized elements, which are 32 elements of K.
@@ -370,6 +382,13 @@ $MAIN {
     let a_global = a_global_base + base_A + a_idx;
     let b_global = b_global_base + base_B;
     let output_idx = ((a_global) * uniforms.N + b_global)/4;
+#if has_bias
+#if has_weight_idx
+    let b_bias_offset = uniforms.weight_idx * uniforms.N;
+#else
+    const b_bias_offset : u32 = 0;
+#endif
+#endif
     // This creates a shader requirement that uniforms.N % 16 == 0
     if (a_global < uniforms.M && b_global < uniforms.N)
     {
@@ -411,6 +430,7 @@ $MAIN {
  #endif
 #else
  #if has_bias
+        // TODO: wanted to use vec4 for bias but for some reason that fails ut. Later.
         let bias_vec1 = vec4<output_element_t>(
             bias[b_global + 0 + b_bias_offset],
             bias[b_global + 1 + b_bias_offset],

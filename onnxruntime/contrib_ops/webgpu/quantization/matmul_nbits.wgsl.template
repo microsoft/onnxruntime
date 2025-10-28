@@ -11,6 +11,8 @@
 #param tile_size_k_vec
 #param tile_size_k
 #param tile_size
+#param has_bias
+#param has_weight_idx
 
 #use .getByOffset .setByOffset
 
@@ -32,8 +34,17 @@ fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 
 $MAIN {
   let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
+#if has_weight_idx
   let b_base_offset = uniforms.weight_idx * uniforms.K_of_b * uniforms.N;
+#if single_scale_weights
+  let b_scale_offset = uniforms.weight_idx;
+#else
   let b_scale_offset = uniforms.weight_idx * uniforms.N * uniforms.blocks_per_col;
+#endif
+#else
+  const b_base_offset : u32 = 0;
+  const b_scale_offset : u32 = 0;
+#endif
 #if has_bias
   let b_bias_offset = uniforms.weight_idx * uniforms.N;
 #endif
@@ -45,7 +56,7 @@ $MAIN {
 
 #if single_scale_weights
   let block_idx = 0;
-  let scale_b = scales_b.getByOffset(0);
+  let scale_b = scales_b.getByOffset(0 + b_scale_offset);
   let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
 
