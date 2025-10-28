@@ -144,10 +144,10 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
     if (param_name.find("key_values") != std::string::npos) {
          key_value_input_names.push_back(param_name);
         found = true;
-    } else if (param_name.find("key") != std::string::npos) {
+    } else if (param_name.find("keys") != std::string::npos) {
         key_value_input_names.push_back(param_name);
         found = true;
-    } else if (param_name.find("value") != std::string::npos) {
+    } else if (param_name.find("values") != std::string::npos) {
         key_value_input_names.push_back(param_name);
         found = true;
     }
