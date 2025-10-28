@@ -397,6 +397,16 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+    def set_ep_dynamic_options(self, options: dict[str, str]):
+        """
+        Set dynamic options for execution providers.
+
+        :param options: Dictionary of key-value pairs where both keys and values are strings.
+                        These options will be passed to the execution providers to modify
+                        their runtime behavior.
+        """
+        self._sess.set_ep_dynamic_options(options)
+
     def get_tuning_results(self):
         return self._sess.get_tuning_results()
 

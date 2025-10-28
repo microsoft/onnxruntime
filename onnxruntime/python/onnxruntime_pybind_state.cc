@@ -2810,6 +2810,55 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
 #endif
       })
+      .def(
+          "set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) {
+            std::vector<const char*> keys;
+            std::vector<const char*> values;
+            std::vector<std::string> key_strings;
+            std::vector<std::string> value_strings;
+
+            // Reserve space to avoid reallocations
+            key_strings.reserve(options.size());
+            value_strings.reserve(options.size());
+            keys.reserve(options.size());
+            values.reserve(options.size());
+
+            // Convert Python dict to C-style arrays
+            for (const auto& item : options) {
+              key_strings.emplace_back(py::str(item.first));
+              value_strings.emplace_back(py::str(item.second));
+              keys.push_back(key_strings.back().c_str());
+              values.push_back(value_strings.back().c_str());
+            }
+
+            if (keys.empty()) {
+              ORT_THROW("No options were provided");
+            }
+
+            auto status = sess->GetSessionHandle()->SetEpDynamicOptions(
+                gsl::make_span(keys.data(), keys.size()),
+                gsl::make_span(values.data(), values.size()));
+
+            if (!status.IsOK()) {
+              ORT_THROW("Failed to set EP dynamic options: " + status.ErrorMessage());
+            }
+          },
+          R"pbdoc(Set dynamic options for execution providers.
+
+          Args:
+              options (dict): Dictionary of key-value pairs where both keys and values are strings.
+                            These options will be passed to the execution providers to modify
+                            their runtime behavior.
+
+          Example:
+              session.set_ep_dynamic_options({
+                  "option1": "value1",
+                  "option2": "value2"
+              })
+
+          Raises:
+              RuntimeError: If no options are provided or if setting the options fails.
+          )pbdoc")
       .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
         std::vector<TuningResults> tuning_results;
