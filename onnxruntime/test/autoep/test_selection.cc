@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
 
 #include <filesystem>
 // #include <absl/base/config.h>
@@ -171,7 +169,11 @@ TEST(AutoEpSelection, CpuEP) {
 TEST(AutoEpSelection, CudaEP) {
   Ort::KeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
-  RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda", provider_options);
+#if __linux__
+  RunBasicTest(kCudaExecutionProvider, "libonnxruntime_providers_cuda.so", provider_options);
+#else
+  RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda.dll", provider_options);
+#endif
 }
 #endif
 
@@ -502,5 +504,3 @@ TEST(AutoEpSelection, PolicyDelegateReturnsError) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32
