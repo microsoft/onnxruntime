@@ -2712,21 +2712,16 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     // In such cases, the Reshape operator should convert this TensorShapeProto into a TensorProto.
     // The resulting TensorProto will then be treated as an initializer during ONNX shape inference,
     // allowing the real dimension values to be correctly used.
-    const auto& tensor_shape_proto = def->GetInferredShapeValues();
 
-    // Make sure the returning shape tensor as a TensorProto has rank > 0 and all the dimensions
-    // have values (not symbolic).
-    // Note: ONNX's getShapeInput() internally calls getInputData() to retrieve a TensorProto (if available)
-    //       and then extracts shape/dimension values from it. For this reason, we only return TensorProto
-    //       object representing a tensor (i.e., non-scalar), and not a scalar value.
-    //       For inferred scalar value, Graph::SaveShapeValuesFromDataPropagation() does support it for
-    //       some operators.
-    if (tensor_shape_proto.has_value() && tensor_shape_proto->dim_size() > 0) {
+    const auto& inferred_shape_values = def->GetInferredShapeValues();
+
+    // Converts the inferred shape values if any to a TensorProto and returns the TensorProto.
+    if (inferred_shape_values.has_value() && inferred_shape_values->dim_size() > 0) {
       TensorProto tensor_proto;
       tensor_proto.set_data_type(TensorProto_DataType_INT64);
-      tensor_proto.add_dims(tensor_shape_proto->dim_size());
+      tensor_proto.add_dims(inferred_shape_values->dim_size());
       bool all_values = true;
-      for (const auto& dim : tensor_shape_proto->dim()) {
+      for (const auto& dim : inferred_shape_values->dim()) {
         if (dim.has_dim_value()) {
           tensor_proto.add_int64_data(dim.dim_value());
         } else {
@@ -2739,6 +2734,21 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         temp_tensor_protos_.push_back(std::make_unique<TensorProto>(std::move(tensor_proto)));
         return temp_tensor_protos_.back().get();
       }
+    }
+
+    const std::optional<int64_t> inferred_shape_scalar_value = def->GetInferredShapeScalarValue();
+
+    // Converts the inferred shape scalar value if any to a TensorProto and returns the TensorProto.
+    //
+    // Note: ONNX's getShapeInput() internally calls getInputData() to retrieve a TensorProto (if available)
+    //       and then extracts shape/dimension values from it. As a result, the scalar value may not be
+    //       properly handled and propagated in ONNX's shape inference.
+    //       However, Graph::SaveShapeValuesFromDataPropagation() properly handles data propagation for
+    //       some operators.
+    if (inferred_shape_scalar_value.has_value()) {
+      TensorProto tensor_proto;
+      tensor_proto.set_data_type(TensorProto_DataType_INT64);
+      tensor_proto.add_int64_data(inferred_shape_scalar_value.value());
     }
 
     return nullptr;
@@ -2884,6 +2894,12 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
 Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
+  // Skip it if the TypeProto is not a tensor_type or the shape is not present.
+  if (!onnx_inferred_type_after_data_propagation.has_tensor_type() ||
+      !onnx_inferred_type_after_data_propagation.tensor_type().has_shape()) {
+    return Status::OK();
+  }
+
   // Helper function to get the input value if it's a initializer.
   auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values)
       -> Status {
@@ -2894,7 +2910,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
       // If shape has dimension size equals zero, it means it's a scalar and has only one element.
       size_t element_cnt = 1;
       for (auto& dim : initializer->dims()) {
-        element_cnt *= dim;
+        element_cnt *= static_cast<size_t>(dim);
       }
 
       // Check if this is in-memory external data (data stored in OrtValue)
@@ -2909,10 +2925,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
               input_values[i] = static_cast<int64_t>(tensor.Data<int32_t>()[i]);
             }
           } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-            input_values.resize(element_cnt);
-            for (size_t i = 0; i < element_cnt; ++i) {
-              input_values[i] = tensor.Data<int64_t>()[i];
-            }
+            const int64_t* src = tensor.Data<int64_t>();
+            memcpy(input_values.data(), src, element_cnt * sizeof(int64_t));
           }
         } else {
           // If we can't get the OrtValue, it is a bug
