@@ -13,6 +13,7 @@ from typing import Any
 from .task import Task
 
 ALL_TASKS: list[str] = []
+HIDDEN_TASKS: set[str] = set()
 PUBLIC_TASKS: list[str] = []
 TASK_DEPENDENCIES: dict[str, list[str]] = {}
 TASK_DESCRIPTIONS: dict[str, str] = {}
@@ -21,6 +22,12 @@ SUMMARIZERS: list[str] = []
 
 def task(func):
     ALL_TASKS.append(func.__name__)
+    return func
+
+
+def implementation_detail(func):
+    HIDDEN_TASKS.add(func.__name__)
+    task(func)
     return func
 
 

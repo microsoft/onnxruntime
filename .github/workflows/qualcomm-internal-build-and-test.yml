@@ -52,7 +52,7 @@ jobs:
       nightly_build: ${{ inputs.nightly_build }}
       target_os: linux
       target_arch: aarch64_oe_gcc11_2
-      target_py_vsn: ${{ inputs.target_py_vsn }}
+      target_py_vsn: None
       upload_test_archive: false
       upload_wheel: false
       run_tests: false

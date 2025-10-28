@@ -23,7 +23,7 @@ from ..util import (
     MSFT_CI_REQUIREMENTS_RELPATH,
     REPO_ROOT,
 )
-from .build import ConfigT, TargetPyVersionT, get_ort_version
+from .build import BuildConfigT, TargetPyVersionT, get_ort_version
 
 
 def uv_pip_install_cmd(
@@ -61,7 +61,7 @@ class CreateOrtVenvTask(CompositeTask):
                             requirements=[
                                 REPO_ROOT / "qcom" / "requirements.txt",
                             ],
-                            index_url="http://ort-ep-win-01:8080",
+                            index_url="http://ort-ep-win-01.na.qualcomm.com:8080",
                         ),
                     ],
                 ),
@@ -181,7 +181,7 @@ class OrtWheelSmokeTestTask(OrtWheelTestTask):
         group_name: str | None,
         venv: Path | None,
         wheel_pe_arch: WheelPeArchT,
-        config: ConfigT,
+        config: BuildConfigT,
         py_version: TargetPyVersionT,
     ) -> None:
         self.__venv = venv

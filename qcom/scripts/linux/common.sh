@@ -79,6 +79,9 @@ function set_xtrace() {
 #
 function set_strict_mode() {
     set -euo pipefail
-    shopt -s inherit_errexit
+    if [ "${BASH_VERSINFO:-0}" -gt 3 ]; then
+        # macOS ships an ancient version of bash.
+        shopt -s inherit_errexit
+    fi
     set_xtrace
 }

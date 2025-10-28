@@ -7,7 +7,7 @@ import tarfile
 import tempfile
 import zipfile
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from pathlib import Path
 
 from .github import end_group, start_group
@@ -90,9 +90,10 @@ class FailTask(Task):
 
 
 class ListTasksTask(Task):
-    def __init__(self, tasks: list[str]) -> None:
+    def __init__(self, tasks: list[str], hidden_tasks: set[str]) -> None:
         super().__init__(group_name=None)
         self.tasks = tasks
+        self.hidden_tasks = hidden_tasks
 
     def does_work(self) -> bool:
         return False
@@ -101,6 +102,8 @@ class ListTasksTask(Task):
         from . import plan  # noqa: PLC0415
 
         for task_name in sorted(self.tasks):
+            if task_name in self.hidden_tasks:
+                continue
             print(task_name)
             description = plan.TASK_DESCRIPTIONS.get(task_name, None)
             if description:
@@ -137,16 +140,22 @@ class RemovePathsTask(Task):
     def __init__(
         self,
         group_name: str | None,
-        paths: Path | Iterable[Path],
+        paths: Path | Iterable[Path] | Callable[[], Generator[Path, None, None]],
     ) -> None:
         super().__init__(group_name)
-        self.__paths: Iterable[Path] = paths if isinstance(paths, Iterable) else [paths]
+        self.__paths = paths
 
     def does_work(self) -> bool:
         return True
 
     def run_task(self) -> None:
-        for path in self.__paths:
+        if isinstance(self.__paths, Path):
+            paths = [self.__paths]
+        elif isinstance(self.__paths, Iterable):
+            paths = self.__paths
+        else:
+            paths = list(self.__paths())
+        for path in paths:
             if not path.exists():
                 continue
             if path.is_file():
@@ -169,7 +178,7 @@ class RunExecutablesWithVenvTask(Task):
         self,
         group_name: str | None,
         venv: Path | None,
-        executables_and_args: list[list[str]],
+        executables_and_args: list[list[str]] | Callable[[], list[list[str]]],
         env: Mapping[str, str] | None = None,
         cwd: Path | None = None,
     ) -> None:
@@ -183,15 +192,19 @@ class RunExecutablesWithVenvTask(Task):
         return True
 
     def run_task(self) -> None:
-        for executable_and_args in self.__executables_and_args:
+        if isinstance(self.__executables_and_args, list):
+            executables_and_args = self.__executables_and_args
+        else:
+            executables_and_args = self.__executables_and_args()
+        for executable_and_args in executables_and_args:
             run_with_venv(self.__venv, executable_and_args, env=self.__env, cwd=self.__cwd)
 
     @property
-    def executables_and_args(self) -> list[list[str]]:
+    def executables_and_args(self) -> list[list[str]] | Callable[[], list[list[str]]]:
         return self.__executables_and_args
 
     @executables_and_args.setter
-    def executables_and_args(self, value: list[list[str]]) -> None:
+    def executables_and_args(self, value: list[list[str]] | Callable[[], list[list[str]]]) -> None:
         self.__executables_and_args = value
 
     @property
@@ -207,7 +220,7 @@ class RunExecutablesTask(RunExecutablesWithVenvTask):
     def __init__(
         self,
         group_name: str | None,
-        executables_and_args: list[list[str]],
+        executables_and_args: list[list[str]] | Callable[[], list[list[str]]],
         env: Mapping[str, str] | None = None,
         cwd: Path | None = None,
     ) -> None:

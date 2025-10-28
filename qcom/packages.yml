@@ -1,6 +1,6 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
-android_commandlinetools_linux:
+android_commandlinetools_linux_x86_64:
   version: 13114758
   url: https://dl.google.com/android/repository/commandlinetools-linux-{version}_latest.zip
   sha256: 7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee
@@ -12,7 +12,12 @@ android_commandlinetools_windows_x86_64:
   sha256: 98b565cb657b012dae6794cefc0f66ae1efb4690c699b78a614b4a6a3505b003
   content_root: cmdline-tools
   bindir: bin
-ccache_linux:
+ccache_linux_aarch64:
+  version: 4.12
+  url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-linux-aarch64.tar.xz
+  sha256: 378ed4b9f645f5aab691447e4ec45b4c68508a424ac37c9be7baa28ded385791
+  content_root: ccache-{version}-linux-aarch64
+ccache_linux_x86_64:
   version: 4.12
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-linux-x86_64.tar.xz
   sha256: d77e140d0403175b93f979f0b0d36e821bf31728b282f4bfda939f65836bcabe
@@ -32,7 +37,13 @@ ccache_windows_x86_64:
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-windows-x86_64.zip
   sha256: 85c963b154dcf5e38dc6839d660218433a3b0b86387c302675d236e17ae7220d
   content_root: ccache-{version}-windows-x86_64
-cmake_linux:
+cmake_linux_aarch64:
+  version: 3.31.7
+  url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-aarch64.tar.gz
+  sha256: e5b2dc2aefdca10afe09c8fa4ee2bbb4e732665943a94322f99c118781910c3c
+  content_root: cmake-{version}-linux-aarch64
+  bindir: bin
+cmake_linux_x86_64:
   version: 3.31.7
   url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-linux-x86_64.tar.gz
   sha256: 14e15d0b445dbeac686acc13fe13b3135e8307f69ccf4c5c91403996ce5aa2d4
@@ -58,9 +69,9 @@ cmake_windows_x86_64:
 linux_oe_gcc112_toolchain:
   # This package comes from AI Hub, which in turn copies it from the QAIRT build.
   version: 20250402d
-  url: http://ort-ep-win-01:8000/linux-oe-aarch64-gcc11.2-toolchain/linux-oe-aarch64-gcc11.2-toolchain-1-universal-{version}.tar.gz
+  url: http://ort-ep-win-01.na.qualcomm.com:8000/linux-oe-aarch64-gcc11.2-toolchain/linux-oe-aarch64-gcc11.2-toolchain-1-universal-{version}.tar.gz
   sha256: 1031825247827ad60189323aa5530490deae61547f4d9794ef9e0645e9207266
-java_linux:
+java_linux_x86_64:
   major_version: 21
   version: 21.0.5
   url: https://download.oracle.com/java/{major_version}/archive/jdk-{version}_linux-x64_bin.tar.gz
@@ -83,10 +94,14 @@ java_windows_x86_64:
   bindir: bin
 model_zoo:
   version: 2025-10-08
-  url: http://ort-ep-win-01:8000/model-zoo/model-zoo-{version}.zip
+  url: http://ort-ep-win-01.na.qualcomm.com:8000/model-zoo/model-zoo-{version}.zip
   sha256: 1e49e5c570ee16c7bf62973dc8f52201f4caaa45dda0e74fdc190b55e980ffa7
   content_root: model-zoo
-ninja_linux:
+ninja_linux_aarch64:
+  version: 1.12.1
+  url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux-aarch64.zip
+  sha256: 5c25c6570b0155e95fce5918cb95f1ad9870df5768653afe128db822301a05a1
+ninja_linux_x86_64:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip
   sha256: 6f98805688d19672bd699fbbfa2c2cf0fc054ac3df1f0e6a47664d963d530255
@@ -100,7 +115,7 @@ ninja_windows_x86_64:
   sha256: f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a
 onnx_models:
   version: 2025-10-02
-  url: http://ort-ep-win-01:8000/onnx-models/onnx-models-{version}.tar.gz
+  url: http://ort-ep-win-01.na.qualcomm.com:8000/onnx-models/onnx-models-{version}.tar.gz
   sha256: 5c877a633970248e181018ccdabb280cec22e1b113f3068b6585d3f55cac3fb2
   content_root: onnx-models-{version}
 python_311_windows_x86_64: &py_x86_64_common

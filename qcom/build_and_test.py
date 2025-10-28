@@ -14,11 +14,13 @@ from ep_build import self_test
 from ep_build.logging import initialize_logging
 from ep_build.plan import (
     ALL_TASKS,
+    HIDDEN_TASKS,
     PUBLIC_TASKS,
     SUMMARIZERS,
     TASK_DEPENDENCIES,
     Plan,
     depends,
+    implementation_detail,
     public_task,
     task,
 )
@@ -30,13 +32,14 @@ from ep_build.task import (
     PyTestTask,
 )
 from ep_build.tasks.build import (
+    BuildEpDockerTask,
     BuildEpLinuxTask,
     BuildEpWindowsTask,
-    ConfigT,
     QdcTestsTask,
-    TargetPyVersionT,
 )
+from ep_build.tasks.docker import MANYLINUX_2_34_AARCH64_TAG, DockerBuildTask
 from ep_build.tasks.python import CreateOrtVenvTask, OrtWheelSmokeTestTask, RunLinterTask
+from ep_build.typing import BuildConfigT, TargetPyVersionT
 from ep_build.util import (
     DEFAULT_PYTHON,
     REPO_ROOT,
@@ -47,10 +50,11 @@ from ep_build.util import (
     is_host_x86_64,
 )
 
+DOCKER_CCACHE_ROOT_ENV_VAR = "ORT_BUILD_DOCKER_CCACHE_ROOT"
 QAIRT_SDK_ROOT_ENV_VAR = "QAIRT_SDK_ROOT"
 QNN_SDK_ROOT_ENV_VAR = "QNN_SDK_ROOT"
 SNPE_ROOT_ENV_VAR = "SNPE_ROOT"
-VENV_PATH = REPO_ROOT / "venv"
+DEFAULT_VENV_PATH = REPO_ROOT / "venv"
 
 
 if __name__ == "__main__":
@@ -68,6 +72,9 @@ Environment variables
 
   JAVA_HOME
     If specified, it is used instead of installing a known good version into build/tools.
+
+  ORT_BUILD_DOCKER_CCACHE_ROOT
+    If specified, Docker builds will use this host path for storing ccache caches.
 
   ORT_BUILD_TOOLS_PATH
     If specified, use this directory for build-managed tools instead of build/tools.
@@ -97,13 +104,20 @@ Environment variables
         help='Task(s) to run. Specify "list" to show all tasks.',
     )
 
-    parser.add_argument("--config", choices=get_args(ConfigT), default="Release", help="The configuration to build.")
+    parser.add_argument(
+        "--config", choices=get_args(BuildConfigT), default="Release", help="The configuration to build."
+    )
 
     parser.add_argument("--dry-run", action="store_true", help="Print the plan, rather than running it.")
     parser.add_argument(
         "--only",
         action="store_true",
         help="Run only the listed task(s), skipping any dependencies.",
+    )
+    parser.add_argument(
+        "--docker-ccache-root",
+        type=Path,
+        help=f"If specified, enable ccache for Docker builds and a subdirectory of this as the cache. Overrides {DOCKER_CCACHE_ROOT_ENV_VAR}.",
     )
     parser.add_argument(
         "--print-task-graph",
@@ -119,8 +133,14 @@ Environment variables
     parser.add_argument(
         "--target-py-version",
         choices=["3.10", "3.11", "3.12", "3.13", "None"],
-        default="3.12",
+        default="3.10" if is_host_linux() else "3.12",
         help="[Windows only] Build a wheel for this version of Python",
+    )
+    parser.add_argument(
+        "--venv-path",
+        default=DEFAULT_VENV_PATH,
+        type=Path,
+        help=f"Where to create a virtual environment for the build. Default: {DEFAULT_VENV_PATH}.",
     )
 
     args = parser.parse_args()
@@ -139,16 +159,18 @@ class TaskLibrary:
         self,
         python_executable: Path,
         venv_path: Path,
-        config: ConfigT,
+        config: BuildConfigT,
         target_py_version: TargetPyVersionT | None,
         qairt_sdk_root: Path | None,
+        docker_ccache_root: Path | None,
     ) -> None:
         self.__python_executable = python_executable
         self.__venv_path = venv_path
-        self.__config: ConfigT = config
+        self.__config: BuildConfigT = config
         # pylance somehow cannot correctly deduce the type of self.__target_py_version
         self.__target_py_version: TargetPyVersionT | None = target_py_version
         self.__qairt_sdk_root = qairt_sdk_root
+        self.__docker_ccache_root = docker_ccache_root
 
     @staticmethod
     def to_dot(highlight: list[str] | None = None) -> str:
@@ -172,6 +194,37 @@ class TaskLibrary:
         elements_str = "\n".join([f"  {element};" for element in elements])
         return f"digraph {{\n{elements_str}\n}}"
 
+    @implementation_detail
+    @depends(["create_venv"])
+    def _build_ort_linux_aarch64_manylinux_2_34(self, plan: Plan) -> str:
+        """In-container build steps for aarch64-manylinux_2_34. Not to be used outside of Docker."""
+        extra_args = [
+            "--no-warnings-as-errors",
+            "--qnn-arch-abi=aarch64-ubuntu-gcc9.4",
+        ]
+
+        env = os.environ.copy()
+        if self.__docker_ccache_root is not None:
+            ccache_dir = self.__docker_ccache_root / "linux-aarch64-manylinux_2_34"
+            env["CCACHE_DIR"] = str(ccache_dir)
+        else:
+            extra_args.append("--no-use-cache")
+
+        return plan.add_step(
+            BuildEpLinuxTask(
+                None,
+                self.__venv_path,
+                "linux",
+                "aarch64_manylinux_2_34",
+                self.__config,
+                self.__target_py_version,
+                self.__qairt_sdk_root,
+                "build",
+                extra_args=extra_args,
+                env=env,
+            )
+        )
+
     if is_host_linux() or is_host_mac():
 
         @task
@@ -185,6 +238,7 @@ class TaskLibrary:
                         "android",
                         "aarch64",
                         self.__config,
+                        None,  # target-py_version
                         self.__qairt_sdk_root,
                         "archive",
                     )
@@ -192,7 +246,7 @@ class TaskLibrary:
             else:
                 raise NotImplementedError("Archiving for Android on this host is not supported.")
 
-    if is_host_linux():
+    if is_host_linux() and is_host_x86_64():
 
         @task
         @depends(["build_ort_linux_x86_64"])
@@ -204,6 +258,7 @@ class TaskLibrary:
                     "linux",
                     "x86_64",
                     self.__config,
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "archive",
                 )
@@ -301,12 +356,28 @@ class TaskLibrary:
                         "android",
                         "aarch64",
                         self.__config,
+                        None,  # target_py_version
                         self.__qairt_sdk_root,
                         "build",
+                        extra_args=["--no-warnings-as-errors"],
                     )
                 )
             else:
                 raise NotImplementedError("Building for Android on this host is not supported.")
+
+    @task
+    @depends(["docker_build_manylinux_2_34_aarch64"])
+    def build_ort_linux_aarch64_manylinux_2_34(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpDockerTask(
+                "Building ONNX Runtime for Linux on AArch64 manylinux_2_34",
+                "aarch64_manylinux_2_34",
+                self.__config,
+                self.__target_py_version,
+                self.__qairt_sdk_root,
+                self.__docker_ccache_root,
+            ),
+        )
 
     if is_host_linux():
 
@@ -318,8 +389,9 @@ class TaskLibrary:
                     "Building ONNX Runtime for Linux on AArch64 OE GCC 11.2",
                     self.__venv_path,
                     "linux",
-                    "aarch64-oe-gcc11.2",
+                    "aarch64_oe_gcc11.2",
                     self.__config,
+                    None,  # target-py-version
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -328,11 +400,16 @@ class TaskLibrary:
     if is_host_linux():
 
         @task
-        @depends(["build_ort_linux_x86_64"])
+        @depends(
+            [
+                (is_host_arm64(), "_build_ort_linux_aarch64_manylinux_2_34"),
+                (is_host_x86_64(), "build_ort_linux_x86_64"),
+            ]
+        )
         def build_ort_linux_host(self, plan: Plan) -> str:
             return plan.add_step(NoOpTask())
 
-    if is_host_linux():
+    if is_host_linux() and is_host_x86_64():
 
         @task
         @depends(["create_venv"])
@@ -344,6 +421,7 @@ class TaskLibrary:
                     "linux",
                     "x86_64",
                     self.__config,
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
                 )
@@ -450,6 +528,20 @@ class TaskLibrary:
         return plan.add_step(CreateOrtVenvTask(self.__python_executable, self.__venv_path))
 
     @task
+    def docker_build_manylinux_2_34_aarch64(self, plan: Plan) -> str:
+        return plan.add_step(
+            DockerBuildTask(
+                "Building manylinux_2_34 Docker image",
+                REPO_ROOT / "qcom" / "scripts" / "linux" / "manylinux_2_34" / "Dockerfile",
+                MANYLINUX_2_34_AARCH64_TAG,
+                build_args={
+                    "BUILD_UID": str(os.getuid()),
+                    "BUILD_GID": str(os.getgid()),
+                },
+            )
+        )
+
+    @task
     def extract_ort_linux_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             ExtractArchiveTask(
@@ -513,11 +605,11 @@ class TaskLibrary:
 
     @task
     def list_all(self, plan: Plan) -> str:
-        return plan.add_step(ListTasksTask(ALL_TASKS))
+        return plan.add_step(ListTasksTask(ALL_TASKS, HIDDEN_TASKS))
 
     @task
     def list_public(self, plan: Plan) -> str:
-        return plan.add_step(ListTasksTask(PUBLIC_TASKS))
+        return plan.add_step(ListTasksTask(PUBLIC_TASKS, HIDDEN_TASKS))
 
     if is_host_linux() or is_host_windows():
 
@@ -534,11 +626,11 @@ class TaskLibrary:
     if is_host_linux():
 
         @task
-        @depends(["test_ort_linux_x86_64"])
+        @depends([(is_host_x86_64(), "test_ort_linux_x86_64")])
         def test_ort_linux(self, plan: Plan) -> str:
             return plan.add_step(NoOpTask())
 
-    if is_host_linux():
+    if is_host_linux() and is_host_x86_64():
 
         @task
         @depends(["build_ort_linux_x86_64"])
@@ -550,6 +642,7 @@ class TaskLibrary:
                     "linux",
                     "x86_64",
                     self.__config,
+                    self.__target_py_version,
                     self.__qairt_sdk_root,
                     "test",
                 )
@@ -733,6 +826,22 @@ class TaskLibrary:
             )
 
 
+def get_docker_ccache_root(root_from_args: Path | None) -> Path | None:
+    ccache_root: Path | None = None
+    if root_from_args is not None:
+        ccache_root = root_from_args
+    elif DOCKER_CCACHE_ROOT_ENV_VAR in os.environ:
+        ccache_root = Path(os.environ[DOCKER_CCACHE_ROOT_ENV_VAR])
+    else:
+        # No ccache
+        return None
+
+    # Proactively create this so docker doesn't do it for us with an incorrect owner.
+    ccache_root.mkdir(parents=True, exist_ok=True)
+
+    return ccache_root
+
+
 def get_qairt_sdk_root(root_from_args: Path | None) -> Path | None:
     qairt_sdk: Path | None = None
     if root_from_args is not None:
@@ -757,15 +866,18 @@ def plan_from_dependencies(
     main_tasks: list[str],
     python_executable: Path,
     venv_path: Path,
-    config: ConfigT,
+    config: BuildConfigT,
     target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
+    docker_ccache_root: Path | None,
 ) -> Plan:
     """
     Uses a work list algorithm to create a Plan to build the given tasks and their
     dependencies in a valid order. This is the default planner.
     """
-    task_library = TaskLibrary(python_executable, venv_path, config, target_py_version, qairt_sdk_root)
+    task_library = TaskLibrary(
+        python_executable, venv_path, config, target_py_version, qairt_sdk_root, docker_ccache_root
+    )
     plan = Plan()
 
     # We always run summarizers, which perform conditional work on the output
@@ -811,15 +923,18 @@ def plan_from_task_list(
     tasks: list[str],
     python_executable: Path,
     venv_path: Path,
-    config: ConfigT,
+    config: BuildConfigT,
     target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
+    docker_ccache_root: Path | None,
 ) -> Plan:
     """
     Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.
     Used by --only.
     """
-    task_library = TaskLibrary(python_executable, venv_path, config, target_py_version, qairt_sdk_root)
+    task_library = TaskLibrary(
+        python_executable, venv_path, config, target_py_version, qairt_sdk_root, docker_ccache_root
+    )
     plan = Plan()
     for task_name in tasks:
         # add task_name to plan
@@ -838,12 +953,21 @@ def build_and_test():
 
     args = parse_arguments()
     qairt_sdk_root = get_qairt_sdk_root(args.qairt_sdk)
+    docker_ccache_root = get_docker_ccache_root(args.docker_ccache_root)
 
     plan = Plan()
 
     if len(args.task) > 0:
         planner = plan_from_task_list if args.only else plan_from_dependencies
-        plan = planner(args.task, DEFAULT_PYTHON, VENV_PATH, args.config, args.target_py_version, qairt_sdk_root)
+        plan = planner(
+            args.task,
+            DEFAULT_PYTHON,
+            args.venv_path,
+            args.config,
+            args.target_py_version,
+            qairt_sdk_root,
+            docker_ccache_root,
+        )
 
     if args.skip is not None:
         for skip in args.skip:

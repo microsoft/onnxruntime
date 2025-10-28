@@ -17,6 +17,54 @@ on:
         default: true
 
 jobs:
+  build-linux-aarch64-manylinux_2_34_310:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: linux
+      target_arch: aarch64_manylinux_2_34
+      upload_test_archive: false
+      upload_wheel: true
+      run_tests: false
+      target_py_vsn: "3.10"
+
+  build-linux-aarch64-manylinux_2_34_311:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: linux
+      target_arch: aarch64_manylinux_2_34
+      upload_test_archive: false
+      upload_wheel: true
+      run_tests: false
+      target_py_vsn: "3.11"
+
+  build-linux-aarch64-manylinux_2_34_312:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: linux
+      target_arch: aarch64_manylinux_2_34
+      upload_test_archive: false
+      upload_wheel: true
+      run_tests: false
+      target_py_vsn: "3.12"
+
+  build-linux-aarch64-manylinux_2_34_313:
+    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+    secrets: inherit
+    with:
+      nightly_build: ${{ inputs.nightly_build }}
+      target_os: linux
+      target_arch: aarch64_manylinux_2_34
+      upload_test_archive: false
+      upload_wheel: true
+      run_tests: false
+      target_py_vsn: "3.13"
+
   build-linux-x86_64:
     uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
     secrets: inherit

@@ -50,7 +50,7 @@ function get_host_platform() {
             echo "macos"
             ;;
         Linux)
-            echo "linux"
+            echo "linux_$(uname -m)"
             ;;
         *)
             die "Unknown host platform"

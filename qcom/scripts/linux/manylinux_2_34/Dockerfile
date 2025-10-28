@@ -1,0 +1,7 @@
+FROM quay.io/pypa/manylinux_2_34_aarch64
+
+ARG BUILD_USER
+ARG BUILD_UID
+ARG BUILD_GID
+
+RUN groupadd -g $BUILD_GID $BUILD_USER && useradd -u $BUILD_UID -g $BUILD_USER $BUILD_USER

@@ -54,7 +54,7 @@ jobs:
           echo "[distutils]" > build/pypirc
           echo "index-servers = local" >> build/pypirc
           echo "[local]" >> build/pypirc
-          echo "repository: http://ort-ep-win-01:8080" >> build/pypirc
+          echo "repository: http://ort-ep-win-01.na.qualcomm.com:8080" >> build/pypirc
           echo "username = OrtQnnEpUploader" >> build/pypirc
           echo "password = ${{ secrets.UPLOADER_PASSWORD }}" >> build/pypirc
 

@@ -190,7 +190,9 @@ switch ($Mode) {
 $CmakeBinDir = (Get-CMakeBinDir)
 $env:Path = "$CmakeBinDir;" + $env:Path
 
-Optimize-ToolsDir
+if ($env:ORT_BUILD_PRUNE_PACKAGES -eq $null -or $env:ORT_BUILD_PRUNE_PACKAGES -eq 1) {
+    Optimize-ToolsDir
+}
 
 Push-Location $RepoRoot
 

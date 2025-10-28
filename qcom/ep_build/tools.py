@@ -77,6 +77,15 @@ def get_python_executable(
     return Path(py_exe)
 
 
+def get_package_dir() -> Path:
+    return Path(
+        os.environ.get(
+            "ORT_BUILD_PACKAGE_CACHE_PATH",
+            str((Path("~") / ".ort-package-cache").expanduser()),
+        )
+    )
+
+
 def get_tools_dir() -> Path:
     tools_dir = Path(os.getenv("ORT_BUILD_TOOLS_PATH", REPO_ROOT / "build" / "Tools"))
     tools_dir.mkdir(parents=True, exist_ok=True)

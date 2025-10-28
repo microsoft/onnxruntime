@@ -211,14 +211,18 @@ else:
     BASH_EXECUTABLE = run_and_get_output(["which", "bash"], quiet=True)
 
 
-DEFAULT_PYTHON = Path("python.exe") if is_host_windows() else Path("python3.10")
+DEFAULT_PYTHON_LINUX = Path("python3.10")
+
+DEFAULT_PYTHON_WINDOWS = Path("python.exe")
+
+DEFAULT_PYTHON = DEFAULT_PYTHON_WINDOWS if is_host_windows() else DEFAULT_PYTHON_LINUX
 """Different python distributions have different executable names. Use this for a reasonable default."""
 
 MSFT_CI_REQUIREMENTS_RELPATH = (
     f"tools/ci_build/github/{'windows' if is_host_windows() else 'linux'}/python/requirements.txt"
 )
 
-REPO_ROOT = Path(run_and_get_output(["git", "rev-parse", "--show-toplevel"], quiet=True))
+REPO_ROOT = Path(__file__).parent.parent.parent
 
 VENV_ACTIVATE_RELPATH = "Scripts/activate" if is_host_windows() else "bin/activate"
 """Where to find the bash script to source to activate a virtual environment."""

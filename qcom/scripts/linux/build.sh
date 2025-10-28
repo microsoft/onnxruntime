@@ -32,6 +32,10 @@ function save_qairt_sdk_path() {
 
 config="Release"
 qairt_sdk_root=
+qnn_arch_abi=
+target_py_version=
+use_cache=1
+warnings_as_errors=1
 for i in "$@"; do
   case $i in
     --config=*)
@@ -42,16 +46,32 @@ for i in "$@"; do
       mode="${i#*=}"
       shift
       ;;
+    --no-use-cache)
+      use_cache=
+      shift
+      ;;
+    --no-warnings-as-errors)
+      warnings_as_errors=
+      shift
+      ;;
     --qairt-sdk-root=*)
       qairt_sdk_root="${i#*=}"
+      shift
+      ;;
+    --qnn-arch-abi=*)
+      qnn_arch_abi="${i#*=}"
+      shift
+      ;;
+    --target-arch=*)
+      target_arch="${i#*=}"
       shift
       ;;
     --target-platform=*)
       target_platform="${i#*=}"
       shift
       ;;
-    --target-arch=*)
-      target_arch="${i#*=}"
+    --target-py-version=*)
+      target_py_version="${i#*=}"
       shift
       ;;
     *)
@@ -72,7 +92,7 @@ if [ -z "${qairt_sdk_root}" ]; then
 fi
 
 cmake_bindir="$(get_cmake_bindir)"
-PATH="${cmake_bindir}:$(get_ccache_bindir):$(get_ninja_bindir):${PATH}"
+PATH="${cmake_bindir}:$(get_ninja_bindir):${PATH}"
 
 mkdir -p "${build_dir}/${config}"
 
@@ -84,10 +104,46 @@ fi
 
 common_args=(--cmake_generator "${cmake_generator}" \
              --config "${config}" \
-             --use_cache --parallel \
+             --parallel \
              --build_dir "${build_dir}" \
              --wheel_name_suffix qcom-internal \
-             --no_kleidiai)
+             --no_kleidiai \
+)
+
+if [ -n "${qnn_arch_abi}" ]; then
+  common_args+=(--cmake_extra_defines "QNN_ARCH_ABI=${qnn_arch_abi}")
+fi
+
+if [ -n "${target_py_version}" ]; then
+  common_args+=(--build_wheel)
+
+  build_venv="${build_dir}/venv-${target_py_version}"
+  if [ ! -d "${build_venv}" ]; then
+    log_debug "Creating venv for build in ${build_venv}"
+
+    # TODO: [AISW-156088]: Adopt uvx for POSIX-like builds
+    #  - Also consider dropping 3.10 support to match upstream.
+    "python${target_py_version}" -m venv "${build_venv}"
+  fi
+
+  bash -c ". ${build_venv}/bin/activate && pip install uv"
+  bash -c ". ${build_venv}/bin/activate && uv pip install -r ${REPO_ROOT}/tools/ci_build/github/linux/python/requirements.txt"
+
+  python_for_build="${build_venv}/bin/python"
+
+  log_info "Building wheel using ${python_for_build}."
+else
+  python_for_build=python
+fi
+
+if [ -n "${use_cache}" ]; then
+  common_args+=("--use_cache")
+  PATH="$(get_ccache_bindir):${PATH}"
+fi
+
+if [ -n "${warnings_as_errors}" ]; then
+  common_args+=("--compile_no_warning_as_error")
+fi
 
 action_args=()
 make_test_archive=
@@ -107,7 +163,7 @@ case "${target_platform}" in
         if [ -n "${build_is_dirty}" ]; then
           action_args+=("--update")
         fi
-        if [ "${target_arch}" == "aarch64-oe-gcc11.2" ]; then
+        if [ "${target_arch}" == "aarch64_oe_gcc11.2" ]; then
           toolchain_root="$(get_linux_oe_gcc112_toolchain_root)"
           toolchain_cmake="${REPO_ROOT}/qcom/scripts/linux/linux-aarch64-gcc11.toolchain.cmake"
 
@@ -121,8 +177,6 @@ case "${target_platform}" in
           platform_args+=(--cmake_extra_defines
                           CMAKE_TOOLCHAIN_FILE:FILEPATH="${toolchain_cmake}"
                           ARM64:BOOL=TRUE)
-        else
-          platform_args+=(--build_wheel)
         fi
         ;;
       test)
@@ -159,8 +213,7 @@ case "${target_platform}" in
                    --android_sdk_path "${android_sdk_path}" \
                    --android_ndk_path "${android_ndk_path}" \
                    --android_abi "arm64-v8a" \
-                   --android_api "27" \
-                   --compile_no_warning_as_error)
+                   --android_api "27")
     case "${mode}" in
       build)
         action_args+=("--android")
@@ -179,7 +232,9 @@ case "${target_platform}" in
     die "Unknown target platform ${target_platform}."
 esac
 
-clean_tools_dir
+if [ "${ORT_BUILD_PRUNE_PACKAGES:-1}" == "1" ]; then
+  clean_tools_dir
+fi
 
 # Whatever happens, blow away mirror to avoid it showing up in git; it's okay, it's
 # very cheap to regenerate.
@@ -208,7 +263,7 @@ else
 
     python "${REPO_ROOT}/qcom/scripts/all/fetch_cmake_deps.py"
 
-    ./build.sh \
+    "${python_for_build}" ${REPO_ROOT}/tools/ci_build/build.py \
       "${action_args[@]}" \
       "${common_args[@]}" \
       "${qnn_args[@]}" \
@@ -222,7 +277,7 @@ else
 
     # Run tests using our ctest wrapper.
     log_info "-=-=-=- Running unit tests -=-=-=-=-"
-    "./$(basename ${test_runner})"
+    "./$(basename ${test_runner})" --python="${python_for_build}"
 
     log_info "-=-=-=- Running ONNX model tests -=-=-=-=-"
     "${build_dir}/${config}/onnx_test_runner" \
