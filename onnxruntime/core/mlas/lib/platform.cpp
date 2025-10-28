@@ -747,10 +747,14 @@ Return Value:
 
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchLSX;
+        this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchLSX;
     }else if( cap_lsx ){
         this->GemmFloatKernel = MlasGemmFloatKernelLSX;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchLSX;
+        this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchLSX;
         this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4LSX;
         this->GemmDoubleKernel = MlasGemmDoubleKernelLSX;
         this->ConvNchwFloatKernel = MlasConvNchwFloatKernelLSX;

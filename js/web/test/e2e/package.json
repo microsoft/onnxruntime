@@ -20,6 +20,7 @@
     "rollup": "^4.13.2",
     "rollup-plugin-copy": "^3.5.0",
     "tree-kill": "^1.2.2",
+    "vite": "^7.1.12",
     "webpack-cli": "^5.1.4"
   },
   "scripts": {
@@ -32,7 +33,10 @@
     "build:p:esmjs": "parcel build --no-autoinstall --target esm && node ./bundler.esm.postprocess.js ./dist/parcel_esm_js/main.js",
     "build:p:umdjs": "parcel build --no-autoinstall --target umd",
     "build:p": "npm run build:p:esmjs && npm run build:p:umdjs",
-    "build": "npm run build:w && npm run build:r && npm run build:p"
+    "build:v:esmjs": "vite build -c vite.config.esm-js.js",
+    "build:v:umdjs": "vite build -c vite.config.umd-js.js",
+    "build:v": "npm run build:v:esmjs && npm run build:v:umdjs",
+    "build": "npm run build:v && npm run build:w && npm run build:r && npm run build:p"
   },
   "@parcel/resolver-default": {
     "packageExports": true
