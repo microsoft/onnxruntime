@@ -285,6 +285,7 @@ void CreateLargeLLMModel(const PathString& model_path, const PathString& externa
   auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 
   // Set up model/graph
+  DefaultLoggingManager().SetDefaultLoggerSeverity(onnxruntime::logging::Severity::kVERBOSE);
   onnxruntime::Model model("LLM_With_GQA", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
