@@ -4126,7 +4126,8 @@ TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer_opset_18) {
                        {1.0f, 2.0f,
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
-  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 4.0f, 9.0f, 16.0f});
+
   test.Run(
       OpTester::ExpectResult::kExpectSuccess,
       "",
@@ -6116,7 +6117,6 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
 
-
 TEST(ReductionOpTest, MissingOptionalAxes) {
   OpTester test("ReduceMax", 18);
   test.AddInput<float>("data", {2, 2},
@@ -6129,26 +6129,171 @@ TEST(ReductionOpTest, MissingOptionalAxes) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
-
-TEST(ReductionOpTest, ReduceSumSquare_EmptyAxes_NoReduce_ElementwiseSquare) {
-
-  OpTester test("ReduceSumSquare",  18);
-
-  test.AddInput<float>("data", {2}, {2.f, 3.f});
-
-  test.AddInput<int64_t>("axes", {0}, {}, /*is_initializer*/ true);
-
+TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_Scalar) {
+  OpTester test("ReduceSumSquare", 18);
+  test.AddInput<float>("data", {}, {-3.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
-
+  test.AddOutput<float>("reduced", {}, {9.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_ElementwiseSquare) {
+  OpTester test("ReduceSumSquare", 18);
+  test.AddInput<float>("data", {2}, {2.f, 3.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2}, {4.f, 9.f});
-
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_2D_ElementwiseSquare) {
+  OpTester test("ReduceSumSquare", 18);
+  test.AddInput<float>("data", {2, 3}, {-1.f, 2.f, -3.f, 0.5f, -0.5f, 4.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 3}, {1.f, 4.f, 9.f, 0.25f, 0.25f, 16.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_3D_ElementwiseSquare) {
+  OpTester test("ReduceSumSquare", 18);
+  test.AddInput<float>("data", {2, 1, 3}, {-1.f, 2.f, -3.f, 0.5f, -0.5f, 4.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 1, 3}, {1.f, 4.f, 9.f, 0.25f, 0.25f, 16.f});
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_Scalar) {
+  OpTester test("ReduceL1", 18);
+  test.AddInput<float>("data", {}, {-3.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {}, {3.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_ElementwiseAbs) {
+  OpTester test("ReduceL1", 18);
+  test.AddInput<float>("data", {4}, {-2.f, 0.f, 3.5f, -4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {4}, {2.f, 0.f, 3.5f, 4.0f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_2D_ElementwiseAbs) {
+  OpTester test("ReduceL1", 18);
+  test.AddInput<float>("data", {2, 2}, {-2.f, 0.f, 3.5f, -4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 2}, {2.f, 0.f, 3.5f, 4.0f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_3D_ElementwiseAbs) {
+  OpTester test("ReduceL1", 18);
+  test.AddInput<float>("data", {1, 2, 2}, {-2.f, 0.f, 3.5f, -4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {1, 2, 2}, {2.f, 0.f, 3.5f, 4.0f});
+  test.Run();
+}
 
-//-------------------------------------
+TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_Scalar) {
+  OpTester test("ReduceL2", 18);
+  test.AddInput<float>("data", {}, {-3.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {}, {3.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_ElementwiseAbs) {
+  OpTester test("ReduceL2", 18);
+  test.AddInput<float>("data", {3}, {-3.f, 0.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {3}, {3.f, 0.f, 4.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_2D_ElementwiseAbs) {
+  OpTester test("ReduceL2", 18);
+  test.AddInput<float>("data", {2, 2}, {-3.f, 0.f, 4.f, -1.5f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 2}, {3.f, 0.f, 4.f, 1.5f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_3D_ElementwiseAbs) {
+  OpTester test("ReduceL2", 18);
+  test.AddInput<float>("data", {2, 1, 3}, {-3.f, 0.f, 4.f, 1.5f, -2.5f, -1.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 1, 3}, {3.f, 0.f, 4.f, 1.5f, 2.5f, 1.f});
+  test.Run();
+}
 
+TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_Scalar) {
+  OpTester test("ReduceLogSum", 18);
+  test.AddInput<float>("data", {}, {2.7182817f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {}, {1.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_ElementwiseLog) {
+  OpTester test("ReduceLogSum", 18);
+  test.AddInput<float>("data", {2}, {2.7182817f, 7.389056f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2}, {1.f, 2.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_2D_ElementwiseLog) {
+  OpTester test("ReduceLogSum", 18);
+  test.AddInput<float>("data", {2, 2}, {2.7182817f, 7.389056f, 1.6487213f, 20.085537f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 2}, {1.f, 2.f, 0.5f, 3.f});
+  test.Run();
+}
 
+TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_3D_ElementwiseLog) {
+  OpTester test("ReduceLogSum", 18);
+  test.AddInput<float>("data", {2, 1, 3}, {2.7182817f, 7.389056f, 1.6487213f, 20.085537f, 54.59815f, 148.41316f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 1, 3}, {1.f, 2.f, 0.5f, 3.f, 4.f, 5.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_Scalar) {
+  OpTester test("ReduceLogSumExp", 18);
+  test.AddInput<float>("data", {}, {2.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {}, {2.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_Identity) {
+  OpTester test("ReduceLogSumExp", 18);
+  test.AddInput<float>("data", {3}, {2.f, -0.5f, 0.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {3}, {2.f, -0.5f, 0.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_2D_Identity) {
+  OpTester test("ReduceLogSumExp", 18);
+  test.AddInput<float>("data", {2, 3}, {2.f, -0.5f, 0.f, 1.25f, -3.f, 4.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 3}, {2.f, -0.5f, 0.f, 1.25f, -3.f, 4.f});
+  test.Run();
+}
+TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_3D_Identity) {
+  OpTester test("ReduceLogSumExp", 18);
+  test.AddInput<float>("data", {2, 1, 3}, {2.f, -0.5f, 0.f, 1.25f, -3.f, 4.f});
+  test.AddInput<int64_t>("axes", {0}, {}, true);
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 1, 3}, {2.f, -0.5f, 0.f, 1.25f, -3.f, 4.f});
+  test.Run();
+}
 
 }  // namespace test
 }  // namespace onnxruntime
