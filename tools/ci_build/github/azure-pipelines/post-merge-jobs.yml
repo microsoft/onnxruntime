@@ -5,14 +5,20 @@ parameters:
   default: '12.8'
   values:
     - 12.8
+    - 13.0
 
 variables:
   - template: templates/common-variables.yml
   - name: win_trt_folder
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: ${{ variables.win_trt_folder_cuda11 }}
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: ${{ variables.win_trt_folder_cuda13 }}
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: ${{ variables.win_trt_folder_cuda12 }}
+  - name: setup_env_script
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: 'setup_env_cuda13.bat'
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: 'setup_env_cuda12.bat'
 
 stages:
 - template: templates/web-ci.yml
@@ -219,8 +225,9 @@ stages:
   - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda.bat
+        EnvSetupScript: '${{ variables.setup_env_script }}'
         buildArch: x64
+        CudaVersion: ${{ parameters.CudaVersion }}
         additionalBuildFlags: --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
           --enable_cuda_profiling --enable_transformers_tool_test
           --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
@@ -242,8 +249,9 @@ stages:
   - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'RelWithDebInfo'
-      EnvSetupScript: setup_env_trt.bat
+      EnvSetupScript: '${{ variables.setup_env_script }}'
       buildArch: x64
+      CudaVersion: ${{ parameters.CudaVersion }}
       additionalBuildFlags: --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
       msbuildPlatform: x64
       isX86: false

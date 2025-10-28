@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12_dotnet:20251008.2
+ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14_dotnet:20251017.1
 FROM $BASEIMAGE
 ARG TRT_VERSION
 
@@ -36,7 +36,7 @@ fi
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-ENV CUDAHOSTCXX=/opt/rh/gcc-toolset-12/root/usr/bin/g++
+ENV CUDAHOSTCXX=/opt/rh/gcc-toolset-14/root/usr/bin/g++
 ADD scripts /tmp/scripts
 RUN sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/almalinux.repo
 ENV PATH=/usr/lib/jvm/msopenjdk-17/bin:$PATH

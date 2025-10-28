@@ -1,4 +1,4 @@
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 #include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"         // For TensorProto
 #include "core/framework/tensorprotoutils.h"  // For ConvertRawDataInTensorProto

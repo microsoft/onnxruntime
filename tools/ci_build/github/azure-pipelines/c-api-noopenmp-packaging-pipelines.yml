@@ -55,7 +55,14 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.38.0.250901
+  default: 2.39.0.250926
+
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.8'
+  values:
+    - 12.8
 
 resources:
   repositories:
@@ -70,11 +77,6 @@ resources:
 
 variables:
 - template: templates/common-variables.yml
-- name: ReleaseVersionSuffix
-  value: ''
-- name: win_trt_version
-  value: 12.8
-
 - name: win_trt_home
   value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
 - name: win_cuda_home
@@ -142,7 +144,7 @@ extends:
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
-        CudaVersion: 12.8
+        CudaVersion: ${{ parameters.CudaVersion }}
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
         win_trt_home: ${{ variables.win_trt_home }}

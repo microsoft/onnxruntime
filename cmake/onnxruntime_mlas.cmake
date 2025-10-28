@@ -384,6 +384,8 @@ else()
           set(X86_64 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
           set(LOONGARCH64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
+          set(S390X TRUE)
         endif()
     endif()
 
@@ -775,6 +777,7 @@ endif()
     if(LOONGARCH64 AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/qgemm_kernel_lsx.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_lasx.cpp
           ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLasx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLsx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLasx.S
@@ -788,6 +791,24 @@ endif()
           ${MLAS_SRC_DIR}/loongarch64/SoftmaxKernelLasx.S
             )
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mlsx -mlasx")
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(S390X AND MLAS_SOURCE_IS_NOT_SET)
+        set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp
+          ${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp
+          ${MLAS_SRC_DIR}/dgemm.cpp
+          ${MLAS_SRC_DIR}/s390x/DgemmKernel.cpp
+          ${MLAS_SRC_DIR}/s390x/Quantize.cpp
+          ${MLAS_SRC_DIR}/s390x/QuantizeZVECTOR.cpp
+          ${MLAS_SRC_DIR}/s390x/qgemm_kernel_zvector.cpp
+        )
+        set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+        set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mvx -mzvector -march=z15")
+
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()

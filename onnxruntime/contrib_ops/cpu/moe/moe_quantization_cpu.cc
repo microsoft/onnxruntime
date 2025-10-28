@@ -3,7 +3,7 @@
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
 #include "core/framework/allocator.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/platform/threadpool.h"

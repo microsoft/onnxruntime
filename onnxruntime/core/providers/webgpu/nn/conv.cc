@@ -1,21 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/webgpu/nn/conv.h"
-#include "core/providers/webgpu/nn/conv2d_mm_webgpu.h"
+#include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul.h"
-
-namespace {
-
-inline uint32_t ceil_div(int64_t numerator, int32_t denominator) {
-  return static_cast<uint32_t>((numerator + denominator - 1) / denominator);
-}
-
-}  // namespace
 
 namespace onnxruntime {
 namespace webgpu {
@@ -27,37 +19,10 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
   for (size_t i = 0; i < rank; ++i) {
     transposed_kernel_shape_vector[i] = kernel_shape[perm[i]];
   }
-  uint32_t output_size = onnxruntime::narrow<uint32_t>(kernel_shape.Size());
-
-  uint32_t dispatch_x = ceil_div(output_size, 64);
-  uint32_t dispatch_y = 1;
-  uint32_t dispatch_z = 1;
-
-  // This temporary workaround addresses a significant performance bottleneck
-  // (~12x slower) for the shape (3, 3, 2560, 1280) due to an issue with Intel's
-  // GPU drivers. We manually normalize the dispatch group size to restore
-  // performance.
-  //
-  // TODO: Revert this change once the driver issue is fixed.
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    ORT_ENFORCE(rank == static_cast<size_t>(4), "Input tensor must have rank 4.");
-    dispatch_x = ceil_div(transposed_kernel_shape_vector[0] * transposed_kernel_shape_vector[1], 2);
-    dispatch_y = ceil_div(transposed_kernel_shape_vector[2], 4);
-    dispatch_z = ceil_div(transposed_kernel_shape_vector[3], 8);
-  }
-
   TensorShape transposed_kernel_shape(transposed_kernel_shape_vector);
   *transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
-  bool use_shared = false;
-  TransposeProgram program{perm, use_shared};
-  program
-      .CacheHint(absl::StrJoin(perm, "-"))
-      .AddInput({kernel, ProgramTensorMetadataDependency::TypeAndRank, kernel_shape, 1})
-      .AddOutput({transposed_kernel, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariable({output_size})
-      .SetWorkgroupSize(64)
-      .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z);
-  return context.RunProgram(program);
+  const Tensor reshaped_kernel(kernel->DataType(), kernel_shape, const_cast<void*>(kernel->DataRaw()), kernel->Location());
+  return Transpose::DoTranspose(context, perm, reshaped_kernel, *transposed_kernel);
 }
 
 template <bool is_channels_last, bool is_fused>

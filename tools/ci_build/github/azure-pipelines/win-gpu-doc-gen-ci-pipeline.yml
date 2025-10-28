@@ -34,8 +34,15 @@ parameters:
   type: string
   default: '12.8'
   values:
-    - 11.8
+    - 13.0
     - 12.8
+
+variables:
+  - name: setup_env_script
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: 'setup_env_cuda13.bat'
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: 'setup_env_cuda12.bat'
 
 stages:
 - stage: kernelDocumentation
@@ -44,8 +51,9 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda.bat
+        EnvSetupScript: '${{ variables.setup_env_script }}'
         buildArch: x64
+        CudaVersion: ${{ parameters.CudaVersion }}
         # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
         additionalBuildFlags: >-
           --gen_doc validate --skip_tests --build_wheel --use_dml --use_cuda

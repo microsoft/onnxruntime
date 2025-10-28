@@ -57,6 +57,9 @@ Abstract:
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
 #define MLAS_TARGET_ARM_ANY
 #endif
+#if defined(__s390x__)
+#define MLAS_TARGET_S390X
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
@@ -80,7 +83,7 @@ Abstract:
 // Define the support levels for the target architecture.
 //
 
-#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER) || defined (MLAS_TARGET_ZVECTOR)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
@@ -1521,6 +1524,15 @@ MlasConvertFloatToHalfBuffer(
 const float* Source,
 MLAS_FP16* Destination,
 size_t Count
+);
+
+void
+MLASCALL
+MlasConvertFloatToHalfBufferInParallel(
+    const float* Source,
+    MLAS_FP16* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
 );
 
 /**

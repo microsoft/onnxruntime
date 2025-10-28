@@ -19,7 +19,7 @@
 #endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-#include "core/framework/float8.h"
+#include "core/common/float8.h"
 #endif
 #include "core/providers/rocm/tunable/gemm_common.h"
 

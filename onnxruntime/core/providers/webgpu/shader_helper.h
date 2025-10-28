@@ -75,6 +75,11 @@ class ShaderHelper final {
 
   Status Init();
 
+  // Finalize inputs by automatically adding the indirect buffer if needed.
+  // This should be called after GenerateShaderCode() to ensure the indirect buffer
+  // is registered as the last input.
+  void FinalizeInputs();
+
   // Add an input variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.

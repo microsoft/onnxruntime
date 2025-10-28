@@ -83,7 +83,7 @@ stages:
       artifactName: 'onnxruntime-android-qnn-aar'
       packageName: 'onnxruntime-android-qnn'
       #TODO: get this information from the setup stage
-      QnnSDKVersion: '2.38.0.250901'
+      QnnSDKVersion: '2.39.0.250926'
 
 - template: nuget/templates/test_win.yml
   parameters:

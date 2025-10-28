@@ -24,7 +24,8 @@ if [ "$1" = "d" ]; then
     CONFIG_EXTRA_FLAG="--enable_wasm_profiling --wasm_run_tests_in_browser --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL=1 --enable_wasm_debug_info"
 elif [ "$1" = "r" ]; then
     CONFIG="Release"
-    CONFIG_EXTRA_FLAG="--enable_wasm_api_exception_catching --disable_rtti"
+    # CONFIG_EXTRA_FLAG="--enable_wasm_api_exception_catching --disable_rtti"
+    CONFIG_EXTRA_FLAG="--disable_rtti"
 else
     echo "Error: Invalid configuration \"$1\"."
     echo "Configuration must be 'd' (Debug) or 'r' (Release)."
@@ -99,6 +100,7 @@ echo "Calling $ROOT_DIR/build.sh to build WebAssembly..."
     --enable_wasm_threads \
     --use_webnn \
     --use_webgpu \
+    --enable_wasm_jspi \
     --build_dir "$BUILD_DIR"
 
 # The 'set -e' command at the beginning of the script ensures that the script will exit
@@ -108,10 +110,10 @@ echo "--- Copying build artifacts ---"
 # Ensure the dist directory exists before copying files
 mkdir -p "$ROOT_DIR/js/web/dist"
 
-echo "Copying ort-wasm-simd-threaded.asyncify.wasm to $ROOT_DIR/js/web/dist/"
-cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.asyncify.wasm" "$ROOT_DIR/js/web/dist/"
+echo "Copying ort-wasm-simd-threaded.jspi.wasm to $ROOT_DIR/js/web/dist/"
+cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.jspi.wasm" "$ROOT_DIR/js/web/dist/"
 
-echo "Copying ort-wasm-simd-threaded.asyncify.mjs to $ROOT_DIR/js/web/dist/"
-cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.asyncify.mjs" "$ROOT_DIR/js/web/dist/"
+echo "Copying ort-wasm-simd-threaded.jspi.mjs to $ROOT_DIR/js/web/dist/"
+cp -f "$BUILD_DIR/$CONFIG/ort-wasm-simd-threaded.jspi.mjs" "$ROOT_DIR/js/web/dist/"
 
 echo "--- WebGPU build process completed successfully ---"

@@ -13,7 +13,7 @@
 #include <limits>
 
 #include <gsl/gsl>
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {

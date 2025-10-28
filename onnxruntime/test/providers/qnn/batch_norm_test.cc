@@ -5,7 +5,7 @@
 
 #include <string>
 #include "core/graph/graph.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "test/unittest_util/qdq_test_utils.h"

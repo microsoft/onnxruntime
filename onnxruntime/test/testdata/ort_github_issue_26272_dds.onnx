@@ -1,0 +1,28 @@
+
+:“
+(
+datanonzerosnonzeros_node"NonZero
+1
+nonzeros
+nonzeros_ttranspose_node"	Transpose
+3
+data
+
+nonzeros_toutputgathernd_node"GatherND
+test_graphZ
+data
+
+d1
+d2b
+output
+
+nzrj
+nonzeros
+
+
+nzrj
+
+nonzeros_t
+
+nzr
+B

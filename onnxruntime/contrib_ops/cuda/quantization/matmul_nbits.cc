@@ -6,7 +6,7 @@
 #include <cstdint>
 
 #include "core/common/status.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"

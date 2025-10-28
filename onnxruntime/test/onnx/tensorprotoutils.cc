@@ -14,7 +14,7 @@
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 #include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"

@@ -6,7 +6,6 @@
 # --------------------------------------------------------------------------
 
 import unittest
-from importlib.util import find_spec
 
 import numpy as np
 import numpy.typing as npt
@@ -120,9 +119,6 @@ def quantize_blockwise_bnb4_target(matrix_float: npt.ArrayLike, block_size: int,
 
 
 class TestQuantizeBlockwiseBnb4(unittest.TestCase):
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_bnb4"
-    )
     def test_quantize_blockwise_bnb4(self):
         for quant_type in ["FP4", "NF4"]:
             for k, n in [(128, 128), (32, 128), (128, 32), (52, 128), (128, 52), (73, 123)]:

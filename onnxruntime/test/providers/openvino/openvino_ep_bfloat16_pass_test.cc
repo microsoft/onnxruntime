@@ -6,7 +6,7 @@
 #include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 #include "test/util/include/test/test_environment.h"
 #include "test/unittest_util/qdq_test_utils.h"

@@ -27,6 +27,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
 namespace onnxruntime {
@@ -62,6 +63,13 @@ class QnnSerializerConfig {
   void SetGraphName(std::string graph_name);
 
   /**
+   * Gets the name of the graph being serialized.
+   *
+   * \return graph_name The name of the graph being serialized.
+   */
+  const std::string& GetGraphName() const;
+
+  /**
    * Get any QNN Graph configs required to configure this serializer and perform any
    * preparation, such as creating output directories.
    *
@@ -83,7 +91,6 @@ class QnnSerializerConfig {
 
  protected:
   QnnSerializerConfig(std::string backend_path);
-  const std::string& GetGraphName() const;
 
  private:
   std::string backend_path_;
@@ -183,12 +190,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
-  Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
-                                   bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
+  Status ExtractBackendProfilingInfo(qnn::profile::ProfilingInfo& profiling_info);
+
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, profile::Serializer& profile_writer,
+                                   bool backendSupportsExtendedEventData);
+
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                               std::ofstream& outfile, bool backendSupportsExtendedEventData,
-                               bool tracelogging_provider_ep_enabled);
+                               profile::Serializer& profile_writer, bool backendSupportsExtendedEventData);
 
   Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
@@ -224,6 +232,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetContextPriority(ContextPriority context_priority);
   // Resets the context priority to the session default as defined by context_priority_
   Status ResetContextPriority();
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  bool ProfilingEnabled() { return profiling_enabled_; }
+#endif
 
  private:
   Status LoadBackend();
@@ -307,26 +319,14 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   }
 
   Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                    std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+                                    profile::Serializer& profile_writer);
+
   Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
-                                       std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
-  static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
-  static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
-  static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
-  static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
+                                       profile::Serializer& profile_writer);
+
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
   std::string QnnErrorHandleToString(Qnn_ErrorHandle_t error);
   QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
-#ifdef _WIN32
-  void LogQnnProfileEventAsTraceLogging(
-      uint64_t timestamp,
-      const std::string& message,
-      const std::string& qnnScalarValue,
-      const std::string& unit,
-      const std::string& timingSource,
-      const std::string& eventLevel,
-      const char* eventIdentifier);
-#endif
 
   // Adds a new QNN context.
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
@@ -437,6 +437,12 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
+  bool system_lib_loaded_ = false;
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  bool profiling_enabled_ = false;
+#endif
+
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;

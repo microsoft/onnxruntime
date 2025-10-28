@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/providers/rocm/rocm_kernel.h"
 #include "contrib_ops/rocm/math/gemm_float8_ck.cuh"
 

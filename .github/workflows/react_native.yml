@@ -94,7 +94,7 @@ jobs:
           architecture: x64
 
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: '22.x'
 
@@ -230,7 +230,7 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
 
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: '22.x'
           
@@ -286,7 +286,7 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
 
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: '22.x'
 

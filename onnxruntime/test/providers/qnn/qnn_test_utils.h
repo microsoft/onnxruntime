@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/util/qmath.h"
 
 #include "test/util/include/default_providers.h"

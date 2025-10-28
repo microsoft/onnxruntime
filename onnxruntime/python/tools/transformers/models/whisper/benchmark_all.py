@@ -97,7 +97,7 @@ def get_args():
         "--precision",
         type=str,
         required=True,
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision to run model",
     )
 

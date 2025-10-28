@@ -48,6 +48,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     shader.MainFunctionBody() << "  let total_seq_length = uniforms.total_sequence_length;\n";
   }
+  shader.MainFunctionBody() << "let past_sequence_length = total_seq_length - uniforms.kv_sequence_length;\n";
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
@@ -62,31 +63,23 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   if (has_past_) {
-    shader.MainFunctionBody() << "let past_sequence_length = total_seq_length - uniforms.kv_sequence_length;\n";
-    if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n"
-                                << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                                << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
-    } else {
-      const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
-      shader.AddInput("past_value", ShaderUsage::UseUniform);
-      shader.MainFunctionBody() << "let present_offset = global_idx;"
-                                << "if (sequence_id < past_sequence_length) {\n"
-                                << "  let pastOffset = " << past_key.IndicesToOffset("past_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("present_offset", "past_key[pastOffset]") << ";\n"
-                                << "  " << present_value.SetByOffset("present_offset", "past_value[pastOffset]") << ";\n"
-                                << "} else {\n"
-                                << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                                << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
-                                << "}";
-    }
+    const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
+    shader.AddInput("past_value", ShaderUsage::UseUniform);
+    shader.MainFunctionBody() << "let present_offset = global_idx;"
+                              << "if (sequence_id < past_sequence_length) {\n"
+                              << "  let pastOffset = " << past_key.IndicesToOffset("past_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", "past_key[pastOffset]") << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", "past_value[pastOffset]") << ";\n"
+                              << "} else {\n"
+                              << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
+                              << "}";
   } else {
-    shader.MainFunctionBody() << "  let present_offset = " << (past_present_share_buffer_ ? present_key.IndicesToOffset("output_indices") : "global_idx") << ";\n"
-                              << "let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
-                              << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                              << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
+    shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n"
+                              << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
   }
   return Status::OK();
 }
@@ -100,19 +93,20 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   // If indirect_buffer is provided, also prepare indirect dispatch buffer for flash attention.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
-  bool has_past = (parameters.total_sequence_length_ - parameters.kv_sequence_length_) > 0;
+  // has_past means non-static kv cache with valid past data
+  bool has_past = !parameters.past_present_share_buffer_ && past_key != nullptr && past_value != nullptr && past_key->SizeInBytes() > 0;
   // parameters.total_sequence_length_ is past_sequence_length + kv_sequence_length.
   // parameters.kv_num_heads_ may be smaller than parameters.num_heads_ when parameters.is_gqa_ is true.
   int num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
   // Only copy the new kv data for static kv cache
-  int copy_sequence_length = has_past && parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
+  int copy_sequence_length = parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
   TensorShape copy_kv_shape{parameters.batch_size_, num_heads, copy_sequence_length, parameters.head_size_ / components};
   int64_t copy_size = copy_kv_shape.Size();
 
   // Determine if we need to prepare indirect dispatch
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
 
-  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_,
+  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH,
                              prepare_indirect_dispatch};
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
@@ -129,7 +123,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
 
-  if (has_past && !parameters.past_present_share_buffer_) {
+  if (has_past) {
     program.AddInputs({{past_key, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {past_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   }
