@@ -203,13 +203,13 @@ void SQ2BitGemmPackQuantBData(
 
     // T-MAC like configuration (approved):
     // bits=2, g=4, ngroups_per_elem=8/g=2, simd_n_in=16, simd_n_out=8, bm=256, kfactor=16
-    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(N, K, 2, BlkLen);
+    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(N, K, 2);
     const size_t bits = 2;
     const size_t g = tmac_params.g;
     const size_t ngroups_per_elem = tmac_params.ngroups_per_elem;
     const size_t simd_n_in = tmac_params.simd_n_in;
     const size_t simd_n_out = tmac_params.simd_n_out;
-    const size_t bm = tmac_params.bm;     
+    const size_t bm = tmac_params.bm;
     const size_t kfactor = tmac_params.kfactor;
 
     // Basic checks
@@ -349,6 +349,7 @@ Q2BitGemmPerGemmWorkspaceSize(
 }
 
 void partial_max_g4_int8_k8(float* lut_scales, const float* b) {
+    // TODO(vraspar): add support for arm neon
     const __m256i vec_bi = _mm256_set_epi32(112, 96, 80, 64, 48, 32, 16, 0);
     __m256 vec_b0 = _mm256_i32gather_ps(b + 0, vec_bi, 1);
     __m256 vec_b1 = _mm256_i32gather_ps(b + 1, vec_bi, 1);
@@ -367,14 +368,13 @@ void partial_max_g4_int8_k8(float* lut_scales, const float* b) {
     *lut_scales = std::max(*lut_scales, scales);
 }
 
-void lut_ctor_g4_int8_impl(
-    int32_t group_size,
+inline void lut_ctor_g4_int8_impl(
+    int32_t act_k,
     int8_t* qlut,
     const float* b,
     float* lut_scales,
     float* lut_biases
 ) {
-    const int act_k = group_size; // we assume K == group_size for now
 
     __m256 vec_lut[16];
     float biases = 0.0;
@@ -409,7 +409,9 @@ PRAGMA_UNROLL
         }
 PRAGMA_UNROLL
         for (int g = 0; g < 16; g += 2) {
-            vec_lut[g] = -vec_lut[15 - g];
+            //vec_lut[g] = -vec_lut[15 - g];
+            const __m256 neg_mask = _mm256_set1_ps(-0.0f);  // all lanes have sign bit set
+            vec_lut[g] = _mm256_xor_ps(vec_lut[15 - g], neg_mask);
         }
 
         biases += _mm256_addv_ps(vec_lut[0]);
@@ -480,25 +482,27 @@ PRAGMA_UNROLL
 // based on lut_ctor_g4_int8_impl
 void
 GenerateLUT_avx2(
-	int32_t group_size,
-	int8_t* lut,
-	const float* b,
-	float* scales,
-	float* biases,
-    int K
+    const float* b,
+    int8_t* qlut,
+    float* lut_scales,
+    float* lut_biases,
+    size_t M,
+    size_t K,
+    size_t N,
+    size_t act_group_size
 ) {
-    const int kk_outer_max = K / group_size;
+    const size_t kk_outer_max = K / act_group_size;
 
     for (int32_t kk_outer = 0; kk_outer < kk_outer_max; ++kk_outer) {
         // compute partial max - directly reset scale to 0.0
-        scales[kk_outer] = 0.0f;
-        for (int32_t k_outer = 0; k_outer < group_size / 32; ++k_outer) {
-            partial_max_g4_int8_k8(&scales[kk_outer], &b[(kk_outer * group_size) + (k_outer * 32)]);
+        lut_scales[kk_outer] = 0.0f; // partial max reset
+        for (int32_t k_outer = 0; k_outer <act_group_size / 32; ++k_outer) {
+            partial_max_g4_int8_k8(&lut_scales[kk_outer], &b[(kk_outer * act_group_size) + (k_outer * 32)]);
         }
     }
 
     for (int32_t k_outer_1 = 0; k_outer_1 < kk_outer_max; ++k_outer_1) {
-        lut_ctor_g4_int8_impl(group_size, (&(lut[(k_outer_1 * group_size * 4)])), (&(b[(k_outer_1 * group_size)])), (&(scales[k_outer_1])), (&(biases[k_outer_1])));
+        lut_ctor_g4_int8_impl(act_group_size, (&(qlut[(k_outer_1 * act_group_size * 4)])), (&(b[(k_outer_1 * act_group_size)])), (&(lut_scales[k_outer_1])), (&(lut_biases[k_outer_1])));
     }
 
 }
@@ -644,16 +648,15 @@ int32_t tbl_int32_reset(int32_t m, int32_t* c) {
 // based on qgemm_lut_int8_g4
 // Simplified version with hardcoded configuration for 2-bit quantization
 void TMACComputeGemm_avx2(
-            const void* A,            // Quantized packed weights
-            const void* Scales,       // Weight scales (and optionally zero-points)
-            const void* LUT,          // Pre-computed quantized lookup table
-            const void* LUT_Scales,   // LUT scales from activation quantization
-            const void* LUT_Biases,   // LUT biases from activation quantization
+            const uint8_t* A,            // Quantized packed weights
+            const float* Scales,       // Weight scales (and optionally zero-points)
+            const int8_t* LUT,          // Pre-computed quantized lookup table
+            const float* LUT_Scales,   // LUT scales from activation quantization
+            const float* LUT_Biases,   // LUT biases from activation quantization
             void* C,            // Output buffer
-            int bm,             // Bit-rows tile size (typically 512 for 2-bit)
-            int K,              
-            int m,
-            int N,              
+            int K,
+            int M,
+            int N,
             size_t BlkLen      // Weight quantization group size (q_group_size)
             ) {
     // // Validate batch size
@@ -661,20 +664,30 @@ void TMACComputeGemm_avx2(
         throw std::runtime_error("N > 1 is not supported yet");
     }
 
+    // get kernel config
+    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(M, K, 2);
+
+
+
     // ==================== CONFIGURATION ====================
     // Fixed parameters for this kernel implementation
-    bool has_zero_point = true; // Whether weights have zero-points (interleaved with scales)
-    bool one_scale = false;     // Whether using single global scale for all weights
-    constexpr int bits = 2;              // 2-bit quantization
-    constexpr int g = 4;                 // Packing group size
-    constexpr int ngroups_per_elem = 2;  // 8 / g = 2
-    constexpr int kfactor = 16;          // K-dimension blocking factor
-    constexpr bool has_scale = true;     // Always use weight scales
+    bool has_zero_point = tmac_params.has_zero_point; // Whether weights have zero-points (interleaved with scales)
+    bool one_scale = tmac_params.one_scale;     // Whether using single global scale for all weights
+
+    const int bits = tmac_params.bits;              // 2-bit quantization
+    const int g = tmac_params.g;                 // Packing group size
+    const int ngroups_per_elem = tmac_params.ngroups_per_elem;  // 8 / g = 2
+    const int kfactor = tmac_params.kfactor;          // K-dimension blocking factor
+
+    const bool has_scale = tmac_params.has_scale;     // Always use weight scales
 
     // Parameters derived from inputs
-    const int q_group_size = static_cast<int>(BlkLen);  // Weight quant group size
-    const int act_group_size = static_cast<int>(BlkLen); // Activation group size (same as weight)
-    const int actk = act_group_size / g;  // CRITICAL: = 16 for BlkLen=64, NOT BlkLen!
+    const int q_group_size = tmac_params.q_group_size;  // Weight quant group size
+    const int act_group_size = tmac_params.act_group_size; // Activation group size (same as weight)
+    const int actk = tmac_params.actk;  // CRITICAL: = 16 for BlkLen=64, NOT BlkLen!
+
+    const int bm = tmac_params.bm;
+    int m = bm / bits;
 
     // Validate configuration
     assert(bm % bits == 0);
@@ -693,7 +706,7 @@ void TMACComputeGemm_avx2(
     float* C_global = new float[m];
 
     // Reset accumulator buffer to zero
-    tbl_int32_reset(bm * sizeof(float) / sizeof(int32_t), 
+    tbl_int32_reset(bm * sizeof(float) / sizeof(int32_t),
                     reinterpret_cast<int32_t*>(CBits));
 
     // ==================== CALCULATE LOOP PARAMETERS ====================
@@ -719,20 +732,20 @@ void TMACComputeGemm_avx2(
     // ==================== MAIN COMPUTATION LOOP ====================
     for (int32_t k_outer = 0; k_outer < k_outer_max; k_outer++) {
         // Calculate pointers for this K-outer iteration
-        const uint8_t* a = reinterpret_cast<const uint8_t*>(A) + k_outer * bm * kfactor / ngroups_per_elem;
+        const uint8_t* a = A + k_outer * bm * kfactor / ngroups_per_elem;
 
         // Calculate scales pointer based on configuration
-        const float* scales = one_scale ? 
+        const float* scales = one_scale ?
             reinterpret_cast<const float*>(Scales) :  // Single global scale
-            (has_zero_point ? 
+            (has_zero_point ?
                 reinterpret_cast<const float*>(Scales) + (k_outer >> scale_idx_shfr) * m * 2 :  // Scale + zero_point pairs
                 reinterpret_cast<const float*>(Scales) + (k_outer >> scale_idx_shfr) * m);       // Scales only
 
         // Calculate LUT pointers
         const int8_t* lut = reinterpret_cast<const int8_t*>(LUT) + k_outer * kfactor * (1 << g);  // 2^g = 16 for g=4
-        const float* lut_scales = reinterpret_cast<const float*>(LUT_Scales) + 
+        const float* lut_scales = reinterpret_cast<const float*>(LUT_Scales) +
                                       (k_outer * kfactor * g / act_group_size);
-        const float* lut_biases = reinterpret_cast<const float*>(LUT_Biases) + 
+        const float* lut_biases = reinterpret_cast<const float*>(LUT_Biases) +
                                       (k_outer * kfactor * g / act_group_size);
 
         // Select appropriate kernel template based on configuration
@@ -779,6 +792,7 @@ void TMACComputeGemm_avx2(
     // ==================== GATHER RESULTS ====================
     // Gather bit-plane results into final output
     // Only support 2-bit in this implementation
+    // TODO(vraspar): extend to other bit-widths
     tbl_g4_int8_float_gather_bit2_impl(m, C_global, CBits, reinterpret_cast<float*>(C));
 
     // ==================== CLEANUP ====================

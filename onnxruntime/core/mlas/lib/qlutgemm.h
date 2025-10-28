@@ -23,29 +23,38 @@ struct MlasTMACKernelParams {
     size_t simd_n_in;
     size_t simd_n_out;
     size_t chunk_n;
+    size_t n_tiles_num;
+
+
+     bool has_scale;
+     bool has_zero_point;
+     bool one_scale;
+
+
 };
 
-const MlasTMACKernelParams& GetTMACKernelParams(size_t M, size_t N, size_t nbits, size_t block_size);
+const MlasTMACKernelParams& GetTMACKernelParams(size_t M, size_t N, size_t nbits);
 
 typedef
 void(MLAS_QNBIT_GEMM_LUT_GEN)(
-	int32_t group_size,
-	int8_t* lut,
-	const float* b,
-	float* scales,
-	float* biases,
-	int K
+	const float * b,
+	int8_t * qlut,
+    float* lut_scales,
+    float* lut_biases,
+	size_t M,
+    size_t K,
+	size_t N,
+    size_t act_group_size
 );
 
 typedef
 void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
-	const void* A,
-	const void* a_scales,
-	const void* LUT,
-	const void* LUT_Scales,
-	const void* LUT_Biases,
+	const uint8_t* weights,
+	const float* scales,
+    const int8_t* LUT,
+	const float* LUT_Scales,
+	const float* LUT_Biases,
 	void* C,
-	int bm,
 	int K,
 	int M,                // batch size (number of rows in activation)
 	int N,

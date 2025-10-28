@@ -201,20 +201,23 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   // This is used during model load time to speed up weight prepacking
   std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
   concurrency::ThreadPool* threadpool_ptr = nullptr;
-  
+
   // Only create threadpool for operations that can benefit from it
   if (compute_type_ == TMAC || compute_type_ == SQNBIT_CompInt8) {
     OrtThreadPoolParams tpo;
     tpo.thread_pool_size = 4;  // Use default (typically number of cores)
     tpo.allow_spinning = false;  // Don't spin during model load
     tpo.auto_set_affinity = false;
-    
+
     temp_threadpool = concurrency::CreateThreadPool(
         &Env::Default(),
         tpo,
         concurrency::ThreadPoolType::INTRA_OP);
-    
+
     threadpool_ptr = temp_threadpool.get();
+  }
+  if (compute_type_ == TMAC) {
+    InitTMACKernelConfig(N_, K_, nbits_, block_size_, has_zp_input_);
   }
 
   if (input_idx == InputIndex::B) {
@@ -254,22 +257,21 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   } else if (compute_type_ == TMAC) {
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       auto scales_ptr = tensor.Data<float>();
+      packed_scales_zp_size_ = MlasTMACPackQuantScalesAndZeroPointsSize(N_, K_, block_size_, has_zp_input_);
+      packed_scales_zp_ = IAllocator::MakeUniquePtr<float>(alloc, packed_scales_zp_size_, true);
+
+      // TODO(vraspar): improve this logic block
       if (has_zp_input_) {
         const Tensor* zero_points = nullptr;
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
         auto zero_points_ptr = zero_points->Data<uint8_t>();
-
-        packed_scales_zp_size_ = N_ * K_ / block_size_ * 2;
-        packed_scales_zp_ = IAllocator::MakeUniquePtr<float>(alloc, packed_scales_zp_size_, true);
         MlasTMACPackScalesAndZeroPoints(N_, K_, nbits_, block_size_, has_zp_input_, packed_scales_zp_.get(), scales_ptr, zero_points_ptr);
       } else {
-        packed_scales_zp_size_ = N_ * K_ / block_size_;
-        packed_scales_zp_ = IAllocator::MakeUniquePtr<float>(alloc, packed_scales_zp_size_, true);
         MlasTMACPackScalesAndZeroPoints(N_, K_, nbits_, block_size_, has_zp_input_, packed_scales_zp_.get(), scales_ptr, nullptr);
       }
-    } 
+    }
   }
-  
+
   // Threadpool will be automatically destroyed when temp_threadpool goes out of scope
 
   return Status::OK();
@@ -384,8 +386,10 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   // TODO: add the logic for generating lookup table here -- for now we can assume that
   // 2 bits + acc level 4 = use look up table but in the future adapt so that we use a mamtulnbits attr to decide
   // if we want to do lut generation
+
+  // TODO(vraspar): Should we batch it here?
   if (compute_type_ == TMAC) {
-    MlasTmac(a_data, block_size_, packed_b_.get(), scales_data, y_data, K, M, N, thread_pool);
+    MlasTmac(a_data, block_size_, packed_b_.get(), packed_scales_zp_.get(), y_data, K, M, N, thread_pool);
     return Status::OK();
   }
   const size_t lda = helper.Lda(false);

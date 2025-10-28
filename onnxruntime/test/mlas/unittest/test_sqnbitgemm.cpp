@@ -24,6 +24,8 @@ static constexpr const char* ComputeTypeName(MLAS_QNBIT_GEMM_COMPUTE_TYPE Comput
       return "Fp32";
     case SQNBIT_CompInt8:
       return "Int8";
+    case TMAC:
+      return "TMAC";
     default:
       return "unknown";
   }
@@ -49,6 +51,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   MatrixGuardBuffer<std::byte> BufferWorkspace;
   MatrixGuardBuffer<float> BufferC;
   MatrixGuardBuffer<float> BufferCReference;
+
+  // TMAC LUT related buffers
+  MatrixGuardBuffer<float> BufferPackedQuantScalesZP;
 
   void CallGemm(size_t M,
                 size_t N,
@@ -286,6 +291,10 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
+    if (ComputeType == TMAC) {
+      InitTMACKernelConfig(N, K, BlkBitWidth, BlkLen, QuantBZeroPoint != nullptr);
+    }
+
     void* PackedQuantBDataWorkspace = nullptr;
     if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
         PackedQuantBDataSize > 0) {
@@ -296,18 +305,34 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                                   GetMlasThreadPool());
     }
 
-    CallGemm(M, N, K,
-             A, /* lda */ K,
-             QuantBData, PackedQuantBDataWorkspace, QuantBScale, QuantBZeroPoint,
-             Bias,
-             C, /* ldc */ N,
-             Workspace,
-             ComputeType,
-             Threadpool);
+    float* PackedQuantScalesZPWorkspace = nullptr;
+    if (ComputeType == TMAC) {
+      bool has_zp_input = QuantBZeroPoint != nullptr;
+      const auto PackedQuantScalesZPSize = MlasTMACPackQuantScalesAndZeroPointsSize(N, K, BlkBitWidth, has_zp_input);
+      PackedQuantScalesZPWorkspace = BufferPackedQuantScalesZP.GetBuffer(PackedQuantScalesZPSize);
+      MlasTMACPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, has_zp_input, PackedQuantScalesZPWorkspace,
+                                     QuantBScale, QuantBZeroPoint);
+    }
+
+    if (ComputeType == TMAC) {
+      MlasTmac(A, BlkLen, QuantBData, PackedQuantScalesZPWorkspace, C, K, M, N, Threadpool);
+
+    } else {
+      CallGemm(M, N, K,
+              A, /* lda */ K,
+              QuantBData, PackedQuantBDataWorkspace, QuantBScale, QuantBZeroPoint,
+              Bias,
+              C, /* ldc */ N,
+              Workspace,
+              ComputeType,
+              Threadpool);
+    }
+
 
     if (ComputeType == SQNBIT_CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
-    } else if (ComputeType == SQNBIT_CompInt8) {
+    } else if (ComputeType == SQNBIT_CompInt8 || ComputeType == TMAC) {
+      // use same reference implementation for TMAC as CompInt8
       CallReferenceGemm_CompInt8(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
     } else {
       FAIL() << "Test is not implemented for compute type "
@@ -362,6 +387,9 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
     size_t tests_registered = 0;
 
     if (MlasIsQNBitGemmAvailable(BlkBitWidth, BlkLen, ComputeType)) {
+      if (ComputeType == TMAC && (M < BlkLen || K < BlkLen || N < BlkLen)) {
+        return tests_registered;
+      }
       std::stringstream ss;
       ss << (WithThreadpool ? "SingleThread" : "Threaded")
          << "/isSymmetric" << Symmetric
@@ -392,7 +420,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   static size_t RegisterShortExecuteTests() {
     size_t tests_registered = 0;
 
-    for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {SQNBIT_CompFp32, SQNBIT_CompInt8}) {
+    for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {SQNBIT_CompFp32, SQNBIT_CompInt8, TMAC}) {
       for (bool WithThreadpool : {false, true}) {
         for (bool Symmetric : {false, true}) {
           if constexpr (BlkBitWidth == 2) {
@@ -443,12 +471,12 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
-  // TODO: enable these test for 2bit development.
-  // count += SQNBitGemmShortExecuteTest<2, 16>::RegisterShortExecuteTests();
-  // count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
-  // count += SQNBitGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
-  // count += SQNBitGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
-  // count += SQNBitGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
+  // TODO(vraspar): enable these test for 2bit development and also add 3 bit test for TMAC
+  count += SQNBitGemmShortExecuteTest<2, 16>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
 
   count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();

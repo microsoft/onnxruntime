@@ -224,6 +224,18 @@ MlasQNBitGemmScalesPacked(
 );
 
 /**
+ * @brief Gets the size in float of the packed quantized B scales and zero points.
+ */
+
+size_t MLASCALL
+MlasTMACPackQuantScalesAndZeroPointsSize(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    bool HasZeroPoint
+);
+
+/**
  * @brief Packs the scales and zero points into a format that the TMAC kernel expects.
  */
 void MLASCALL
@@ -252,6 +264,14 @@ MlasIsTMACAvailable(
     size_t BlkLen
 );
 
+void MLASCALL
+InitTMACKernelConfig(
+    size_t M,
+    size_t N,
+    size_t nbits,
+    size_t block_size,
+    bool has_zp_point);
+
 /**
  * @brief Executes TMAC compute
  *
@@ -262,11 +282,11 @@ void MLASCALL
 MlasTmac(
     const void* A,
     size_t BlkLen,
-    const void* QuantBData,     
-    const float* QuantBScale,   
+    const void* QuantBData,
+    const float* QuantBScale,
     void* C,
     int K,
-    int M,                
+    int M,
     int N,
     MLAS_THREADPOOL* threadpool
 );
