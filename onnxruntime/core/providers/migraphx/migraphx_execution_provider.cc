@@ -1341,11 +1341,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       std::string onnx_name = fused_node.Name() + ".onnx";
       std::ofstream ofs(onnx_name, std::ios::binary);
       if (!ofs.is_open()) {
-        ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
+        ORT_THROW("Failed to open file to dump ONNX model: " + onnx_name);
       }
       ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
       ofs.close();
-      LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
+      LOGS_DEFAULT(INFO) << "ONNX model dumped to " << onnx_name;
     }
 
     std::vector<std::string> input_names, output_names;
