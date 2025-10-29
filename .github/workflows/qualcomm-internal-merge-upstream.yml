@@ -48,8 +48,17 @@ jobs:
           fi
       - name: Resolve conflicts automatically and commit
         run: |
+          # Resolve main repository conflicts
           git checkout --theirs .
+
+          # Handle submodule conflicts and updates
+          git submodule sync --recursive
+          git submodule update --init --recursive
+
           git add .
+          # Ensures that deleted files are also staged
+          git add -u
+
           git commit -m "[MERGE-UPSTREAM] Automated upstream merge for $TODAY"
       - name: Authenticate service account with GitHub CLI
         run: |
