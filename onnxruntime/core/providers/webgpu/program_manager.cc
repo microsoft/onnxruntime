@@ -40,8 +40,8 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
 }
 
 Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const {
-  inputs_segments.resize(program.Inputs().size());
-  outputs_segments.resize(program.Outputs().size());
+  inputs_segments.resize(program.Inputs().size(), 1);
+  outputs_segments.resize(program.Outputs().size(), 1);
 
   const uint64_t maxStorageBufferBindingSize = webgpu_context_.DeviceLimits().maxStorageBufferBindingSize;
 
