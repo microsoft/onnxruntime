@@ -108,7 +108,7 @@
 			>.
 		</li>
 	</ul>
-/*
+{#if false}
 	<h2 class="text-xl font-bold mt-2">Versioning Updates</h2>
 	<p class="font-thin">
 		We are planning to upgrade ONNX Runtime support for the following (where the first value is the
@@ -134,7 +134,7 @@
 		<li>Python quantization tool updates.</li>
 		<li>New QNN SDK version support.</li>
 	</ul>
-*/
+{/if}
 	<h2 class="text-xl font-bold mt-2">Feature Requests</h2>
 	<p class="font-thin">
 		To request new ONNX Runtime features to be included in a future release, please submit a feature
