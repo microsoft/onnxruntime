@@ -753,7 +753,7 @@ if (onnxruntime_USE_WEBGPU)
 
           # The uniform_and_storage_buffer_16_bit_access.patch contains the following changes:
           #
-          # - (private) Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+          # - (private) Android devices don't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
           #   in the uniform and converting to fp16 before using.
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch &&
 
