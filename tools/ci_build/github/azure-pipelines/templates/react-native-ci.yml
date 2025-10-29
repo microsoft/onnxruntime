@@ -26,6 +26,10 @@ parameters:
 - name: enable_code_sign
   displayName: Use GPG to sign the jars
   type: boolean
+- name: is1ES
+  displayName: 'Is 1ES pipeline'
+  type: boolean
+  default: false
 
 stages:
 - stage: Build_Android_Packages
