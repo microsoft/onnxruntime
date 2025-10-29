@@ -2978,8 +2978,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
   // fall back to using ONNX's PartialDataPropagationFunction(), if available.
 
   int dim_size = 0;
-  if (!onnx_inferred_type_after_data_propagation.has_tensor_type() ||
-      !onnx_inferred_type_after_data_propagation.tensor_type().has_shape()) {
+  if (onnx_inferred_type_after_data_propagation.has_tensor_type() &&
+      onnx_inferred_type_after_data_propagation.tensor_type().has_shape()) {
     dim_size = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim_size();
   }
 
