@@ -63,7 +63,7 @@ jobs:
           cp ${BASE_PATH}/*.pom          ${{ runner.temp }}/artifacts          
 
       - name: Upload Android AAR Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/artifacts
@@ -206,7 +206,7 @@ jobs:
             --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
 
       - name: Upload iOS Pod Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
