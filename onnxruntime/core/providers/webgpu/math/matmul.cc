@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul_intel.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -161,6 +162,11 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const auto* bias = context.Input(2);
     inputs.push_back(bias);
   }
+
+  if (CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
+    return ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
+  }
+
   auto program = CreateMatMulProgram(Activation(), inputs, output_tensor, false);
 
   return context.RunProgram(program);
