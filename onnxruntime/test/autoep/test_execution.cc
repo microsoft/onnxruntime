@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/shared_lib/utils.h"
@@ -153,6 +154,62 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
+}
+
+// Uses the original compiling approach with session option configs (instead of explicit compile API).
+// Test that ORT does not overwrite an output model if it already exists.
+// Notably, this tests the case in which ORT automatically generates the output model name.
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutputModelName) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* expected_output_model_file = ORT_TSTR("testdata/mul_1_ctx.onnx");
+  std::filesystem::remove(expected_output_model_file);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  std::unordered_map<std::string, std::string> ep_options;
+
+  // Compile a model and let ORT set the output model name. This should succeed.
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    // Don't specify an output model path to let ORT automatically generate it!
+    // so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
+
+    so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, input_model_file, so);
+    ASSERT_TRUE(std::filesystem::exists(expected_output_model_file));  // check compiled model was generated.
+  }
+
+  auto modify_time_1 = std::filesystem::last_write_time(expected_output_model_file);
+
+  // Try compiling the model again. ORT should return an error because the output model already exists.
+  // Original compiled model should not be modified.
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    // Don't specify an output model path to let ORT automatically generate it!
+    // so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
+
+    so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    try {
+      Ort::Session session(*ort_env, input_model_file, so);
+      FAIL();  // Should not get here!
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
+      ASSERT_THAT(excpt.what(),
+                  testing::HasSubstr("exists already. "
+                                     "Please remove the EP context model if you want to re-generate it."));
+
+      ASSERT_TRUE(std::filesystem::exists(expected_output_model_file));
+      auto modify_time_2 = std::filesystem::last_write_time(expected_output_model_file);
+      ASSERT_EQ(modify_time_2, modify_time_1);  // Check that file was not modified
+    }
+  }
+
+  std::filesystem::remove(expected_output_model_file);
 }
 }  // namespace test
 }  // namespace onnxruntime
