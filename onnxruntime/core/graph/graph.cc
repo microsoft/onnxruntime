@@ -2894,12 +2894,6 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
 Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
-  // Skip it if the TypeProto is not a tensor_type or the shape is not present.
-  if (!onnx_inferred_type_after_data_propagation.has_tensor_type() ||
-      !onnx_inferred_type_after_data_propagation.tensor_type().has_shape()) {
-    return Status::OK();
-  }
-
   // Helper function to get the input value if it's a initializer.
   auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values)
       -> Status {
@@ -2980,10 +2974,15 @@ Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
     return Status::OK();
   }
 
-  auto dim_size = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim_size();
-
   // If no custom data propagation is defined for the operator,
-  // fall back to using ONNX�s PartialDataPropagationFunction(), if available.
+  // fall back to using ONNX's PartialDataPropagationFunction(), if available.
+
+  int dim_size = 0;
+  if (!onnx_inferred_type_after_data_propagation.has_tensor_type() ||
+      !onnx_inferred_type_after_data_propagation.tensor_type().has_shape()) {
+    dim_size = onnx_inferred_type_after_data_propagation.tensor_type().shape().dim_size();
+  }
+
   if (dim_size > 0) {
     // Only handle that the inferred shape values (from ONNX operator's PartialDataPropagationFunction() ) has rank > 0
     // and all dimensions have concrete (non-symbolic) values.

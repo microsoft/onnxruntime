@@ -40,7 +40,11 @@ std::unique_ptr<CustomDataPropagation> CreateCustomDataPropagation(const Node& n
                                                                    std::function<Status(const std::string&, TensorShapeVector&)> func,
                                                                    const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
                                                                    const logging::Logger& logger) {
-  auto dim_size = output_from_onnx_op_data_propagation.tensor_type().shape().dim_size();
+  int dim_size = 0;
+  if (!output_from_onnx_op_data_propagation.has_tensor_type() ||
+      !output_from_onnx_op_data_propagation.tensor_type().has_shape()) {
+    dim_size = output_from_onnx_op_data_propagation.tensor_type().shape().dim_size();
+  }
 
   if (node.OpType() == "Size") {
     return std::make_unique<SizeOpDataPropagation>(node, output_def, func, output_from_onnx_op_data_propagation, logger);

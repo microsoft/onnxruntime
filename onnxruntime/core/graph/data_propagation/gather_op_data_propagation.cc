@@ -10,7 +10,12 @@
 namespace onnxruntime {
 
 Status GatherOpDataPropagation::infer() {
-  ORT_ENFORCE(output_from_onnx_op_data_propagation_.tensor_type().shape().dim_size() == 0);
+  int dim_size = 0;
+  if (!output_from_onnx_op_data_propagation_.has_tensor_type() ||
+      !output_from_onnx_op_data_propagation_.tensor_type().has_shape()) {
+    dim_size = output_from_onnx_op_data_propagation_.tensor_type().shape().dim_size();
+  }
+  ORT_ENFORCE(dim_size == 0);
 
   // Following code extracts an element from a 1D array if all conditions are met.
   // e.g.
