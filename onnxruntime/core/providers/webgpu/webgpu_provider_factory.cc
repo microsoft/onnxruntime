@@ -158,8 +158,14 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   uint64_t max_storage_buffer_binding_size = 0;
   std::string max_storage_buffer_binding_size_str;
   if (config_options.TryGetConfigEntry(kMaxStorageBufferBindingSize, max_storage_buffer_binding_size_str)) {
-    ORT_ENFORCE(std::errc{} ==
-                std::from_chars(max_storage_buffer_binding_size_str.data(), max_storage_buffer_binding_size_str.data() + max_storage_buffer_binding_size_str.size(), max_storage_buffer_binding_size).ec);
+    ORT_ENFORCE(
+        std::errc{} == std::from_chars(
+            max_storage_buffer_binding_size_str.data(),
+            max_storage_buffer_binding_size_str.data() + max_storage_buffer_binding_size_str.size(),
+            max_storage_buffer_binding_size
+        ).ec,
+        "Invalid max_storage_buffer_binding_size value: ", max_storage_buffer_binding_size_str
+    );
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << max_storage_buffer_binding_size;
 
