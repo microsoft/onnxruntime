@@ -360,11 +360,11 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
   return true;
 }
 
-std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
-  std::vector<int> result;
-  int num = nums.size();
-  for (int i = 0; i < num; ++i) {
-    result.push_back(static_cast<int>(nums[i]));
+std::vector<int64_t> toVector(const ONNX_NAMESPACE::int64s& nums) {
+  std::vector<int64_t> result;
+  size_t num = nums.size();
+  for (size_t i = 0; i < num; ++i) {
+    result.push_back(nums[i]);
   }
 
   return result;
@@ -462,25 +462,17 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
 
     const auto& attributes = node->GetAttributes();
-    // Pad only support constant mode
+    // Pad only support reflect, constant and edge mode currently
     auto mode_attr = attributes.find("mode");
     std::string mode = "constant";
     if (mode_attr != attributes.end()) {
       mode = (*mode_attr).second.s();
     }
-    static const std::set<std::string> allowed_modes = {"constant", "reflect"};
+    static const std::set<std::string> allowed_modes = {"constant", "reflect", "edge"};
     if (allowed_modes.count(mode) == 0) {
       return true;
     }
 
-    // input value only applied to constant mode
-    if (mode == "constant") {
-      if (args.size() == 3) {
-        if (!canEvalNodeArgument(graph_viewer, node, {2}, input_nodes)) {
-          return true;
-        }
-      }
-    }
   } else if (optype == "Range") {
     auto arg_num = node->InputDefs().size();
     std::vector<std::size_t> vec(arg_num);
@@ -537,6 +529,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     if (attributes.count("starts") > 0 && attributes.count("ends") > 0) {
       auto starts = toVector((*attributes.find("starts")).second.ints());
       auto ends = toVector((*attributes.find("ends")).second.ints());
+
       for (std::size_t i = 0; i < starts.size(); ++i) {
         if (starts.at(i) > ends.at(i)) {
           return true;
