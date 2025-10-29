@@ -48,9 +48,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     input_shape_uint32 = GetNarrowedIntFromInt64<uint32_t>(input_shape);
     // Need to reshape the input to 2D tensor with new shape [M, N].
     // M = d0*d1*...*d(axis-1), N = d(axis)*...*d(n-1)
-    const auto M = axis == 0
-                       ? 1
-                       : Product(std::vector<uint32_t>(input_shape_uint32.begin(), input_shape_uint32.begin() + axis));
+    const auto M = Product(std::vector<uint32_t>(input_shape_uint32.begin(), input_shape_uint32.begin() + axis));
     const auto N = Product(std::vector<uint32_t>(input_shape_uint32.begin() + axis, input_shape_uint32.end()));
     emscripten::val new_shape = emscripten::val::array();
     new_shape.set(0, M);
