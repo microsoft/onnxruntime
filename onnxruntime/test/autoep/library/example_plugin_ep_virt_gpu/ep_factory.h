@@ -5,25 +5,24 @@
 
 #include <mutex>
 
-#include "ep_arena.h"
-#include "ep_data_transfer.h"
-#include "example_plugin_ep_utils.h"
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
 
 /// <summary>
-/// Example EP factory that can create an OrtEp and return information about the supported hardware devices.
+/// EP factory that creates an OrtEp instance that supports a virtual GPU OrtHardwareDevice
+/// created by the factory itself (not ORT).
 /// </summary>
-class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
+class EpFactoryVirtualGpu : public OrtEpFactory {
  public:
-  ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger);
+  EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtModelEditorApi& model_editor_api,
+                      const OrtLogger& default_logger);
+  ~EpFactoryVirtualGpu();
 
-  OrtDataTransferImpl* GetDataTransfer() const {
-    return data_transfer_impl_.get();
-  }
-
-  // Get the shared arena allocator if created.
-  ArenaAllocator* GetArenaAllocator() const {
-    return arena_allocator_.get();
-  }
+  const OrtApi& GetOrtApi() const { return ort_api_; }
+  const OrtEpApi& GetEpApi() const { return ep_api_; }
+  const OrtModelEditorApi& GetModelEditorApi() const { return model_editor_api_; }
+  const std::string& GetEpName() const { return ep_name_; }
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -67,21 +66,17 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 
-  const OrtLogger& default_logger_;        // default logger for the EP factory
-  const std::string ep_name_;              // EP name
-  const std::string vendor_{"Contoso"};    // EP vendor name
-  const uint32_t vendor_id_{0xB357};       // EP vendor ID
+  static OrtStatus* ORT_API_CALL SetEnvironmentOptionsImpl(OrtEpFactory* this_ptr,
+                                                           const OrtKeyValuePairs* options) noexcept;
+
+  const OrtApi& ort_api_;
+  const OrtEpApi& ep_api_;
+  const OrtModelEditorApi& model_editor_api_;
+  bool allow_virtual_devices_{false};
+  const OrtLogger& default_logger_;
+  OrtHardwareDevice* virtual_hw_device_{};
+  const std::string ep_name_{"EpVirtualGpu"};
+  const std::string vendor_{"Contoso2"};   // EP vendor name
+  const uint32_t vendor_id_{0xB358};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version
-
-  // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
-  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-  MemoryInfoUniquePtr default_memory_info_;
-  MemoryInfoUniquePtr readonly_memory_info_;  // used for initializers
-
-  bool arena_allocator_using_default_settings_{true};
-  std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
-  uint32_t num_arena_users_{0};
-  std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
-
-  std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };
