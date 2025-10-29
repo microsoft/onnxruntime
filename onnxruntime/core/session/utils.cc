@@ -140,12 +140,17 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
     // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
     // the user used the older SessionOptions' configuration entries to generate a compiled model.
-    if (ep_ctx_gen_options.enable && !ep_ctx_gen_options.HasOutputModelLocation()) {
-      return OrtApis::CreateStatus(ORT_FAIL,
-                                   "Inference session was configured with EPContext model generation enabled but "
-                                   "without a valid location (e.g., file or buffer) for the output model. "
-                                   "Please specify a valid ep.context_file_path via SessionOption configs "
-                                   "or use the OrtCompileApi to compile a model to a file or buffer.");
+    if (ep_ctx_gen_options.enable) {
+      auto* output_model_path = ep_ctx_gen_options.TryGetOutputModelPath();
+
+      if (!ep_ctx_gen_options.HasOutputModelLocation() ||
+          (output_model_path != nullptr && output_model_path->empty())) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "Inference session was configured with EPContext model generation enabled but "
+                                     "without a valid location (e.g., file or buffer) for the output model. "
+                                     "Please specify a valid ep.context_file_path via SessionOption configs "
+                                     "or use the OrtCompileApi to compile a model to a file or buffer.");
+      }
     }
   }
 
