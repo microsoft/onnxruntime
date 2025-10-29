@@ -588,6 +588,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_runtime_path.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
@@ -1518,9 +1519,47 @@ endif()
     target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
     set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
+    # onnxruntime_runtime_path_test_shared_library
+    block()
+      set(onnxruntime_runtime_path_test_shared_library_src
+          "${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.h"
+          "${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.cc")
+
+      onnxruntime_add_shared_library(onnxruntime_runtime_path_test_shared_library
+                                     ${onnxruntime_runtime_path_test_shared_library_src})
+
+      target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE onnxruntime_common cpuinfo)
+      target_include_directories(onnxruntime_runtime_path_test_shared_library PRIVATE ${ONNXRUNTIME_ROOT})
+
+      if(UNIX)
+        if (APPLE)
+          set(onnxruntime_runtime_path_test_shared_library_link_flags "-Xlinker -dead_strip")
+        elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+          string(CONCAT onnxruntime_runtime_path_test_shared_library_link_flags
+                 "-Xlinker --version-script=${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.lds "
+                 "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+        endif()
+      else()
+        set(onnxruntime_runtime_path_test_shared_library_link_flags
+            "-DEF:${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.def")
+      endif()
+
+      set_property(TARGET onnxruntime_runtime_path_test_shared_library APPEND_STRING PROPERTY LINK_FLAGS
+                   ${onnxruntime_runtime_path_test_shared_library_link_flags})
+
+      set_target_properties(onnxruntime_runtime_path_test_shared_library PROPERTIES FOLDER "ONNXRuntimeTest")
+      source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_runtime_path_test_shared_library_src})
+    endblock()
+
     #################################################################
     # test inference using shared lib
-    set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+    set(onnxruntime_shared_lib_test_LIBS
+        onnxruntime_mocked_allocator
+        onnxruntime_test_utils
+        onnxruntime_common
+        onnx_proto
+        onnxruntime_runtime_path_test_shared_library)
+
     if(NOT WIN32)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)

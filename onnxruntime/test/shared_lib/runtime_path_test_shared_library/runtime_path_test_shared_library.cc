@@ -1,0 +1,34 @@
+#include "runtime_path_test_shared_library.h"
+
+#include "core/platform/env.h"
+#include "core/common/logging/logging.h"
+#include "core/platform/logging/make_platform_default_log_sink.h"
+
+namespace {
+
+std::basic_string<PATH_CHAR_T> InitializeAndGetRuntimePath() {
+  using namespace onnxruntime;
+
+  const bool default_filter_user_data = false;
+  const std::string default_logger_id = "DefaultLogger";
+  auto logging_manager = logging::LoggingManager(logging::MakePlatformDefaultLogSink(),
+                                                 logging::Severity::kVERBOSE,
+                                                 default_filter_user_data,
+                                                 logging::LoggingManager::InstanceType::Default,
+                                                 &default_logger_id);
+
+  auto runtime_path = Env::Default().GetRuntimePath();
+
+  return runtime_path;
+}
+
+}  // namespace
+
+extern "C" const PATH_CHAR_T* OrtTestGetSharedLibraryRuntimePath(void) {
+  try {
+    static const auto runtime_path = InitializeAndGetRuntimePath();
+    return runtime_path.c_str();
+  } catch (...) {
+    return nullptr;
+  }
+}
