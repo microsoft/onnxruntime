@@ -137,18 +137,28 @@ void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
 void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
-  const auto& params = model->get_parameters();
 
-  for (size_t i = 0; i < params.size(); i++) {
-    auto param_name = params[i]->output(0).get_any_name();
-    if (param_name.find("key_values") != std::string::npos) {
-      key_value_input_names.push_back(param_name);
-    } else if (param_name.find("keys") != std::string::npos) {
-      key_value_input_names.push_back(param_name);
-    } else if (param_name.find("values") != std::string::npos) {
-      key_value_input_names.push_back(param_name);
-    } else{
-      not_kv_inputs.push_back(param_name);
+  for (const ov::Output<ov::Node>& input : model->inputs()) {
+    auto& names = input.get_names();
+
+    bool found = false;
+    for (auto& name : names) {
+      if (name.find("key_values") != std::string::npos) {
+        key_value_input_names.push_back(name);
+        found = true;
+        break;
+      } else if (name.find("keys") != std::string::npos) {
+        key_value_input_names.push_back(name);
+        found = true;
+        break;
+      } else if (name.find("values") != std::string::npos) {
+        key_value_input_names.push_back(name);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      not_kv_inputs.push_back(input.get_any_name());
     }
   }
 
