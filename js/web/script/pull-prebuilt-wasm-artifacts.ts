@@ -57,7 +57,7 @@ if (args.help || args.h) {
 // Check if GitHub CLI (gh) is installed and available in PATH
 try {
   execSync('gh --version', { stdio: 'pipe' }).toString().trim();
-} catch (e) {
+} catch {
   console.error('Error: GitHub CLI (gh) is not installed or not in PATH.');
   console.error('Please install it from https://cli.github.com/ and try again.');
   process.exit(1);

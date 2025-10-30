@@ -54,14 +54,12 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
   // Inputs
   const auto& q_input = shader.AddInput("q_input", ShaderUsage::UseUniform);
   const auto& k_input = shader.AddInput("k_input", ShaderUsage::UseUniform);
-  const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::UseUniform);
+  const auto& seqlens = shader.AddInput("seqlens", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   // Outputs
   const auto& q_output = shader.AddOutput("q_output", ShaderUsage::UseUniform);
   const auto& k_output = shader.AddOutput("k_output", ShaderUsage::UseUniform);
-  // Indices helper
-  const auto& dummy_indices = shader.AddIndices("dummy_indices", ShaderUsage::None);
 
   const auto interleaved_str = interleaved_ ? "true" : "false";
 
@@ -70,8 +68,13 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "  let half_rotary_dim = uniforms.cos_cache_shape[1];\n"
       << "  let bsnh = global_idx / uniforms.q_global_stride % uniforms.q_global_shape;\n"
       << "  if (bsnh[3] < half_rotary_dim) {\n"
-      << "    let pos_ids_idx = " << position_ids.BroadcastedIndicesToOffset("bsnh.xy", dummy_indices) << ";\n"
-      << "    let position_id = u32(" << position_ids.GetByOffset("pos_ids_idx") << ") + select(0u, bsnh[1], pos_ids_idx == 0u);\n"
+      << "    let batch_idx = bsnh[0];\n"
+      << "    let sequence_idx = bsnh[1];\n"
+      << "    let seqlen_i = " << seqlens.GetByOffset("batch_idx") << ";\n"
+      << "    let seqlen = u32(seqlen_i);\n"
+      << "    let total_seqlen = seqlen + 1u;\n"
+      << "    let past_seqlen = total_seqlen - uniforms.q_global_shape[1];\n"
+      << "    let position_id = past_seqlen + sequence_idx;\n"
       << "    let cos_v = " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
       << "    let sin_v = " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
       << "    let qi = dot(bsnh, uniforms.q_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
