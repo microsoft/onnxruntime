@@ -137,7 +137,6 @@ void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
 void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
-
   for (const ov::Output<ov::Node>& input : model->inputs()) {
     auto& names = input.get_names();
 
@@ -157,6 +156,7 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
         break;
       }
     }
+
     if (!found) {
       not_kv_inputs.push_back(input.get_any_name());
     }
