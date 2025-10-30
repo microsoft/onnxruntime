@@ -516,6 +516,7 @@ struct ProviderHostImpl : ProviderHost {
 
   // TypeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TypeProto>(); }
+  void TypeProto__operator_delete(ONNX_NAMESPACE::TypeProto* p) override { delete p; }
   void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) override { p->CopyFrom(*other); }
   bool TypeProto__has_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->has_tensor_type(); }
   const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->tensor_type(); }
