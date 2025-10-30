@@ -1078,13 +1078,10 @@ def generate_files(line_list, args):
                 "net9.0-maccatalyst",
                 "_._",
             )
-            net9_maccatalyst_target_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net9.0-maccatalyst", "_._"
-            )
+            net9_maccatalyst_target_targets = net9_maccatalyst_source_targets
 
             copy_file(net9_android_source_targets, net9_android_target_targets)
             copy_file(net9_ios_source_targets, net9_ios_target_targets)
-            copy_file(net9_maccatalyst_source_targets, net9_maccatalyst_target_targets)
 
             files_list.append(
                 "<file src=" + '"' + net9_android_target_targets + '" target="build\\net9.0-android" />'
