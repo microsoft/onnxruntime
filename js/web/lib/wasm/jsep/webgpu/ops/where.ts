@@ -31,7 +31,6 @@ const createWhereOpProgramShader = (
     const singleAssignment = (resStr: string, x: number, typeCast = '') => {
       const expressionA = `a_data[index_a${x}][component_a${x}]`;
       const expressionB = `b_data[index_b${x}][component_b${x}]`;
-      // eslint-disable-next-line no-bitwise
       const expressionC = `bool(c_data[index_c${x}] & (0xffu << (component_c${x} * 8)))`;
       return `
             let output_indices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};

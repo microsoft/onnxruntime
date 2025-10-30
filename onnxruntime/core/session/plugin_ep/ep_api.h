@@ -40,4 +40,11 @@ ORT_API(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* 
 ORT_API(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream);
 ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* producer_stream,
         _In_ const OrtSyncStream* consumer_stream);
+ORT_API_STATUS_IMPL(CreateHardwareDevice, _In_ OrtHardwareDeviceType type,
+                    _In_ uint32_t vendor_id,
+                    _In_ uint32_t device_id,
+                    _In_ const char* vendor_name,
+                    _In_opt_ const OrtKeyValuePairs* metadata,
+                    _Out_ OrtHardwareDevice** hardware_device);
+ORT_API(void, ReleaseHardwareDevice, _Frees_ptr_opt_ OrtHardwareDevice* device);
 }  // namespace OrtExecutionProviderApi

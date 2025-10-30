@@ -83,6 +83,11 @@ class EpFactoryInternalImpl {
                                  "CreateSyncStreamForDevice is not implemented for this EP factory.");
   }
 
+  virtual OrtStatus* SetEnvironmentOptions(const OrtKeyValuePairs* /*options*/) noexcept {
+    // Default implementation does not handle any options.
+    return nullptr;
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 

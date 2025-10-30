@@ -11,12 +11,9 @@ parameters:
     values:
       - 13.0
       - 12.8
-  - name: TrtVersion
+  - name: CudnnFolder
     type: string
-    default: '10.9.0.34'
-    values:
-      - 10.9.0.34
-      - 10.13.3.9
+    default: '9.13.0.50_cuda13'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -41,49 +38,60 @@ steps:
           dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
-  - ${{ if eq(parameters.DownloadTRT, true) }}:
     - ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]13.0"
-          displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '10.13.3.9')) }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.9"
-          displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.8'), eq(parameters.TrtVersion, '10.9.0.34')) }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.8"
-          displayName: Set trtCudaVersion
+      - task: AzureCLI@2
+        displayName: 'Download CUDNN ${{ parameters.CudnnFolder }}'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/${{ parameters.CudnnFolder }} $(Agent.TempDirectory)
 
-    - ${{ if eq(parameters.TrtVersion, '10.9.0.34') }}:
       - powershell: |
-          Write-Host "##vso[task.setvariable variable=trtPlatformString;]Windows10.x86_64"
-        displayName: 'Set TRT platform string for 10.9.0.34'
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ parameters.CudnnFolder }}\bin"
+        displayName: 'Append CUDNN Directory to PATH'
 
-    - ${{ if eq(parameters.TrtVersion, '10.13.3.9') }}:
-      - powershell: |
-          Write-Host "##vso[task.setvariable variable=trtPlatformString;]Windows.win10"
-        displayName: 'Set TRT platform string for 10.13.3.9'
+      - task: CmdLine@2
+        inputs:
+          script: |
+            echo %PATH%
+            dir $(Agent.TempDirectory)
+        displayName: 'Print PATH after download CUDNN SDK'
 
+  - ${{ if eq(parameters.DownloadTRT, true) }}:
     - powershell: |
-        $trtDirName = "TensorRT-${{ parameters.TrtVersion }}.$(trtPlatformString).cuda-$(trtCudaVersion)"
-        Write-Host "TensorRT Directory Name: $trtDirName"
-        Write-Host "##vso[task.setvariable variable=trtDirName;]$trtDirName"
-      displayName: 'Construct TensorRT Directory Name'
+        # These values are copied from common-variables.yml
+        $cuda12_trt_version = '10.9.0.34'
+        $cuda13_trt_version = '10.13.3.9'
+
+        $trtFolder = ""
+        if ("${{ parameters.CudaVersion }}" -eq "13.0") {
+          $trtFolder = "TensorRT-$cuda13_trt_version.Windows.win10.cuda-13.0"
+        }
+        elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
+          $trtFolder = "TensorRT-$cuda12_trt_version.Windows10.x86_64.cuda-12.8"
+        }
+
+        Write-Host "Setting TrtFolderRuntime variable to: $trtFolder"
+        # This makes the variable available to subsequent steps in this job
+        Write-Host "##vso[task.setvariable variable=TrtFolderRuntime;]$trtFolder"
+      displayName: 'Set TensorRT Folder Variable'
 
     - task: AzureCLI@2
-      displayName: 'Download $(trtDirName)'
+      displayName: 'Download TensorRT Directory'
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptType: 'batch'
         scriptLocation: 'inlineScript'
         inlineScript: |
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(trtDirName) $(Agent.TempDirectory)
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(TrtFolderRuntime) $(Agent.TempDirectory)
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(trtDirName)\lib"
-      displayName: 'Append $(trtDirName) Directory to PATH'
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\lib"
+      displayName: 'Append TensorRT Directory to PATH'
 
     - task: CmdLine@2
       inputs:

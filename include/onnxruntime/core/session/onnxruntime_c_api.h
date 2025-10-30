@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 23
+#define ORT_API_VERSION 24
 
 #ifdef __cplusplus
 extern "C" {
@@ -6584,7 +6584,7 @@ struct OrtApi {
    * \param[in] info The OrtTensorTypeAndShapeInfo instance.
    * \return true if the tensor has shape information, false otherwise.
    *
-   * \since Version 1.23
+   * \since Version 1.24
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
 };

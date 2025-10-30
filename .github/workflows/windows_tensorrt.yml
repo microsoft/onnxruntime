@@ -137,7 +137,7 @@ jobs:
         shell: pwsh
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-artifacts
           path: ${{ runner.temp }}\build
@@ -163,7 +163,7 @@ jobs:
           submodules: 'none'
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: build-artifacts
           path: ${{ runner.temp }}\build

@@ -111,7 +111,6 @@ export declare namespace Test {
     tests: readonly OperatorTest[];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   export namespace TestList {
     export type TestName = string;
     export interface TestDescription {

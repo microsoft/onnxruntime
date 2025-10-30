@@ -5,7 +5,7 @@
 
 #include "onnxruntime_c_api.h"
 #include "ep_factory.h"
-#include "example_plugin_ep_utils.h"
+#include "../plugin_ep_utils.h"
 
 class ExampleEpFactory;
 

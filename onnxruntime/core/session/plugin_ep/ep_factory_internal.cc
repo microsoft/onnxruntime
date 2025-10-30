@@ -3,6 +3,8 @@
 
 #include "core/session/plugin_ep/ep_factory_internal.h"
 
+#include <utility>
+
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
@@ -13,7 +15,8 @@ namespace onnxruntime {
 using Forward = ForwardToFactoryImpl<EpFactoryInternal>;
 
 EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl)
-    : impl_{std::move(impl)} {
+    : OrtEpFactory{},  // Ensure optional functions are default initialized to nullptr
+      impl_{std::move(impl)} {
   ort_version_supported = ORT_API_VERSION;
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
@@ -29,6 +32,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::CreateDataTransfer = Forward::CreateDataTransfer;
   OrtEpFactory::IsStreamAware = Forward::IsStreamAware;
   OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
+  OrtEpFactory::SetEnvironmentOptions = Forward::SetEnvironmentOptions;
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,

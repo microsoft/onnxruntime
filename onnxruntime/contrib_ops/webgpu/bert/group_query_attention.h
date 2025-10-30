@@ -58,6 +58,8 @@ class GroupQueryAttention final : public WebGpuKernel {
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 };
 
+KernelCreateInfo CreateGroupQueryAttentionKernelInfo(bool enable_graph_capture);
+
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

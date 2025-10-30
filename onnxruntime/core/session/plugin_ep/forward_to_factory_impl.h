@@ -82,6 +82,11 @@ struct ForwardToFactoryImpl {
     return static_cast<TFactory*>(this_ptr)->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
+  static OrtStatus* ORT_API_CALL SetEnvironmentOptions(_In_ OrtEpFactory* this_ptr,
+                                                       _In_ const OrtKeyValuePairs* options) noexcept {
+    return static_cast<TFactory*>(this_ptr)->SetEnvironmentOptions(options);
+  }
+
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }

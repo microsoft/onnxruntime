@@ -8,7 +8,6 @@ import { Env, InferenceSession } from 'onnxruntime-common';
 import { Logger } from '../lib/onnxjs/instrument';
 import { Test } from '../test/test-types';
 
-/* eslint-disable max-len */
 const HELP_MESSAGE = `
 test-runner-cli
 
@@ -129,7 +128,6 @@ Examples:
  Run perf testing of an ONNX model on WebGL backend
  > test-runner-cli model <model_folder> -b=webgl -P
  `;
-/* eslint-enable max-len */
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0' | 'suite1' | 'model' | 'unittest' | 'op';

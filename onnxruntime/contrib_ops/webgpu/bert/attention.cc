@@ -159,6 +159,16 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let outputIdx = headOffset + (m + local_id.y) * uniforms.N + n + local_id.x;\n"
                             << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
 
+  // Add causal masking for unidirectional attention
+  if (is_unidirectional_) {
+    shader.MainFunctionBody() << "  // Apply causal masking for unidirectional attention\n"
+                              << "  let query_pos = m + local_id.y + past_sequence_length;\n"
+                              << "  let key_pos = n + local_id.x;\n"
+                              << "  if (key_pos > query_pos) {\n"
+                              << "    sum = -3.40282e+38; // Set to very negative value for masking\n"
+                              << "  }\n";
+  }
+
   shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
   if (has_attention_bias_) {
     shader.MainFunctionBody() << " + attention_bias[outputIdx]";
@@ -183,7 +193,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_};
+                                components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_, parameters.is_unidirectional_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
@@ -205,7 +215,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const uint32_t num_seq_length_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_length_tile * num_total_seq_length_tile)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_)
+      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -531,6 +541,196 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
   return Status::OK();
+}
+
+ONNX_OPERATOR_KERNEL_EX(
+    Attention,
+    kMSDomain,
+    1,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
+    Attention);
+
+Attention::Attention(const OpKernelInfo& info)
+    : WebGpuKernel(info),
+      onnxruntime::contrib::AttentionBase(info, false) {
+}
+
+// QKV preparation program - computes Q, K, V from input, weights, and bias
+class AttentionPrepareProgram final : public Program<AttentionPrepareProgram> {
+ public:
+  AttentionPrepareProgram() : Program{"AttentionPrepare"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddInput("weight", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddOutput("output_q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddOutput("output_k", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddOutput("output_v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+
+    constexpr int TILE_SIZE = 12;
+
+    shader.AdditionalImplementation() << "const TILE_SIZE = " << TILE_SIZE << "u;\n"
+                                      << "var<workgroup> tileInput: array<input_value_t, " << TILE_SIZE * TILE_SIZE << ">;\n"
+                                      << "var<workgroup> tileWeightQ: array<input_value_t, " << TILE_SIZE * TILE_SIZE << ">;\n"
+                                      << "var<workgroup> tileWeightK: array<input_value_t, " << TILE_SIZE * TILE_SIZE << ">;\n"
+                                      << "var<workgroup> tileWeightV: array<input_value_t, " << TILE_SIZE * TILE_SIZE << ">;\n";
+
+    shader.MainFunctionBody()  //<< shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.M * uniforms.N")
+        << "let batchIndex = workgroup_id.z / uniforms.num_heads;\n"
+        << "let headNumber = workgroup_id.z % uniforms.num_heads;\n"
+        << "let m = global_id.y;\n"
+        << "let n = global_id.x;\n"
+        << "let inputOffset = batchIndex * (uniforms.M * uniforms.K) + m * uniforms.K;\n"
+        << "let biasOffsetQ = headNumber * uniforms.head_size;\n"
+        << "let biasOffsetK = uniforms.hidden_size + biasOffsetQ;\n"
+        << "let biasOffsetV = uniforms.hidden_size + biasOffsetK;\n"
+        << "var valueQ = input_value_t(0);\n"
+        << "var valueK = input_value_t(0);\n"
+        << "var valueV = input_value_t(0);\n"
+        << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
+        << "  if (m < uniforms.M && w + local_id.x < uniforms.K) {\n"
+        << "    tileInput[TILE_SIZE * local_id.y + local_id.x] = input[inputOffset + w + local_id.x];\n"
+        << "  }\n"
+        << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
+        << "    let offset = n + (w + local_id.y) * uniforms.ldb;\n"
+        << "    tileWeightQ[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetQ + offset];\n"
+        << "    tileWeightK[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetK + offset];\n"
+        << "    tileWeightV[TILE_SIZE * local_id.y + local_id.x] = weight[biasOffsetV + offset];\n"
+        << "  }\n"
+        << "  workgroupBarrier();\n"
+        << "  for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {\n"
+        << "    let inputTileOffset = TILE_SIZE * local_id.y + k;\n"
+        << "    let weightTileOffset = TILE_SIZE * k + local_id.x;\n"
+        << "    valueQ += tileInput[inputTileOffset] * tileWeightQ[weightTileOffset];\n"
+        << "    valueK += tileInput[inputTileOffset] * tileWeightK[weightTileOffset];\n"
+        << "    valueV += tileInput[inputTileOffset] * tileWeightV[weightTileOffset];\n"
+        << "  }\n"
+        << "  workgroupBarrier();\n"
+        << "}\n"
+        << "let headOffset = (m * uniforms.N + n) % uniforms.head_size;\n"
+        << "valueQ += bias[headOffset + biasOffsetQ];\n"
+        << "valueK += bias[headOffset + biasOffsetK];\n"
+        << "valueV += bias[headOffset + biasOffsetV];\n"
+        << "let offset = workgroup_id.z * uniforms.M * uniforms.N;\n"
+        << "if (m < uniforms.M && n < uniforms.N) {\n"
+        << "  let outputIdx = offset + m * uniforms.N + n;\n"
+        << "  output_q[outputIdx] = valueQ;\n"
+        << "  output_k[outputIdx] = valueK;\n"
+        << "  output_v[outputIdx] = valueV;\n"
+        << "}\n";
+
+    return Status::OK();
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"head_size", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
+                                          {"ldb", ProgramUniformVariableDataType::Uint32});
+};
+
+Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
+                  const Tensor* input, const Tensor* weights, const Tensor* bias,
+                  Tensor* q, Tensor* k, Tensor* v) {
+  constexpr int TILE_SIZE = 12;
+  const int M = parameters.sequence_length_;
+  const int K = parameters.input_hidden_size_;
+  const int N = parameters.head_size_;
+
+  const uint32_t dispatch_x = (parameters.head_size_ + TILE_SIZE - 1) / TILE_SIZE;
+  const uint32_t dispatch_y = (parameters.sequence_length_ + TILE_SIZE - 1) / TILE_SIZE;
+  const uint32_t dispatch_z = parameters.batch_size_ * parameters.num_heads_;
+
+  AttentionPrepareProgram program{};
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                     {weights, ProgramTensorMetadataDependency::TypeAndRank},
+                     {bias, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddOutputs({{q, ProgramTensorMetadataDependency::TypeAndRank},
+                   {k, ProgramTensorMetadataDependency::TypeAndRank},
+                   {v, ProgramTensorMetadataDependency::TypeAndRank}})
+      .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
+      .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
+      .AddUniformVariables({{static_cast<uint32_t>(M)},
+                            {static_cast<uint32_t>(K)},
+                            {static_cast<uint32_t>(N)},
+                            {static_cast<uint32_t>(parameters.num_heads_)},
+                            {static_cast<uint32_t>(parameters.head_size_)},
+                            {static_cast<uint32_t>(parameters.hidden_size_)},
+                            {static_cast<uint32_t>(parameters.hidden_size_ + parameters.hidden_size_ + parameters.v_hidden_size_)}});
+
+  return context.RunProgram(program);
+}
+
+Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const Tensor* input = context.Input(0);
+  const Tensor* weights = context.Input(1);
+  const Tensor* bias = context.Input(2);
+  const Tensor* mask_index = context.Input(3);
+  const Tensor* past = context.Input(4);
+  const Tensor* attention_bias = context.Input(5);
+  const Tensor* past_seq_len = context.Input(6);
+
+  if (past) {
+    ORT_NOT_IMPLEMENTED("past tensor not implemented for webgpu Attention");
+  }
+  if (mask_index) {
+    ORT_NOT_IMPLEMENTED("mask_index tensor not implemented for webgpu Attention");
+  }
+
+  AttentionParameters params;
+  // Use the second dimension from weight for bias to get q_hidden_size when bias is nullptr
+  std::vector<int64_t> bias_dims{weights->Shape().GetDims()[1]};
+  const TensorShape bias_shape{bias_dims};
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
+                                  weights->Shape(),
+                                  bias != nullptr ? bias->Shape() : bias_shape,
+                                  mask_index,
+                                  past,
+                                  attention_bias,
+                                  &params,
+                                  context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
+                                  past_seq_len));
+
+  WebgpuAttentionParameters parameters(params);
+
+  TensorShapeVector output_shape(3);
+  output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
+  output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);
+  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size_);
+  Tensor* output = context.Output(0, output_shape);
+
+  // If optional outputs aren't needed, present_key and present_value will be null
+  std::vector<int64_t> present_dims{
+      2,
+      parameters.batch_size_,
+      parameters.num_heads_,
+      parameters.total_sequence_length_,
+      parameters.head_size_,
+  };
+  TensorShape present_shape(present_dims);
+  Tensor* present = context.Output(1, present_shape);
+  if (present) {
+    ORT_NOT_IMPLEMENTED("present tensor not implemented for webgpu Attention");
+  }
+
+  // Create Q, K, V tensors by computing input * weights + bias
+  TensorShapeVector qkv_shape({parameters.batch_size_, parameters.num_heads_,
+                               parameters.sequence_length_, parameters.head_size_});
+  Tensor Q = context.CreateGPUTensor(input->DataType(), qkv_shape);
+  Tensor K = context.CreateGPUTensor(input->DataType(), qkv_shape);
+  Tensor V = context.CreateGPUTensor(input->DataType(), qkv_shape);
+
+  // Compute Q, K, V from input, weights, and bias
+  ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias, &Q, &K, &V));
+
+  // Apply the actual attention computation
+  return ApplyAttention(&Q, &K, &V, attention_bias, nullptr, nullptr, output, /* present_key */ nullptr,
+                        /* present_value */ nullptr, parameters, context, nullptr, nullptr, -1);
 }
 
 }  // namespace webgpu

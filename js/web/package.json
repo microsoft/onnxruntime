@@ -115,7 +115,15 @@
         "default": "./dist/ort.jspi.bundle.min.mjs"
       },
       "require": "./dist/ort.jspi.min.js"
-    }
+    },
+    "./ort-wasm-simd-threaded.wasm": "./dist/ort-wasm-simd-threaded.wasm",
+    "./ort-wasm-simd-threaded.jsep.wasm": "./dist/ort-wasm-simd-threaded.jsep.wasm",
+    "./ort-wasm-simd-threaded.jspi.wasm": "./dist/ort-wasm-simd-threaded.jspi.wasm",
+    "./ort-wasm-simd-threaded.asyncify.wasm": "./dist/ort-wasm-simd-threaded.asyncify.wasm",
+    "./ort-wasm-simd-threaded.mjs": "./dist/ort-wasm-simd-threaded.mjs",
+    "./ort-wasm-simd-threaded.jsep.mjs": "./dist/ort-wasm-simd-threaded.jsep.mjs",
+    "./ort-wasm-simd-threaded.jspi.mjs": "./dist/ort-wasm-simd-threaded.jspi.mjs",
+    "./ort-wasm-simd-threaded.asyncify.mjs": "./dist/ort-wasm-simd-threaded.asyncify.mjs"
   },
   "types": "./types.d.ts",
   "description": "A Javascript library for running ONNX models on browsers"
