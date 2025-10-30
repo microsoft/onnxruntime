@@ -1433,7 +1433,7 @@ struct ProviderHostImpl : ProviderHost {
 
   NodeArg& GraphUtils__AddInitializerWithExternalData(Graph& graph,
                                                       const ONNX_NAMESPACE::TensorProto& new_initializer) override {
-    return graph_utils::AddInitializerWithExternalData(graph, new_initializer);
+    return graph_utils::AddInitializerWithOrtValue(graph, new_initializer);
   }
 
   void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
