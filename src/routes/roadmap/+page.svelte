@@ -2,7 +2,11 @@
 	let description =
 		'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
 	let keywords =
-		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.20, onnx runtime 1.21, onnx runtime 1.20.1';
+		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.23, onnx runtime 1.23.2, onnx runtime 1.24.0, onnx runtime 1.24';
+	// Added release metadata variables
+	const previousRelease = { version: '1.23.2', date: 'Oct 2025' };
+	const inProgressRelease = { version: 'None', date: '' };
+	const nextRelease = { version: '1.24', date: 'Feb 2025' };
 </script>
 
 <svelte:head>
@@ -40,10 +44,11 @@
 					>
 				</div>
 				<div class="stat-title">Previous release</div>
-				<div class="stat-value text-success">1.20.0</div>
-				<div class="stat-desc">Release date: 11/1/2024</div>
+				<div class="stat-value text-success">{previousRelease.version}</div>
+				<div class="stat-desc">Release date: {previousRelease.date}</div>
 			</div>
 
+			{#if inProgressRelease.version && inProgressRelease.version !== 'None'}
 			<div class="stat">
 				<div class="stat-figure text-secondary">
 					<svg
@@ -62,9 +67,10 @@
 					>
 				</div>
 				<div class="font-bold underline">In-Progress Release</div>
-				<div class="stat-value text-warning">1.20.1</div>
-				<div class="stat-desc">Release date: 11/20/2024</div>
+				<div class="stat-value text-warning">{inProgressRelease.version}</div>
+				<div class="stat-desc">Release date: {inProgressRelease.date}</div>
 			</div>
+			{/if}
 
 			<div class="stat">
 				<div class="stat-figure text-primary">
@@ -85,8 +91,8 @@
 					</svg>
 				</div>
 				<div class="stat-title">Next release</div>
-				<div class="stat-value text-primary">1.21</div>
-				<div class="stat-desc">Release date: Feb. 2025</div>
+				<div class="stat-value text-primary">{nextRelease.version}</div>
+				<div class="stat-desc">Release date: {nextRelease.date}</div>
 			</div>
 		</div>
 	</div>
@@ -94,20 +100,15 @@
 	<h2 class="text-xl font-bold mt-2">Announcements</h2>
 	<ul class="list-disc ml-8">
 		<li>
-			<strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI project
-			size limit for onnxruntime-gpu, so we will be removing our oldest package version to free up the
-			necessary space.
-		</li>
-		<li>
-			<strong>ONNX Runtime v1.20.0 is now officially released.</strong> For release notes, assets,
+			<strong>ONNX Runtime {previousRelease.version}  now officially released.</strong> For release notes, assets,
 			and more, visit our
 			<a
-				href="https://github.com/microsoft/onnxruntime/releases/tag/v1.20.0"
+				href="https://github.com/microsoft/onnxruntime/releases/tag/v{previousRelease.version}"
 				class="text-blue-600 underline">GitHub Releases page</a
 			>.
 		</li>
 	</ul>
-
+{#if false}
 	<h2 class="text-xl font-bold mt-2">Versioning Updates</h2>
 	<p class="font-thin">
 		We are planning to upgrade ONNX Runtime support for the following (where the first value is the
@@ -133,7 +134,7 @@
 		<li>Python quantization tool updates.</li>
 		<li>New QNN SDK version support.</li>
 	</ul>
-
+{/if}
 	<h2 class="text-xl font-bold mt-2">Feature Requests</h2>
 	<p class="font-thin">
 		To request new ONNX Runtime features to be included in a future release, please submit a feature
@@ -163,154 +164,88 @@
 		<em>Note: All timelines and features listed on this page are subject to change.</em>
 	</p>
 	<div class="divider" />
-	<h2 class="text-xl font-bold mt-2">ONNX Runtime 1.20.1</h2>
+	
+	{#if nextRelease.version && nextRelease.version !== 'None'}
+	<h2 class="text-xl font-bold mt-2">ONNX Runtime {nextRelease.version}</h2>
 	<p class="font-thin">
-		<strong>Tentative release date:</strong> 11/20/2024
+		<strong>Tentative release date:</strong> {nextRelease.date}
 	</p>
 
 	<div class="join join-vertical w-full p-2">
-		<!-- Announcements Section -->
+		<!-- Key Stories Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="announcements" />
-			<div class="collapse-title text-xl font-bold">Announcements</div>
+			<input type="checkbox" name="key-stories-124" />
+			<div class="collapse-title text-xl font-bold">Key Stories</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>
-						<strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI
-						project size limit for onnxruntime-gpu, so we will be removing our oldest package version
-						to free up the necessary space.
-					</li>
+					<li>Feature complete Plugin EP</li>
+					<li>Memory Optimization</li>
+					<li>Low-bit Precision</li>
 				</ul>
-			</div>
-		</div>
-
-		<!-- Build System & Packages Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="build" />
-			<div class="collapse-title text-xl font-bold">Build System & Packages</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
 		<!-- Core Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="core" />
+			<input type="checkbox" name="core-124" />
 			<div class="collapse-title text-xl font-bold">Core</div>
 			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Performance Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="performance" />
-			<div class="collapse-title text-xl font-bold">Performance</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Quantization Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="quantization" />
-			<div class="collapse-title text-xl font-bold">Quantization</div>
-			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>
-						Introduce get_int_qdq_config() helper to get QDQ configurations (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22677"
-							class="text-blue-600 underline">#22677</a
-						>).
-					</li>
-					<li>
-						Update QDQ Pad, Slice, Softmax (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22676"
-							class="text-blue-600 underline">#22676</a
-						>).
-					</li>
-					<li>
-						Handle input models with pre-quantized weights (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22633"
-							class="text-blue-600 underline">#22633</a
-						>).
-					</li>
-					<li>
-						Prevent int32 quantized bias from clipping by adjusting the weight's scale (<a
-							href="https://github.com/microsoft/onnxruntime/pull/22020"
-							class="text-blue-600 underline">#22020</a
-						>).
-					</li>
+					<li>DirectX Inter-operability</li>
+					<li>ARM Improvements</li>
+					<li>2-bit precision</li>
+					<li>Weightless EP Context</li>
+					<li>Graph partitioning improvements</li>
 				</ul>
 			</div>
 		</div>
 
-		<!-- EPs Section -->
+		<!-- Plugin EP Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="eps" />
-			<div class="collapse-title text-xl font-bold">EPs</div>
+			<input type="checkbox" name="plugin-ep-124" />
+			<div class="collapse-title text-xl font-bold">Plugin EP</div>
 			<div class="collapse-content">
-				<h3 class="text-lg font-semibold">CPU</h3>
 				<ul class="list-disc ml-8">
-					<li>
-						Fix CPU FP16 implementations for the following kernels: LayerNormalization,
-						SimplifiedLayerNormalization, SkipLayerNormalization, SkipSimplifiedLayerNormalization.
-					</li>
-				</ul>
-				<h3 class="text-lg font-semibold">QNN</h3>
-				<ul class="list-disc ml-8">
-					<li>QNN SDK 2.28.x support.</li>
-				</ul>
-				<h3 class="text-lg font-semibold">DirectML</h3>
-				<ul class="list-disc ml-8">
-					<li>DirectML 1.16 support.</li>
+					<li>Offline Compilation</li>
+					<li>Kernel Registry EP</li>
+					<li>Language Bindings</li>
+					<li>Testsuite and tooling</li>
 				</ul>
 			</div>
 		</div>
 
-		<!-- Mobile Section -->
+		<!-- EP Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="mobile" />
-			<div class="collapse-title text-xl font-bold">Mobile</div>
+			<input type="checkbox" name="ep-124" />
+			<div class="collapse-title text-xl font-bold">EP</div>
 			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
+				<ul class="list-disc ml-8">
+					<li>WebGPU Improvements</li>
+				</ul>
 			</div>
 		</div>
 
-		<!-- Web Section -->
+		<!-- TRT EP Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="web" />
-			<div class="collapse-title text-xl font-bold">Web</div>
+			<input type="checkbox" name="trt-ep-124" />
+			<div class="collapse-title text-xl font-bold">TRT EP</div>
 			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
+				<ul class="list-disc ml-8">
+					<li>Update TRT version used by the TRT EP</li>
+				</ul>
 			</div>
 		</div>
 
-		<!-- generate() API Section -->
+		<!-- ONNX Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="generate" />
-			<div class="collapse-title text-xl font-bold">generate() API</div>
+			<input type="checkbox" name="onnx-124" />
+			<div class="collapse-title text-xl font-bold">ONNX</div>
 			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Extensions Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="extensions" />
-			<div class="collapse-title text-xl font-bold">Extensions</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
-			</div>
-		</div>
-
-		<!-- Olive Section -->
-		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="olive" />
-			<div class="collapse-title text-xl font-bold">Olive</div>
-			<div class="collapse-content">
-				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
+				<ul class="list-disc ml-8">
+					<li>Update ONNXruntime support for ONNX Opset/IR (TBD)</li>
+				</ul>
 			</div>
 		</div>
 	</div>
+	{/if}
 </div>
