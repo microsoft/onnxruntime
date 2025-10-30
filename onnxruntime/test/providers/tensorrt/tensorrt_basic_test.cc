@@ -1,5 +1,7 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "onnxruntime_cxx_api.h"
+#include "tensorrt_test_utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
@@ -1357,6 +1359,58 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   // Now run
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+}
+
+TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
+  /*
+   * Model #1:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+  {
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
+    OrtTensorRTProviderOptionsV2 provider_options;
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+
+    auto model_path = ORT_TSTR("model_with_topk_and_multiple_graph_outputs.onnx");
+    Ort::Status status(CreateModelWithTopKWhichContainsGraphOutput(model_path));
+    ASSERT_TRUE(status.IsOK());
+
+    Ort::Session session(env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 4);
+  }
+
+  /*
+   * Model #2:
+   *
+   * "X" ---> Dropout ---> MatMul ---> "Y"
+   *          ^     |
+   *          |     |
+   * "W" ------     ----> Can't be graph's output
+   *
+   */
+  {
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
+    OrtTensorRTProviderOptionsV2 provider_options;
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+
+    auto model_path = ORT_TSTR("model_with_node_output_not_used.onnx");
+    Ort::Status status(CreateModelWithNodeOutputNotUsed(model_path));
+    ASSERT_TRUE(status.IsOK());
+
+    Ort::Session session(env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 1);
+  }
 }
 }  // namespace test
 }  // namespace onnxruntime
