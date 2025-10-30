@@ -32,7 +32,7 @@ extern "C" const PATH_CHAR_T* OrtTestGetSharedLibraryRuntimePath(void) {
     static const auto runtime_path = InitializeAndGetRuntimePath();
     return runtime_path.c_str();
   } catch (const std::exception& e) {
-    std::cerr << __FUNCTION__ " - caught exception: " << e.what() << "\n";
+    std::cerr << __FUNCTION__ << " - caught exception: " << e.what() << "\n";
     return nullptr;
   }
 }
