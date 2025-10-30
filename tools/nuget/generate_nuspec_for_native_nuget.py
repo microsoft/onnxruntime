@@ -8,6 +8,10 @@ import shutil
 import sys
 from pathlib import Path
 
+platform_version_android = "31.0"
+platform_version_ios = "15.4"
+platform_version_maccatalyst = "14.0"
+
 
 # What does the names of our C API tarball/zip files looks like
 # os: win, linux, osx
@@ -281,16 +285,16 @@ def generate_dependencies(xml_text, package_name, version):
         if package_name == "Microsoft.ML.OnnxRuntime":
             xml_text.append('<group targetFramework="native" />')
             # Support Android
-            xml_text.append('<group targetFramework="net9.0-android">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append(f'<group targetFramework="net9.0-android{platform_version_android}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
             # Support iOS
-            xml_text.append('<group targetFramework="net9.0-ios">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append(f'<group targetFramework="net9.0-ios{platform_version_ios}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
             # Support MacCatalyst
-            xml_text.append('<group targetFramework="net9.0-maccatalyst">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append(f'<group targetFramework="net9.0-maccatalyst{platform_version_maccatalyst}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
         # Support Native C++
         if include_dml:
@@ -1084,24 +1088,38 @@ def generate_files(line_list, args):
             copy_file(net9_ios_source_targets, net9_ios_target_targets)
 
             files_list.append(
-                "<file src=" + '"' + net9_android_target_targets + '" target="build\\net9.0-android" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="build\\net9.0-android{platform_version_android}" />'
             )
             files_list.append(
-                "<file src=" + '"' + net9_android_target_targets + '" target="buildTransitive\\net9.0-android" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="buildTransitive\\net9.0-android{platform_version_android}" />'
             )
 
-            files_list.append("<file src=" + '"' + net9_ios_target_targets + '" target="build\\net9.0-ios" />')
             files_list.append(
-                "<file src=" + '"' + net9_ios_target_targets + '" target="buildTransitive\\net9.0-ios" />'
+                "<file src=" + '"' + net9_ios_target_targets + f'" target="build\\net9.0-ios{platform_version_ios}" />'
             )
             files_list.append(
-                "<file src=" + '"' + net9_maccatalyst_target_targets + '" target="build\\net9.0-maccatalyst" />'
+                "<file src="
+                + '"'
+                + net9_ios_target_targets
+                + f'" target="buildTransitive\\net9.0-ios{platform_version_ios}" />'
             )
             files_list.append(
                 "<file src="
                 + '"'
                 + net9_maccatalyst_target_targets
-                + '" target="buildTransitive\\net9.0-maccatalyst" />'
+                + f'" target="build\\net9.0-maccatalyst{platform_version_maccatalyst}" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net9_maccatalyst_target_targets
+                + f'" target="buildTransitive\\net9.0-maccatalyst{platform_version_maccatalyst}" />'
             )
 
         # Process Training specific targets and props
@@ -1127,10 +1145,16 @@ def generate_files(line_list, args):
 
             copy_file(net9_android_source_targets, net9_android_target_targets)
             files_list.append(
-                "<file src=" + '"' + net9_android_target_targets + '" target="build\\net9.0-android" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="build\\net9.0-android{platform_version_android}" />'
             )
             files_list.append(
-                "<file src=" + '"' + net9_android_target_targets + '" target="buildTransitive\\net9.0-android" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="buildTransitive\\net9.0-android{platform_version_android}" />'
             )
 
     # README
