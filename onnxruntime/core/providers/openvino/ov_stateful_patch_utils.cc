@@ -138,20 +138,16 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
   const auto& params = model->get_parameters();
-  bool found = false;
+
   for (size_t i = 0; i < params.size(); i++) {
-    auto param_name = params.at(i)->output(0).get_any_name();
+    auto param_name = params[i]->output(0).get_any_name();
     if (param_name.find("key_values") != std::string::npos) {
-         key_value_input_names.push_back(param_name);
-        found = true;
+      key_value_input_names.push_back(param_name);
     } else if (param_name.find("keys") != std::string::npos) {
-        key_value_input_names.push_back(param_name);
-        found = true;
+      key_value_input_names.push_back(param_name);
     } else if (param_name.find("values") != std::string::npos) {
-        key_value_input_names.push_back(param_name);
-        found = true;
-    }
-    if (!found) {
+      key_value_input_names.push_back(param_name);
+    } else{
       not_kv_inputs.push_back(param_name);
     }
   }
