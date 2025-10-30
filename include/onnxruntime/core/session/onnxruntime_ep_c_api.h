@@ -963,10 +963,31 @@ struct OrtEpFactory {
    */
   ORT_API_T(bool, IsStreamAware, _In_ const OrtEpFactory* this_ptr);
 
+  /** \brief Setup CIG (CUDA Interop Graphics) context for a memory device.
+   *
+   * This function creates a CUDA context associated with a graphics API (D3D12/Vulkan) command queue/device.
+   * Once setup, streams created via CreateSyncStreamForDevice for this memory device will be created on the CIG context.
+   *
+   * Optional - EP factories that don't support CIG context setup should set this to nullptr.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_device The OrtMemoryDevice to setup CIG context for.
+   * \param[in] graphicsInteropParams Graphics API parameters (D3D12 command queue or Vulkan device info).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SetupCigContext, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtMemoryDevice* memory_device,
+                  _In_ const struct GraphicsInteropParams* graphicsInteropParams);
+
   /** \brief Create a synchronization stream for the given memory device.
    *
    * This is used to create a synchronization stream for the memory device that can be used for operations outside of
    * a session.
+   *
+   * If SetupCigContext was called previously for this memory device, the stream will be created on the CIG context.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.

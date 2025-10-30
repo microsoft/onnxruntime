@@ -62,6 +62,12 @@ class EpFactoryInternalImpl {
     return false;
   }
 
+  virtual OrtStatus* SetupCigContext(_In_ const OrtMemoryDevice* /*memory_device*/,
+                                     _In_ const struct GraphicsInteropParams* /*graphicsInteropParams*/) noexcept {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "SetupCigContext is not implemented for this EP factory.");
+  }
+
   virtual OrtStatus* ValidateCompiledModelCompatibilityInfo(
       _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
       _In_ size_t num_devices,

@@ -3366,6 +3366,39 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetupCigContextForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_ const struct GraphicsInteropParams* graphicsInteropParams) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr || graphicsInteropParams == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and graphicsInteropParams must be provided.");
+  }
+
+  const OrtDevice* device = ep_device->device_memory_info ? &ep_device->device_memory_info->device : nullptr;
+
+  if (device == nullptr || device->MemType() != OrtDevice::MemType::DEFAULT) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not use DEFAULT memory of a non-CPU device.");
+  }
+
+  const auto* factory = ep_device->ep_factory;
+  if (!factory->IsStreamAware(factory)) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support streams.");
+  }
+
+  // Check if the factory supports CIG context setup
+  if (factory->SetupCigContext == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support CIG context setup.");
+  }
+
+  // Call the EP factory to setup CIG context
+  ORT_API_RETURN_IF_ERROR(factory->SetupCigContext(ep_device->GetMutableFactory(),
+                                                   static_cast<const OrtMemoryDevice*>(device),  // alias
+                                                   graphicsInteropParams));
+
+  return nullptr;
+
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** ort_stream) {
@@ -3713,6 +3746,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
                     _In_ size_t /*num_values*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionGetEpDeviceForInputs is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetupCigContextForEpDevice, _In_ const OrtEpDevice* /*ep_device*/,
+                    _In_ const struct GraphicsInteropParams* /*graphicsInteropParams*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SetupCigContextForEpDevice is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4365,6 +4405,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::SessionGetMemoryInfoForOutputs,
     &OrtApis::SessionGetEpDeviceForInputs,
 
+    &OrtApis::SetupCigContextForEpDevice,
     &OrtApis::CreateSyncStreamForEpDevice,
     &OrtApis::GetOrtFenceForGraphicsInterop,
     &OrtApis::InteropEpWait,
@@ -4413,6 +4454,7 @@ static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeo
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
+static_assert(offsetof(OrtApi, SessionGetEpDeviceForInputs) / sizeof(void*) == 382, "Size of version 23 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.24.0",

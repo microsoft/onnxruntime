@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 23
+#define ORT_API_VERSION 24
 
 #ifdef __cplusplus
 extern "C" {
@@ -560,7 +560,10 @@ typedef struct GraphicsInteropParams {
     VkSemaphore pVkSemaphore;
   } FencePtr;
   union DevicePtr {
-    struct ID3D12Device* pDevice;
+    struct DXDeviceParams {
+      struct ID3D12Device* pDevice;
+      struct ID3D12CommandQueue* pCommandQueue;
+    } DXDeviceParams;
     struct VulkanDeviceParams {
       VkDevice pVkDevice;
       PFN_vkGetDeviceProcAddr pVkGetDeviceProcAddr;
@@ -6531,12 +6534,35 @@ struct OrtApi {
                   _Out_writes_(num_inputs) const OrtEpDevice** inputs_ep_devices,
                   _In_ size_t num_inputs);
 
+  /** \brief Setup CIG (CUDA Interop Graphics) context for an execution provider device.
+   *
+   * This function enables D3D12/Vulkan interoperability by creating a CUDA context
+   * associated with a graphics API command queue/device. Once setup, any OrtSyncStream
+   * created for this ep_device via CreateSyncStreamForEpDevice will be created on the
+   * CIG context, enabling efficient GPU-side synchronization between graphics APIs and CUDA.
+   *
+   * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device if you want
+   * streams to be created on the CIG context.
+   *
+   * \param[in] ep_device The OrtEpDevice to setup CIG context for.
+   * \param[in] graphicsInteropParams Pointer to struct containing D3D12 command queue or Vulkan device info.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(SetupCigContextForEpDevice, _In_ const OrtEpDevice* ep_device,
+                  _In_ const struct GraphicsInteropParams* graphicsInteropParams);
+
   /** \brief Create an OrtSyncStream for the given OrtEpDevice.
    *
    * The OrtSyncStream can be used to enable asynchronous operations.
    * e.g. async usage of CopyTensors to provide input to an OrtSession Run call.
    *
    * An error code of ORT_NOT_IMPLEMENTED will be returned if the EP does not support OrtSyncStream.
+   *
+   * If SetupCigContextForEpDevice was called previously for this ep_device, the stream will be
+   * created on the CIG context. Otherwise, it will be created on the default context.
    *
    * \param[in] ep_device The OrtEpDevice instance to create the sync stream for.
    * \param[in] stream_options Options for OrtSyncStream creation. May be nullptr.

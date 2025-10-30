@@ -94,10 +94,10 @@ namespace onnxruntime {
 
 Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, void** extSemFence)
 {
-  // By calling GetPerThreadContext(), we ensure that the cuda context
-  // for the current thread is created if it doesn't already exist.
-  // The constructor of PerThreadContext handles the context creation.
-  (void)GetPerThreadContext();
+  if (!info_.has_user_compute_stream) 
+  {
+    (void)GetPerThreadContext();
+  }
   cudaExternalSemaphore_t cSemFence = reinterpret_cast<cudaExternalSemaphore_t>(extSemFence);
   cudaExternalSemaphoreHandleDesc semHandleDesc = {};
   ExternalSyncPrimitive extSyncPrimitive = graphicsInteropParams->extSyncPrimitive;
@@ -106,7 +106,7 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
   {
 #if DX_FOR_INTEROP && _WIN32
       HANDLE sharedFenceHandle = nullptr;
-      if(graphicsInteropParams->DevicePtr.pDevice->CreateSharedHandle(graphicsInteropParams->FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
+      if(graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice->CreateSharedHandle(graphicsInteropParams->FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create shared handle for D3D12 fence");
       }
       semHandleDesc.type = cudaExternalSemaphoreHandleTypeD3D12Fence;

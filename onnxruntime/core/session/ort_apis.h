@@ -738,6 +738,9 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForInputs, _In_ const OrtSession* session,
                     _Out_writes_(num_inputs) const OrtEpDevice** inputs_ep_devices,
                     _In_ size_t num_inputs);
 
+ORT_API_STATUS_IMPL(SetupCigContextForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_ const struct GraphicsInteropParams* graphicsInteropParams);
+
 ORT_API_STATUS_IMPL(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** stream);

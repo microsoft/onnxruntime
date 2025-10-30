@@ -531,6 +531,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     CreateDataTransfer = CreateDataTransferImpl;
 
     IsStreamAware = IsStreamAwareImpl;
+    SetupCigContext = SetupCigContextImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
@@ -706,6 +707,47 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     return true;
   }
 
+  static OrtStatus* ORT_API_CALL SetupCigContextImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryDevice* memory_device,
+                                                     const struct GraphicsInteropParams* graphicsInteropParams) noexcept {
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+    auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
+
+    // Initialize CUDA
+    CUresult result = cuInit(0);
+    if (result != CUDA_SUCCESS) {
+      return factory.ort_api.CreateStatus(ORT_FAIL, "Failed to initialize CUDA for CIG context creation");
+    }
+
+    // Create CIG context based on graphics API type
+    CUcontext cig_context = nullptr;
+    
+    if (graphicsInteropParams->extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence) {
+#if DX_FOR_INTEROP && _WIN32
+      // Create CIG context bound to D3D12 command queue
+      CUctxCigParam ctxCigParams = { CIG_DATA_TYPE_D3D12_COMMAND_QUEUE, graphicsInteropParams->DevicePtr.DXDeviceParams.pCommandQueue };
+      CUctxCreateParams ctxParams = { nullptr, 0, &ctxCigParams };
+      
+      result = cuCtxCreate_v4(&cig_context, &ctxParams, 0, device_id);
+      if (result != CUDA_SUCCESS) {
+        return factory.ort_api.CreateStatus(ORT_FAIL, "Failed to create CIG context for D3D12");
+      }
+#else
+      return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "CIG context creation not supported on this platform");
+#endif
+    } else if (graphicsInteropParams->extSyncPrimitive == ExternalSyncPrimitive_VulkanSemaphore) {
+      // TODO: Add Vulkan CIG context support if needed
+      return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "Vulkan CIG context not yet implemented");
+    } else {
+      return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Unsupported graphics API for CIG context");
+    }
+
+    // Store the CIG context for this device
+    factory.cig_contexts_[device_id] = cig_context;
+
+    return nullptr;
+  }
+
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                const OrtMemoryDevice* memory_device,
                                                                const OrtKeyValuePairs* /*stream_options*/,
@@ -714,8 +756,23 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
     cudaStream_t stream = nullptr;
-    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
-    CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    
+    // Check if we have a CIG context for this device
+    auto cig_it = factory.cig_contexts_.find(device_id);
+    if (cig_it != factory.cig_contexts_.end()) {
+      // We have a CIG context - make it current and create stream on it
+      CUresult result = cuCtxSetCurrent(cig_it->second);
+      if (result != CUDA_SUCCESS) {
+        return factory.ort_api.CreateStatus(ORT_FAIL, "Failed to set CIG context current");
+      }
+      
+      // Create stream on the CIG context
+      CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    } else {
+      // No CIG context - use default behavior
+      CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+      CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    }
 
     const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
 
@@ -769,6 +826,9 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
   // we use a shared instance for the OrtDataTransferImpl instead of creating a new one on every call to
   NvTrtRtxDataTransferImpl data_transfer_impl;
+
+  // Map to store CIG context per device ID (for D3D12/Vulkan interop)
+  std::unordered_map<int, CUcontext> cig_contexts_;
 
   NvTensorRtRtxEpFactory(const NvTensorRtRtxEpFactory&) = delete;
   NvTensorRtRtxEpFactory& operator=(const NvTensorRtRtxEpFactory&) = delete;
