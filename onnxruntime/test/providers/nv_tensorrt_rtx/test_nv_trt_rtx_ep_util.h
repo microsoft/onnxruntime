@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
@@ -118,6 +118,22 @@ void CreateBaseModel(const PathString& model_name,
                      const PathString& external_initializer_file = {});
 
 void CreateLargeLLMModel(const PathString& model_path, const PathString& external_data_path);
+
+/**
+ * Create a simple model that has a dropout node that has an optional output.
+ * \param model_name - model name
+ *
+ *
+ * input (X, W)
+ *   │
+ * Dropout(X) - has an optional "mask" output
+ *   │
+ * MatMul(Dropout_out, W)
+ *   │
+ * output (Y)
+ *
+ */
+void CreateSimpleModelWithOptionalNodeOutput(const PathString& model_name);
 
 Ort::IoBinding generate_io_binding(
     Ort::Session& session,

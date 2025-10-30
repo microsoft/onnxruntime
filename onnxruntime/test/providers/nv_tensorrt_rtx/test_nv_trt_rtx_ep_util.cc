@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
@@ -135,6 +135,72 @@ void CreateBaseModel(const PathString& model_name,
   } else {
     status = Model::Save(model, model_name);
   }
+  ASSERT_TRUE(status.IsOK());
+}
+
+void CreateSimpleModelWithOptionalNodeOutput(const PathString& model_name) {
+  // Create a new model
+  Model model("DropoutMatMulModel", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  // Define inputs
+  // X: [3, 2]
+  ONNX_NAMESPACE::TensorProto_DataType dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  std::vector<int> dims = {3, 2};
+  float_tensor.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : dims) {
+    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+
+  auto& X = graph.GetOrCreateNodeArg("X", &float_tensor);
+
+  // W: [2, 3]
+  ONNX_NAMESPACE::TypeProto float_tensor_2;
+  std::vector<int> dims_2 = {2, 3};
+  float_tensor_2.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : dims_2) {
+    float_tensor_2.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& W = graph.GetOrCreateNodeArg("W", &float_tensor_2);
+
+  // Define outputs
+  ONNX_NAMESPACE::TypeProto float_tensor_3;
+  std::vector<int> dims_3 = {2, 3};
+  float_tensor_3.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : dims_3) {
+    float_tensor_3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& Y = graph.GetOrCreateNodeArg("Y", &float_tensor_3);
+
+  // Dropout Node
+  auto& dropout_out = graph.GetOrCreateNodeArg("dropout_out", &float_tensor);
+
+  dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL;
+  ONNX_NAMESPACE::TypeProto boolean_tensor;
+  boolean_tensor.mutable_tensor_type()->set_elem_type(dtype);
+  auto& dropout_optional_out = graph.GetOrCreateNodeArg("dropout_mask", &boolean_tensor);
+
+  Node& dropout_node = graph.AddNode("DropoutNode", "Dropout", "Applies dropout",
+                                     {&X}, {&dropout_out, &dropout_optional_out});
+
+  // MatMul Node
+  Node& matmul_node = graph.AddNode("MatMulNode", "MatMul", "Dropout followed by MatMul",
+                                    {&dropout_out, &W}, {&Y});
+
+  // Mark graph inputs/outputs
+  graph.SetInputs({&X, &W});
+  graph.SetOutputs({&Y});
+
+  // Resolve to finalize
+  auto status = graph.Resolve();
+  if (!status.IsOK()) {
+    std::cerr << "Graph resolve failed: " << status.ErrorMessage() << "\n";
+  }
+
+  // Serialize to ONNX file
+  status = Model::Save(model, model_name);
+
   ASSERT_TRUE(status.IsOK());
 }
 
