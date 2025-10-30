@@ -46,6 +46,55 @@ static std::string CalcResult(int64_t components, int64_t a_components, int64_t 
   return oss.str();
 }
 
+SplitKConfig SplitKConfig::GetSplitKConfig(const ComputeContext& context) {
+  const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
+  SplitKConfig config = {};
+
+  if (adapter_info.vendor == std::string_view{"intel"}) {
+    if (adapter_info.architecture == std::string_view{"xe-lpg"} ||
+        adapter_info.architecture == std::string_view{"xe-2lpg"} ||
+        adapter_info.architecture == std::string_view{"xe-2hpg"}) {
+      config.enable_split_k_ = true;
+
+      // Below thresholds are only verified on the above Intel GPUs.
+      config.split_dim_inner_ = 256;
+      config.min_dim_inner_with_split_k_ = config.split_dim_inner_ * 2 + 1;
+      config.max_dim_a_outer_with_split_k_ = 196;
+      config.max_dim_b_outer_with_split_k_ = 768;
+    }
+  }
+  return config;
+}
+
+bool SplitKConfig::UseSplitK(
+    bool is_vec4,
+    ActivationKind activation_kind,
+    uint64_t batch_size,
+    bool is_channels_last,
+    uint32_t dim_a_outer,
+    uint32_t dim_b_outer,
+    uint32_t dim_inner) const {
+  bool use_split_k = enable_split_k_;
+
+  // TODO: support the cases below.
+  use_split_k &= activation_kind == ActivationKind::None;
+  use_split_k &= is_vec4;
+  use_split_k &= batch_size == 1;
+  use_split_k &= is_channels_last;
+
+  // Split-K works best when `dim_inner` is large and both `a_outer` and `b_outer` are relatively small.
+  use_split_k &=
+      dim_a_outer <= max_dim_a_outer_with_split_k_ &&
+      dim_b_outer <= max_dim_b_outer_with_split_k_ &&
+      dim_inner >= min_dim_inner_with_split_k_;
+
+  return use_split_k;
+}
+
+uint32_t SplitKConfig::GetSplitDimInner() const {
+  return split_dim_inner_;
+}
+
 Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -167,6 +216,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 }
 
 MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
+                                  SplitKConfig split_k_config,
                                   const TensorShape& input_a_reshape,
                                   const TensorShape& input_b_reshape) {
   const auto* a = inputs[0];
@@ -222,21 +272,34 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
                                                    ? InlinedVector<int64_t>({4, 1, 1})
                                                    : InlinedVector<int64_t>({4, 4, 1});
 
+  bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
+
+  // When Split-K is used, bias will be handled in `MatMulFillBiasBeforeSplitKProgram`
+  // instead of `MatMulProgram`.
+  if (need_split_k) {
+    has_bias = false;
+  }
+
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
                                                (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
   const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
                                                (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
-  const uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
-                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+  uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
+                                         (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+  uint32_t split_dim_inner = 1;
+  if (need_split_k) {
+    split_dim_inner = split_k_config.GetSplitDimInner();
+    dispatch_z = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+  }
 
   const int components = is_vec4 ? 4 : 1;
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread, is_channels_last};
+  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
   program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last)
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
@@ -251,6 +314,53 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
     TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
     program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
   }
+  return program;
+}
+
+MatMulFillBiasBeforeSplitKProgram CreateMatMulFillBiasBeforeSplitKProgram(
+    const Tensor* bias,
+    Tensor* output,
+    bool is_channels_last,
+    const TensorShape& input_a_shape,
+    const TensorShape& input_b_shape) {
+  const bool has_bias = bias != nullptr;
+
+  constexpr uint32_t bias_components = 4;
+  MatMulFillBiasBeforeSplitKProgram program(has_bias, is_channels_last);
+
+  const TensorShape a_shape = input_a_shape;
+  const TensorShape b_shape = input_b_shape;
+  MatMulComputeHelper helper;
+  ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
+  TensorShape output_shape = helper.OutputShape();
+
+  const uint32_t dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);
+  const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);
+
+  const uint32_t output_row = dim_a_outer;
+  const uint32_t output_col = dim_b_outer / bias_components;
+  constexpr uint32_t workgroup_size_x = MatMulFillBiasBeforeSplitKProgram::WORKGROUP_SIZE_X;
+  constexpr uint32_t workgroup_size_y = MatMulFillBiasBeforeSplitKProgram::WORKGROUP_SIZE_Y;
+  constexpr uint32_t elements_per_thread = MatMulFillBiasBeforeSplitKProgram::ELEMENTS_PER_THREAD;
+  const uint32_t dispatch_x = (output_col + workgroup_size_x * elements_per_thread - 1) / (workgroup_size_x * elements_per_thread);
+  const uint32_t dispatch_y = (output_row + workgroup_size_y - 1) / workgroup_size_y;
+
+  // TODO: support batch_size > 1
+  constexpr uint32_t batch_size = 1;
+  TensorShape output_shape_temp = TensorShape({batch_size, output_row, output_col});
+
+  const uint32_t data_type = output->GetElementType();
+  program.CacheHint(has_bias, is_channels_last, data_type)
+      .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape_temp, static_cast<int32_t>(bias_components)})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}})
+      .SetDispatchGroupSize(dispatch_x, dispatch_y, 1)
+      .SetWorkgroupSize(workgroup_size_x, workgroup_size_y, 1);
+
+  if (has_bias) {
+    const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, static_cast<int32_t>(bias_components)});
+  }
+
   return program;
 }
 
