@@ -26,7 +26,7 @@ Pod::Spec.new do |spec|
   spec.dependency "onnxruntime-c"
 
   if respond_to?(:install_modules_dependencies, true)
-    install_modules_dependencies(s)
+    install_modules_dependencies(spec)
   else
     s.dependency "React-Core"
     s.dependency "React-callinvoker"
