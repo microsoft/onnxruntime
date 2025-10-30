@@ -154,7 +154,7 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
   ModelProto model;
   model.set_ir_version(ONNX_IR_VERSION);
   auto* opset = model.add_opset_import();
-  opset->set_domain("");   // empty = default ONNX domain
+  opset->set_domain("");  // empty = default ONNX domain
   opset->set_version(OPSET_VERSION);
 
   auto* graph = model.mutable_graph();
@@ -280,5 +280,5 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
 
   return nullptr;
 }
-}
-}
+}  // namespace test
+}  // namespace onnxruntime

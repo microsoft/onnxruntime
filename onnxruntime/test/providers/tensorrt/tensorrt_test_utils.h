@@ -6,5 +6,5 @@ namespace onnxruntime {
 namespace test {
 OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_name);
 OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name);
-}
-}
+}  // namespace test
+}  // namespace onnxruntime
