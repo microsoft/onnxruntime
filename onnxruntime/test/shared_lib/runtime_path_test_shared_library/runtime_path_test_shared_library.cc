@@ -1,5 +1,8 @@
 #include "runtime_path_test_shared_library.h"
 
+#include <exception>
+#include <iostream>
+
 #include "core/platform/env.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/logging/make_platform_default_log_sink.h"
@@ -28,7 +31,8 @@ extern "C" const PATH_CHAR_T* OrtTestGetSharedLibraryRuntimePath(void) {
   try {
     static const auto runtime_path = InitializeAndGetRuntimePath();
     return runtime_path.c_str();
-  } catch (...) {
+  } catch (const std::exception& e) {
+    std::cerr << __FUNCTION__ " - caught exception: " << e.what() << "\n";
     return nullptr;
   }
 }
