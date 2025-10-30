@@ -140,8 +140,11 @@ jobs:
       - name: Test Android
         env:
           QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
+        # Use exec so that workflow cancel signals are sent directly to build_and_test.py, which will then
+        # forward them to qdc_runner.py and in-flight jobs can be aborted to preserve our QDC slots and
+        # not leak huge files on the runner.
         run: |
-          python3 qcom/build_and_test.py create_venv test_ort_qdc_android_aarch64 --only
+          exec python3 qcom/build_and_test.py create_venv test_ort_qdc_android_aarch64 --only
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4.0.4

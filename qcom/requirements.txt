@@ -10,4 +10,4 @@ requests >= 2.32.3, == 2.*
 tqdm >= 4.67.1, == 4.*
 types-pyyaml >= 6.0.2, == 6.*
 types-tqdm >= 4.67, == 4.*
-qdc-public-api-client == 0.0.8
+qdc-public-api-client == 0.0.14

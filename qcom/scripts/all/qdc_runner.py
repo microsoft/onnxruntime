@@ -9,13 +9,16 @@ import logging
 import os
 import random
 import shutil
+import signal
 import tempfile
 import time
 import uuid
 import zipfile
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path, PurePosixPath
+from types import FrameType
 from typing import ClassVar, NamedTuple
 
 import backoff
@@ -33,10 +36,12 @@ from qdc_public_api_client.api.jobs import (
     get_jobs_id,
     get_jobs_job_id_logs,
     post_jobs,
+    post_jobs_job_id_abort,
 )
 from qdc_public_api_client.models.artifact_type import ArtifactType
 from qdc_public_api_client.models.artifact_type_0 import ArtifactType0
 from qdc_public_api_client.models.create_job_type_0 import CreateJobType0
+from qdc_public_api_client.models.error_message_type_0 import ErrorMessageType0
 from qdc_public_api_client.models.job_logs_type_0 import JobLogsType0
 from qdc_public_api_client.models.job_mode import JobMode
 from qdc_public_api_client.models.job_result import JobResult
@@ -174,6 +179,7 @@ class RunStatus(Enum):
     RUNNING = 2
     SUCCESS = 3
     FAILED = 4
+    ABORTED = 5
 
 
 class Run(ABC):
@@ -183,7 +189,11 @@ class Run(ABC):
         self.url = url
 
     def is_done(self):
-        return self.status == RunStatus.SUCCESS or self.status == RunStatus.FAILED
+        return self.status in [RunStatus.SUCCESS, RunStatus.FAILED, RunStatus.ABORTED]
+
+    @abstractmethod
+    def abort(self) -> None:
+        pass
 
     @abstractmethod
     def poll(self) -> None:
@@ -196,6 +206,9 @@ class Run(ABC):
 
 class TestRuns:
     _runs: ClassVar[list[Run]] = []
+
+    def abort(self) -> None:
+        [r.abort() for r in self._runs]
 
     def add_run(self, run: Run) -> None:
         self._runs.append(run)
@@ -313,43 +326,69 @@ class QdcClient:
 
     @retry_with_backoff()
     def post_artifacts_startupload(self, *args, **kwargs) -> Response["ArtifactType0 | None"]:
-        return post_artifacts_startupload.sync_detailed(
+        result = post_artifacts_startupload.sync_detailed(
             client=self._client,
             *args,  # noqa: B026
             **kwargs,
         )
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        return result  # type: ignore[return-value]
+
+    @retry_with_backoff()
+    def abort_job(self, *args, **kwargs) -> Response["JobType0 | None"]:
+        result = post_jobs_job_id_abort.sync_detailed(
+            client=self._client,
+            *args,  # noqa: B026
+            **kwargs,
+        )
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        return result  # type: ignore[return-value]
 
     @retry_with_backoff()
     def post_artifacts_uuid_endupload(self, *args, **kwargs) -> Response["ArtifactType0 | None"]:
-        return post_artifacts_uuid_endupload.sync_detailed(
+        result = post_artifacts_uuid_endupload.sync_detailed(
             client=self._client,
             *args,  # noqa: B026
             **kwargs,
         )
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        return result  # type: ignore[return-value]
 
     @retry_with_backoff()
     def post_artifacts_uuid_continueupload(self, *args, **kwargs) -> Response["ArtifactType0 | None"]:
-        return post_artifacts_uuid_continueupload.sync_detailed(
+        result = post_artifacts_uuid_continueupload.sync_detailed(
             client=self._client,
             *args,  # noqa: B026
             **kwargs,
         )
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        return result  # type: ignore[return-value]
 
     @retry_with_backoff()
     def post_jobs(self, *args, **kwargs) -> Response["JobType0 | None"]:
-        return post_jobs.sync_detailed(
+        result = post_jobs.sync_detailed(
             client=self._client,
             *args,  # noqa: B026
             **kwargs,
         )
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        return result  # type: ignore[return-value]
 
     @retry_with_backoff()
     def get_jobs_id(self, *args, **kwargs) -> Response["JobType0 | None"]:
-        return get_jobs_id.sync_detailed(
+        result = get_jobs_id.sync_detailed(
             client=self._client,
             *args,  # noqa: B026
             **kwargs,
         )
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        return result  # type: ignore[return-value]
 
     def _download_log(self, qdc_log_path: PurePosixPath, local_log_path: Path) -> None:
         logging.info(f"Downloading QDC log {qdc_log_path} to {local_log_path}.")
@@ -371,11 +410,19 @@ class QdcClient:
 
     @retry_with_backoff()
     def _download_zipped_log(self, qdc_log_path: PurePosixPath) -> Response[File]:
-        return get_jobs_downloadlogs.sync_detailed(client=self._client, path=str(qdc_log_path))
+        result = get_jobs_downloadlogs.sync_detailed(client=self._client, path=str(qdc_log_path))
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        if result is None:
+            raise RuntimeError("get_jobs_downloadlogs returned None")
+        return result  # type: ignore[return-value]
 
     @retry_with_backoff()
     def _get_job_log_list(self, job_id: int) -> Response[list["JobLogsType0 | None"]]:
-        return get_jobs_job_id_logs.sync_detailed(job_id=job_id, client=self._client)
+        result = get_jobs_job_id_logs.sync_detailed(job_id=job_id, client=self._client)
+        if isinstance(result, ErrorMessageType0):
+            raise RuntimeError(result.message)
+        return result  # type: ignore[return-value]
 
     def _get_full_job_log_names(self, job_id: int) -> list[str]:
         @backoff.on_predicate(
@@ -480,8 +527,9 @@ class QdcRunner:
     def _finish_run(self, job_id: int, platform: Platform, status: RunStatus) -> RunStatus:
         if self._log_dir is not None:
             log_dir = Path(str(self._log_dir).replace("%p", platform.name.lower()))
-            logging.info(f"Downloading log files to {log_dir}.")
-            self._client.download_logs(job_id, log_dir)
+            if status != RunStatus.ABORTED:
+                logging.info(f"Downloading log files to {log_dir}.")
+                self._client.download_logs(job_id, log_dir)
             return status
 
         return status
@@ -661,6 +709,9 @@ class QdcRunner:
 
         return QdcRun(self, platform, test_name, job_id, job_url)
 
+    def abort_run(self, job_id: int) -> None:
+        self._client.abort_job(job_id)
+
     def get_run_status(self, job_id: int, platform: Platform) -> RunStatus:
         # Approximate mapping of state and result
         #
@@ -683,6 +734,8 @@ class QdcRunner:
             return RunStatus.RUNNING
         elif state == JobState.COMPLETED and result == JobResult.SUCCESSFUL:
             return self._finish_run(job_id, platform, RunStatus.SUCCESS)
+        elif state == JobState.CANCELED:
+            return RunStatus.ABORTED
 
         return self._finish_run(job_id, platform, RunStatus.FAILED)
 
@@ -701,11 +754,32 @@ class QdcRun(Run):
         self.runner = runner
         self.job_id = job_id
 
+    def abort(self) -> None:
+        logging.warning(f"Aborting {self.test_name}")
+        self.runner.abort_run(self.job_id)
+
     def poll(self) -> None:
         self.status = self.runner.get_run_status(self.job_id, self.platform)
 
     def get_farm_name(self) -> str:
         return "QDC"
+
+
+# Caution: this class can also be found in qcom/ep_build/util.py. Consider copying any edits.
+class TemporarySignalHandler:
+    def __init__(self, handler: Callable[[int, FrameType | None], None], signum: int = signal.SIGINT) -> None:
+        self.__signum = signum
+        self.__handler = handler
+
+    def __enter__(self) -> None:
+        self.__prev_handler = signal.getsignal(self.__signum)
+        signal.signal(self.__signum, self.__handler)
+
+    def __exit__(self, exc_type, exc_value, exc_tb) -> None:
+        try:
+            signal.signal(self.__signum, self.__prev_handler)
+        except Exception as e:
+            logging.warning(f"Failed to restore signal handler: {e}")
 
 
 #
@@ -810,23 +884,24 @@ class RunnerCli:
             if self.append_windows_package is not None:
                 windows_archive = self.__append_package(windows_archive, Path(tmpdir), self.append_windows_package)
 
-            QdcRunner(
-                self.test_name,
-                self.on_behalf_of,
-                self.log_dir,
-                test_runs,
-                self.qdc_api_url,
-                self.enable_platforms,
-                self.qdc_android_id,
-                self.qdc_windows_id,
-                android_archive,
-                windows_archive,
-            )
-            logging.info(f"Initialized runner. Test name prefix={self.test_name}")
+            with TemporarySignalHandler(lambda sig, frame: test_runs.abort()):
+                QdcRunner(
+                    self.test_name,
+                    self.on_behalf_of,
+                    self.log_dir,
+                    test_runs,
+                    self.qdc_api_url,
+                    self.enable_platforms,
+                    self.qdc_android_id,
+                    self.qdc_windows_id,
+                    android_archive,
+                    windows_archive,
+                )
+                logging.info(f"Initialized runner. Test name prefix={self.test_name}")
 
-            while test_runs.has_pending_tasks():
-                test_runs.poll_runs()
-                time.sleep(10)
+                while test_runs.has_pending_tasks():
+                    test_runs.poll_runs()
+                    time.sleep(10)
 
         print()
         print(test_runs.get_status_table())
