@@ -1528,7 +1528,8 @@ endif()
       onnxruntime_add_shared_library(onnxruntime_runtime_path_test_shared_library
                                      ${onnxruntime_runtime_path_test_shared_library_src})
 
-      target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE onnxruntime_common cpuinfo)
+      target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                            onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
       target_include_directories(onnxruntime_runtime_path_test_shared_library PRIVATE ${ONNXRUNTIME_ROOT})
 
       if(UNIX)
