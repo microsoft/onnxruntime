@@ -161,6 +161,11 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
   return true;
 }
 
+bool IsScalarOr1Element1DTensor(gsl::span<const int64_t> tensor_shape) {
+  const size_t rank = tensor_shape.size();
+  return (rank == 0) || ((rank == 1) && (tensor_shape[0] == 1));
+}
+
 bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data, bool require_constant) {
   if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
     return false;
@@ -361,8 +366,8 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
             // Check scale and zero_point are scalar
             Initializer scale_initializer(graph, *dq_scale, graph.ModelPath());
             Initializer zero_point_initializer(graph, *dq_zero_point, graph.ModelPath());
-            if (scale_initializer.dims().size() != 0 || zero_point_initializer.dims().size() != 0) {
-              return false;  // Not scalar
+            if (!IsScalarOr1Element1DTensor(scale_initializer.dims()) || !IsScalarOr1Element1DTensor(zero_point_initializer.dims())) {
+              return false;
             }
             float scale = 1.0f;
             float zero_point = 0.0f;
@@ -406,6 +411,9 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
             }
             // Restore original input value
             Initializer x_initializer(graph, *dq_input, graph.ModelPath());
+            if (!IsScalarOr1Element1DTensor(x_initializer.dims())) {
+              return false;
+            }
             switch (dq_input->data_type()) {
               case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
                 value = scale * (static_cast<float>(*x_initializer.data<uint8_t>()) - zero_point);
