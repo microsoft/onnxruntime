@@ -4,6 +4,7 @@
 import argparse
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -352,6 +353,10 @@ def generate_metadata(line_list, args):
     line_list += metadata_list
 
 
+def copy_file(src_path, dst_path):
+    shutil.copyfile(src_path, dst_path)
+
+
 def generate_files(line_list, args):
     files_list = ["<files>"]
 
@@ -417,7 +422,6 @@ def generate_files(line_list, args):
             "onnx_test_runner": "onnx_test_runner.exe",
         }
 
-        copy_command = "copy"
         runtimes_target = '" target="runtimes\\win-'
     else:
         nuget_dependencies = {
@@ -436,7 +440,6 @@ def generate_files(line_list, args):
             "onnx_test_runner": "onnx_test_runner",
         }
 
-        copy_command = "cp"
         runtimes_target = '" target="runtimes\\linux-'
 
     if is_windowsai_package:
@@ -1007,7 +1010,7 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".props",
         )
-        os.system(copy_command + " " + source_props + " " + target_props)
+        copy_file(source_props, target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\native" />')
         if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.0"  />')
@@ -1026,7 +1029,7 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".targets",
         )
-        os.system(copy_command + " " + source_targets + " " + target_targets)
+        copy_file(source_targets, target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\native"  />')
         if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.0" />')
@@ -1079,9 +1082,9 @@ def generate_files(line_list, args):
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net9.0-maccatalyst", "_._"
             )
 
-            os.system(copy_command + " " + net9_android_source_targets + " " + net9_android_target_targets)
-            os.system(copy_command + " " + net9_ios_source_targets + " " + net9_ios_target_targets)
-            os.system(copy_command + " " + net9_maccatalyst_source_targets + " " + net9_maccatalyst_target_targets)
+            copy_file(net9_android_source_targets, net9_android_target_targets)
+            copy_file(net9_ios_source_targets, net9_ios_target_targets)
+            copy_file(net9_maccatalyst_source_targets, net9_maccatalyst_target_targets)
 
             files_list.append(
                 "<file src=" + '"' + net9_android_target_targets + '" target="build\\net9.0-android" />'
@@ -1125,7 +1128,7 @@ def generate_files(line_list, args):
                 args.package_name + ".targets",
             )
 
-            os.system(copy_command + " " + net9_android_source_targets + " " + net9_android_target_targets)
+            copy_file(net9_android_source_targets, net9_android_target_targets)
             files_list.append(
                 "<file src=" + '"' + net9_android_target_targets + '" target="build\\net9.0-android" />'
             )
