@@ -563,8 +563,9 @@ class PosixEnv : public Env {
         dladdr(address_from_this_binary, &dl_info) != 0 && dl_info.dli_fname != nullptr) {
       LOGS_DEFAULT(VERBOSE) << "Getting runtime path as parent directory of binary: " << dl_info.dli_fname;
 
-      auto runtime_path = std::filesystem::path{dl_info.dli_fname}.remove_filename();
+      auto runtime_path = std::filesystem::path{dl_info.dli_fname};
       runtime_path = std::filesystem::absolute(runtime_path);
+      runtime_path.remove_filename();
       return runtime_path;
     }
 
