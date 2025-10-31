@@ -21,8 +21,8 @@
  */
 struct OrtSingletonData {
   struct OrtObjects {
-    std::unique_ptr<Ort::Env> env;
-    std::unique_ptr<Ort::RunOptions> default_run_options;
+    Ort::Env env;
+    Ort::RunOptions default_run_options;
 
    private:
     // The following pattern ensures that OrtObjects can only be created by OrtSingletonData
@@ -33,8 +33,8 @@ struct OrtSingletonData {
   static OrtObjects& GetOrCreateOrtObjects(int log_level = ORT_LOGGING_LEVEL_WARNING);
 
   // Get the global Ort::Env
-  static const Ort::Env* Env();
+  static const Ort::Env& Env();
 
   // Get the default Ort::RunOptions
-  static const Ort::RunOptions* DefaultRunOptions();
+  static const Ort::RunOptions& DefaultRunOptions();
 };

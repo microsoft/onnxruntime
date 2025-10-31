@@ -4,8 +4,8 @@
 #include "ort_singleton_data.h"
 
 OrtSingletonData::OrtObjects::OrtObjects(int log_level)
-    : env(new Ort::Env{OrtLoggingLevel(log_level), "onnxruntime-node"}),
-      default_run_options(new Ort::RunOptions{}) {
+    : env{OrtLoggingLevel(log_level), "onnxruntime-node"},
+      default_run_options{} {
 }
 
 OrtSingletonData::OrtObjects& OrtSingletonData::GetOrCreateOrtObjects(int log_level) {
@@ -13,10 +13,10 @@ OrtSingletonData::OrtObjects& OrtSingletonData::GetOrCreateOrtObjects(int log_le
   return ort_objects;
 }
 
-const Ort::Env* OrtSingletonData::Env() {
-  return GetOrCreateOrtObjects().env.get();
+const Ort::Env& OrtSingletonData::Env() {
+  return GetOrCreateOrtObjects().env;
 }
 
-const Ort::RunOptions* OrtSingletonData::DefaultRunOptions() {
-  return GetOrCreateOrtObjects().default_run_options.get();
+const Ort::RunOptions& OrtSingletonData::DefaultRunOptions() {
+  return GetOrCreateOrtObjects().default_run_options;
 }
