@@ -14,7 +14,7 @@
  *   time `InferenceSession.initOrtOnce()` is called.
  *
  * - The Ort::RunOptions singleton instance.
- *   This is an empty default RunOptions instance. It is created once to allow reuse across all session inference run.
+ *   This is an empty default RunOptions instance. It is created once to allow reuse across all session inference runs.
  *
  * The OrtSingletonData class uses the "Meyers Singleton" pattern to ensure thread-safe lazy initialization, as well as
  * proper destruction order at program exit.
