@@ -2808,11 +2808,6 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   // First resolve should succeed
   ASSERT_STATUS_OK(graph.Resolve());
 
-  // Now trigger the in-memory externalization
-  // This converts initializers > 127 bytes to OrtValues with external data references
-  Status convert_status = graph.ConvertInitializersIntoOrtValues();
-  ASSERT_TRUE(convert_status.IsOK()) << "ConvertInitializersIntoOrtValues failed: " << convert_status.ErrorMessage();
-
   // Check if the initializer was actually externalized
   const ONNX_NAMESPACE::TensorProto* initializer_after = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor("split_sizes", initializer_after));

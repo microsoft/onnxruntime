@@ -3486,7 +3486,7 @@ TEST(CApiTest, TestSharedAllocators) {
     ASSERT_TRUE(num_allocations == 6);
 
     size_t num_reserve_allocations = custom_allocator.NumReserveAllocations();
-    ASSERT_TRUE(num_reserve_allocations == 1);
+    ASSERT_EQ(3, num_reserve_allocations);
 
     // Ensure that there was no leak
     custom_allocator.LeakCheck();

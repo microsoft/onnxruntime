@@ -439,23 +439,23 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
     }
   }
 
-  auto weight_T_tp = utils::TensorToTensorProto(weight_dst, weight_dst_name, false);
-  auto scale_T_tp = utils::TensorToTensorProto(scale_dst, scale_dst_name, false);
+  auto weight_T_tp = utils::TensorToTensorProto(weight_dst, weight_dst_name, true);
+  auto scale_T_tp = utils::TensorToTensorProto(scale_dst, scale_dst_name, true);
   std::optional<ONNX_NAMESPACE::TensorProto> zp_T_tp;
 
   if (zp_dst) {
-    zp_T_tp.emplace(utils::TensorToTensorProto(*zp_dst, zp_dst_name, false));
+    zp_T_tp.emplace(utils::TensorToTensorProto(*zp_dst, zp_dst_name, true));
   }
 
   auto& input_defs = replacement_node.MutableInputDefs();
-  input_defs.push_back(&graph_utils::AddInitializer(graph, weight_T_tp));
+  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, weight_T_tp, std::move(weight_dst)));
   replacement_node.MutableInputArgsCount().push_back(1);
 
-  input_defs.push_back(&graph_utils::AddInitializer(graph, scale_T_tp));
+  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, scale_T_tp, std::move(scale_dst)));
   replacement_node.MutableInputArgsCount().push_back(1);
 
   if (zp_T_tp) {
-    input_defs.push_back(&graph_utils::AddInitializer(graph, zp_T_tp.value()));
+    input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, zp_T_tp.value(), std::move(*zp_dst)));
     replacement_node.MutableInputArgsCount().push_back(1);
   }
 

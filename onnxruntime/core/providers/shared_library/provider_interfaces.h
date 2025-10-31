@@ -381,6 +381,7 @@ struct ProviderHost {
 
   // TypeProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() = 0;
+  virtual void TypeProto__operator_delete(ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) = 0;
   virtual bool TypeProto__has_tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
