@@ -6,10 +6,9 @@ import * as assert from 'assert';
 import * as path from 'path';
 
 describe('Standalone Process Tests', () => {
-
   // Helper function to run test script in a separate process
-  const runTest = (args: string[] = []): Promise<{code: number, stdout: string, stderr: string}> => {
-    return new Promise((resolve, reject) => {
+  const runTest = async (args: string[] = []): Promise<{ code: number; stdout: string; stderr: string }> =>
+    new Promise((resolve, reject) => {
       // Use the compiled main.js file from the lib directory
       const testFile = path.join(__dirname, './main.js');
 
@@ -18,8 +17,8 @@ describe('Standalone Process Tests', () => {
       let stdout = '';
       let stderr = '';
 
-      child.stdout.on('data', (data) => stdout += data.toString());
-      child.stderr.on('data', (data) => stderr += data.toString());
+      child.stdout.on('data', (data) => (stdout += data.toString()));
+      child.stderr.on('data', (data) => (stderr += data.toString()));
 
       child.on('close', (code) => {
         resolve({ code: code || 0, stdout, stderr });
@@ -27,10 +26,9 @@ describe('Standalone Process Tests', () => {
 
       child.on('error', reject);
     });
-  };
 
   // Helper function to check basic success criteria
-  const assertSuccess = (result: {code: number, stdout: string, stderr: string}) => {
+  const assertSuccess = (result: { code: number; stdout: string; stderr: string }) => {
     assert.strictEqual(result.code, 0);
     assert.ok(result.stdout.includes('SUCCESS: Inference completed'));
     assert.ok(!result.stderr.includes('mutex lock failed'));

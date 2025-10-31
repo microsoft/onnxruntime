@@ -13,6 +13,7 @@ These tests verify that the ORT Node.js binding handles various process exit sce
 ## How It Works
 
 Each test runs in a separate Node.js process to isolate the test environment. Tests use command-line flags to control behavior:
+
 - `--process-exit`: Triggers `process.exit(0)`
 - `--throw-exception`: Throws an uncaught exception
 - `--release`: Calls `session.release()` before exit
