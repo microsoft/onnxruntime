@@ -134,10 +134,11 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
 
-  // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
+  // Check EPContext model generation options when the input model is loaded from memory (no input model path).
   if (options && model_path == nullptr) {
     epctx::ModelGenOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
 
+    // Because there is no input model path, we require the application to explicitly set an output model's location.
     // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
     // the user used the older SessionOptions' configuration entries to generate a compiled model.
     if (ep_ctx_gen_options.enable) {
