@@ -19,6 +19,7 @@
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffersQgemm {
     std::vector<std::byte> lhs_packed;
+    std::vector<const std::byte*> lhs_base_table;
 };
 static thread_local KaiTlsBuffersQgemm g_kai_tls_qgemm;
 
@@ -124,7 +125,13 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     LhsPackedData = g_kai_tls_qgemm.lhs_packed.data();
 
     //Per-batch table of lhs
-    std::vector<const std::byte*> LhsBase(BatchSize);
+    if (g_kai_tls_qgemm.lhs_base_table.capacity() < BatchSize) {
+
+        g_kai_tls_qgemm.lhs_base_table.reserve(BatchSize);
+    }
+    g_kai_tls_qgemm.lhs_base_table.resize(BatchSize);
+    // Capture the shared batch table pointer so worker threads use the same backing storage.
+    const std::byte** tls_lhs_base = g_kai_tls_qgemm.lhs_base_table.data();
     // B batches require no packing
     // We have already decided the matmul variant we are using, before having values for M,N,K
     MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
@@ -137,7 +144,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         }
 
         kai_run_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr, 0, DataParams[batch_idx].A, DataParams[batch_idx].lda*sizeof(float), lhs);
-        LhsBase[batch_idx] = lhs;
+        tls_lhs_base[batch_idx] = lhs;
     });
 
     // tile iteration dimensions
@@ -181,7 +188,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
             UseSME2 ? kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(MIdx * m_step, Shape.K)
                     : kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa(MIdx * m_step, Shape.K);
 
-        const std::byte* A_base = LhsBase[BIdx]; // LhsPackedData + LhsPackedStride * BIdx; OR DataParams[batch_idx].Workspace;
+        const std::byte* A_base = tls_lhs_base[BIdx]; // LhsPackedData + LhsPackedStride * BIdx; OR DataParams[batch_idx].Workspace;
         auto ATile = reinterpret_cast<const std::byte*>(A_base + lhs_packed_offset);
 
         auto TileSizeM = (MIdx + 1) * m_step > Shape.M ? (Shape.M - MIdx * m_step) : m_step;
