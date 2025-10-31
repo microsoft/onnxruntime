@@ -25,7 +25,6 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:InstanceNormalization||
 |ai.onnx:LayerNormalization||
 |ai.onnx:LeakyRelu||
-|ai.onnx:Log||
 |ai.onnx:MatMul|Only support for transA == 0, alpha == 1.0 and beta == 1.0 is currently implemented.|
 |ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Max||
