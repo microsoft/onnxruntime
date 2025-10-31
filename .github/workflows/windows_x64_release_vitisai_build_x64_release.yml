@@ -38,7 +38,7 @@ jobs:
         run: python -m pip install -r "${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: '20.x'
 

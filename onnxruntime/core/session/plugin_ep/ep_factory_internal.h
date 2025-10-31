@@ -87,6 +87,10 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->ValidateCompiledModelCompatibilityInfo(devices, num_devices, compatibility_info, model_compatibility);
   }
 
+  OrtStatus* SetEnvironmentOptions(_In_ const OrtKeyValuePairs* options) noexcept {
+    return impl_->SetEnvironmentOptions(options);
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* /*ep*/) noexcept {
     // we never create an OrtEp so we should never be trying to release one

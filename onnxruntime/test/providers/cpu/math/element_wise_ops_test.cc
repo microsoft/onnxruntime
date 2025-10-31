@@ -10,6 +10,7 @@
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
+#include "test/common/random_generator.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <limits>
@@ -3699,6 +3700,74 @@ TEST(MathOpTest, Equal_multidirectional_broadcastAB_bool) {
   test.Run();
 }
 
+TEST(MathOpTest, Max_12_Int8) {
+  OpTester test("Max", 12);
+  test.AddInput<int8_t>("data_0", {1, 3},
+                        {1, 2, 3});
+  test.AddInput<int8_t>("data_2", {3, 3},
+                        {10, 20, 30,
+                         40, 50, 60,
+                         70, 80, 90});
+  test.AddInput<int8_t>("data_1", {3, 1},
+                        {-1, -2, 127});
+  test.AddOutput<int8_t>("max", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          127, 127, 127});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Max_12_UInt8) {
+  OpTester test("Max", 12);
+  test.AddInput<uint8_t>("data_0", {1, 3},
+                         {1, 20, 30});
+  test.AddInput<uint8_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<uint8_t>("data_1", {3, 1},
+                         {100, 20, 30});
+  test.AddOutput<uint8_t>("max", {3, 3},
+                          {100, 100, 100,
+                           40, 50, 60,
+                           70, 80, 90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, Min_12_Int8) {
+  OpTester test("Min", 12);
+  test.AddInput<int8_t>("data_0", {1, 3},
+                        {1, 2, 3});
+  test.AddInput<int8_t>("data_2", {3, 3},
+                        {10, 20, 30,
+                         40, 50, 60,
+                         -70, -80, -90});
+  test.AddInput<int8_t>("data_1", {3, 1},
+                        {-1, 20, 127});
+  test.AddOutput<int8_t>("min", {3, 3},
+                         {-1, -1, -1,
+                          1, 2, 3,
+                          -70, -80, -90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Min_12_UInt8) {
+  OpTester test("Min", 12);
+  test.AddInput<uint8_t>("data_0", {1, 3},
+                         {1, 20, 30});
+  test.AddInput<uint8_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<uint8_t>("data_1", {3, 1},
+                         {1, 20, 30});
+  test.AddOutput<uint8_t>("min", {3, 3},
+                          {1, 1, 1,
+                           1, 20, 20,
+                           1, 20, 30});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(MathOpTest, Mean_6) {
   OpTester test("Mean", 6);
   std::vector<int64_t> dims{3, 3};
@@ -3923,6 +3992,14 @@ TEST(MathOpTest, Erf) {
   test.Run();
 }
 
+TEST(MathOpTest, Erf_f16) {
+  OpTester test("Erf", 9);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<MLFloat16>("A", dims, MakeMLFloat16({0.5f, 1.0f, 0.7f, 2.0f}));
+  test.AddOutput<MLFloat16>("B", dims, MakeMLFloat16({0.5204999f, 0.8427008f, 0.6778012f, 0.9953223f}));
+  test.Run();
+}
+
 TEST(MathOpTest, ErfMoreData) {
   OpTester test("Erf", 9);
   std::vector<float> inputs{
@@ -3945,6 +4022,21 @@ TEST(MathOpTest, ErfMoreData) {
       -0.999433f, -0.00105786f, 0.00133995f};
   std::vector<int64_t> dims{static_cast<int64_t>(inputs.size())};
 
+  test.AddInput<float>("A", dims, inputs);
+  test.AddOutput<float>("B", dims, outputs);
+  test.Run();
+}
+
+TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
+  OpTester test("Erf", 9);
+  static constexpr int64_t size = 100;
+  std::vector<int64_t> dims{size};
+  RandomValueGenerator random(42);
+  std::vector<float> inputs = random.Uniform<float>(dims, -5.0f, 5.0f);
+  std::vector<float> outputs(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    outputs[i] = std::erf(inputs[i]);
+  }
   test.AddInput<float>("A", dims, inputs);
   test.AddOutput<float>("B", dims, outputs);
   test.Run();

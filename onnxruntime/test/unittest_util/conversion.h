@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {

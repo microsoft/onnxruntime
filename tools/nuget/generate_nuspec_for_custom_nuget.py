@@ -51,6 +51,9 @@ def generate_files(lines, args):
     files_list.append(
         f'<file src="{os.path.join(args.root_dir, "ORT_icon_for_light_bg.png")}" target="ORT_icon_for_light_bg.png" />'
     )
+    files_list.append(
+        f'<file src="{os.path.join(args.win_arm64, "Qualcomm_LICENSE.pdf")}" target="Qualcomm_LICENSE.pdf" />'
+    )
 
     source_props = os.path.join(
         args.root_dir,
