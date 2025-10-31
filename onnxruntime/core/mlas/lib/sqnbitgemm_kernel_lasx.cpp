@@ -910,8 +910,8 @@ Q4BitBlkDequantBForSgemmBlkLen32AndMore_CompFp32_lasx(
         const size_t cols = std::min(NCols8, CountN - col);
         for (size_t k = 0; k < BlockCountK; k++) {
             // count # of tiles plus blks of the current tile from top
-            const size_t tile_count = col / GemmFloatKernelWidth16;
-            size_t offset = SafeInt<size_t>(tile_count * CountK + k * BlkLen) * GemmFloatKernelWidth16;
+            const SafeInt<size_t> tile_count = col / GemmFloatKernelWidth16;
+            size_t offset = tile_count * CountK + k * BlkLen * GemmFloatKernelWidth16;
             float* dst_ptr = FpData + offset;
             if (col % GemmFloatKernelWidth16 >= NCols8) {
                 // for the second half to 16 width tile
