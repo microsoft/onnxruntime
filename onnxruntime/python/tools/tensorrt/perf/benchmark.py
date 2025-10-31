@@ -613,7 +613,7 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
             for ref_o, o in zip(ref_output, output, strict=False):
                 # abs(desired-actual) < rtol * abs(desired) + atol
                 try:
-                    np.testing.assert_allclose(ref_o, o, rtol, atol)
+                    np.testing.assert_allclose(o, ref_o, rtol, atol)
                 except Exception as e:
                     if percentage_in_allowed_threshold(e, percent_mismatch):
                         continue

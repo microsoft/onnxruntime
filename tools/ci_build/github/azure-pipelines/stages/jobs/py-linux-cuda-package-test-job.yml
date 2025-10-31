@@ -2,9 +2,9 @@ parameters:
   - name: CudaVersion
     displayName: 'CUDA version'
     type: string
-    default: '12.2'
+    default: '12.8'
     values:
-      - 12.2
+      - 12.8
   - name: machine_pool
     type: string
 
@@ -43,14 +43,14 @@ jobs:
     variables:
       - template: ../../templates/common-variables.yml
       - name: docker_base_image
-        ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250724.1
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250724.1
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251017.1
+        ${{ if eq(parameters.CudaVersion, '12.8') }}:
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
       - name: linux_trt_version
-        ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: ${{ variables.linux_trt_version_cuda11 }}
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: ${{ variables.linux_trt_version_cuda13 }}
+        ${{ if eq(parameters.CudaVersion, '12.8') }}:
           value: ${{ variables.linux_trt_version_cuda12 }}
     pool: ${{ parameters.machine_pool }}
     steps:
@@ -105,4 +105,4 @@ jobs:
         inputs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockertest.sh
-          arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.2
+          arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.8

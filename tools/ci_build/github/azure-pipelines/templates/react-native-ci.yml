@@ -26,9 +26,6 @@ parameters:
 - name: enable_code_sign
   displayName: Use GPG to sign the jars
   type: boolean
-- name: is1ES
-  type: boolean
-  default: false
 
 stages:
 - stage: Build_Android_Packages
@@ -44,7 +41,7 @@ stages:
       enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
-      is1ES: '${{parameters.is1ES}}'
+      is1ES: true
 
 - stage: ReactNative_CI_Android
   displayName: ReactNative_CI_Android
@@ -55,34 +52,20 @@ stages:
       PackageName: '${{parameters.PackageName}}'
       ArtifactName: 'onnxruntime-android-full-aar'
       NpmPackagingMode: '${{parameters.NpmPackagingMode}}'
-      is1ES: '${{parameters.is1ES}}'
 
 - stage: ReactNative_CI_iOS
   displayName: ReactNative_CI_iOS
   dependsOn: '${{parameters.InitialStageDependsOn}}'
-  variables:
-  - name: publishPipelineArtifactTask
-    ${{ if eq(parameters.is1ES, true) }}:
-      value: 1ES.PublishPipelineArtifact@1
-    ${{ else }}:
-      value: PublishPipelineArtifact@1
   jobs:
   - job: ReactNative_CI_iOS_build
-
-    ${{ if eq(parameters.is1ES, false) }}:
-      pool:
-        vmImage: 'macOS-14'
-    ${{ if eq(parameters.is1ES, true) }}:
-      pool:
-        name: 'Azure Pipelines'
-        image: 'macOS-14'
-        os: 'macOS'
-
+    pool:
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
     timeoutInMinutes: 120
-
     variables:
       runCodesignValidationInjection: false
-
     steps:
     - template: use-xcode-version.yml
 
@@ -106,7 +89,7 @@ stages:
           --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
       displayName: Build iOS package and assemble pods
 
-    - task: ${{ variables.publishPipelineArtifactTask }}
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
         artifactName: 'ios_pod'
         targetPath: '$(Build.BinariesDirectory)/ios_pod'
@@ -114,16 +97,11 @@ stages:
 
   - job: ReactNative_CI_iOS_unit_tests
     dependsOn: 'ReactNative_CI_iOS_build'
-
-    ${{ if eq(parameters.is1ES, false) }}:
-      pool:
-        vmImage: 'macOS-14'
-    ${{ if eq(parameters.is1ES, true) }}:
-      pool:
-        name: 'Azure Pipelines'
-        image: 'macOS-14'
-        os: 'macOS'
-
+    pool:
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
     timeoutInMinutes: 90
 
     steps:
