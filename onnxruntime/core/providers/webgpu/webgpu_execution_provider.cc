@@ -246,7 +246,10 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21,
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Squeeze);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Squeeze);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Squeeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Squeeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Squeeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, 23, Squeeze);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 24, Squeeze);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Unsqueeze);
@@ -529,7 +532,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Squeeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Squeeze)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, 23, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 24, Squeeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, ReduceMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, ReduceMax)>,
@@ -774,7 +780,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23>(enable_graph_capture)));
 
 #ifndef DISABLE_CONTRIB_OPS
-  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry);
+  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
   ORT_ENFORCE(status.IsOK(), "Failed to register WebGPU contrib kernels: " + status.ErrorMessage());
 #endif
 
@@ -852,6 +858,42 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       LOGS(*GetLogger(), INFO) << "Force CPU execution for node: " << node.Name();
       continue;
     }
+
+    //
+    // The following code checks if the node is really supported by webgpu EP
+    //
+
+#define FALLBACK_TO_CPU_IF_EXIST_INPUT(idx)           \
+  if (inputs.size() > idx && inputs[idx]->Exists()) { \
+    continue;                                         \
+  }
+
+#define FALLBACK_TO_CPU_IF_EXIST_OUTPUT(idx)            \
+  if (outputs.size() > idx && outputs[idx]->Exists()) { \
+    continue;                                           \
+  }
+
+    // Check for Attention
+    if (node.OpType() == "Attention" && node.Domain() == kMSDomain) {
+      const auto& inputs = node.InputDefs();
+      const auto& outputs = node.OutputDefs();
+
+      // Current implementation does not support mask_index(input[3]), past(input[5]) and past_seq_len(input[6])
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(3);
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(5);
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(6);
+
+      // Current implementation does not support present(output[1])
+      FALLBACK_TO_CPU_IF_EXIST_OUTPUT(1);
+
+      // If attribute past_present_share_buffer is set, fallback to CPU
+      const auto& past_present_share_buffer = node.GetAttributes().find("past_present_share_buffer");
+      if (past_present_share_buffer != node.GetAttributes().end() &&
+          past_present_share_buffer->second.i() != 0) {
+        continue;
+      }
+    }
+
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }

@@ -1526,6 +1526,15 @@ MLAS_FP16* Destination,
 size_t Count
 );
 
+void
+MLASCALL
+MlasConvertFloatToHalfBufferInParallel(
+    const float* Source,
+    MLAS_FP16* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
+);
+
 /**
  * @brief rotary embedding for one hidden state vector
  *

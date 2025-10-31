@@ -31,9 +31,11 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
   const auto& copy_kv_shape = shader.AddIndices("copy_kv_shape");
+  if (use_seqlen_k_) {
+    shader.AddInput("seqlen_k", ShaderUsage::None);
+  }
   // If prepare_indirect_dispatch is enabled, add seqlen_k input and indirect_buffer output
   if (prepare_indirect_dispatch_) {
-    shader.AddInput("seqlen_k", ShaderUsage::None);
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
@@ -43,11 +45,12 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  let sequence_id = output_indices[2];\n"
                                "  let num_head_id = output_indices[1];\n"
                                "  let batch = output_indices[0];\n";
-  if (prepare_indirect_dispatch_) {
+  if (use_seqlen_k_) {
     shader.MainFunctionBody() << "  let total_seq_length = u32(seqlen_k[0u]) + 1u;\n";
   } else {
     shader.MainFunctionBody() << "  let total_seq_length = uniforms.total_sequence_length;\n";
   }
+  shader.MainFunctionBody() << "let past_sequence_length = total_seq_length - uniforms.kv_sequence_length;\n";
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
@@ -62,31 +65,23 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   if (has_past_) {
-    shader.MainFunctionBody() << "let past_sequence_length = total_seq_length - uniforms.kv_sequence_length;\n";
-    if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n"
-                                << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                                << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
-    } else {
-      const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
-      shader.AddInput("past_value", ShaderUsage::UseUniform);
-      shader.MainFunctionBody() << "let present_offset = global_idx;"
-                                << "if (sequence_id < past_sequence_length) {\n"
-                                << "  let pastOffset = " << past_key.IndicesToOffset("past_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("present_offset", "past_key[pastOffset]") << ";\n"
-                                << "  " << present_value.SetByOffset("present_offset", "past_value[pastOffset]") << ";\n"
-                                << "} else {\n"
-                                << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
-                                << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                                << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
-                                << "}";
-    }
+    const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
+    shader.AddInput("past_value", ShaderUsage::UseUniform);
+    shader.MainFunctionBody() << "let present_offset = global_idx;"
+                              << "if (sequence_id < past_sequence_length) {\n"
+                              << "  let pastOffset = " << past_key.IndicesToOffset("past_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", "past_key[pastOffset]") << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", "past_value[pastOffset]") << ";\n"
+                              << "} else {\n"
+                              << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
+                              << "}";
   } else {
-    shader.MainFunctionBody() << "  let present_offset = " << (past_present_share_buffer_ ? present_key.IndicesToOffset("output_indices") : "global_idx") << ";\n"
-                              << "let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
-                              << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                              << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
+    shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n"
+                              << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
   }
   return Status::OK();
 }
@@ -100,20 +95,22 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   // If indirect_buffer is provided, also prepare indirect dispatch buffer for flash attention.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
-  bool has_past = (parameters.total_sequence_length_ - parameters.kv_sequence_length_) > 0;
+  // has_past means non-static kv cache with valid past data
+  bool has_past = !parameters.past_present_share_buffer_ && past_key != nullptr && past_value != nullptr && past_key->SizeInBytes() > 0;
   // parameters.total_sequence_length_ is past_sequence_length + kv_sequence_length.
   // parameters.kv_num_heads_ may be smaller than parameters.num_heads_ when parameters.is_gqa_ is true.
   int num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
   // Only copy the new kv data for static kv cache
-  int copy_sequence_length = has_past && parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
+  int copy_sequence_length = parameters.past_present_share_buffer_ ? parameters.kv_sequence_length_ : parameters.total_sequence_length_;
   TensorShape copy_kv_shape{parameters.batch_size_, num_heads, copy_sequence_length, parameters.head_size_ / components};
   int64_t copy_size = copy_kv_shape.Size();
 
   // Determine if we need to prepare indirect dispatch
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
+  bool use_seqlen_k = (seqlen_k != nullptr);
 
-  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH, parameters.past_present_share_buffer_,
-                             prepare_indirect_dispatch};
+  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH,
+                             prepare_indirect_dispatch, use_seqlen_k};
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -125,11 +122,11 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
   }
 
-  if (prepare_indirect_dispatch) {
+  if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
 
-  if (has_past && !parameters.past_present_share_buffer_) {
+  if (has_past) {
     program.AddInputs({{past_key, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {past_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   }
@@ -143,7 +140,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   program.AddIndices(std::move(copy_kv_shape));
   program.SetDispatchGroupSize(static_cast<uint32_t>((copy_size + 63) / 64))
       .SetWorkgroupSize(64)
-      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_, prepare_indirect_dispatch)
+      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_, prepare_indirect_dispatch, use_seqlen_k)
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
@@ -173,6 +170,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
+  if (use_seqlen_k_) {
+    shader.AddInput("seqlens_k", ShaderUsage::None);
+  }
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
@@ -182,7 +182,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                              WGSL_TEMPLATE_PARAMETER(prefer_subgroupshuffle, !is_nvidia_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
-                             WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_));
+                             WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_));
 }
 
 Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -355,10 +356,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
   const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
+  const bool use_seqlen_k = seqlen_k != nullptr && context.IsGraphCaptureEnabled();
+
   if (parameters.sequence_length_ > 1) {
     const uint32_t tile_size = 64;
     // For encode path, use the original CopyKVCache without indirect dispatch preparation
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, seqlen_k, nullptr));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, nullptr));
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
@@ -370,12 +373,16 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                   parameters.head_size_,
                                   parameters.num_heads_,
                                   parameters.is_unidirectional_,
-                                  is_nvidia};
+                                  is_nvidia,
+                                  use_seqlen_k};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
     if (has_attention_bias) {
       program.AddInputs({{attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+    }
+    if (use_seqlen_k) {
+      program.AddInputs({{seqlen_k, ProgramTensorMetadataDependency::None}});
     }
     program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
     const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
@@ -383,11 +390,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
     program.SetDispatchGroupSize(parameters.num_heads_ * num_seq_tile)
         .SetWorkgroupSize(tile_size)
-        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, use_seqlen_k)
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(present_sequence_length)},
-                              {static_cast<uint32_t>(parameters.total_sequence_length_ - parameters.kv_sequence_length_)},
                               {static_cast<uint32_t>(parameters.n_reps)},
                               {alpha},
                               {num_seq_tile}});

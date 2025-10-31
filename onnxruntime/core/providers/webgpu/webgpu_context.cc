@@ -43,7 +43,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
       req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
-      req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
+      req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(power_preference_);
 
 #if !defined(__wasm__)
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
@@ -145,7 +145,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                            BufferCacheMode::Disabled);
 
     // create program manager
-    program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
+    program_mgr_ = std::make_unique<ProgramManager>(*this);
 
     // set query type
 #if !defined(__wasm__)
@@ -955,7 +955,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device, config.small_storage_buffer_binding_size_for_testing));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device, config.small_storage_buffer_binding_size_for_testing, config.power_preference));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

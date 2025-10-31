@@ -198,6 +198,9 @@ Return Value:
         auto CharVector = vec_pack(ShortVector0, ShortVector1);
         vec_xst(CharVector, 0, (int8_t *)(&TmpOutput[0]));
 
+        // Workaround for bad GCC warning that variable is set but not used.
+        MLAS_UNREFERENCED_PARAMETER(CharVector);
+
         MlasPackInt4Elements(Output++, TmpOutput[0], TmpOutput[1]);
         MlasPackInt4Elements(Output++, TmpOutput[2], TmpOutput[3]);
         MlasPackInt4Elements(Output++, TmpOutput[4], TmpOutput[5]);

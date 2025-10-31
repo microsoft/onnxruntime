@@ -4,7 +4,7 @@
 #include <vector>
 #include <iterator>
 #include <algorithm>
-#include "core/providers/webgpu/nn/conv2d_mm_webgpu.h"
+#include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/activation_util.h"
