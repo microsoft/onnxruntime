@@ -69,8 +69,8 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 
   if (have_file) {
-    for (size_t runs = 0; runs < time_costs_submission.size(); runs++) {
-      outfile << model_name << "," << time_costs_submission[runs] << "," << time_costs_total[runs] << "," << peak_workingset_size << ","
+    for (size_t runs = 0; runs < time_costs_total.size(); runs++) {
+      outfile << model_name << "," << time_costs_total[runs] << "," << peak_workingset_size << ","
               << average_CPU_usage << "," << runs << std::endl;
     }
   } else {
