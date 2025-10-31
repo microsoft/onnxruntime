@@ -199,7 +199,8 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
     if (program.IndirectDispatchTensor() != nullptr) {
       ORT_ENFORCE(!inputs.empty() && inputs.back().tensor == program.IndirectDispatchTensor(),
-                  "Indirect dispatch tensor must be the last input.");
+                  "The indirect dispatch tensor must be the last input. "
+                  "Ensure no call to program.AddInput() occurs after program.SetIndirectDispatchTensor().");
     }
 
     ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](const ProgramOutput& output) {
