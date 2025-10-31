@@ -12,20 +12,18 @@
 #include <onnx/defs/schema.h>
 #include <onnx/checker.h>
 
-using namespace ONNX_NAMESPACE;
-
 #define ONNX_IR_VERSION 11
 #define OPSET_VERSION 23
 
 namespace onnxruntime {
 namespace test {
 
-// Helper: make TensorProto
-TensorProto MakeTensor(const std::string& name,
-                       TensorProto::DataType dtype,
-                       const std::vector<int64_t>& dims,
-                       const std::vector<int64_t>& vals) {
-  TensorProto t;
+// Helper: make ONNX_NAMESPACE::TensorProto
+ONNX_NAMESPACE::TensorProto MakeTensor(const std::string& name,
+                                       ONNX_NAMESPACE::TensorProto::DataType dtype,
+                                       const std::vector<int64_t>& dims,
+                                       const std::vector<int64_t>& vals) {
+  ONNX_NAMESPACE::TensorProto t;
   t.set_name(name);
   t.set_data_type(dtype);
   for (auto d : dims) t.add_dims(d);
@@ -33,12 +31,12 @@ TensorProto MakeTensor(const std::string& name,
   return t;
 }
 
-TensorProto MakeTensorFloat(const std::string& name,
-                            const std::vector<int64_t>& dims,
-                            const std::vector<float>& vals) {
-  TensorProto t;
+ONNX_NAMESPACE::TensorProto MakeTensorFloat(const std::string& name,
+                                            const std::vector<int64_t>& dims,
+                                            const std::vector<float>& vals) {
+  ONNX_NAMESPACE::TensorProto t;
   t.set_name(name);
-  t.set_data_type(TensorProto::FLOAT);
+  t.set_data_type(ONNX_NAMESPACE::TensorProto::FLOAT);
   for (auto d : dims) t.add_dims(d);
   for (auto v : vals) t.add_float_data(v);
   return t;
@@ -48,13 +46,13 @@ OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name) {
   // --------------------
   // Create Model
   // --------------------
-  ModelProto model;
+  ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_IR_VERSION);
   auto* opset = model.add_opset_import();
   opset->set_domain("");  // empty = default ONNX domain
   opset->set_version(OPSET_VERSION);
 
-  GraphProto* graph = model.mutable_graph();
+  ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
   graph->set_name("DropoutMatMulGraph");
 
   // --------------------
@@ -68,7 +66,7 @@ OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name) {
 
     auto* type = x->mutable_type();
     auto* tt = type->mutable_tensor_type();
-    tt->set_elem_type(TensorProto::FLOAT);
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
 
     auto* shape = tt->mutable_shape();
     shape->add_dim()->set_dim_value(3);
@@ -81,7 +79,7 @@ OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name) {
 
     auto* type = w->mutable_type();
     auto* tt = type->mutable_tensor_type();
-    tt->set_elem_type(TensorProto::FLOAT);
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
 
     auto* shape = tt->mutable_shape();
     shape->add_dim()->set_dim_value(2);
@@ -97,7 +95,7 @@ OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name) {
 
     auto* type = x->mutable_type();
     auto* tt = type->mutable_tensor_type();
-    tt->set_elem_type(TensorProto::FLOAT);
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
 
     auto* shape = tt->mutable_shape();
     shape->add_dim()->set_dim_value(2);
@@ -108,7 +106,7 @@ OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name) {
   // Dropout Node
   // --------------------
   {
-    NodeProto* node = graph->add_node();
+    ONNX_NAMESPACE::NodeProto* node = graph->add_node();
     node->set_name("DropoutNode");
     node->set_op_type("Dropout");
 
@@ -121,7 +119,7 @@ OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name) {
   // MatMul Node
   // --------------------
   {
-    NodeProto* node = graph->add_node();
+    ONNX_NAMESPACE::NodeProto* node = graph->add_node();
     node->set_name("MatMulNode");
     node->set_op_type("MatMul");
 
@@ -151,7 +149,7 @@ OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name) {
 }
 
 OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_name) {
-  ModelProto model;
+  ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_IR_VERSION);
   auto* opset = model.add_opset_import();
   opset->set_domain("");  // empty = default ONNX domain
@@ -169,7 +167,7 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
 
     auto* type = inp->mutable_type();
     auto* tt = type->mutable_tensor_type();
-    tt->set_elem_type(TensorProto::FLOAT);
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
 
     // Shape: ["N"]
     auto* shape = tt->mutable_shape();
@@ -181,15 +179,15 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
   // ======================
   {
     // K = [300]
-    TensorProto K = MakeTensor("K", TensorProto::INT64, {1}, {300});
+    ONNX_NAMESPACE::TensorProto K = MakeTensor("K", ONNX_NAMESPACE::TensorProto::INT64, {1}, {300});
     *graph->add_initializer() = K;
 
     // zero = 0.0 (scalar)
-    TensorProto zero = MakeTensor("zero", TensorProto::INT64, {}, {0});
+    ONNX_NAMESPACE::TensorProto zero = MakeTensor("zero", ONNX_NAMESPACE::TensorProto::INT64, {}, {0});
     *graph->add_initializer() = zero;
 
     // twenty_six = 26 (scalar)
-    TensorProto ts = MakeTensor("twenty_six", TensorProto::INT64, {}, {26});
+    ONNX_NAMESPACE::TensorProto ts = MakeTensor("twenty_six", ONNX_NAMESPACE::TensorProto::INT64, {}, {26});
     *graph->add_initializer() = ts;
   }
 
@@ -197,7 +195,7 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
   // ---- TopK ----
   // ======================
   {
-    NodeProto* n = graph->add_node();
+    ONNX_NAMESPACE::NodeProto* n = graph->add_node();
     n->set_op_type("TopK");
     n->add_input("input");
     n->add_input("K");
@@ -210,7 +208,7 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
   // ---- Less ----
   // ======================
   {
-    NodeProto* n = graph->add_node();
+    ONNX_NAMESPACE::NodeProto* n = graph->add_node();
     n->set_op_type("Less");
     n->add_input("topk_indices");
     n->add_input("zero");
@@ -222,7 +220,7 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
   // ---- Div ----
   // ======================
   {
-    NodeProto* n = graph->add_node();
+    ONNX_NAMESPACE::NodeProto* n = graph->add_node();
     n->set_op_type("Div");
     n->add_input("topk_indices");
     n->add_input("twenty_six");
@@ -234,7 +232,7 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
   // ---- Mod ----
   // ======================
   {
-    NodeProto* n = graph->add_node();
+    ONNX_NAMESPACE::NodeProto* n = graph->add_node();
     n->set_op_type("Mod");
     n->add_input("topk_indices");
     n->add_input("twenty_six");
@@ -245,7 +243,7 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
   // =========================
   // ---- Graph Outputs ----
   // =========================
-  auto add_output = [&](const std::string& name, TensorProto::DataType type, const std::string& dim) {
+  auto add_output = [&](const std::string& name, ONNX_NAMESPACE::TensorProto::DataType type, const std::string& dim) {
     auto* out = graph->add_output();
     out->set_name(name);
 
@@ -256,10 +254,10 @@ OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_n
     shape->add_dim()->set_dim_param(dim);
   };
 
-  add_output("scores", TensorProto::FLOAT, "K");
-  add_output("Less_output_0", TensorProto::BOOL, "K");
-  add_output("Div_17_output_0", TensorProto::INT64, "K");
-  add_output("labels", TensorProto::INT64, "K");
+  add_output("scores", ONNX_NAMESPACE::TensorProto::FLOAT, "K");
+  add_output("Less_output_0", ONNX_NAMESPACE::TensorProto::BOOL, "K");
+  add_output("Div_17_output_0", ONNX_NAMESPACE::TensorProto::INT64, "K");
+  add_output("labels", ONNX_NAMESPACE::TensorProto::INT64, "K");
 
   // ======================
   // Validate + Save

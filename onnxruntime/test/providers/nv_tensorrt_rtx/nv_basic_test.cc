@@ -203,6 +203,56 @@ TEST_P(TypeTests, IOTypes) {
   }
 }
 
+TEST(NvExecutionProviderTest, TestSessionOutputs) {
+  /*
+   * Model #1:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+  {
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+
+    auto model_path = ORT_TSTR("model_with_topk_and_multiple_graph_outputs.onnx");
+    Ort::Status status(CreateModelWithTopKWhichContainsGraphOutput(model_path));
+    ASSERT_TRUE(status.IsOK());
+
+    Ort::Session session(env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 4);
+  }
+
+  /*
+   * Model #2:
+   *
+   * "X" ---> Dropout ---> MatMul ---> "Y"
+   *          ^     |
+   *          |     |
+   * "W" ------     ----> Can't be graph's output
+   *
+   */
+  {
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+
+    auto model_path = ORT_TSTR("model_with_node_output_not_used.onnx");
+    Ort::Status status(CreateModelWithNodeOutputNotUsed(model_path));
+    ASSERT_TRUE(status.IsOK());
+
+    Ort::Session session(env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 1);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(NvExecutionProviderTest, TypeTests,
                          ::testing::Values(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
@@ -397,57 +447,6 @@ TEST(NvExecutionProviderTest, DataTransfer) {
   // must release this before we unload the EP and the allocator is deleted
   device_tensor = Ort::Value();
 }
-
-TEST(NvExecutionProviderTest, TestSessionOutputs) {
-  /*
-   * Model #1:
-   *
-   * "input" ---> TopK ---
-   *                     |---> "scores"
-   *                     |--- Less ---> "Less_output_0"
-   *                     |--- Div ---> "Div_output_0"
-   *                     |--- Mod ---> "labels"
-   */
-  {
-    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
-    OrtTensorRTProviderOptionsV2 provider_options;
-    Ort::SessionOptions session_options;
-    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
-
-    auto model_path = ORT_TSTR("model_with_topk_and_multiple_graph_outputs.onnx");
-    Ort::Status status(CreateModelWithTopKWhichContainsGraphOutput(model_path));
-    ASSERT_TRUE(status.IsOK());
-
-    Ort::Session session(env, model_path, session_options);
-
-    size_t output_count = session.GetOutputCount();
-    ASSERT_TRUE(output_count == 4);
-  }
-
-  /*
-   * Model #2:
-   *
-   * "X" ---> Dropout ---> MatMul ---> "Y"
-   *          ^     |
-   *          |     |
-   * "W" ------     ----> Can't be graph's output
-   *
-   */
-  {
-    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
-    OrtTensorRTProviderOptionsV2 provider_options;
-    Ort::SessionOptions session_options;
-    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
-
-    auto model_path = ORT_TSTR("model_with_node_output_not_used.onnx");
-    Ort::Status status(CreateModelWithNodeOutputNotUsed(model_path));
-    ASSERT_TRUE(status.IsOK());
-
-    Ort::Session session(env, model_path, session_options);
-
-    size_t output_count = session.GetOutputCount();
-    ASSERT_TRUE(output_count == 1);
-  }
 
 #endif
 
