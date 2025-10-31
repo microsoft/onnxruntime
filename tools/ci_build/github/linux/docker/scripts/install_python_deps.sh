@@ -37,4 +37,9 @@ fi
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+
+if [[ "$PYTHON_VER" = "3.14" ]]; then
+${PYTHON_EXE} -m pip install onnxscript ml_dtypes onnx_ir onnx_weekly typing_extensions packaging numpy --no-deps
+fi
+
 ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps\.sh/requirements\.txt}
