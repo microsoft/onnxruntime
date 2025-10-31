@@ -32,12 +32,15 @@ stages:
           EP_BUILD_FLAGS: --enable_lto --use_webgpu
 
     - ${{ each python_version in parameters.PythonVersions }}:
-      - template: ../templates/py-macos.yml
-        parameters:
-          arch: 'arm64'
-          python_version: ${{ python_version }}
-          extra_build_arg: --use_webgpu ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
+      - stage:  MacOS_py_webgpu_Wheels_${{ python_version }}
+        dependsOn: []
+        jobs:
+        - template: ../templates/py-macos.yml
+          parameters:
+            arch: 'arm64'
+            python_version: ${{ python_version }}
+            extra_build_arg: --use_webgpu ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-linux-webgpu-stage.yml
       parameters:
