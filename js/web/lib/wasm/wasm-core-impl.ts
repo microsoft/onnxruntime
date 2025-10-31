@@ -125,7 +125,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
       if (!webgpuAdapter) {
         throw new Error(
           'Failed to get GPU adapter. ' +
-            'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
+          'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
         );
       }
     } else {
@@ -869,8 +869,87 @@ export const run = async (
       // always binds its tensor to 'ml-tensor'. In such cases, the tensor ID might change after binding,
       // but copying data for these tensors should still be avoided.
       if (tensor === outputTensorHandles[i] || preAllocatedOutputs.includes(outputTensorHandles[i])) {
-        // output tensor is pre-allocated. no need to copy data.
-        output.push(outputTensors[i]!);
+        // output tensor is pre-allocated.
+        const prealloc = outputTensors[i]!;
+        const preallocLocation = prealloc[3];
+
+        if (preallocLocation === 'cpu') {
+          // For CPU pre-allocated outputs, kernels wrote into WASM memory. Copy the data back into
+          // the user's TypedArray (or string array) before returning the original tensor metadata.
+          const beforeGetTensorDataStack = wasm.stackSave();
+          const tensorDataOffset = wasm.stackAlloc(4 * ptrSize);
+          let type: Tensor.Type | undefined;
+          let dataOffset = 0;
+          try {
+            const errorCode = wasm._OrtGetTensorData(
+              tensor,
+              tensorDataOffset,
+              tensorDataOffset + ptrSize,
+              tensorDataOffset + 2 * ptrSize,
+              tensorDataOffset + 3 * ptrSize,
+            );
+            if (errorCode !== 0) {
+              checkLastError(`Can't access output tensor data on index ${i}.`);
+            }
+            const valueType = ptrSize === 4 ? 'i32' : 'i64';
+            const dataType = Number(wasm.getValue(tensorDataOffset, valueType));
+            dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
+            const dimsOffset = wasm.getValue(tensorDataOffset + 2 * ptrSize, '*');
+            const dimsLength = Number(wasm.getValue(tensorDataOffset + 3 * ptrSize, valueType));
+            const dims: number[] = [];
+            for (let j = 0; j < dimsLength; j++) {
+              dims.push(Number(wasm.getValue(dimsOffset + j * ptrSize, valueType)));
+            }
+            if (wasm._OrtFree(dimsOffset) !== 0) {
+              checkLastError("Can't free memory for tensor dims.");
+            }
+            const size = dims.reduce((a, b) => a * b, 1);
+            type = tensorDataTypeEnumToString(dataType);
+
+            if (type === 'string') {
+              // Update user's string[] in place
+              const target = prealloc[2] as string[];
+              for (let j = 0; j < size; j++) {
+                const offset = wasm.getValue(dataOffset + j * ptrSize, '*');
+                const nextOffset = wasm.getValue(dataOffset + (j + 1) * ptrSize, '*');
+                const maxBytesToRead = j === size - 1 ? undefined : nextOffset - offset;
+                const s = wasm.UTF8ToString(offset, maxBytesToRead);
+                // ensure target length
+                if (j < target.length) {
+                  target[j] = s;
+                } else {
+                  target.push(s);
+                }
+              }
+              if (target.length > size) {
+                target.length = size;
+              }
+            } else {
+              // Numeric tensor: copy bytes from WASM heap to user's TypedArray
+              const target = prealloc[2] as Exclude<Tensor.DataType, string[]>;
+              const view = new Uint8Array(target.buffer, target.byteOffset, target.byteLength);
+              view.set(wasm.HEAPU8.subarray(dataOffset, dataOffset + view.byteLength));
+            }
+          } finally {
+            wasm.stackRestore(beforeGetTensorDataStack);
+            // For string tensors, dataOffset points to offsets array; free it.
+            if (typeof type !== 'undefined' && type === 'string' && dataOffset) {
+              wasm._free(dataOffset);
+            }
+          }
+
+          output.push(prealloc);
+          if (tensor !== outputTensorHandles[i]) {
+            // release redundant tensor earlier.
+            if (wasm._OrtReleaseTensor(tensor) !== 0) {
+              checkLastError("Can't release tensor.");
+            }
+          }
+          continue;
+        }
+
+        // Non-CPU pre-allocated outputs (gpu-buffer/ml-tensor/cpu-pinned): no copy needed.
+        output.push(prealloc);
         if (tensor !== outputTensorHandles[i]) {
           // release redundant tensor earlier.
           if (wasm._OrtReleaseTensor(tensor) !== 0) {
