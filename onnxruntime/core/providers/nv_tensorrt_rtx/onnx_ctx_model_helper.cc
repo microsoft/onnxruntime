@@ -63,6 +63,24 @@ void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
   }
 }
 
+static Status MakeInitializersAsNodeInputs(const GraphViewer& graph_viewer,
+                                           Graph& graph_build,
+                                           std::vector<onnxruntime::NodeArg*> inputs) {
+
+  const InitializedTensorSet& allInitializers = graph_viewer.GetAllInitializedTensors();
+  for (auto& entry : allInitializers) {
+    auto* tp = entry.second;
+    if (utils::HasExternalDataInMemory(*tp)) {
+      auto& name = entry.first;
+      auto* node_arg = graph_viewer.GetNodeArg(name);
+      auto& n_input = graph_build.GetOrCreateNodeArg(name, node_arg->TypeAsProto());
+      inputs.push_back(&n_input);
+    }
+  }
+
+  return Status::OK();
+}
+
 /*
  * Create EP context node where engine information is embedded
  */
@@ -149,6 +167,8 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
   node_attributes->emplace(PARTITION_NAME, *attr_partition_name);
   node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_onnx_filename);
   node_attributes->emplace(SDK_VERSION, *attr_sdk_version);
+
+  ORT_RETURN_IF_ERROR(MakeInitializersAsNodeInputs(graph_viewer, graph_build, inputs));
 
   // Create EP context node
   graph_build.AddNode(ep_context_node_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
