@@ -63,7 +63,7 @@ jobs:
           cp ${BASE_PATH}/*.pom          ${{ runner.temp }}/artifacts          
 
       - name: Upload Android AAR Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/artifacts
@@ -102,7 +102,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Download Android AAR artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/android-full-aar
@@ -206,7 +206,7 @@ jobs:
             --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
 
       - name: Upload iOS Pod Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -221,7 +221,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Download iOS pod artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -277,7 +277,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Download iOS pod artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod

@@ -19,6 +19,7 @@
     "test:f16": "mocha -n js-float16array \"./test/**/*.js\" --timeout 30000"
   },
   "devDependencies": {
+    "globby": "^15.0.0",
     "typedoc": "^0.25.7"
   },
   "main": "dist/cjs/index.js",

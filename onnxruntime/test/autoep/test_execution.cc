@@ -86,7 +86,7 @@ void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_o
 // Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   // Create session with example plugin EP
@@ -101,7 +101,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
 // Uses the PREFER_CPU policy to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
 
   {
     // PREFER_CPU pick our example EP over ORT CPU EP. TODO: Actually assert this.
@@ -113,7 +113,7 @@ TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
 
 TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   // Create session with example plugin EP
@@ -128,12 +128,42 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
 // This test uses the OrtCompileApi but could also be done by setting the appropriate session option configs.
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   {
     const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
     const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_mul_1_ctx.onnx");
+    std::filesystem::remove(output_model_file);
+
+    // Create session with example plugin EP
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Create model compilation options from the session options.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    // Compile the model.
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    // Make sure the compiled model was generated.
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+}
+
+// Generate an EPContext model with a plugin EP that uses a virtual GPU.
+TEST(OrtEpLibrary, PluginEp_VirtGpu_GenEpContextModel) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep);
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  {
+    const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/add_mul_add.onnx");
+    const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_virt_gpu_add_mul_add_ctx.onnx");
     std::filesystem::remove(output_model_file);
 
     // Create session with example plugin EP

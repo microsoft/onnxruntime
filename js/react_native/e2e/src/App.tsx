@@ -4,7 +4,6 @@
 import * as React from 'react';
 import { Image, Text, TextInput, View } from 'react-native';
 // onnxruntime-react-native package is installed when bootstraping
-// eslint-disable-next-line import/no-extraneous-dependencies
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import MNIST, { MNISTInput, MNISTOutput, MNISTResult, } from './mnist-data-handler';
 import { Buffer } from 'buffer';
@@ -19,9 +18,9 @@ interface State {
   string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/ban-types
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export default class App extends React.PureComponent<{}, State> {
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   constructor(props: {} | Readonly<{}>) {
     super(props);
 
