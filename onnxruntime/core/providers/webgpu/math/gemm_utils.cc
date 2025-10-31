@@ -283,18 +283,18 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "  var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
 
   if (split_k) {
-    // With Split-K, the original "workgroup" (with dispatch_z == 1 in API side) into multiple
-    // ones, and in the current workgroup we only compute `kSplitK` elements starting from
+    // With Split-K, the original "workgroup" (with dispatch_z == 1 in API side) is split into
+    // multiple ones, and in the current workgroup we only compute `kSplitK` elements starting from
     // `kSplitK * i32(global_id.z)`.
     //
     //  For example: considering computing Y = (X * W + B) in one workgroup.
     //  Let kSplitk = 2, B = [d1, d2]
-    //  Let X = [[a1 a1 b1 b1 c1 c1]  = [ A1 B1 C1 ] W = [[a2 a2]  = [ A2
-    //           [a1 a1 b1 b1 c1 c1]]                     [a2 a2]      B2
-    //                                                    [b2 b2]      C2 ]
-    //                                                    [b2 b2]
-    //                                                    [c2 c2]
-    //                                                    [c2 c2]]
+    //  Let X = [[a1 a1 b1 b1 c1 c1]  = [ A1 B1 C1 ], W = [[a2 a2]  = [ A2
+    //           [a1 a1 b1 b1 c1 c1]]                      [a2 a2]      B2
+    //                                                     [b2 b2]      C2 ]
+    //                                                     [b2 b2]
+    //                                                     [c2 c2]
+    //                                                     [c2 c2]]
     //
     //  With Split-K:
     //  1. Initialize output Y with B in `MatMulFillBiasBeforeSplitKProgram`:  Y = [[d1, d2]
