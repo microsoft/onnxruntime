@@ -140,12 +140,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                        std::move(tensor), ort_value);
     }
   } else {
-    // for internal initializer, always allocate memory on device - tensor
-    ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape,
-                                       use_device_allocator_for_initializers, alloc));
-
     if (device == default_cpu_device) {
       // deserialize directly to CPU tensor
+      // Do not use arena for internal initializer, just like we do for OrtValue initializers
+      ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
+                                                         tensor_shape, type,
+                                                         default_cpu_alloc, tensor));
       ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, tensor));
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
@@ -154,13 +154,19 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
       }
 
+      // Allocate according to the plan on the device or directly on the device according to
+      // use_device_allocator_for_initializers
+      ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape,
+                                         use_device_allocator_for_initializers, alloc));
+
       // deserialize to CPU first for non-CPU allocator, then copy
       // for internal initializer
-      // 1. allocate memory on CPU - deserialized_tensor
-      // 2. deserialize tensor_proto into a preallocated tensor (deserialized_tensor)
+      // 1. allocate memory on CPU - deserialized_tensor. Do not use arena not to waste space for temporary buffers.
+      // 2. deserialize tensor_proto into a pre-allocated tensor (deserialized_tensor)
       // 3. copy tensor from CPU to device - deserialized_tensor -> tensor (allocated above) -> ort_value
       Tensor deserialized_tensor;
-      ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(use_device_allocator_for_initializers, tensor_shape, type,
+      ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
+                                                         tensor_shape, type,
                                                          default_cpu_alloc, deserialized_tensor));
 
       ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, deserialized_tensor));
@@ -346,6 +352,13 @@ common::Status SaveInitializedTensors(
                        << i.second << " bytes for " << i.first.ToString() << std::endl;
   }
 
+  // ??? Should we ignore this session option if the EP is explicitly providing the read only allocator?
+  // bool have_readonly_initializer_allocator = alloc->Info().alloc_type == OrtReadOnlyAllocator;
+  // This option also means to ignore arena if present and use Reserve().
+  const bool use_device_allocator_for_initializers =
+      session_options.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
+
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     // We check for cancellation for every initializer since mapping from disk can be costly
@@ -374,12 +387,6 @@ common::Status SaveInitializedTensors(
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
-
-      // ??? Should we ignore this session option if the EP is explicitly providing the read only allocator?
-      // bool have_readonly_initializer_allocator = alloc->Info().alloc_type == OrtReadOnlyAllocator;
-      const bool use_device_allocator_for_initializers =
-          session_options.config_options.GetConfigOrDefault(
-              kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
       // Check if we already have an OrtValue for this initializer on CPU
       if (OrtValue ort_value_from_graph;

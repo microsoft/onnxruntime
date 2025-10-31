@@ -19,18 +19,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-ONNX_OPERATOR_KERNEL_EX(
-    GroupQueryAttention,
-    kMSDomain,
-    1,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .MayInplace(3, 1)
-        .MayInplace(4, 2)
-        .InputMemoryType(OrtMemTypeCPUInput, 6),
-    GroupQueryAttention);
-
 Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
   const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
@@ -268,6 +256,29 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                         parameters.v_head_size_, value, nullptr, 0, &V));
   return ApplyAttention(&Q, &K, &V, attention_bias, past_key, past_value, output, present_key,
                         present_value, parameters, context, head_sink, seqlen_k, local_window_size_);
+}
+
+KernelCreateInfo CreateGroupQueryAttentionKernelInfo(bool enable_graph_capture) {
+  KernelDefBuilder builder;
+  builder.SetName("GroupQueryAttention")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Provider(kWebGpuExecutionProvider)
+      .TypeConstraint("T", WebGpuSupportedFloatTypes())
+      .MayInplace(3, 1)
+      .MayInplace(4, 2);
+
+  // Only set InputMemoryType to CPU when graph capture is disabled
+  if (!enable_graph_capture) {
+    builder.InputMemoryType(OrtMemTypeCPUInput, 6);
+  }
+
+  return KernelCreateInfo(
+      builder.Build(),
+      [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+        out = std::make_unique<GroupQueryAttention>(info);
+        return Status::OK();
+      });
 }
 
 }  // namespace webgpu

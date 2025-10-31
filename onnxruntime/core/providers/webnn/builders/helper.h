@@ -297,5 +297,9 @@ bool IsMLTensorSupported();
 uint8_t PackInt8ToUint8DoubledNibbles(int8_t value, const int32_t& data_type);
 uint16_t PackFloat32ToUint16AsFloat16(float value);
 
+bool CanFallbackInt64ToInt32(const emscripten::val& wnn_limits,
+                             const std::string& webnn_op_type,
+                             const std::string& input_name);
+
 }  // namespace webnn
 }  // namespace onnxruntime
