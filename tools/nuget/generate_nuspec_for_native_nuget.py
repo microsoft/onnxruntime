@@ -8,9 +8,9 @@ import shutil
 import sys
 from pathlib import Path
 
-platform_version_android = "31.0"
-platform_version_ios = "15.4"
-platform_version_maccatalyst = "14.0"
+platform_version_android = "35.0"
+platform_version_ios = "18.0"
+platform_version_maccatalyst = "18.0"
 
 
 # What does the names of our C API tarball/zip files looks like
