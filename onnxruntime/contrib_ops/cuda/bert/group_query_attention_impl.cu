@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <cassert>
 #include <cuda_fp16.h>
+#include <cublas_v2.h>
 #include <cub/cub.cuh>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -43,7 +44,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
-#include <cublas_v2.h>
+#include "contrib_ops/cuda/bert/group_query_attention_qdq.cuh"
 
 using namespace onnxruntime::cuda;
 
@@ -274,7 +275,7 @@ Status LaunchGetSeqlensInteractive(const int32_t* seqlens_k, int32_t* seqlens_k_
                                    const int batch_size, const int sequence_length, cudaStream_t stream,
                                    const int max_threads_per_block) {
   const int threads = std::min(batch_size, max_threads_per_block);
-  const int blocks = (threads / max_threads_per_block) + 1;
+  const int blocks = (batch_size + threads - 1) / threads;
   GetSeqlensInteractive<<<blocks, threads, 0, stream>>>(seqlens_k, seqlens_k_buff, batch_size,
                                                         sequence_length);
   return CUDA_CALL(cudaGetLastError());
@@ -477,10 +478,6 @@ Status FlashAttention(
       scale, parameters.softcap, is_causal, is_bf16, parameters.use_smooth_softmax, past_bsnh, parameters.num_splits,
       reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
       parameters.local_window_size - 1, parameters.rotary_interleaved, parameters.is_packed_qkv));
-
-  // if (parameters.left_padding && parameters.is_first_prompt) {
-  //   ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));
-  // }
 
   DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
@@ -708,6 +705,3 @@ template Status LaunchUnpackQKV<BFloat16, LAYOUT_BNSH>(
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#undef OFFSET_BNSH
-#undef OFFSET_BSNH
