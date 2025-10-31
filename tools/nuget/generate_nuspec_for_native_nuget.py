@@ -8,6 +8,8 @@ import shutil
 import sys
 from pathlib import Path
 
+# These platform version values are the default target platform versions for .NET 9 from the table here:
+# https://learn.microsoft.com/en-us/dotnet/standard/frameworks#os-version-in-tfms
 platform_version_android = "35.0"
 platform_version_ios = "18.0"
 platform_version_maccatalyst = "18.0"
