@@ -287,8 +287,8 @@ void MLASCALL MlasTmac(
                 lut_scales + scale_bias_offset,            // Scales for this row
                 lut_biases + scale_bias_offset,            // Biases for this row
                 M,
-                N,
                 K,
+                N,
                 tmac_params.act_group_size
             );
         }
