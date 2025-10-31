@@ -3700,6 +3700,74 @@ TEST(MathOpTest, Equal_multidirectional_broadcastAB_bool) {
   test.Run();
 }
 
+TEST(MathOpTest, Max_12_Int8) {
+  OpTester test("Max", 12);
+  test.AddInput<int8_t>("data_0", {1, 3},
+                        {1, 2, 3});
+  test.AddInput<int8_t>("data_2", {3, 3},
+                        {10, 20, 30,
+                         40, 50, 60,
+                         70, 80, 90});
+  test.AddInput<int8_t>("data_1", {3, 1},
+                        {-1, -2, 127});
+  test.AddOutput<int8_t>("max", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          127, 127, 127});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Max_12_UInt8) {
+  OpTester test("Max", 12);
+  test.AddInput<uint8_t>("data_0", {1, 3},
+                         {1, 20, 30});
+  test.AddInput<uint8_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<uint8_t>("data_1", {3, 1},
+                         {100, 20, 30});
+  test.AddOutput<uint8_t>("max", {3, 3},
+                          {100, 100, 100,
+                           40, 50, 60,
+                           70, 80, 90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, Min_12_Int8) {
+  OpTester test("Min", 12);
+  test.AddInput<int8_t>("data_0", {1, 3},
+                        {1, 2, 3});
+  test.AddInput<int8_t>("data_2", {3, 3},
+                        {10, 20, 30,
+                         40, 50, 60,
+                         -70, -80, -90});
+  test.AddInput<int8_t>("data_1", {3, 1},
+                        {-1, 20, 127});
+  test.AddOutput<int8_t>("min", {3, 3},
+                         {-1, -1, -1,
+                          1, 2, 3,
+                          -70, -80, -90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Min_12_UInt8) {
+  OpTester test("Min", 12);
+  test.AddInput<uint8_t>("data_0", {1, 3},
+                         {1, 20, 30});
+  test.AddInput<uint8_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<uint8_t>("data_1", {3, 1},
+                         {1, 20, 30});
+  test.AddOutput<uint8_t>("min", {3, 3},
+                          {1, 1, 1,
+                           1, 20, 20,
+                           1, 20, 30});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(MathOpTest, Mean_6) {
   OpTester test("Mean", 6);
   std::vector<int64_t> dims{3, 3};
