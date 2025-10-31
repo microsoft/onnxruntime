@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/conv_transpose_with_dynamic_pads.h"
+#include "conv_transpose_with_dynamic_pads.h"
 
 namespace onnxruntime {
 namespace contrib {
