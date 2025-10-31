@@ -34,10 +34,6 @@ target 'OnnxruntimeModule' do
   shared
 end
 
-target 'OnnxruntimeModuleTest' do
-  shared
-end
-
 post_install do |installer|
   react_native_post_install(
     installer,
