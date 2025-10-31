@@ -50,29 +50,6 @@ class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddin
   const bool interleaved_;
 };
 
-class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
- public:
-  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"num_heads", ProgramUniformVariableDataType::Uint32},
-      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
-      {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
-      {"first_prompt_flag", ProgramUniformVariableDataType::Uint32},
-      {"subsequent_prompt_flag", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool interleaved_;
-};
-
 class RotaryEmbedding final : public WebGpuKernel {
  public:
   RotaryEmbedding(const OpKernelInfo& info);
