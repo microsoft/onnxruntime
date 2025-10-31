@@ -37,6 +37,8 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       coreml_op_type = "erf";
     } else if (op_type == "Round") {
       coreml_op_type = "round";
+    } else if (op_type == "Exp") {
+      coreml_op_type = "exp";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "UnaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -79,8 +81,10 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 bool UnaryOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                        const logging::Logger& /*logger*/) const {
-  if (!input_params.create_mlprogram && (node.OpType() == "Erf" || node.OpType() == "Round")) {
-    return false;
+  if (!input_params.create_mlprogram) {
+    if (node.OpType() == "Erf" || node.OpType() == "Round" || node.OpType() == "Exp") {
+      return false;
+    }
   }
   return true;
 }
