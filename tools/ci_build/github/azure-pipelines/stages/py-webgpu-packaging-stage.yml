@@ -32,7 +32,7 @@ stages:
           EP_BUILD_FLAGS: --enable_lto --use_webgpu
 
     - ${{ each python_version in parameters.PythonVersions }}:
-      - stage:  MacOS_py_webgpu_Wheels_${{ python_version }}
+      - stage:  MacOS_py_webgpu_Wheels_${{ replace(python_version,'.','_') }}_Build
         dependsOn: []
         jobs:
         - template: ../templates/py-macos.yml
