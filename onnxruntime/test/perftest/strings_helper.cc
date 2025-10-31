@@ -137,5 +137,22 @@ void ParseEpDeviceIndexList(const std::string& input, std::vector<int>& result) 
     }
   }
 }
+
+void ParseEpDeviceFilterKeyValuePairs(const std::string& input, std::vector<std::pair<std::string, std::string>>& result) {
+  std::stringstream ss(input);
+  std::string token;
+
+  while (std::getline(ss, token, ' ')) {
+    if (!token.empty()) {
+      size_t delimiter_location = token.find("|");
+      if (delimiter_location == std::string::npos || delimiter_location == 0 || delimiter_location == token.size() - 1) {
+        ORT_THROW("Use a '|' to separate the key and value for the device filter you are trying to use.\n");
+      }
+      std::string key = token.substr(0, delimiter_location);
+      std::string value = token.substr(delimiter_location + 1);
+      result.emplace_back(std::make_pair(std::move(key), std::move(value)));
+    }
+  }
+}
 }  // namespace perftest
 }  // namespace onnxruntime

@@ -27,8 +27,8 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
 #include "core/framework/float4.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"

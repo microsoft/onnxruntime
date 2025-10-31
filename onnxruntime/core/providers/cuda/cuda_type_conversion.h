@@ -26,8 +26,8 @@
 #include <type_traits>
 #include <cstdint>
 #include "core/framework/int4.h"
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
 #include "core/framework/float4.h"
 
 namespace onnxruntime {

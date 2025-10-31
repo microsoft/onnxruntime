@@ -678,7 +678,14 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                      ORT_TSTR("fp16_coreml_FNS-Candy"),
                                                      ORT_TSTR("fp16_test_tiny_yolov2"),
                                                      ORT_TSTR("fp16_test_shufflenet"),
-                                                     ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
+                                                     ORT_TSTR("keras2coreml_SimpleRNN_ImageNet"),
+                                                     // models from model zoo. #26274: cuDNN frontend no valid engine
+                                                     ORT_TSTR("YOLOv3"),
+                                                     ORT_TSTR("YOLOv3-12"),
+                                                     ORT_TSTR("YOLOv4"),
+                                                     ORT_TSTR("SSD-MobilenetV1"),
+                                                     ORT_TSTR("SSD-MobilenetV1-12")};
+
   // For ROCm EP, also disable the following tests due to flakiness,
   // mainly with precision issue and random memory access fault.
   static const ORTCHAR_T* rocm_disabled_tests[] = {ORT_TSTR("bvlc_alexnet"),
