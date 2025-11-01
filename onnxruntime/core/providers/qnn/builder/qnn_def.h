@@ -71,15 +71,11 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpExtremePowerSaver,
 };
 
-typedef struct RpcPowerConfigs {
-  uint32_t rpc_control_latency = 0;
-  uint32_t rpc_polling_time = 0;
-} RpcPowerConfigs_t;
-
 typedef struct PerThreadHtpPowerConfigs {
   std::optional<HtpPerformanceMode> pre_run_perf_mode;
   std::optional<HtpPerformanceMode> post_run_perf_mode;
-  std::optional<RpcPowerConfigs_t> rpc_configs;
+  std::optional<uint32_t> rpc_control_latency;
+  std::optional<uint32_t> rpc_polling_time;
 
   uint32_t power_config_id = 0;
 } PerThreadHtpPowerConfigs_t;
@@ -126,6 +122,9 @@ constexpr const int kSleepMediumLatency = 1000;
 constexpr const int kSleepHighLatency = 2000;
 constexpr const int kDcvsDisable = 0;
 constexpr const int kDcvsEnable = 1;
+constexpr const uint32_t kDisableRpcPolling = 0;
+constexpr const uint32_t kDisableRpcControlLatency = 0;
+constexpr const uint32_t kMaxRpcPolling = 9999;
 
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
