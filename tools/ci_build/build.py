@@ -1609,6 +1609,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 "libcustom_op_get_const_input_test_library.so",
                 "libcustom_op_library.so",
                 "libexample_plugin_ep.so",
+                "libonnxruntime_runtime_path_test_shared_library.so",
                 "libonnxruntime.so",
             ]
 
