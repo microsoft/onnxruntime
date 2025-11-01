@@ -9,6 +9,7 @@
 
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
+#include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 
 class MlasDynamicQgemmTest {
  private:
@@ -21,7 +22,7 @@ class MlasDynamicQgemmTest {
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    if (!ArmKleidiAI::SMEInfo::CanUseSME2) {
       GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
     }
 
