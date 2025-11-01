@@ -98,6 +98,7 @@ static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:         // kINT32 - 32-bit signed integer
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:         // kINT64 - 64-bit signed integer
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:  // kFP8 - 8-bit floating point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:        // kDOUBLE - 64-bit floating point
       return true;
     default:
       return false;
