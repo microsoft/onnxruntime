@@ -31,11 +31,17 @@ std::basic_string<PATH_CHAR_T> InitializeAndGetRuntimePath() {
 }  // namespace
 
 extern "C" const PATH_CHAR_T* OrtTestGetSharedLibraryRuntimePath(void) {
+#if !defined(ORT_NO_EXCEPTIONS)
   try {
+#endif
+
     static const auto runtime_path = InitializeAndGetRuntimePath();
     return runtime_path.c_str();
+
+#if !defined(ORT_NO_EXCEPTIONS)
   } catch (const std::exception& e) {
     std::cerr << __FUNCTION__ << " - caught exception: " << e.what() << "\n";
     return nullptr;
   }
+#endif
 }
