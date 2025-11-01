@@ -12,19 +12,19 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/string_utils.h"
 #include "core/providers/webgpu/string_macros.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 ShaderHelper::ShaderHelper(const ProgramBase& program,
                            const ProgramMetadata& program_metadata,
-                           const wgpu::Device& device,
-                           const wgpu::Limits& limits,
+                           const WebGpuContext& webgpu_context,
                            uint32_t dispatch_group_size_x,
                            uint32_t dispatch_group_size_y,
                            uint32_t dispatch_group_size_z)
-    : device_{device},
-      limits_{limits},
+    : webgpu_context_{webgpu_context},
+      limits_{webgpu_context.DeviceLimits()},
       dispatch_group_size_x_{dispatch_group_size_x},
       dispatch_group_size_y_{dispatch_group_size_y},
       dispatch_group_size_z_{dispatch_group_size_z},
@@ -64,7 +64,7 @@ Status ShaderHelper::Init() {
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
-  if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
@@ -398,14 +398,14 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                   [](const ProgramOutput& output) {
                     return output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
                   })) {
-    ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
+    ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
   }
-  if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
 #if !defined(__wasm__)
-  if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
 
     // Dawn enforces the subgroup matrix builtin arguments to be uniform in change https://dawn-review.googlesource.com/c/dawn/+/236054
