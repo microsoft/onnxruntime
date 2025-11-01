@@ -24,6 +24,50 @@ class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
                                           {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
 };
 
+class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
+ public:
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override {
+    // Inputs
+    const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
+    const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
+    const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
+    const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
+
+    // Outputs
+    const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
+    const auto& key = sh.AddOutput("key", ShaderUsage::UseUniform);
+    const auto& val = sh.AddOutput("val", ShaderUsage::UseUniform);
+
+    return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                               WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+                               WGSL_TEMPLATE_VARIABLE(key, key),
+                               WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
+                               WGSL_TEMPLATE_VARIABLE(query, query),
+                               WGSL_TEMPLATE_VARIABLE(seqlens, seqlens),
+                               WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
+                               WGSL_TEMPLATE_VARIABLE(val, val));
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"first_prompt_flag", ProgramUniformVariableDataType::Uint32},
+      {"subsequent_prompt_flag", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const bool interleaved_;
+};
+
 class GroupQueryAttention final : public WebGpuKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
