@@ -62,6 +62,7 @@ bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
     return false;
 
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
       input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Input type: [" << input_type
