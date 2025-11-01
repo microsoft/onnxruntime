@@ -80,6 +80,11 @@ void ComputeJob(
   }
 }
 
+// Helper to convert int64_t -> Eigen::Index safely
+inline Eigen::Index ToEigenIndex(int64_t v) {
+  return narrow<Eigen::Index>(v);
+}
+
 template <typename U>
 void ComputeJob(
     const MLFloat16* X_data,
@@ -98,48 +103,52 @@ void ComputeJob(
     AllocatorPtr alloc) {
   ORT_UNUSED_PARAMETER(scale_data);  // only used in float/double overload
   ORT_UNUSED_PARAMETER(bias_data);   // only used in float/double overload
+  ORT_UNUSED_PARAMETER(alloc);       // only required to create temporary float buffers
 
-  const MLFloat16* p_input = X_data + task_idx * norm_size;
-  MLFloat16* p_output = Y_data + task_idx * norm_size;
+  // reinterpret input/output MLFloat16* as Eigen::half*
+  const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(X_data + task_idx * norm_size);
+  Eigen::half* p_output = reinterpret_cast<Eigen::half*>(Y_data + task_idx * norm_size);
 
-  float mean(0.0f);
-  float mean_square(0.0f);
+  // Fix: cast norm_size to Eigen::Index
+  Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> input_vec(
+      p_input, ToEigenIndex(norm_size));
+  Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> output_vec(
+      p_output, ToEigenIndex(norm_size));
 
-  const size_t num_elems = static_cast<size_t>(norm_size);
-  IAllocatorUniquePtr<float> input_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-  MlasConvertHalfToFloatBuffer(p_input, input_float_uptr.get(), num_elems);
+  // Compute mean and mean_square in float for precision
+  float mean = 0.0f;
+  float mean_square = 0.0f;
 
-  IAllocatorUniquePtr<float> output_float_uptr = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
-  float* output_float_ptr = output_float_uptr.get();
-
-  const float* input_float_ptr = input_float_uptr.get();
-  for (size_t h = 0; h < num_elems; h++) {
-    output_float_ptr[h] = input_float_ptr[h];
-    mean += input_float_ptr[h];
-    mean_square += input_float_ptr[h] * input_float_ptr[h];
+  for (int64_t i = 0; i < norm_size; ++i) {
+    float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
+    mean += val;
+    mean_square += val * val;
   }
 
-  mean = mean / norm_size;
+  mean /= gsl::narrow_cast<float>(norm_size);
   if (simplified) {
-    mean_square = sqrt(mean_square / norm_size + epsilon);
+    mean_square = std::sqrt(mean_square / norm_size + epsilon);
   } else {
-    mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
+    mean_square = std::sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  // Compute the offset of gamma and beta to support broadcasting.
+  // Offset calculation for broadcasting
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
-  for (size_t h = 0; h < num_elems; h++, i++) {
-    if (simplified) {
-      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[i];
-    } else if (nullptr == bias_float_ptr) {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i];
-    } else {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
-    }
-  }
+  for (int64_t h = 0; h < norm_size; ++h, ++i) {
+    float x = static_cast<float>(input_vec[ToEigenIndex(h)]);
 
-  MlasConvertFloatToHalfBuffer(output_float_ptr, p_output, num_elems);
+    float y = 0.0f;
+    if (simplified) {
+      y = x / mean_square * scale_float_ptr[i];
+    } else if (bias_float_ptr == nullptr) {
+      y = (x - mean) / mean_square * scale_float_ptr[i];
+    } else {
+      y = (x - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
+    }
+
+    output_vec[ToEigenIndex(h)] = gsl::narrow_cast<Eigen::half>(y);
+  }
 
   if (mean_data != nullptr) {
     // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
@@ -147,7 +156,7 @@ void ComputeJob(
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = MLFloat16(1 / mean_square);
+    inv_std_dev_data[task_idx] = MLFloat16(1.0f / mean_square);
   }
 }
 

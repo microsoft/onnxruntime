@@ -48,7 +48,7 @@ jobs:
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
       build_config: Release
-      extra_build_args: "--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti"
+      extra_build_args: "--target onnxruntime_webassembly --skip_tests --disable_rtti"
       build_jsep: true
       build_webgpu: true
 
@@ -57,7 +57,7 @@ jobs:
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
       build_config: Release
-      extra_build_args: "--skip_tests --enable_wasm_api_exception_catching --disable_rtti --build_wasm_static_lib"
+      extra_build_args: "--skip_tests --disable_rtti --build_wasm_static_lib"
       use_vcpkg: false
       enable_wasm_threads: false
       skip_publish: true

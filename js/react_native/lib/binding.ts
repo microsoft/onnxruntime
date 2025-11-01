@@ -87,9 +87,7 @@ export const binding = Onnxruntime as Binding.InferenceSession;
 OnnxruntimeJSIHelper.install();
 
 declare global {
-  // eslint-disable-next-line no-var
   var jsiOnnxruntimeStoreArrayBuffer: ((buffer: ArrayBuffer) => JSIBlob) | undefined;
-  // eslint-disable-next-line no-var
   var jsiOnnxruntimeResolveArrayBuffer: ((blob: JSIBlob) => ArrayBuffer) | undefined;
 }
 

@@ -88,7 +88,7 @@ export const tensorToDataURL = (tensor: Tensor, options?: TensorToDataUrlOptions
         const G = ((tensor.data[gTensorPointer++] as number) - normBias[1]) * normMean[1]; // G value
         const B = ((tensor.data[bTensorPointer++] as number) - normBias[2]) * normMean[2]; // B value
         const A = aTensorPointer === -1 ? 255 : ((tensor.data[aTensorPointer++] as number) - normBias[3]) * normMean[3]; // A value
-        // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+
         pixels2DContext.fillStyle = 'rgba(' + R + ',' + G + ',' + B + ',' + A + ')';
         pixels2DContext.fillRect(j, i, 1, 1);
       }
