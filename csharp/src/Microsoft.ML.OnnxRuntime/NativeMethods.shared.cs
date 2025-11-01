@@ -866,13 +866,30 @@ namespace Microsoft.ML.OnnxRuntime
         internal class NativeLib
         {
 #if __ANDROID__
-            // define the library name required for android
+            // Define the library name required for Android
             internal const string DllName = "libonnxruntime.so";
 #elif __IOS__
-            // define the library name required for iOS
+            // Define the library name required for iOS
             internal const string DllName = "__Internal";
 #else
-            internal const string DllName = "onnxruntime";
+            // For desktop platforms, explicitly specify the DLL name with extension to avoid
+            // issues on case-sensitive filesystems (including Windows with case-sensitivity enabled).
+            //
+            // Previous behavior relied on .NET automatically adding platform-specific extensions:
+            //   Windows: onnxruntime -> onnxruntime.dll
+            //   Linux: onnxruntime -> libonnxruntime.so
+            //   macOS: onnxruntime -> libonnxruntime.dylib
+            //
+            // By specifying "onnxruntime.dll" explicitly, we ensure consistent behavior across
+            // case-sensitive and case-insensitive filesystems. This requires that native libraries
+            // for all platforms be named "onnxruntime.dll" in their respective runtime folders,
+            // or that appropriate symlinks/aliases be created during packaging.
+            //
+            // NuGet packages should contain:
+            //   - runtimes/win-{arch}/native/onnxruntime.dll
+            //   - runtimes/linux-{arch}/native/onnxruntime.dll (symlink to libonnxruntime.so)
+            //   - runtimes/osx-{arch}/native/onnxruntime.dll (symlink to libonnxruntime.dylib)
+            internal const string DllName = "onnxruntime.dll";
 #endif
         }
 
@@ -2951,7 +2968,9 @@ namespace Microsoft.ML.OnnxRuntime
 #elif __IOS__
         internal const string ExtensionsDllName = "__Internal";
 #else
-        internal const string ExtensionsDllName = "ortextensions";
+        // For desktop platforms, explicitly specify the DLL name with extension to avoid
+        // issues on case-sensitive filesystems. See NativeLib.DllName for detailed explanation.
+        internal const string ExtensionsDllName = "ortextensions.dll";
 #endif
 
         [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
