@@ -4,8 +4,15 @@
 import argparse
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
+
+# These platform version values are the default target platform versions for .NET 9 from the table here:
+# https://learn.microsoft.com/en-us/dotnet/standard/frameworks#os-version-in-tfms
+platform_version_android = "35.0"
+platform_version_ios = "18.0"
+platform_version_maccatalyst = "18.0"
 
 
 # What does the names of our C API tarball/zip files looks like
@@ -279,17 +286,17 @@ def generate_dependencies(xml_text, package_name, version):
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
             xml_text.append('<group targetFramework="native" />')
-            # Support net8.0-android
-            xml_text.append('<group targetFramework="net8.0-android31.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            # Support Android
+            xml_text.append(f'<group targetFramework="net9.0-android{platform_version_android}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
-            # Support net8.0-ios
-            xml_text.append('<group targetFramework="net8.0-ios15.4">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            # Support iOS
+            xml_text.append(f'<group targetFramework="net9.0-ios{platform_version_ios}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
-            # Support net8.0-maccatalyst
-            xml_text.append('<group targetFramework="net8.0-maccatalyst14.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            # Support MacCatalyst
+            xml_text.append(f'<group targetFramework="net9.0-maccatalyst{platform_version_maccatalyst}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
         # Support Native C++
         if include_dml:
@@ -350,6 +357,10 @@ def generate_metadata(line_list, args):
     metadata_list.append("</metadata>")
 
     line_list += metadata_list
+
+
+def copy_file(src_path, dst_path):
+    shutil.copyfile(src_path, dst_path)
 
 
 def generate_files(line_list, args):
@@ -417,7 +428,6 @@ def generate_files(line_list, args):
             "onnx_test_runner": "onnx_test_runner.exe",
         }
 
-        copy_command = "copy"
         runtimes_target = '" target="runtimes\\win-'
     else:
         nuget_dependencies = {
@@ -436,7 +446,6 @@ def generate_files(line_list, args):
             "onnx_test_runner": "onnx_test_runner",
         }
 
-        copy_command = "cp"
         runtimes_target = '" target="runtimes\\linux-'
 
     if is_windowsai_package:
@@ -1007,7 +1016,7 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".props",
         )
-        os.system(copy_command + " " + source_props + " " + target_props)
+        copy_file(source_props, target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\native" />')
         if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.0"  />')
@@ -1026,7 +1035,7 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".targets",
         )
-        os.system(copy_command + " " + source_targets + " " + target_targets)
+        copy_file(source_targets, target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\native"  />')
         if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.0" />')
@@ -1034,104 +1043,120 @@ def generate_files(line_list, args):
 
         # Process xamarin targets files
         if args.package_name == "Microsoft.ML.OnnxRuntime":
-            net8_android_source_targets = os.path.join(
+            net9_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 "targets.xml",
             )
-            net8_android_target_targets = os.path.join(
+            net9_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 args.package_name + ".targets",
             )
 
-            net8_ios_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net8.0-ios", "targets.xml"
+            net9_ios_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net9.0-ios", "targets.xml"
             )
-            net8_ios_target_targets = os.path.join(
+            net9_ios_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-ios",
+                "net9.0-ios",
                 args.package_name + ".targets",
             )
 
-            net8_maccatalyst_source_targets = os.path.join(
+            net9_maccatalyst_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-maccatalyst",
+                "net9.0-maccatalyst",
                 "_._",
             )
+            net9_maccatalyst_target_targets = net9_maccatalyst_source_targets
 
-            net8_maccatalyst_target_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net8.0-maccatalyst", "_._"
-            )
-
-            os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
-            os.system(copy_command + " " + net8_ios_source_targets + " " + net8_ios_target_targets)
-            os.system(copy_command + " " + net8_maccatalyst_source_targets + " " + net8_maccatalyst_target_targets)
+            copy_file(net9_android_source_targets, net9_android_target_targets)
+            copy_file(net9_ios_source_targets, net9_ios_target_targets)
 
             files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
-            )
-            files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
-            )
-
-            files_list.append("<file src=" + '"' + net8_ios_target_targets + '" target="build\\net8.0-ios15.4" />')
-            files_list.append(
-                "<file src=" + '"' + net8_ios_target_targets + '" target="buildTransitive\\net8.0-ios15.4" />'
-            )
-            files_list.append(
-                "<file src=" + '"' + net8_maccatalyst_target_targets + '" target="build\\net8.0-maccatalyst14.0" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="build\\net9.0-android{platform_version_android}" />'
             )
             files_list.append(
                 "<file src="
                 + '"'
-                + net8_maccatalyst_target_targets
-                + '" target="buildTransitive\\net8.0-maccatalyst14.0" />'
+                + net9_android_target_targets
+                + f'" target="buildTransitive\\net9.0-android{platform_version_android}" />'
+            )
+
+            files_list.append(
+                "<file src=" + '"' + net9_ios_target_targets + f'" target="build\\net9.0-ios{platform_version_ios}" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net9_ios_target_targets
+                + f'" target="buildTransitive\\net9.0-ios{platform_version_ios}" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net9_maccatalyst_target_targets
+                + f'" target="build\\net9.0-maccatalyst{platform_version_maccatalyst}" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net9_maccatalyst_target_targets
+                + f'" target="buildTransitive\\net9.0-maccatalyst{platform_version_maccatalyst}" />'
             )
 
         # Process Training specific targets and props
         if args.package_name == "Microsoft.ML.OnnxRuntime.Training":
-            net8_android_source_targets = os.path.join(
+            net9_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 "targets.xml",
             )
-            net8_android_target_targets = os.path.join(
+            net9_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 args.package_name + ".targets",
             )
 
-            os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
+            copy_file(net9_android_source_targets, net9_android_target_targets)
             files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="build\\net9.0-android{platform_version_android}" />'
             )
             files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="buildTransitive\\net9.0-android{platform_version_android}" />'
             )
 
     # README
