@@ -74,8 +74,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
-                             device,
-                             webgpu_context_.DeviceLimits(),
+                             webgpu_context_,
                              normalized_dispatch_x,
                              normalized_dispatch_y,
                              normalized_dispatch_z};
