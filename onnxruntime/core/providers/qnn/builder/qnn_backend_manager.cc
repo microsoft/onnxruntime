@@ -231,6 +231,12 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
   ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
                 "Failed to get QNN providers.");
 
+  if (skip_qnn_version_check_) {
+    // When skipping version check, use the first available provider.
+    *interface_provider = interface_providers[0];
+    return Status::OK();
+  }
+
   bool found_valid_interface{false};
   for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
     Qnn_Version_t interface_version = GetQnnInterfaceApiVersion(interface_providers[pIdx]);

@@ -116,6 +116,7 @@ struct QnnBackendManagerConfig {
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
   std::vector<OpPackage> op_packages;
+  bool skip_qnn_version_check;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -140,7 +141,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
         soc_model_(config.soc_model),
-        op_packages_(config.op_packages) {
+        op_packages_(config.op_packages),
+        skip_qnn_version_check_(config.skip_qnn_version_check) {
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -461,6 +463,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   const std::vector<OpPackage> op_packages_;
+  bool skip_qnn_version_check_ = false;
 };
 
 }  // namespace qnn
