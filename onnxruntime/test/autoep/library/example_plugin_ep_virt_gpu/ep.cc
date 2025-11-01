@@ -48,9 +48,9 @@ struct AddNodeComputeInfo : OrtNodeComputeInfo {
   EpVirtualGpu& ep;
 };
 
-EpVirtualGpu::EpVirtualGpu(EpFactoryVirtualGpu& factory, const EpVirtualGpu::Config& config, const OrtLogger& logger)
+EpVirtualGpu::EpVirtualGpu(EpFactoryVirtualGpu& /*factory*/, const EpVirtualGpu::Config& config,
+                           const OrtLogger& logger)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
-      factory_{factory},
       config_{config},
       ort_api_{factory.GetOrtApi()},
       ep_api_{factory.GetEpApi()},
