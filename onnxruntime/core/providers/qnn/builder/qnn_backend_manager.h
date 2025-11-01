@@ -163,12 +163,17 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
-  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
-                           HtpPerformanceMode htp_performance_mode);
+  Status SetRpcPowerConfig(uint32_t htp_power_config_client_id,
+                           uint32_t rpc_polling_time,
+                           uint32_t rpc_control_latency);
 
-  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                            uint32_t rpc_control_latency,
-                            uint32_t rpc_polling_time);
+  Status SetHtpPerformanceMode(uint32_t htp_power_config_client_id,
+                               HtpPerformanceMode htp_performance_mode);
+
+  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
+                           HtpPerformanceMode htp_performance_mode,
+                           uint32_t rpc_polling_time,
+                           uint32_t rpc_control_latency);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -299,16 +304,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                  T** interface_provider);
 
   bool IsDevicePropertySupported();
-
-  template <typename T>
-  std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(const std::vector<T>& vec) {
-    std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
-    for (auto& elem : vec) {
-      ret.push_back(&elem);
-    }
-    ret.push_back(nullptr);
-    return ret;
-  }
 
   std::string GetBackendBuildId() {
     char* backend_build_id{nullptr};

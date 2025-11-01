@@ -81,6 +81,9 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
+  Status SetHtpPowerConfigs(const qnn::HtpPerformanceMode& power_mode,
+                            const uint32_t& rpc_control_latency,
+                            const uint32_t& rpc_polling_time);
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   // Note: Using shared_ptr<QnnBackendManager> so that we can refer to it with a weak_ptr from a
