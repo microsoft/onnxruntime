@@ -5593,6 +5593,54 @@ TEST(QDQTransformerTests, WeightBiasQuantization_ConvTranspose_Weight) {
 #endif
 }
 
+TEST(QDQTransformerTests, WeightBiasQuantization_ConvTransposePerChannelWeight) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg = builder.MakeInput<uint8_t>({1, 3, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                      std::numeric_limits<uint8_t>::max());
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* weight_arg = builder.MakeInitializer<uint8_t>({3, 3, 3, 3}, 0, 255);
+      NodeArg* weight_dq_arg = builder.MakeIntermediate();
+      NodeArg* bias_arg = builder.MakeInitializer<float>({3}, -0.1f, 0.1f);
+      NodeArg* conv_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg,
+                                               use_contrib_qdq);
+      std::vector<float> scales = std::vector<float>(3, 0.05f);
+      std::vector<uint8_t> zp = std::vector<uint8_t>(3, static_cast<uint8_t>(0));
+      auto& dq_node = builder.AddDequantizeLinearNode<uint8_t>(weight_arg, scales, zp, weight_dq_arg, nullptr, use_contrib_qdq);
+      dq_node.AddAttribute("axis", static_cast<int64_t>(1));
+
+      auto& conv_node = builder.AddNode("ConvTranspose", {input_dq_arg, weight_dq_arg, bias_arg}, {conv_dq_arg});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+      builder.AddQuantizeLinearNode<uint8_t>(conv_dq_arg, 0.014f, static_cast<uint8_t>(127), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      // No QLinearConvTranspose CPU kernel. Check the graph only.
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 3);
+      EXPECT_EQ(op_to_count["ConvTranspose"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 
 TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Bias) {
