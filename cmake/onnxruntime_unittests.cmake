@@ -2063,7 +2063,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep_virt_gpu ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
   target_include_directories(example_plugin_ep_virt_gpu PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(example_plugin_ep_virt_gpu PRIVATE onnxruntime)
+  target_link_libraries(example_plugin_ep_virt_gpu PRIVATE onnxruntime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)
