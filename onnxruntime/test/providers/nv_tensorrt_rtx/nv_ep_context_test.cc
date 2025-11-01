@@ -14,7 +14,6 @@ namespace test {
 
 RegisteredEpDeviceUniquePtr AppendTrtEtxEP(Ort::SessionOptions& session_options, std::unordered_map<std::string, std::string>& option_map) {
   RegisteredEpDeviceUniquePtr nv_tensorrt_rtx_ep;
-#ifdef _WIN32
   /// Since this test runs after other tests that use registration interface this test has to use it as well
   /// windows as otherwise the kernel registry inside the EP will not be populated. The legacy APis ony call the initialize once.
   Utils::RegisterAndGetNvTensorRtRtxEp(*ort_env, nv_tensorrt_rtx_ep);
@@ -26,9 +25,6 @@ RegisteredEpDeviceUniquePtr AppendTrtEtxEP(Ort::SessionOptions& session_options,
     }
   }
   session_options.AppendExecutionProvider_V2(*ort_env, {selected_device}, option_map);
-#else
-  session_options.AppendExecutionProvider(onnxruntime::kNvTensorRTRTXExecutionProvider, option_map);
-#endif
   return nv_tensorrt_rtx_ep;
 }
 
