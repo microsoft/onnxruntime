@@ -1988,6 +1988,8 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
   #
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.cc"
+                                                "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/kernels/*.h"
+                                                "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/kernels/*.cc"
                                                 "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
