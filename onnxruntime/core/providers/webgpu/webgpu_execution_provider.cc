@@ -935,13 +935,16 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
                                                                           std::string_view node_op_type,
                                                                           DataLayout target_data_layout) const {
-  if (target_data_layout != DataLayout::NHWC) {
-    return std::nullopt;
-  }
-
   // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
   if (node_domain == kOnnxDomain && node_op_type == "Resize") {
-    return false;
+    if (target_data_layout == DataLayout::NHWC) {
+      return false;
+    }
+  }
+
+  // Use NHWC data layout for Conv kernels on WebGPU EP for optimal performance
+  if (node_domain == kOnnxDomain && node_op_type == "Conv") {
+    return (target_data_layout == DataLayout::NHWC);
   }
 
   return std::nullopt;
