@@ -245,9 +245,9 @@ class Env {
 
   // \brief Gets the file path of the onnx runtime code
   //
-  // Used to help load other shared libraries that live in the same folder as the core code, for example
-  // The DNNL provider shared library. Without this path, the module won't be found on windows in all cases.
-  virtual PathString GetRuntimePath() const { return PathString(); }
+  // Used to help load other shared libraries that live in the same folder as the core code.
+  // For example, the DNNL provider shared library.
+  virtual PathString GetRuntimePath() const = 0;
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //

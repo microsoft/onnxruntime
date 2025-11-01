@@ -5,6 +5,7 @@
 
 #include "../plugin_ep_utils.h"
 
+#include <memory>
 #include <sstream>
 
 // from onnxruntime/core/framework/allocator_stats.h
@@ -51,7 +52,16 @@ struct AllocatorStats {
   }
 };
 
-struct CustomAllocator : OrtAllocator {
+// `OrtAllocator` is a C API struct. `BaseAllocator` is a minimal C++ struct which inherits from `OrtAllocator`.
+// Notably, `BaseAllocator` has a virtual destructor to enable a derived class to be deleted through a `BaseAllocator`
+// pointer. Allocators which need to be deleted through a base class pointer should inherit from `BaseAllocator`.
+struct BaseAllocator : OrtAllocator {
+  virtual ~BaseAllocator() = default;
+};
+
+using AllocatorUniquePtr = std::unique_ptr<BaseAllocator>;
+
+struct CustomAllocator : BaseAllocator {
   CustomAllocator(const OrtMemoryInfo* mem_info, const ApiPtrs& api_ptrs_in)
       : memory_info{mem_info}, api_ptrs{api_ptrs_in} {
     version = ORT_API_VERSION;
