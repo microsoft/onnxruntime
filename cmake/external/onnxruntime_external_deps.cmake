@@ -751,9 +751,18 @@ if (onnxruntime_USE_WEBGPU)
           #   Some build warnings are not allowed to be disabled in project level.
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
 
-          # Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
-          # in the uniform and converting to fp16 before using.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch)
+          # The uniform_and_storage_buffer_16_bit_access.patch contains the following changes:
+          #
+          # - (private) Android devices don't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+          #   in the uniform and converting to fp16 before using.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch &&
+
+          # The emscripten_interop_opt.patch contains the following changes:
+          #
+          # - (private) Optimize Emscripten interop for WebGPU. Specifically:
+          #   - Cached usage and size of buffer as field of class WGPUBufferImpl to reduce the number of calls crossing the boundary between C++ and JavaScript.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/emscripten_interop_opt.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn

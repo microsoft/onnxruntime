@@ -1,0 +1,145 @@
+diff --git a/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js b/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
+index a3ce6dc732..f30615ced6 100644
+--- a/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
++++ b/third_party/emdawnwebgpu/pkg/webgpu/src/library_webgpu.js
+@@ -163,7 +163,7 @@ var LibraryWebGPU = {
+       var mapState = buffer.mapState == "mapped" ?
+         {{{ gpu.BufferMapState.Mapped }}} :
+         {{{ gpu.BufferMapState.Unmapped }}};
+-      var bufferPtr = _emwgpuCreateBuffer(parentPtr, mapState);
++      var bufferPtr = _emwgpuCreateBuffer(parentPtr, buffer.size, buffer.usage, mapState);
+       WebGPU.Internals.jsObjectInsert(bufferPtr, buffer);
+       if (buffer.mapState == "mapped") {
+         WebGPU.Internals.bufferOnUnmaps[bufferPtr] = [];
+@@ -1029,17 +1029,6 @@ var LibraryWebGPU = {
+     return {{{ gpu.Status.Success }}};
+   },
+ 
+-  wgpuBufferGetSize: (bufferPtr) => {
+-    var buffer = WebGPU.getJsObject(bufferPtr);
+-    // 64-bit
+-    return buffer.size;
+-  },
+-
+-  wgpuBufferGetUsage: (bufferPtr) => {
+-    var buffer = WebGPU.getJsObject(bufferPtr);
+-    return buffer.usage;
+-  },
+-
+   // In webgpu.h offset and size are passed in as size_t.
+   // And library_webgpu assumes that size_t is always 32bit in emscripten.
+   emwgpuBufferMapAsync__deps: ['emwgpuOnMapAsyncCompleted'],
+diff --git a/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp b/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
+index d1d1bdb057..e4fe654ab6 100644
+--- a/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
++++ b/third_party/emdawnwebgpu/pkg/webgpu/src/webgpu.cpp
+@@ -745,15 +745,17 @@ class MapAsyncEvent;
+ struct WGPUBufferImpl final : public EventSource,
+                               public RefCountedWithExternalCount {
+  public:
+-  WGPUBufferImpl(const EventSource* source, bool mappedAtCreation);
++  WGPUBufferImpl(const EventSource* source, uint64_t size, WGPUBufferUsage usage, bool mappedAtCreation);
+   // Injection constructor used when we already have a backing Buffer.
+-  WGPUBufferImpl(const EventSource* source, WGPUBufferMapState mapState);
++  WGPUBufferImpl(const EventSource* source, uint64_t size, WGPUBufferUsage usage, WGPUBufferMapState mapState);
+   ~WGPUBufferImpl();
+ 
+   void Destroy();
+   const void* GetConstMappedRange(size_t offset, size_t size);
+   WGPUBufferMapState GetMapState() const;
+   void* GetMappedRange(size_t offset, size_t size);
++  uint64_t GetSize() const;
++  WGPUBufferUsage GetUsage() const;
+   WGPUStatus WriteMappedRange(size_t offset, void const* data, size_t size);
+   WGPUStatus ReadMappedRange(size_t offset, void* data, size_t size);
+   WGPUFuture MapAsync(WGPUMapMode mode,
+@@ -780,6 +782,8 @@ struct WGPUBufferImpl final : public EventSource,
+   };
+   MapRequest mPendingMapRequest;
+   WGPUBufferMapState mMapState;
++  uint64_t mSize;
++  WGPUBufferUsage mUsage;
+ };
+ 
+ struct WGPUQueueImpl final : public EventSource, public RefCounted {
+@@ -1299,8 +1303,10 @@ WGPUAdapter emwgpuCreateAdapter(const EventSource* source) {
+ }
+ 
+ WGPUBuffer emwgpuCreateBuffer(const EventSource* source,
++                              uint64_t size,
++                              WGPUBufferUsage usage,
+                               WGPUBufferMapState mapState) {
+-  return ReturnToAPI(AcquireRef(new WGPUBufferImpl(source, mapState)));
++  return ReturnToAPI(AcquireRef(new WGPUBufferImpl(source, size, usage, mapState)));
+ }
+ 
+ WGPUDevice emwgpuCreateDevice(const EventSource* source, WGPUQueue queue) {
+@@ -1431,20 +1437,26 @@ WGPUAdapterImpl::WGPUAdapterImpl(const EventSource* source)
+ // WGPUBuffer implementations.
+ // ----------------------------------------------------------------------------
+ 
+-WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, bool mappedAtCreation)
++WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, uint64_t size, WGPUBufferUsage usage, bool mappedAtCreation)
+     : EventSource(source),
+       mMapState(mappedAtCreation ? WGPUBufferMapState_Mapped
+-                                 : WGPUBufferMapState_Unmapped) {
++                                 : WGPUBufferMapState_Unmapped),
++      mSize(size),
++      mUsage(usage) {
+   if (mappedAtCreation) {
+     mPendingMapRequest = {kNullFutureId, WGPUMapMode_Write};
+   }
+ }
+ 
+ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source,
++                               uint64_t size,
++                               WGPUBufferUsage usage,
+                                WGPUBufferMapState mapState)
+     : EventSource(source),
+       RefCountedWithExternalCount(kImportedFromJS),
+-      mMapState(mapState) {}
++      mMapState(mapState),
++      mSize(size),
++      mUsage(usage) {}
+ 
+ WGPUBufferImpl::~WGPUBufferImpl() {
+   if (!IsImported()) {
+@@ -1480,6 +1492,14 @@ void* WGPUBufferImpl::GetMappedRange(size_t offset, size_t size) {
+   return emwgpuBufferGetMappedRange(this, offset, size);
+ }
+ 
++uint64_t WGPUBufferImpl::GetSize() const {
++  return mSize;
++}
++
++WGPUBufferUsage WGPUBufferImpl::GetUsage() const {
++  return mUsage;
++}
++
+ WGPUStatus WGPUBufferImpl::WriteMappedRange(size_t offset,
+                                             void const* data,
+                                             size_t size) {
+@@ -1972,6 +1992,14 @@ void wgpuBufferUnmap(WGPUBuffer buffer) {
+   buffer->Unmap();
+ }
+ 
++uint64_t wgpuBufferGetSize(WGPUBuffer buffer) {
++  return buffer->GetSize();
++}
++
++WGPUBufferUsage wgpuBufferGetUsage(WGPUBuffer buffer) {
++  return buffer->GetUsage();
++}
++
+ // ----------------------------------------------------------------------------
+ // Methods of CommandBuffer
+ // ----------------------------------------------------------------------------
+@@ -1995,7 +2023,7 @@ void wgpuBufferUnmap(WGPUBuffer buffer) {
+ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device,
+                                   const WGPUBufferDescriptor* descriptor) {
+   Ref<WGPUBufferImpl> buffer =
+-      AcquireRef(new WGPUBufferImpl(device, descriptor->mappedAtCreation));
++      AcquireRef(new WGPUBufferImpl(device, descriptor->size, descriptor->usage, descriptor->mappedAtCreation));
+   if (!emwgpuDeviceCreateBuffer(device, descriptor, buffer.Get())) {
+     return nullptr;
+   }
