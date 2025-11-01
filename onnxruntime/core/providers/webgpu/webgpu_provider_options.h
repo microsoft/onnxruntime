@@ -33,7 +33,7 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
-constexpr const char* kSmallStorageBufferBindingSizeForTesting = "ep.webgpuexecutionprovider.smallStorageBufferBindingSizeForTesting";
+constexpr const char* kMaxStorageBufferBindingSize = "ep.webgpuexecutionprovider.maxStorageBufferBindingSize";
 
 // The following are the possible values for the provider options.
 

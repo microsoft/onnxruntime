@@ -362,6 +362,7 @@ ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t 
 
 ProgramBase& ProgramBase::SetIndirectDispatchTensor(const Tensor* indirect_dispatch_tensor) {
   indirect_dispatch_tensor_ = indirect_dispatch_tensor;
+  AddInput({indirect_dispatch_tensor, ProgramTensorMetadataDependency::None});
   return *this;
 }
 
