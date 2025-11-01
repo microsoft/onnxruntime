@@ -1367,15 +1367,10 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
   // default_htp_performance_mode and default_rpc_control_latency are from QNN EP option.
   // set it once only for each thread as default so user don't need to set it for every session run
   if (is_htp_power_config_id_valid_) {
-    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
-                                                                      default_htp_performance_mode));
-    }
-    if (default_rpc_control_latency > 0 || default_rpc_polling_time > 0) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id_,
-                                                                       default_rpc_control_latency,
-                                                                       default_rpc_polling_time));
-    }
+    ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
+                                                                    default_htp_performance_mode,
+                                                                    default_rpc_control_latency,
+                                                                    default_rpc_polling_time));
   }
 }
 
@@ -1481,15 +1476,13 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 
   if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                  htp_performance_mode));
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPerformanceMode(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                      htp_performance_mode));
     }
 
-    if (rpc_control_latency > 0 || rpc_polling_time > 0) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                   rpc_control_latency,
-                                                                   rpc_polling_time));
-    }
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                 rpc_control_latency,
+                                                                 rpc_polling_time));
   }
 
   std::string lora_config = "";
@@ -1587,8 +1580,15 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
       ParseHtpPerformanceMode(value, htp_performance_mode);
       if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+        uint32_t rpc_polling_time = 0;
+        if (htp_performance_mode == qnn::HtpPerformanceMode::burst) {
+          rpc_polling_time = 9999;
+        }
+
         ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                    htp_performance_mode));
+                                                                    htp_performance_mode,
+                                                                    rpc_polling_time,
+                                                                    default_rpc_control_latency_));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
