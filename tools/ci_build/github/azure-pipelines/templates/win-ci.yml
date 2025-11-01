@@ -77,8 +77,8 @@ parameters:
   type: string
   default: '12.8'
   values:
-      - 13.0
       - 12.8
+      - 13.0
 
 - name: SpecificArtifact
   displayName: Use Specific Artifact

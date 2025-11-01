@@ -37,4 +37,12 @@ fi
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+
+  # For python 3.14, install onnxscript without dependencies (It depends on onnx, which does not suppport python 3.14 yet)
+  # This can be removed once onnx supports python 3.14: update requirements.txt to replace onnx_weekly with onnx.
+if [[ "$PYTHON_VER" = "3.14" ]]; then
+   ${PYTHON_EXE} -m pip install --upgrade pip
+   ${PYTHON_EXE} -m pip install onnxscript ml_dtypes onnx_ir onnx_weekly typing_extensions packaging numpy --no-deps
+fi
+
 ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps\.sh/requirements\.txt}

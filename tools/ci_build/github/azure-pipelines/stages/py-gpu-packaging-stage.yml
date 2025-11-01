@@ -35,6 +35,7 @@ parameters:
     - '3.11'
     - '3.12'
     - '3.13'
+    - '3.14'
 
 stages:
     - ${{ if eq(parameters.cuda_version, '12.8') }}:
