@@ -100,12 +100,14 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     Gemm<MLFloat16>);
 
+#if !defined(__wasm__) && !defined(__EMSCRIPTEN__)
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Gemm,
     13,
     BFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()),
     Gemm<BFloat16>);
+#endif
 
 bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
@@ -408,6 +410,7 @@ Status Gemm<MLFloat16>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+#if !defined(__wasm__) && !defined(__EMSCRIPTEN__)
 template <>
 Status Gemm<BFloat16>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
@@ -444,6 +447,7 @@ Status Gemm<BFloat16>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+#endif
 
 template <>
 Status Gemm<float>::Compute(OpKernelContext* context) const {

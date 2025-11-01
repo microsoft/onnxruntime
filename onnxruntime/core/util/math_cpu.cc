@@ -180,6 +180,7 @@ void Gemm<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, pt
 }
 #endif
 
+#if !defined(__wasm__) && !defined(__EMSCRIPTEN__)
 template <>
 void Gemm<BFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
                                 ptrdiff_t N, ptrdiff_t K, BFloat16 alpha, const BFloat16* A, const BFloat16* B, BFloat16 beta,
@@ -226,6 +227,7 @@ void Gemm<BFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, 
       ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
   }
 }
+#endif
 
 template <>
 void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
@@ -241,10 +243,12 @@ void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, cons
 EIGEN_MATMUL_FUNCTION(double)
 #endif
 
+#if !defined(__wasm__) && !defined(__EMSCRIPTEN__)
 template <>
 void MatMul<BFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const BFloat16* A, const BFloat16* B, BFloat16* C, ThreadPool* threadpool) {
   Gemm<BFloat16, ThreadPool>(CblasNoTrans, CblasNoTrans, M, N, K, BFloat16(1.f), A, B, BFloat16(0.f), C, threadpool);
 }
+#endif
 
 template <>
 void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
