@@ -111,6 +111,9 @@ constexpr const int kSleepMediumLatency = 1000;
 constexpr const int kSleepHighLatency = 2000;
 constexpr const int kDcvsDisable = 0;
 constexpr const int kDcvsEnable = 1;
+constexpr const uint32_t kDisableRpcPolling = 0;
+constexpr const uint32_t kDisableRpcControlLatency = 0;
+constexpr const uint32_t kMaxRpcPolling = 9999;
 
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);

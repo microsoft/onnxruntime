@@ -423,6 +423,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto htp_performance_mode_pos = provider_options_map.find(HTP_PERFORMANCE_MODE);
   if (htp_performance_mode_pos != provider_options_map.end()) {
     ParseHtpPerformanceMode(htp_performance_mode_pos->second, default_htp_performance_mode_);
+
+    if (qn::HtpPerformanceMode::kHtpBurst == default_htp_performance_mode_) {
+      default_rpc_polling_time_ = 9999;
+    }
   }
 
   htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -1392,15 +1396,14 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 
   if (IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetHtpPowerConfigId(),
-                                                                  htp_performance_mode));
+
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPerformanceMode(GetHtpPowerConfigId(),
+                                                                      htp_performance_mode));
     }
 
-    if (rpc_control_latency > 0 || rpc_polling_time > 0) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetHtpPowerConfigId(),
-                                                                   rpc_control_latency,
-                                                                   rpc_polling_time));
-    }
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetHtpPowerConfigId(),
+                                                                 rpc_control_latency,
+                                                                 rpc_polling_time));
   }
 
   std::string lora_config = "";
@@ -1431,8 +1434,8 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
     if (!IsHtpPowerConfigIdValid()) {
       return Status::OK();
     }
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetHtpPowerConfigId(),
-                                                                htp_performance_mode));
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPerformanceMode(GetHtpPowerConfigId(),
+                                                                    htp_performance_mode));
   }
 
   return Status::OK();
@@ -1498,8 +1501,15 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
       ParseHtpPerformanceMode(value, htp_performance_mode);
       if (IsHtpPowerConfigIdValid()) {
-        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetHtpPowerConfigId(),
-                                                                    htp_performance_mode));
+        uint32_t rpc_polling_time = 0;
+        if (htp_performance_mode == qnn::HtpPerformanceMode::kHtpBurst) {
+          rpc_polling_time = 9999;
+        }
+
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfigs(GetHtpPowerConfigId(),
+                                                                     htp_performance_mode,
+                                                                     rpc_polling_time,
+                                                                     default_rpc_control_latency_));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";

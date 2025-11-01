@@ -27,6 +27,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_htp_power_config_manager.h"
 #include "core/providers/qnn/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
@@ -163,12 +164,17 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
-  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
-                           HtpPerformanceMode htp_performance_mode);
-
   Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                            uint32_t rpc_control_latency,
-                            uint32_t rpc_polling_time);
+                            uint32_t rpc_polling_time,
+                            uint32_t rpc_control_latency);
+
+  Status SetHtpPerformanceMode(uint32_t htp_power_config_client_id,
+                               HtpPerformanceMode htp_performance_mode);
+
+  Status SetHtpPowerConfigs(uint32_t htp_power_config_client_id,
+                            HtpPerformanceMode htp_performance_mode,
+                            uint32_t rpc_polling_time,
+                            uint32_t rpc_control_latency);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -300,16 +306,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   bool IsDevicePropertySupported();
 
-  template <typename T>
-  std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(const std::vector<T>& vec) {
-    std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
-    for (auto& elem : vec) {
-      ret.push_back(&elem);
-    }
-    ret.push_back(nullptr);
-    return ret;
-  }
-
   std::string GetBackendBuildId() {
     char* backend_build_id{nullptr};
     if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
@@ -419,6 +415,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
+  power::HtpPowerConfigManager htp_power_config_manager_;
+  std::mutex htp_power_config_mutex_;
 
   // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
   // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
