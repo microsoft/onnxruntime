@@ -84,7 +84,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
       embed_mode = 0;
   }
 
-  if (0 <= embed_mode || embed_mode < 2) {
+  if (0 <= embed_mode && embed_mode < 2) {
     info.ep_context_embed_mode = embed_mode;
   } else {
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEmbedMode, " must 0 or 1");
