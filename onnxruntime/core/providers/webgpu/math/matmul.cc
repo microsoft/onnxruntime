@@ -70,6 +70,7 @@ bool SplitKConfig::UseSplitK(
     bool is_vec4,
     ActivationKind activation_kind,
     uint64_t batch_size,
+    bool is_channels_last,
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
     uint32_t dim_inner) const {
@@ -79,6 +80,9 @@ bool SplitKConfig::UseSplitK(
   use_split_k &= activation_kind == ActivationKind::None;
   use_split_k &= is_vec4;
   use_split_k &= batch_size == 1;
+  // Now `is_channels_last` is only supported because we only generate vec4 shaders in
+  // `MatMulFillBiasBeforeSplitKProgram`.
+  use_split_k &= is_channels_last;
 
   // Split-K works best when `dim_inner` is large and both `a_outer` and `b_outer` are relatively small.
   use_split_k &=
@@ -270,7 +274,7 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
                                                    ? InlinedVector<int64_t>({4, 1, 1})
                                                    : InlinedVector<int64_t>({4, 4, 1});
 
-  bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner);
+  bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
 
   // When Split-K is used, bias will be handled in `MatMulFillBiasBeforeSplitKProgram`
   // instead of `MatMulProgram`.
@@ -318,13 +322,13 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
 MatMulFillBiasBeforeSplitKProgram CreateMatMulFillBiasBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
-    bool is_channels_last,
     const TensorShape& input_a_shape,
     const TensorShape& input_b_shape) {
   const bool has_bias = bias != nullptr;
 
+  // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
   constexpr uint32_t bias_components = 4;
-  MatMulFillBiasBeforeSplitKProgram program(has_bias, is_channels_last);
+  MatMulFillBiasBeforeSplitKProgram program(has_bias);
 
   const TensorShape a_shape = input_a_shape;
   const TensorShape b_shape = input_b_shape;
@@ -348,7 +352,7 @@ MatMulFillBiasBeforeSplitKProgram CreateMatMulFillBiasBeforeSplitKProgram(
   TensorShape output_shape_temp = TensorShape({batch_size, output_row, output_col});
 
   const uint32_t data_type = output->GetElementType();
-  program.CacheHint(has_bias, is_channels_last, data_type)
+  program.CacheHint(has_bias, data_type)
       .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape_temp, static_cast<int32_t>(bias_components)})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}})
       .SetDispatchGroupSize(dispatch_x, dispatch_y, 1)

@@ -204,7 +204,8 @@ void MatMulWriteFnSource(ShaderHelper& shader,
     // Set output when MatMul is performed with Split-K.
     // When split-k is used in MatMul, the bias will be handled in `MatMulFillBiasBeforeSplitKProgram`
     // instead of here, so `has_bias` and `is_channels_last` is not used for Split-K. Note that we
-    // still need to handle `has_bias` and `is_channels_last` in `MatMulFillBiasBeforeSplitKProgram`.
+    // still need to handle `has_bias` (and `is_channels_last` in the future) in
+    // `MatMulFillBiasBeforeSplitKProgram`.
     assert(!has_bias);
     HandleMatMulWithSplitK(shader, output_variable_type);
   } else if (is_gemm) {

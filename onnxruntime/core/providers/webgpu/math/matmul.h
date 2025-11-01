@@ -22,7 +22,8 @@ class SplitKConfig {
 
   bool UseSplitK(
       bool is_vec4, ActivationKind activation_kind, uint64_t batch_size,
-      uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner) const;
+      bool is_channels_last, uint32_t dim_a_outer,
+      uint32_t dim_b_outer, uint32_t dim_inner) const;
 
   uint32_t GetSplitDimInner() const;
 
@@ -42,7 +43,6 @@ MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<cons
 MatMulFillBiasBeforeSplitKProgram CreateMatMulFillBiasBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
-    bool is_channels_last,
     const TensorShape& input_a_shape,
     const TensorShape& input_b_shape);
 

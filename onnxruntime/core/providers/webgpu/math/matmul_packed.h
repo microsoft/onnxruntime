@@ -43,10 +43,9 @@ class MatMulProgram final : public Program<MatMulProgram> {
 // the output with 0 or bias first to make sure `atomicLoad` won't return garbage data.
 class MatMulFillBiasBeforeSplitKProgram final : public Program<MatMulFillBiasBeforeSplitKProgram> {
  public:
-  explicit MatMulFillBiasBeforeSplitKProgram(bool has_bias, bool is_channels_last)
+  explicit MatMulFillBiasBeforeSplitKProgram(bool has_bias)
       : Program{"MatMul_Fill_Bias_Before_Split_K"},
-        has_bias_(has_bias),
-        is_channels_last_(is_channels_last) {
+        has_bias_(has_bias) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -60,7 +59,6 @@ class MatMulFillBiasBeforeSplitKProgram final : public Program<MatMulFillBiasBef
 
  private:
   bool has_bias_ = false;
-  bool is_channels_last_ = false;
 };
 
 }  // namespace webgpu

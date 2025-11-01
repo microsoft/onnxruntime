@@ -206,8 +206,10 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       SplitKConfig split_K_config = SplitKConfig::GetSplitKConfig(context);
       MatMulProgram program = CreateMatMulProgram(activation_, matmul_inputs, output, is_channels_last, split_K_config, matmul_input_reshapes[0], matmul_input_reshapes[1]);
       if (program.NeedSplitK()) {
+        // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
+        assert(is_channels_last);
         MatMulFillBiasBeforeSplitKProgram fill_bias_program = CreateMatMulFillBiasBeforeSplitKProgram(
-            bias, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
+            bias, output, matmul_input_reshapes[0], matmul_input_reshapes[1]);
         ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
       }
       return context.RunProgram(program);
