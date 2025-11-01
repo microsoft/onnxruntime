@@ -23,7 +23,7 @@ const Utils::ExamplePluginInfo Utils::example_ep_info(
     "example_ep");
 
 const Utils::ExamplePluginInfo Utils::example_ep_virt_gpu_info(
-    GetSharedLibraryFileName(ORT_TSTR("example_plugin_ep_virt_gpu.dll")),
+    GetSharedLibraryFileName(ORT_TSTR("example_plugin_ep_virt_gpu")),
     "example_plugin_ep_virt_gpu.virtual",  // Ends in ".virtual" to allow creation of virtual devices.
     // This EP's name is hardcoded to the following
     "EpVirtualGpu");
