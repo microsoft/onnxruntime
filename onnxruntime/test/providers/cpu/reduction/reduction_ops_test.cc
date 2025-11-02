@@ -6295,5 +6295,16 @@ TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_3D_Identity) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare) {
+  OpTester test("ReduceSumSquare", 18);
+  test.AddInput<float>("data", {2}, {2.f, 3.f});
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2}, {4.f, 9.f});
+  test.Run();
+}
+
+
+
+
 }  // namespace test
 }  // namespace onnxruntime
