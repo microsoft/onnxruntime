@@ -596,7 +596,9 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T, start_version, end_version)    \
