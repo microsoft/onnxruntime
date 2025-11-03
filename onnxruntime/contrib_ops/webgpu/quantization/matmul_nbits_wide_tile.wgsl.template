@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #param has_zero_points
+#param has_bias
+#param has_weight_idx
 #param nbits
 #param tile_m
 #param tile_n
@@ -68,7 +70,12 @@ fn load_a(batch : u32, row : u32, col : u32) -> input_a_value_t {
 fn load_scale(row : u32, block_idx : u32) -> output_element_t {
   if (row < uniforms.N && block_idx < uniforms.n_blocks_per_col) {
     let offset = row * uniforms.n_blocks_per_col + block_idx;
+#if has_weight_idx
+    let b_scale_offset = uniforms.weight_idx * uniforms.N * uniforms.n_blocks_per_col;
+    return scales.getByOffset(offset + b_scale_offset);
+#else
     return scales.getByOffset(offset);
+#endif
   }
   return output_element_t();
 }
@@ -83,7 +90,12 @@ fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
 #if nbits == 4
 fn load_b(row : u32, block_idx : u32) -> vec4<input_b_element_t> {
   if (row < uniforms.N && block_idx < uniforms.K_of_b) {
+#if has_weight_idx
+    let b_offset = uniforms.weight_idx * uniforms.K_of_b * uniforms.N;
+    let offset = row * uniforms.K_of_b + block_idx + b_offset;
+#else
     let offset = row * uniforms.K_of_b + block_idx;
+#endif
     return b.getByOffset(offset);
   }
   return vec4<input_b_element_t>();
@@ -112,7 +124,12 @@ fn dequantize(packed_data : u32,
 #else  // nbits == 8
 fn load_b(row : u32, block_idx : u32) -> array<vec2<u32>, 4> {
   if (row < uniforms.N) {
+#if has_weight_idx
+    let b_offset = uniforms.weight_idx * uniforms.K_of_b * uniforms.N;
+    let offset = 2 * block_idx + b_offset;
+#else
     let offset = 2 * block_idx;
+#endif
     let b_data_0 = select(input_b_value_t(),
                           b.getByOffset(row * uniforms.K_of_b + offset),
                           offset < uniforms.K_of_b);
@@ -190,7 +207,19 @@ $MAIN {
   }
 
   // Write the results.
+  #if has_bias
+  #if has_weight_idx
+    let b_bias_offset = uniforms.weight_idx * uniforms.N;
+    let bias_value = bias[b_bias_offset + col + local_idx];
+  #else
+    let bias_value = bias[col + local_idx];
+  #endif
+  #endif
   for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
+  #if has_bias
+    write_output(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]) + bias_value);
+  #else
     write_output(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]));
+  #endif
   }
 }  // MAIN

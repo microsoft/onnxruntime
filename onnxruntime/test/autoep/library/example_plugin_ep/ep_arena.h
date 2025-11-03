@@ -26,7 +26,7 @@ limitations under the License.
 #undef ORT_API_MANUAL_INIT
 
 #include "ep_allocator.h"
-#include "example_plugin_ep_utils.h"
+#include "../plugin_ep_utils.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>

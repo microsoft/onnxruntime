@@ -4228,6 +4228,8 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::Graph_GetModelMetadata,
     &OrtApis::GetModelCompatibilityForEpDevices,
     &OrtApis::CreateExternalInitializerInfo,
+    // End of Version 23 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::TensorTypeAndShape_HasShape,
 };
 
@@ -4264,6 +4266,7 @@ static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeo
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
+static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.24.0",
