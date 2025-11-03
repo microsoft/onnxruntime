@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     name: Windows GPU TensorRT RTX CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -111,7 +111,7 @@ jobs:
       - name: nvidia-smi
         shell: powershell
         run: |
-          "C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+          nvidia-smi.exe
 
       - name: Build and Clean Binaries
         working-directory: ${{ runner.temp }}
