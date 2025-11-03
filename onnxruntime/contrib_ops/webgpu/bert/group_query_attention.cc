@@ -19,18 +19,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-ONNX_OPERATOR_KERNEL_EX(
-    GroupQueryAttention,
-    kMSDomain,
-    1,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .MayInplace(3, 1)
-        .MayInplace(4, 2)
-        .InputMemoryType(OrtMemTypeCPUInput, 6),
-    GroupQueryAttention);
-
 Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
   const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
@@ -67,49 +55,6 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
   return context.RunProgram(program);
 }
 
-Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
-  const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
-  const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  sh.MainFunctionBody() << "  var pos_id: i32 = 0;\n"
-                        << "  let batch_idx = global_idx / uniforms.sequence_length;\n"
-                        << "  let sequence_idx = i32(global_idx % uniforms.sequence_length);\n"
-                        << "  let seqlen = " << seqlens.GetByOffset("batch_idx") << ";\n";
-  if (is_first_prompt_) {
-    sh.MainFunctionBody() << "  let total_seqlen = seqlen + 1;\n"
-                          << "  if (sequence_idx < total_seqlen) {\n"
-                          << "    pos_id = sequence_idx;\n"
-                          << "  } else {\n"
-                          << "    pos_id = 1;\n"
-                          << "  }\n"
-                          << "  " << output.SetByOffset("global_idx", "pos_id") << "\n";
-  } else if (is_subsequent_prompt_) {
-    sh.MainFunctionBody() << "  let total_seqlen = seqlen + 1;\n"
-                          << "  let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
-                          << "  if (past_seqlen + sequence_idx < total_seqlen) {\n"
-                          << "    pos_id = past_seqlen + sequence_idx;\n"
-                          << "  } else {\n"
-                          << "    pos_id = 1;\n"
-                          << "  }\n"
-                          << "  " << output.SetByOffset("global_idx", "pos_id") << "\n";
-  } else {
-    sh.MainFunctionBody() << "  if (global_idx < uniforms.batch_size) {\n"
-                          << "    " << output.SetByOffset("global_idx", "seqlen") << "\n"
-                          << "  }\n";
-  }
-  return Status::OK();
-}
-
-Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* seqlens, Tensor* output_tensor) {
-  GeneratePositionIDsProgram program(params.is_first_prompt_, params.is_subsequent_prompt_);
-  auto output_size = params.batch_size_ * params.sequence_length_;
-  program.CacheHint(params.is_first_prompt_, params.is_subsequent_prompt_)
-      .AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
-      .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)}, {static_cast<uint32_t>(params.sequence_length_)}})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-  return context.RunProgram(program);
-}
-
 // Fused Q/K rotary embedding
 Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                  const WebgpuAttentionParameters& params,
@@ -120,10 +65,6 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                  const Tensor* sin_cache,
                                  Tensor* query_out,
                                  Tensor* key_out) {
-  Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(),
-                                           TensorShape({params.batch_size_, params.sequence_length_}));
-  ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, params, seqlen_k, &pos_ids));
-
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -171,7 +112,7 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
       .AddInputs({
           {query_in, ProgramTensorMetadataDependency::Rank},
           {key_in, ProgramTensorMetadataDependency::Rank},
-          {&pos_ids, ProgramTensorMetadataDependency::Rank},
+          {seqlen_k, ProgramTensorMetadataDependency::Rank},
           {cos_cache, ProgramTensorMetadataDependency::Rank},
           {sin_cache, ProgramTensorMetadataDependency::Rank},
       })
@@ -188,8 +129,7 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {gsl::make_span(k_global_dims)},
           {gsl::make_span(k_input_output_strides)},
           {q_domain_size},
-      })
-      .AddIndices(TensorShape{1, 1});
+      });
 
   return context.RunProgram(program);
 }
@@ -316,6 +256,29 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                         parameters.v_head_size_, value, nullptr, 0, &V));
   return ApplyAttention(&Q, &K, &V, attention_bias, past_key, past_value, output, present_key,
                         present_value, parameters, context, head_sink, seqlen_k, local_window_size_);
+}
+
+KernelCreateInfo CreateGroupQueryAttentionKernelInfo(bool enable_graph_capture) {
+  KernelDefBuilder builder;
+  builder.SetName("GroupQueryAttention")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Provider(kWebGpuExecutionProvider)
+      .TypeConstraint("T", WebGpuSupportedFloatTypes())
+      .MayInplace(3, 1)
+      .MayInplace(4, 2);
+
+  // Only set InputMemoryType to CPU when graph capture is disabled
+  if (!enable_graph_capture) {
+    builder.InputMemoryType(OrtMemTypeCPUInput, 6);
+  }
+
+  return KernelCreateInfo(
+      builder.Build(),
+      [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+        out = std::make_unique<GroupQueryAttention>(info);
+        return Status::OK();
+      });
 }
 
 }  // namespace webgpu

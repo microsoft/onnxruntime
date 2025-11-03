@@ -21,6 +21,7 @@ parameters:
   default: '12.8'
   values:
    - 12.8
+   - 13.0
 
 # TODO: Ideally it should fetch information from the build that triggers it
 - name: cmake_build_type
