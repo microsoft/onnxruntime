@@ -1501,6 +1501,21 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
     }
   }
 
+  // If dump_ep_context_model_ is enabled,
+  // making sure all initializers that have external data are added as inputs to EPContext node.
+  std::vector<std::string> initializers_as_inputs;
+  if (dump_ep_context_model_) {
+    // Add initializers as inputs to the EPContext node
+    const InitializedTensorSet& allInitializers = graph.GetAllInitializedTensors();
+    for (auto& entry : allInitializers) {
+      auto* tp = entry.second;
+      if (utils::HasExternalData(*tp)) {
+        auto& name = entry.first;
+        initializers_as_inputs.push_back(name);
+      }
+    }
+  }
+
   // Sort outputs by the order they were added
   for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
@@ -1518,6 +1533,10 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
     if (input.second->Exists()) {
       meta_def->inputs().push_back(input.second->Name());
     }
+  }
+
+  for (const auto& initializer : initializers_as_inputs) {
+    meta_def->inputs().push_back(initializer);
   }
 
   for (const auto& initializer : initializers) {

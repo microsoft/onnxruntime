@@ -134,6 +134,57 @@ int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_confi
   return 0;
 }
 
+struct CustomInitializerHandlerState {
+  const ORTCHAR_T* external_file_path = nullptr;
+  std::ofstream* outfile = nullptr;
+};
+
+static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
+                                                             const char* initializer_name,
+                                                             const OrtValue* c_initializer_value,
+                                                             const OrtExternalInitializerInfo* /*c_external_info*/,
+                                                             OrtExternalInitializerInfo** c_new_external_info) {
+  Ort::Status final_status{nullptr};
+
+  ORT_TRY {
+    CustomInitializerHandlerState* custom_state = reinterpret_cast<CustomInitializerHandlerState*>(state);
+
+    //
+    // Store other initializers in an external file.
+    //
+    Ort::ConstValue value{c_initializer_value};
+    size_t byte_size = value.GetTensorSizeInBytes();
+
+    int64_t offset = custom_state->outfile->tellp();
+    const ORTCHAR_T* location = custom_state->external_file_path;
+
+    custom_state->outfile->write(static_cast<const char*>(value.GetTensorRawData()), byte_size);
+    custom_state->outfile->flush();
+    
+
+    // Provide caller (ORT) with the new external info.
+    Ort::ExternalInitializerInfo new_external_info{nullptr};
+    if (Ort::Status status = Ort::ExternalInitializerInfo::Create(location, offset, byte_size, new_external_info);
+        !status.IsOK()) {
+      return status.release();
+    }
+
+    *c_new_external_info = new_external_info.release();
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status{ex};
+    }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status(ex.what(), ORT_FAIL);
+    }));
+  }
+
+  return final_status.release();
+}
+
 Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
   auto output_ctx_model_path = test_config.run_config.compile_model_path;
   const auto provider_name = test_config.machine_config.provider_type_name;
@@ -143,10 +194,19 @@ Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::Performan
   std::unordered_map<std::string, std::string> provider_options;
   session_options.AppendExecutionProvider(provider_name, provider_options);
 
+  // Open a file to store external initializers. ORT will call our handler function for every initializer.
+  // const ORTCHAR_T* initializer_file = ORT_TSTR("./nv_execution_provider_compile_large_embed_mode_0_bytestream_io_0_ext_init_0.onnx_data");
+  // CustomInitializerHandlerState custom_state = {initializer_file};
+  const ORTCHAR_T* initializer_file = ORT_TSTR("./nv_execution_provider_external_weights.onnx_data");
+  std::ofstream outfile(initializer_file, std::ios::binary);
+  CustomInitializerHandlerState custom_state = {initializer_file, &outfile};
+
   Ort::ModelCompilationOptions model_compile_options(env, session_options);
   model_compile_options.SetEpContextEmbedMode(test_config.run_config.compile_binary_embed);
   model_compile_options.SetInputModelPath(test_config.model_info.model_file_path.c_str());
   model_compile_options.SetOutputModelPath(output_ctx_model_path.c_str());
+  model_compile_options.SetOutputModelGetInitializerLocationFunc(TestHandleInitializerDataFunc,
+                                                                 reinterpret_cast<void*>(&custom_state));
 
   Ort::Status status;
   std::chrono::duration<double> compile_duration;
