@@ -295,14 +295,13 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
                                                 |
                                           attention_bias
   */
-  const std::vector<int32_t> mask_shape_ones_shape(batch_size * num_heads * qkv_sequence_length * past_sequence_length,
-                                                   1);
-  std::string mask_shape_ones_shape_name = "webnn_GQA_mask_shape_ones_" + std::to_string(batch_size) +
-                                           "_" + std::to_string(num_heads) + "_" + std::to_string(qkv_sequence_length) +
-                                           "_" + std::to_string(past_sequence_length);
-  emscripten::val mask_shape_ones_shape_constant = model_builder.CreateOrGetConstant<int32_t>(
-      ONNX_NAMESPACE::TensorProto_DataType_INT32, mask_shape_ones_shape_name, mask_shape_ones_shape,
-      std::vector<uint32_t>({batch_size, num_heads, qkv_sequence_length, past_sequence_length}));
+  emscripten::val value_int_one_constant =
+      model_builder.CreateOrGetConstant<int>(ONNX_NAMESPACE::TensorProto_DataType_INT32, 1, {1});
+
+  std::vector<uint32_t> mask_shape_ones_shape = {batch_size, num_heads, qkv_sequence_length, past_sequence_length};
+  common_options.set("label", node.Name() + "_/GQA/GQA_mask_shape_ones/expand");
+  emscripten::val mask_shape_ones_shape_constant = model_builder.GetBuilder().call<emscripten::val>(
+      "expand", value_int_one_constant, emscripten::val::array(mask_shape_ones_shape), common_options);
 
   emscripten::val cumsum_options = emscripten::val::object();
   cumsum_options.set("label", node.Name() + "_range_of_mask_shape");
@@ -350,8 +349,6 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
     new attn_mask
   */
   if (local_window_size != -1) {
-    emscripten::val console = emscripten::val::global("console");
-    console.call<void>("log", emscripten::val("local window size is not -1."));
     // Cast condition
     common_options.set("label", node.Name() + "_/GQA/attn_mask/condition_2/cast");
     emscripten::val casted_condition_1 =
@@ -374,7 +371,6 @@ Status GroupQueryAttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_b
     common_options.set("label", node.Name() + "_/GQA/attn_mask/condition/and");
     condition = model_builder.GetBuilder().call<emscripten::val>(
         "logicalAnd", condition_1, condition_2, common_options);
-    console.call<void>("log", condition_2);
   }
 
   emscripten::val value_one_constant =
