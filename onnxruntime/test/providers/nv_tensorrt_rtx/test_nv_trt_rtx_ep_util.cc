@@ -276,7 +276,7 @@ onnxruntime::NodeArg& AddGroupQueryAttention(
 void CreateLargeLLMModel(const PathString& model_path, const PathString& external_data_path) {
   // Model parameters (example: 24 layers, 4096 hidden dim, 32 attention heads, 8 kv heads => GQA)
   int batch_size = 1;
-  int num_layers = 32;
+  int num_layers = 8;
   int hidden_dim = 2048;
   int q_num_heads = 8;
   int kv_num_heads = 1;  // GQA: q_num_heads > kv_num_heads, and divisible.

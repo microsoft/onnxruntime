@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     name: Windows GPU TensorRT RTX CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -35,18 +35,6 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
-
-      - name: Show total physical memory
-        run: |
-          $ram = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
-          $ramGB = [math]::Round($ram / 1GB, 2)
-          Write-Host "Total RAM: $ramGB GB"
-        shell: pwsh
-
-      - name: nvidia-smi
-        shell: powershell
-        run: |
-          nvidia-smi.exe
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
@@ -236,6 +224,18 @@ jobs:
         uses: ./.github/actions/install-onnxruntime-wheel
         with:
           whl-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\dist
+
+      - name: Show total physical memory
+        run: |
+          $ram = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+          $ramGB = [math]::Round($ram / 1GB, 2)
+          Write-Host "Total RAM: $ramGB GB"
+        shell: pwsh
+
+      - name: nvidia-smi
+        shell: powershell
+        run: |
+          nvidia-smi.exe
 
       - name: Run Tests
         working-directory: ${{ runner.temp }}
