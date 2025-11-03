@@ -11,6 +11,8 @@
 #param tile_size_k_vec
 #param tile_size_k
 #param tile_size
+#param has_bias
+#param has_weight_idx
 
 #use .getByOffset .setByOffset
 
@@ -32,6 +34,20 @@ fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 
 $MAIN {
   let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
+#if has_weight_idx
+  let b_base_offset = uniforms.weight_idx * uniforms.K_of_b * uniforms.N;
+#if single_scale_weights
+  let b_scale_offset = uniforms.weight_idx;
+#else
+  let b_scale_offset = uniforms.weight_idx * uniforms.N * uniforms.blocks_per_col;
+#endif
+#else
+  const b_base_offset : u32 = 0;
+  const b_scale_offset : u32 = 0;
+#endif
+#if has_bias
+  let b_bias_offset = uniforms.weight_idx * uniforms.N;
+#endif
   let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
   let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
 
@@ -40,7 +56,7 @@ $MAIN {
 
 #if single_scale_weights
   let block_idx = 0;
-  let scale_b = scales_b.getByOffset(0);
+  let scale_b = scales_b.getByOffset(0 + b_scale_offset);
   let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
 
@@ -60,10 +76,10 @@ $MAIN {
       {
 #if !single_scale_weights
         let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
-        let scale_b = scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
+        let scale_b = scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx + b_scale_offset);
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
-        var b_value = b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+        var b_value = b.getByOffset(b_global * uniforms.K_of_b + k_offset + b_base_offset);
 
 #if n_bits == 4
         var sum = output_element_t(0);
@@ -154,6 +170,9 @@ $MAIN {
     let b_global =  b_global_base + local_idx;
     let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
+#if has_bias
+      output_value += bias[b_global + b_bias_offset];
+#endif
       output.setByOffset(output_idx, output_value);
     }
   }
