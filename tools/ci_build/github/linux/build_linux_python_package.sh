@@ -61,7 +61,8 @@ echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
 
 if [ "$EXTRA_ARG" != "" ]; then
-    # Shall not quote $EXTRA_ARG here to allow multiple arguments passed in.
+    # SC2206: This is intentionally unquoted to allow multiple arguments.
+    # shellcheck disable=SC2206
     BUILD_ARGS+=($EXTRA_ARG)
 fi
 
@@ -71,7 +72,8 @@ if [ "$ARCH" == "x86_64" ]; then
 fi
 
 if [ "$BUILD_DEVICE" == "GPU" ]; then
-    SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
+    # Fix SC2086: Quote $CUDA_VERSION
+    SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=60-real;70-real;75-real;80-real;86-real;90a-real;90-virtual" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
 fi
