@@ -108,6 +108,11 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
+      - name: nvidia-smi
+        shell: powershell
+        run: |
+          nvidia-smi.exe
+
       - name: Build and Clean Binaries
         working-directory: ${{ runner.temp }}
         run: |
