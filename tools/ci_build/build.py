@@ -1832,7 +1832,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess(
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
-                    if args.enable_transformers_tool_test:
+
+                    # onnx package does not support python 3.14 yet so skip the transformers tests for python 3.14.
+                    # we can remove this check when onnx package supports python 3.14.
+                    if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
+                        3,
+                        14,
+                    ):
                         import google.protobuf  # noqa: PLC0415
                         import numpy  # noqa: PLC0415
 

@@ -218,6 +218,8 @@ stages:
             $ErrorActionPreference = "Stop"
             python -m pip uninstall -y onnxruntime onnxruntime-${{ parameters.EP_NAME }} -qq
             dir $(Build.ArtifactStagingDirectory)
+            python -m pip install psutil py-cpuinfo py3nvml
+            python -c "import onnxruntime; onnxruntime.print_debug_info()"
             python -m pip --disable-pip-version-check install --no-index --find-links $(Build.ArtifactStagingDirectory) onnxruntime-${{ parameters.EP_NAME }}
             mkdir -p $(Agent.TempDirectory)\ort_test_data
             Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
