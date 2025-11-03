@@ -111,7 +111,7 @@ jobs:
       - name: nvidia-smi
         shell: powershell
         run: |
-          nvidia-smi.exe
+          "C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"
 
       - name: Build and Clean Binaries
         working-directory: ${{ runner.temp }}
