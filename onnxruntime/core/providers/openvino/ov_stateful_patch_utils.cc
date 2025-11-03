@@ -59,6 +59,17 @@ bool ModelHasInputOutputNames(std::shared_ptr<ov::Model> model, const std::strin
   return false;
 }
 
+std::string GetInputOutputName(std::shared_ptr<ov::Model> ov_model,
+                            const std::vector<std::string>& candidate_names) {
+  for (const auto& name : candidate_names) {
+    if (ModelHasInputOutputNames(ov_model, name)) {
+      return name;
+    }
+  }
+  // Return the first candidate as default if none are found
+  return candidate_names.empty() ? "" : candidate_names[0];
+}
+
 void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                       std::vector<std::string>& not_kv_inputs,
                       const std::vector<std::string>& key_value_input_names,
@@ -67,10 +78,15 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     throw std::runtime_error("Model already has fused cache");
   }
 
-  std::string main_input_name = "inputs_embeds";
-  if (ModelHasInputOutputNames(ov_model, "input_ids")) {
-    main_input_name = "input_ids";
-  }
+    // Define input name candidates in priority order
+  const std::vector<std::string> input_name_candidates = {
+    "inputs_embeds",                           // Default fallback
+    "input_ids",                               // Most common
+    "input_hidden_states",                     // Alternative
+    "/model/embed_tokens/Gather_output_0"      // Specific model type
+  };
+
+  std::string main_input_name = GetInputOutputName(ov_model, input_name_candidates);
 
   auto input_batch = ov_model->input(main_input_name).get_partial_shape()[0];
 
@@ -127,6 +143,14 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
     bool found = false;
     for (auto& name : names) {
       if (name.find("key_values") != std::string::npos) {
+        key_value_input_names.push_back(name);
+        found = true;
+        break;
+      } else if (name.find("keys") != std::string::npos) {
+        key_value_input_names.push_back(name);
+        found = true;
+        break;
+      } else if (name.find("values") != std::string::npos) {
         key_value_input_names.push_back(name);
         found = true;
         break;
