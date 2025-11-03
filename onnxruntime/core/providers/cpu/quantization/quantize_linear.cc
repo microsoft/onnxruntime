@@ -596,12 +596,13 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
-// Opset 23 — תואם שמות הסכמה: T1=x, T2=y_scale, T3=y/y_zero_point
+// Opset 23 — aligns with ONNX schema parameter names:
+//   T1 = X
+//   T2 = Y_scale
+//   T3 = Y / Y_zero_point (quantized output)
 #define REGISTER_QUANTIZELINEAR_OPSET23(T)                                            \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                               \
       QuantizeLinear,                                                                     \
@@ -609,13 +610,10 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       23,                                                                                 \
       T,                                                                              \
       KernelDefBuilder()                                                                  \
-          /* T1: x */                                                                     \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),                   \
                                  DataTypeImpl::GetTensorType<MLFloat16>()})              \
-          /* T2: y_scale */                                                               \
           .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),                   \
                                  DataTypeImpl::GetTensorType<MLFloat16>()})              \
-          /* T3: y / y_zero_point == סוג הפלט */                                         \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),                   \
       QuantizeLinear<T>)
 
@@ -681,7 +679,6 @@ REGISTER_QUANTIZELINEAR_OPSET23(Float8E4M3FNUZ)
 REGISTER_QUANTIZELINEAR_OPSET23(Float8E5M2)
 REGISTER_QUANTIZELINEAR_OPSET23(Float8E5M2FNUZ)
 #endif
-
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.
 // TODO(adrianlizarraga): Support int4 and block quantization.
