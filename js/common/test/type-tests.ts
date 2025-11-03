@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import globby from 'globby';
+import { globbySync } from 'globby';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
@@ -47,7 +47,7 @@ const TYPE_TESTS_DIR = join(dirname(fileURLToPath(import.meta.url)), './type-tes
  */
 const prepareTestFileList = () =>
   //
-  globby.sync('**/*.ts', {
+  globbySync('**/*.ts', {
     cwd: TYPE_TESTS_DIR,
     absolute: true,
   });
