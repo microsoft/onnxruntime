@@ -7,7 +7,7 @@ import { assertTensorEqual, SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TES
 import * as path from 'path';
 
 if (isMainThread) {
-  describe('E2E Tests - worker test', () => {
+  describe('API Tests - worker test', () => {
     it('should run in worker', (done) => {
       const worker = new Worker(__filename, {
         stdout: true,

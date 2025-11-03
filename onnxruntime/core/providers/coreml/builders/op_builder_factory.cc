@@ -22,12 +22,15 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateActivationOpBuilder("PRelu", op_registrations);
   CreateActivationOpBuilder("LeakyRelu", op_registrations);
   CreateActivationOpBuilder("Gelu", op_registrations);
+  CreateActivationOpBuilder("Softplus", op_registrations);
+  CreateActivationOpBuilder("Elu", op_registrations);
 
   // Unary ops
   CreateUnaryOpBuilder("Erf", op_registrations);
   CreateUnaryOpBuilder("Reciprocal", op_registrations);
   CreateUnaryOpBuilder("Round", op_registrations);
   CreateUnaryOpBuilder("Sqrt", op_registrations);
+  CreateUnaryOpBuilder("Exp", op_registrations);
 
   // Binary elementwise ops
   CreateBinaryOpBuilder("Add", op_registrations);
