@@ -601,6 +601,25 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
+// Opset 23 — תואם שמות הסכמה: T1=x, T2=y_scale, T3=y/y_zero_point
+#define REGISTER_QUANTIZELINEAR_OPSET23(T)                                            \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                               \
+      QuantizeLinear,                                                                     \
+      23,                                                                                 \
+      23,                                                                                 \
+      T,                                                                              \
+      KernelDefBuilder()                                                                  \
+          /* T1: x */                                                                     \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),                   \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()})              \
+          /* T2: y_scale */                                                               \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),                   \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()})              \
+          /* T3: y / y_zero_point == סוג הפלט */                                         \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),                   \
+      QuantizeLinear<T>)
+
+
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T, start_version, end_version)    \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
       QuantizeLinear,                                                       \
@@ -648,19 +667,21 @@ REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
 #endif
 
-// Opset 23 added support for float4e2m1.
-REGISTER_QUANTIZELINEAR_VERSIONED(int8_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(int16_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(uint16_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Int4x2, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(UInt4x2, 23, 23)
+
+// Opset 23
+REGISTER_QUANTIZELINEAR_OPSET23(int8_t)
+REGISTER_QUANTIZELINEAR_OPSET23(uint8_t)
+REGISTER_QUANTIZELINEAR_OPSET23(int16_t)
+REGISTER_QUANTIZELINEAR_OPSET23(uint16_t)
+REGISTER_QUANTIZELINEAR_OPSET23(Int4x2)
+REGISTER_QUANTIZELINEAR_OPSET23(UInt4x2)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FN, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 23, 23)
+REGISTER_QUANTIZELINEAR_OPSET23(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR_OPSET23(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR_OPSET23(Float8E5M2)
+REGISTER_QUANTIZELINEAR_OPSET23(Float8E5M2FNUZ)
 #endif
+
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.
 // TODO(adrianlizarraga): Support int4 and block quantization.
