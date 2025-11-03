@@ -22,6 +22,11 @@ parameters:
   default: '12.8'
   values:
    - 12.8
+   - 13.0
+
+- name: cudnn_folder
+  type: string
+  default: '9.13.0.50_cuda13'
 
 - name: PythonVersions
   type: object
@@ -32,14 +37,25 @@ parameters:
     - '3.13'
 
 stages:
-    - ${{ each python_version in parameters.PythonVersions }}:
-      - template: py-win-gpu-stage.yml
-        parameters:
-          PYTHON_VERSION: ${{ python_version }}
-          EP_NAME: gpu
-          CudaVersion: ${{ parameters.cuda_version }}
-          EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
-          use_tensorrt: True
+    - ${{ if eq(parameters.cuda_version, '12.8') }}:
+      - ${{ each python_version in parameters.PythonVersions }}:
+        - template: py-win-gpu-stage.yml
+          parameters:
+            PYTHON_VERSION: ${{ python_version }}
+            EP_NAME: gpu
+            CudaVersion: ${{ parameters.cuda_version }}
+            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
+            use_tensorrt: True
+
+    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+      - ${{ each python_version in parameters.PythonVersions }}:
+        - template: py-win-gpu-stage.yml
+          parameters:
+            PYTHON_VERSION: ${{ python_version }}
+            EP_NAME: gpu
+            CudaVersion: ${{ parameters.cuda_version }}
+            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;86-real;89-real;90-virtual"
+            use_tensorrt: True
 
     - template: py-linux-gpu-stage.yml
       parameters:

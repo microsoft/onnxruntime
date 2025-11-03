@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "example_plugin_ep_utils.h"
+#include "../plugin_ep_utils.h"
 
 struct ExampleDataTransfer : OrtDataTransferImpl, ApiPtrs {
   ExampleDataTransfer(ApiPtrs api_ptrs,

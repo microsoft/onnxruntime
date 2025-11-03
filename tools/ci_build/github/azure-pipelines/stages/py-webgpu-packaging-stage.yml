@@ -1,0 +1,51 @@
+parameters:
+- name: build_py_parameters
+  displayName: >
+    Extra parameters to pass to build.py. Don't put newlines in here.
+  type: string
+  default: ''
+
+# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
+- name: cmake_build_type
+  type: string
+  displayName: 'Linux packages cmake build type. Linux Only.'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: PythonVersions
+  type: object
+  displayName: 'Python versions to build'
+  default:
+    - '3.11'
+    - '3.12'
+    - '3.13'
+
+stages:
+    - ${{ each python_version in parameters.PythonVersions }}:
+      - template: py-win-webgpu-stage.yml
+        parameters:
+          PYTHON_VERSION: ${{ python_version }}
+          EP_BUILD_FLAGS: --enable_lto --use_webgpu
+
+    - ${{ each python_version in parameters.PythonVersions }}:
+      - stage:  MacOS_py_webgpu_Wheels_${{ replace(python_version,'.','_') }}_Build
+        dependsOn: []
+        jobs:
+        - template: ../templates/py-macos.yml
+          parameters:
+            arch: 'arm64'
+            python_version: ${{ python_version }}
+            extra_build_arg: --use_webgpu ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    - template: py-linux-webgpu-stage.yml
+      parameters:
+          arch: 'x86_64'
+          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1

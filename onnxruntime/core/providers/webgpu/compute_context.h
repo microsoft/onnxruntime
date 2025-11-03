@@ -123,7 +123,7 @@ class ComputeContext {
   //
   // Run a compute shader program.
   //
-  inline Status RunProgram(ProgramBase& program) {
+  inline Status RunProgram(const ProgramBase& program) {
     return webgpu_context_.Run(*this, program);
   }
 

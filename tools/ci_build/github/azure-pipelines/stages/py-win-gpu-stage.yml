@@ -18,11 +18,13 @@ parameters:
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
+
 - name: CudaVersion
   type: string
   default: '12.8'
   values:
     - 12.8
+    - 13.0
 
 - name: cmake_build_type
   type: string

@@ -446,7 +446,7 @@ inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto
 }  // namespace utils
 
 namespace graph_utils {
-inline NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+inline NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   return g_host->GraphUtils__AddInitializerWithExternalData(graph, new_initializer);
 }
 inline void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
