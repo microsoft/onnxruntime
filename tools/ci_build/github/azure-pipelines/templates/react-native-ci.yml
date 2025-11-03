@@ -68,6 +68,8 @@ stages:
       runCodesignValidationInjection: false
     steps:
     - template: use-xcode-version.yml
+      parameters:
+        xcodeVersion: 16.4
 
     - task: UsePythonVersion@0
       displayName: Use python 3.12
