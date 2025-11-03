@@ -49,7 +49,7 @@ jobs:
         uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@v0.0.9
 
       - name: Upload Test Data Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test_data
           path: ${{ runner.temp }}/minimal_build_test_data/
@@ -512,7 +512,7 @@ jobs:
         with:
           node-version: 20
       - name: Download Test Data Artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: test_data
           path: ${{ runner.temp }}/.test_data/

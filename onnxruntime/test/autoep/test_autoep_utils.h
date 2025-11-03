@@ -15,23 +15,23 @@ using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::func
 
 struct Utils {
   struct ExamplePluginInfo {
-    const std::filesystem::path library_path =
-#if _WIN32
-        "example_plugin_ep.dll";
-#else
-        "libexample_plugin_ep.so";
-#endif
-    const std::string registration_name = "example_ep";
+    ExamplePluginInfo(const ORTCHAR_T* lib_path, const char* reg_name, const char* ep_name);
+
+    std::filesystem::path library_path;
+    std::string registration_name;
+    std::string ep_name;
   };
 
-  static ExamplePluginInfo example_ep_info;
+  static const ExamplePluginInfo example_ep_info;           // example_plugin_ep.dll
+  static const ExamplePluginInfo example_ep_virt_gpu_info;  // example_plugin_ep_virt_gpu.dll
 
   // get the OrtEpDevice for an arbitrary EP from the environment
   static void GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device);
 
   // Register the example EP library, get the OrtEpDevice for it, and return a unique pointer that will
   // automatically unregister the EP library.
-  static void RegisterAndGetExampleEp(Ort::Env& env, RegisteredEpDeviceUniquePtr& example_ep);
+  static void RegisterAndGetExampleEp(Ort::Env& env, const ExamplePluginInfo& ep_info,
+                                      RegisteredEpDeviceUniquePtr& example_ep);
 };
 }  // namespace test
 }  // namespace onnxruntime
