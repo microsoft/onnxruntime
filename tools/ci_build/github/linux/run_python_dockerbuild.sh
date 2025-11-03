@@ -23,7 +23,7 @@ if [ "${PYTHON_EXES}" != "" ] ; then
 fi
 
 if [ "${BUILD_EXTR_PAR}" != "" ] ; then
-    DOCKER_SCRIPT_OPTIONS+=" -x ${BUILD_EXTR_PAR}"
+    DOCKER_SCRIPT_OPTIONS+=" -x \"${BUILD_EXTR_PAR}\""
 fi
 
 docker run -e SYSTEM_COLLECTIONURI --rm \

@@ -12,9 +12,12 @@ ENABLE_CACHE=false
 PYTHON_EXES=(
   "/opt/python/cp311-cp311/bin/python3.11"
   "/opt/python/cp313-cp313/bin/python3.13"
+  "/opt/python/cp313-cp313t/bin/python3.13"
   "/opt/python/cp314-cp314/bin/python3.14"
+  "/opt/python/cp314-cp314t/bin/python3.14"
   "/opt/python/cp312-cp312/bin/python3.12"
   )
+
 while getopts "d:p:x:c:e" parameter_Option
 do case "${parameter_Option}"
 in
@@ -58,7 +61,8 @@ echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
 
 if [ "$EXTRA_ARG" != "" ]; then
-    BUILD_ARGS+=("$EXTRA_ARG")
+    # Shall not quote $EXTRA_ARG here to allow multiple arguments passed in.
+    BUILD_ARGS+=($EXTRA_ARG)
 fi
 
 if [ "$ARCH" == "x86_64" ]; then
@@ -82,10 +86,20 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
+  # Check if the Python executable or its directory exists
+  if [ ! -f "$PYTHON_EXE" ]; then
+    echo "WARNING: Python executable not found at $PYTHON_EXE. Skipping this version."
+    continue
+  fi
+
+  # Recompile the entire onnxruntime from scratch for every single Python version.
+  # TODO: It might be possible to reuse some intermediate files between different Python versions to speed up the build.
   rm -rf /build/"$BUILD_CONFIG"
+
   # that's a workaround for the issue that there's no python3 in the docker image
   # like xnnpack's cmakefile, it uses pythone3 to run a external command
   python3_dir=$(dirname "$PYTHON_EXE")
+  ls "$python3_dir"
   ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
   PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
