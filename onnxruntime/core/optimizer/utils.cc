@@ -161,11 +161,6 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
   return true;
 }
 
-bool IsScalarOr1Element1DTensor(gsl::span<const int64_t> tensor_shape) {
-  const size_t rank = tensor_shape.size();
-  return (rank == 0) || ((rank == 1) && (tensor_shape[0] == 1));
-}
-
 bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data, bool require_constant) {
   if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
     return false;
@@ -309,6 +304,11 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+bool IsScalarOr1Element1DTensor(gsl::span<const int64_t> tensor_shape) {
+  const size_t rank = tensor_shape.size();
+  return (rank == 0) || ((rank == 1) && (tensor_shape[0] == 1));
+}
 
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
   min = std::numeric_limits<float>::lowest();
