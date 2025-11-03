@@ -163,7 +163,7 @@ jobs:
       # ------------- Upload Build Output Step -------------
       - name: Upload Build Output Artifact
         if: inputs.upload_build_output == true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}
@@ -172,7 +172,7 @@ jobs:
       # ------------- Upload Log on Build Failure Step -------------
       - name: Upload VCPKG Manifest Install Log on Update or Build Failure
         if: steps.update_step.outcome == 'failure' || steps.build_step.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log

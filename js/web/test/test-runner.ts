@@ -405,8 +405,8 @@ export class TensorResultValidator {
           'TestRunner',
           `Tensor mismatch: \nACTUAL: type=${actual[i].type}; dims=[${actual[i].dims}]; data=[${actual[i].data}]\nEXPECT: type=${expected[i].type}; dims=[${expected[i].dims}]; data=[${expected[i].data}]`,
         );
+        throw new Error('tensor data should match');
       }
-      expect(match, 'tensor data should match').to.be.true;
     }
   }
 

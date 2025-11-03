@@ -17,6 +17,7 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
+
 - name: docker_base_image
   type: string
 
@@ -25,6 +26,7 @@ parameters:
   default: '12.8'
   values:
    - 12.8
+   - 13.0
 
 stages:
 - stage: Linux_py_GPU_Wheels_${{ parameters.arch }}
