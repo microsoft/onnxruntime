@@ -717,17 +717,6 @@ else()
   endif()
 endif()
 
-if(onnxruntime_USE_KLEIDIAI)
-  # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
-  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG=1)
-    target_compile_definitions(onnxruntime_mlas PRIVATE -DKLEIDIAI_KERNEL=1)
-  endif()
-  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE -DKLEIDIAI_KERNEL=1)
-  endif()
-endif()
-
 #names in this var must match the directory names under onnxruntime/core/providers
 #ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
