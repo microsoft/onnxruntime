@@ -853,6 +853,9 @@ TEST(CastOpTest, Int32ToInt4x2OddNumberOfElements) {
 }
 
 TEST(CastOpTest, Int32ToInt4x2EmptyTensor) {
+  if (DefaultOpenVINOExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "The OpenVINO not support 0 size input";
+  }
   // GIVEN
   const std::vector<int64_t> empty_shape{0};
   const std::vector<int32_t> empty_input = {};
@@ -1477,7 +1480,7 @@ template <typename F4>
 void CastOpTestFloatFloat4(std::vector<int64_t> shape,
                            std::vector<float> float_data,
                            bool is_fp4_input = false) {
-  size_t num_pairs = float_data.size() / 2;
+  int num_pairs = static_cast<int>(float_data.size()) / 2;
   int num_fp4_elements = static_cast<int>((float_data.size() + 1) / 2);
   bool is_odd_count = (float_data.size() % 2 != 0);
 

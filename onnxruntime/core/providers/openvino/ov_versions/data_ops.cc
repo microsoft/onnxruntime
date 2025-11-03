@@ -96,6 +96,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Atanh", V_2020_4, {"CPU"}},
     {"Atanh", V_2022_1, {"GPU"}},
     {"Attention", V_2023_0, {"CPU", "GPU"}},
+    {"GroupQueryAttention", V_2025_1, {"GPU"}},
     {"AveragePool", V_2020_4, {"CPU", "GPU"}},
     {"BatchNormalization", V_2020_4, {"CPU", "GPU"}},
     {"BiasGelu", V_2023_0, {"CPU", "GPU"}},

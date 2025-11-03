@@ -905,9 +905,16 @@ MlasGemmQuantGetDispatch(
         GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
 #elif defined(MLAS_TARGET_LARCH64)
-    if (!AIsSigned) {
+    if (AIsSigned) {
+        GemmQuantDispatch =
+            BIsSigned ? GetMlasPlatform().GemmS8S8Dispatch : GetMlasPlatform().GemmS8U8Dispatch;
+    } else { // !AIsSigned
         GemmQuantDispatch =
             BIsSigned ? GetMlasPlatform().GemmU8S8Dispatch : GetMlasPlatform().GemmU8U8Dispatch;
+    }
+#elif defined(MLAS_TARGET_S390X)
+    if (GetMlasPlatform().GemmU8X8Dispatch == &MlasGemm8X8DispatchZVECTOR) {
+        GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
 #endif
 #endif // !defined(FORCE_GENERIC_ALGORITHMS)

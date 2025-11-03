@@ -516,6 +516,7 @@ struct ProviderHostImpl : ProviderHost {
 
   // TypeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TypeProto>(); }
+  void TypeProto__operator_delete(ONNX_NAMESPACE::TypeProto* p) override { delete p; }
   void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) override { p->CopyFrom(*other); }
   bool TypeProto__has_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->has_tensor_type(); }
   const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->tensor_type(); }
@@ -1239,7 +1240,7 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                           const logging::Logger& logger) override {
-    return std::make_unique<Model>(model_proto, model_path, local_registries, logger);
+    return std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger);
   }
   std::unique_ptr<Model> Model__construct(const std::string& graph_name,
                                           bool is_onnx_domain_only,
@@ -1433,7 +1434,7 @@ struct ProviderHostImpl : ProviderHost {
 
   NodeArg& GraphUtils__AddInitializerWithExternalData(Graph& graph,
                                                       const ONNX_NAMESPACE::TensorProto& new_initializer) override {
-    return graph_utils::AddInitializerWithExternalData(graph, new_initializer);
+    return graph_utils::AddInitializerWithOrtValue(graph, new_initializer);
   }
 
   void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,

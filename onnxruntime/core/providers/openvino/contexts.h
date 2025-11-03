@@ -55,17 +55,36 @@ class SharedContext : public WeakSingleton<SharedContext> {
       explicit WeightsFile(std::filesystem::path filename);
 
       void load_weights(size_t file_offset, void* data, size_t size);
+      void* TryGetOrCreateDeviceMapping(std::optional<ov::RemoteContext>& remote_context);
+      size_t Size() const { return weights_size_; }
 
      private:
       std::ifstream file_;
+      std::filesystem::path file_path_;
       size_t weights_size_;
+      struct MappingContainer {
+        void* ptr_{nullptr};
+        ov::Tensor tensor_;
+      };
+      std::map<std::string, MappingContainer> imported_device_tensors_;
     };
+
+    void clear() {
+      metadata.clear();
+      metadata_filepath.clear();
+      external_weight_filename.clear();
+      mapped_weights.reset();
+    }
 
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
     Metadata::Map metadata;
     fs::path metadata_filepath;
   } shared_weights;
+
+  void clear() {
+    shared_weights.clear();
+  }
 };
 
 using config_t = std::map<std::string, ov::AnyMap>;
@@ -109,15 +128,27 @@ struct ProviderInfo {
   bool so_context_embed_mode{false};       // ORT session option
   bool so_share_ep_contexts{false};        // ORT session option
   fs::path so_context_file_path{};         // ORT session option
+  bool so_stop_share_ep_contexts{false};   // ORT session option
   const ConfigOptions* config_options{NULL};
   const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
                                                                "enable_causallm", "disable_dynamic_shapes", "reshape_input", "layout"};
 };
 
+struct RuntimeConfig {
+  std::unordered_map<std::string, std::string> options;
+  std::optional<std::string> Get(const std::string& key) const {
+    auto it = options.find(key);
+    return it != options.end() ? std::optional{it->second} : std::nullopt;
+  }
+};
+
 // Holds context applicable to the entire EP instance.
 struct SessionContext : ProviderInfo {
-  SessionContext(const ProviderInfo& info) : ProviderInfo{info} {}
+  SessionContext(const ProviderInfo& info) : ProviderInfo{info} {
+    InitRuntimeConfig();
+  }
+
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
   std::filesystem::path onnx_model_path_name;
   uint32_t onnx_opset_version{0};
@@ -125,6 +156,14 @@ struct SessionContext : ProviderInfo {
   mutable bool has_external_weights = false;       // Value is set to mutable to modify from capability
   const std::vector<uint32_t> OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   const std::string openvino_sdk_version = std::to_string(OPENVINO_VERSION_MAJOR) + "." + std::to_string(OPENVINO_VERSION_MINOR);
+  RuntimeConfig runtime_config;
+
+ private:
+  void InitRuntimeConfig() {
+    if (config_options) {
+      runtime_config.options = config_options->GetConfigOptionsMap();
+    }
+  }
 };
 
 // Holds context specific to subgraph.

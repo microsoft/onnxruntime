@@ -6,7 +6,7 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
-#include "core/providers/webgpu/nn/conv_backprop_webgpu.h"
+#include "core/providers/webgpu/nn/conv_backprop.h"
 
 namespace onnxruntime {
 namespace webgpu {

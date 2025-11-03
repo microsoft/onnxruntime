@@ -7,6 +7,7 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -21,6 +22,7 @@
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
 #include "core/providers/openvino/qdq_transformations/qdq_scales_fix.h"
+#include "../../framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -82,6 +84,10 @@ BackendManager::BackendManager(SessionContext& session_context,
 
   subgraph_context_.subgraph_name = fused_node.Name();
 
+  if (ModelHasSymbolicInputDims(subgraph)) {
+    subgraph_context_.has_dynamic_input_shape = true;
+  }
+
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
@@ -118,8 +124,7 @@ BackendManager::BackendManager(SessionContext& session_context,
     backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
   }
 
-  if (ModelHasSymbolicInputDims(subgraph)) {
-    subgraph_context_.has_dynamic_input_shape = true;
+  if (subgraph_context_.has_dynamic_input_shape) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if ((!session_context_.disable_dynamic_shapes &&
          (session_context_.device_type.find("CPU") != std::string::npos ||
@@ -166,7 +171,8 @@ BackendManager::BackendManager(SessionContext& session_context,
           exception_str.find("intel_npu") != std::string::npos) {
         // Handle NPU device related errors
 #ifndef NDEBUG
-        ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
+        std::string suffix = session_context_.so_disable_cpu_ep_fallback ? "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" : "\nModel needs to be recompiled\n";
+        ORT_THROW(exception_str + suffix);
 #else
         std::string error_message = "UNKNOWN NPU ERROR";
         std::string error_code = "code 0x0";
@@ -179,7 +185,8 @@ BackendManager::BackendManager(SessionContext& session_context,
         if (std::regex_search(exception_str, matches, error_code_pattern)) {
           error_code = matches[0];
         }
-        throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
+        std::string suffix = session_context_.so_disable_cpu_ep_fallback ? "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" : "\nModel needs to be recompiled\n";
+        throw std::runtime_error(error_message + ", " + error_code + suffix);
 #endif
       } else {
         ORT_THROW(exception_str);
@@ -453,6 +460,80 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
 #endif
 }
 
+// this is a helper function to set the data fields, it duplicates ExternalDataInfo::SetExternalLocationToProto
+// but we cannot use that function as it is not part of public provider api.
+static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto* proto_init, const void* data_ptr, int64_t data_size) {
+  static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";
+  auto* external_data = proto_init->mutable_external_data();
+  bool found_location = false, found_offset = false, found_length = false;
+  const int ext_data_size = external_data->size();
+  proto_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+
+  for (int j = 0; j < ext_data_size; ++j) {
+    auto& ext_entry = external_data->at(j);
+    auto& key = *ext_entry.mutable_key();
+    if (key == "location") {
+      *ext_entry.mutable_value() = ORT_INTERNAL_MEM_INITIALIZER;
+      found_location = true;
+    } else if (key == "offset") {
+      *ext_entry.mutable_value() = std::to_string(reinterpret_cast<uintptr_t>(data_ptr));
+      found_offset = true;
+    } else if (key == "length") {
+      *ext_entry.mutable_value() = std::to_string(data_size);
+      found_length = true;
+    }
+  }
+
+  if (!found_location) {
+    auto* new_entry = external_data->Add();
+    *new_entry->mutable_key() = "location";
+    *new_entry->mutable_value() = ORT_INTERNAL_MEM_INITIALIZER;
+  }
+  if (!found_offset) {
+    auto* new_entry = external_data->Add();
+    *new_entry->mutable_key() = "offset";
+    *new_entry->mutable_value() = std::to_string(reinterpret_cast<uintptr_t>(data_ptr));
+  }
+  if (!found_length) {
+    auto* new_entry = external_data->Add();
+    *new_entry->mutable_key() = "length";
+    *new_entry->mutable_value() = std::to_string(data_size);
+  }
+}
+
+static void ReadExternalDataFields(const ONNX_NAMESPACE::TensorProto* src_init, std::string& location, size_t& offset, size_t& length) {
+  // Remove constness as we need to use mutable_external_data() to get the entries to read.
+  // The entries themselves are not modified...
+  auto& mutable_proto = *const_cast<ONNX_NAMESPACE::TensorProto*>(src_init);
+  auto* entry_protos = mutable_proto.mutable_external_data();
+  for (int i = 0; i < entry_protos->size(); i++) {
+    auto& string_entry_proto{entry_protos->at(i)};
+    const auto& pb_key{*(string_entry_proto.mutable_key())};
+    const auto& pb_value{*(string_entry_proto.mutable_value())};
+    if (pb_key == "location") {
+      location = pb_value;
+    } else if (pb_key == "offset") {
+      const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), offset);
+      if (res.ec != std::errc()) {
+        std::ostringstream err_msg;
+        err_msg << "External data in memory has invalid offset field: "
+                << src_init->name() << "], location: " << location
+                << ", offset: " << pb_value;
+        ORT_THROW(err_msg.str());
+      }
+    } else if (pb_key == "length") {
+      const auto res = std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), length);
+      if (res.ec != std::errc()) {
+        std::ostringstream err_msg;
+        err_msg << "External data in memory has invalid length field: "
+                << src_init->name() << "], location: " << location
+                << ", length: " << pb_value;
+        ORT_THROW(err_msg.str());
+      }
+    }
+  }
+}
+
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const onnxruntime::GraphViewer& subgraph,
@@ -529,12 +610,99 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     return model_proto;
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
+
+    // scan ext initializers:
+    std::unordered_map<std::string, std::pair<size_t, size_t>> external_initializers_offset_and_length;
+    std::string tempLocation;
+    size_t extInitializerTotalSize = 0;
+    if (session_context_.has_external_weights && !subgraph_context_.has_dynamic_input_shape) {
+      auto allInitializers = subgraph.GetAllInitializedTensors();
+      for (auto& [name, tp] : allInitializers) {
+        if (utils::HasExternalDataInMemory(*tp)) {
+          size_t offset = 0;
+          size_t length = 0;
+          ReadExternalDataFields(tp, tempLocation, offset, length);
+          extInitializerTotalSize += length;
+          external_initializers_offset_and_length[name] = {offset, length};
+        }
+      }
+    }
+
+    // when we have external weights in memory, the model proto will actually embed those
+    // and bloat the serialized string. We can avoid that by not including the data in the proto
+    // but then we have to update those initializers and set the external_data fields to mem_addr tag...
+    // proto is limited to 2GB, but let's use 32MB as threshold to be conservative and still gain some memory reductions.
+#if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2025))
+    constexpr size_t MAX_EMBEDDED_INITIALIZER_SIZE = 1024 * 1024 * 32;
+    const bool include_initializer_data_in_proto = !(session_context_.has_external_weights &&
+                                                     external_initializers_offset_and_length.size() > 1 &&
+                                                     extInitializerTotalSize >= MAX_EMBEDDED_INITIALIZER_SIZE);
+#else
+    const bool include_initializer_data_in_proto = true;
+#endif
+
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+    subgraph.ToProto(*model_proto->mutable_graph(), /*include_initializers*/ true,
+                     /*include_outer_scope_args*/ true, /*execution_order*/ 0, /*include_initializer_data*/ include_initializer_data_in_proto);
+
     print_model_proto_duration();
+
+    if (!include_initializer_data_in_proto) {
+      LOGS(logger, INFO) << "Initializer data is not included in the model proto. Updating metadata..., total size " << extInitializerTotalSize / (1024 * 1024) << " MB in " << external_initializers_offset_and_length.size() << " initializers";
+      auto* graph_proto = model_proto->mutable_graph();
+      auto* proto_initializers = graph_proto->mutable_initializer();
+
+      std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto*> proto_initializer_map;
+      for (int i = 0, n = proto_initializers->size(); i < n; ++i) {
+        auto& proto_init = proto_initializers->at(i);
+        proto_initializer_map[proto_init.name()] = &proto_init;
+      }
+
+      for (const auto& [name, src_init] : subgraph.GetAllInitializedTensors()) {
+        auto it = proto_initializer_map.find(name);
+        if (it == proto_initializer_map.end())
+          continue;
+
+        auto* proto_init = it->second;
+
+        // If the proto initializer is missing data, fill it in
+        if (!proto_init->has_raw_data() && src_init->has_raw_data()) {
+          *proto_init->mutable_raw_data() = src_init->raw_data();
+        }
+
+        // Only set in-memory external_data fields if the data is in memory
+        if (src_init->has_raw_data()) {
+          LOGS(logger, VERBOSE) << "In-memory initializer RAW: "
+                                << src_init->name()
+                                << ", data_type: " << src_init->data_type()
+                                << ", raw_data size: " << src_init->raw_data().size();
+          if (src_init->raw_data().size() > 0)
+            SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
+          else
+            LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
+        } else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
+          auto it_ext = external_initializers_offset_and_length.find(name);
+          if (it_ext == external_initializers_offset_and_length.end()) {
+            std::ostringstream err_msg;
+            err_msg << "Initializer marked as external in memory but missing offset/length info: " << src_init->name();
+            ORT_THROW(err_msg.str());
+          }
+          const size_t offset = it_ext->second.first;
+          const size_t length = it_ext->second.second;
+
+          LOGS(logger, VERBOSE) << "In-memory initializer EXT: " << src_init->name() << ", size: " << length;
+
+          SetExternalDataFields(proto_init, (const void*)offset, length);
+        } else {
+          LOGS(logger, VERBOSE) << "File-based initializer: " << src_init->name() << ", data_type: " << src_init->data_type();
+        }
+      }
+    }
+
     DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+
     return model_proto;
   }
 }
@@ -715,7 +883,24 @@ void BackendManager::Compute(OrtKernelContext* context) {
             ORT_THROW(msg);
           }
         } else {
-          ORT_THROW(ex.what());
+          std::string exception_str = ex.what();
+          if (session_context_.so_disable_cpu_ep_fallback) {
+            std::string error_message = "UNKNOWN NPU ERROR";
+            std::string error_code = "code 0x0";
+            std::regex error_message_pattern(R"(\bZE_\w*\b)");
+            std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
+            std::smatch matches;
+            if (std::regex_search(exception_str, matches, error_message_pattern)) {
+              error_message = matches[0];
+            }
+            if (std::regex_search(exception_str, matches, error_code_pattern)) {
+              error_code = matches[0];
+            }
+            std::string suffix = "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n";
+            throw std::runtime_error(error_message + ", " + error_code + suffix);
+          } else {
+            ORT_THROW(exception_str);
+          }
         }
 #endif
       }

@@ -61,7 +61,7 @@ struct DummyAllocator : OrtAllocator {
 // validate CreateSharedAllocator allows adding an arena to the shared allocator
 TEST(SharedAllocators, AddArenaToSharedAllocator) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
 
   Ort::ConstEpDevice example_ep_device{example_ep.get()};
 

@@ -6,6 +6,7 @@
 #include "common.h"
 #include "inference_session_wrap.h"
 #include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
@@ -76,7 +77,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       Napi::String value = info[0].As<Napi::String>();
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*OrtInstanceData::OrtEnv(),
+      this->session_.reset(new Ort::Session(OrtSingletonData::Env(),
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
 #else
@@ -91,7 +92,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*OrtInstanceData::OrtEnv(),
+      this->session_.reset(new Ort::Session(OrtSingletonData::Env(),
                                             reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
                                             sessionOptions));
     } else {
@@ -211,7 +212,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
     }
     if (preferredOutputLocations_.size() == 0) {
-      session_->Run(runOptions == nullptr ? *OrtInstanceData::OrtDefaultRunOptions() : runOptions,
+      session_->Run(runOptions == nullptr ? OrtSingletonData::DefaultRunOptions() : runOptions,
                     inputIndex == 0 ? nullptr : &inputNames_cstr[0], inputIndex == 0 ? nullptr : &inputValues[0],
                     inputIndex, outputIndex == 0 ? nullptr : &outputNames_cstr[0],
                     outputIndex == 0 ? nullptr : &outputValues[0], outputIndex);
@@ -240,7 +241,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         }
       }
 
-      session_->Run(runOptions == nullptr ? *OrtInstanceData::OrtDefaultRunOptions() : runOptions, *ioBinding_);
+      session_->Run(runOptions == nullptr ? OrtSingletonData::DefaultRunOptions() : runOptions, *ioBinding_);
 
       auto outputs = ioBinding_->GetOutputValues();
       ORT_NAPI_THROW_ERROR_IF(outputs.size() != outputIndex, env, "Output count mismatch.");
