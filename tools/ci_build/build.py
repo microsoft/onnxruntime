@@ -1945,6 +1945,7 @@ def build_python_wheel(
     use_acl,
     use_armnn,
     use_dml,
+    use_webgpu,
     use_cann,
     use_azure,
     use_qnn,
@@ -2002,6 +2003,8 @@ def build_python_wheel(
             args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
+        elif use_webgpu:
+            args.append("--wheel_name_suffix=webgpu")
         elif use_cann:
             args.append("--use_cann")
         elif use_qnn:
@@ -2638,6 +2641,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
+                args.use_webgpu,
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,
