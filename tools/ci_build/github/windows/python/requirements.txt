@@ -17,4 +17,3 @@ semver
 packaging
 coloredlogs
 onnx==1.19.1; python_version < "3.14"
-onnx_weekly; python_version >= "3.14"

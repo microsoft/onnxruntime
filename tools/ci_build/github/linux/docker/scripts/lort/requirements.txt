@@ -4,7 +4,6 @@ flatbuffers
 cerberus
 h5py
 onnx==1.19.1; python_version < "3.14"
-onnx_weekly; python_version >= "3.14"
 # Python dependencies required for pytorch development
 astunparse
 expecttest!=0.2.0

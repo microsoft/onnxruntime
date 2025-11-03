@@ -8,4 +8,3 @@ protobuf==4.25.8
 sympy==1.14
 flatbuffers
 onnx==1.19.1; python_version < "3.14"
-onnx_weekly; python_version >= "3.14"

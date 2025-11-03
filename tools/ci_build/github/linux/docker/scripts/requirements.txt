@@ -14,4 +14,3 @@ packaging
 onnxscript==0.5.3; python_version < "3.14"
 onnx-ir==0.1.10; python_version < "3.14"
 onnx==1.19.1; python_version < "3.14"
-onnx_weekly; python_version >= "3.14"

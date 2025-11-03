@@ -14,4 +14,3 @@ onnx-ir==0.1.10; python_version < "3.14"
 jinja2
 markupsafe
 onnx==1.19.1; python_version < "3.14"
-onnx_weekly; python_version >= "3.14"
