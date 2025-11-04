@@ -7,8 +7,10 @@
 ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
 ARG TRT_VERSION=10.9.0.34-1+cuda12.8
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64:/usr/local/cuda/lib64
+
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
+ARG LD_LIBRARY_PATH_ARG
 ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -28,8 +30,6 @@ RUN apt-get update && \
 
 # --- Fix for Ubuntu 24.04 (PEP 668) to allow global pip installs ---
 RUN find /usr/lib/python3* -name "EXTERNALLY-MANAGED" -exec rm -f {} +
-
-RUN python3 -m pip install --upgrade pip
 
 # Install TensorRT
 RUN apt-get update && \
@@ -56,7 +56,7 @@ COPY scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 
 # Build final image from base.
-FROM base as final
+FROM base AS final
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
 RUN adduser --uid $BUILD_UID $BUILD_USER --disabled-password --gecos "ONNX Runtime Developer" \
