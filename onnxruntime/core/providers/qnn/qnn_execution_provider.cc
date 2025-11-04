@@ -424,7 +424,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (htp_performance_mode_pos != provider_options_map.end()) {
     ParseHtpPerformanceMode(htp_performance_mode_pos->second, default_htp_performance_mode_);
 
-    if (qn::HtpPerformanceMode::kHtpBurst == default_htp_performance_mode_) {
+    if (qnn::HtpPerformanceMode::kHtpBurst == default_htp_performance_mode_) {
       default_rpc_polling_time_ = 9999;
     }
   }
@@ -1396,14 +1396,11 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 
   if (IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPerformanceMode(GetHtpPowerConfigId(),
-                                                                      htp_performance_mode));
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfigs(GetHtpPowerConfigId(),
+                                                                   htp_performance_mode,
+                                                                   rpc_polling_time,
+                                                                   rpc_control_latency));
     }
-
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetHtpPowerConfigId(),
-                                                                 rpc_control_latency,
-                                                                 rpc_polling_time));
   }
 
   std::string lora_config = "";
@@ -1551,15 +1548,16 @@ void QNNExecutionProvider::CreateHtpPowerConfigId() const {
   if (rt == Status::OK()) {
     managed_htp_power_config_id_ = std::make_shared<ManagedHtpPowerConfigId>(htp_power_config_id, qnn_backend_manager_);
 
-    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode_) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id,
-                                                                      default_htp_performance_mode_));
+    rt = qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
+                                                  default_htp_performance_mode_,
+                                                  default_rpc_polling_time_,
+                                                  default_rpc_control_latency_);
+
+    if (rt != Status::OK()) {
+      LOGS_DEFAULT(ERROR) << "Unable to set HTP power configurations.";
     }
-    if (default_rpc_control_latency_ > 0 || default_rpc_polling_time_ > 0) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id,
-                                                                       default_rpc_control_latency_,
-                                                                       default_rpc_polling_time_));
-    }
+  } else {
+    LOGS_DEFAULT(ERROR) << "Failed to create HTP power config id.";
   }
 }
 

@@ -29,6 +29,7 @@ Status HtpPowerConfigManager::AddRpcPollingTime(const uint32_t& rpc_polling_time
                           << last_set_rpc_polling_time_
                           << "). Ignoring request";
   } else {
+    LOGS_DEFAULT(VERBOSE) << "Updating rpc polling time to: " << rpc_polling_time << "us.";
     auto& rpc_polling_time_cfg = power_configs_.emplace_back();
     rpc_polling_time_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
     rpc_polling_time_cfg.rpcPollingTimeConfig = rpc_polling_time;
@@ -46,6 +47,7 @@ Status HtpPowerConfigManager::AddRpcControlLatency(const uint32_t& rpc_control_l
                           << last_set_rpc_control_latency_
                           << "). Ignoring request";
   } else {
+    LOGS_DEFAULT(VERBOSE) << "Updating rpc control latency to: " << rpc_control_latency << "us.";
     auto& rpc_control_latency_cfg = power_configs_.emplace_back();
     rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
     rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
@@ -86,6 +88,8 @@ Status HtpPowerConfigManager::AddHtpPerformanceMode(const HtpPerformanceMode& ht
                           << PerformanceModeToString(last_set_htp_performance_mode_)
                           << "). Ignoring request";
   } else {
+    LOGS_DEFAULT(VERBOSE) << "Updating htp performance mode to: "
+                          << PerformanceModeToString(htp_performance_mode) << ".";
     auto& htp_performance_cfg = power_configs_.emplace_back();
     ORT_RETURN_IF_ERROR(SetHtpPerformancePowerConfig(htp_performance_cfg,
                                                      htp_power_config_client_id,
@@ -114,6 +118,9 @@ Status HtpPowerConfigManager::SetPowerConfig(uint32_t htp_power_config_client_id
     status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());
     ORT_RETURN_IF(QNN_SUCCESS != status, "SetPowerConfig failed.");
 
+    rpc_polling_time_set_ = false;
+    rpc_control_latency_set_ = false;
+    htp_performance_mode_set_ = false;
     power_configs_.clear();
   } else {
     LOGS_DEFAULT(WARNING) << "SetPowerConfig called but no configs to be set.";
