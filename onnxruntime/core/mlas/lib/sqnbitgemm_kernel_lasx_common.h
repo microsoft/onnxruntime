@@ -68,7 +68,7 @@ GetContinueLayoutOffsetSubBlk(size_t N, const size_t n, const size_t SubOrBlkCou
     } else {
         scale_dst_offset +=  SafeInt<size_t>(k_sub_or_blk) * 4 + t;
     }
-    return scale_dst_offset.Value();
+    return static_cast<size_t>(scale_dst_offset);
 }
 
 static size_t
@@ -87,7 +87,7 @@ GetContinueLayoutOffsetBlkInSubBlk(size_t N, const size_t n, const size_t BlockC
             scale_dst_offset +=  SafeInt<size_t>(t) * blks_per_sub + b;
         }
     }
-    return scale_dst_offset.Value();
+    return static_cast<size_t>(scale_dst_offset);
 }
 
 static void
@@ -106,23 +106,23 @@ ComputePackBlkSum_Lasx(
         const size_t n = tid / BlockCountK;
         const size_t k_blk = tid % BlockCountK;
 
-        const SafeInt<size_t> src_blk_offset =  SafeInt<size_t>(n) * BlockCountK + k_blk;
-        float QuantBScale = QuantBScaleBegin[src_blk_offset.Value()];
+        const size_t src_blk_offset =  SafeInt<size_t>(n) * BlockCountK + k_blk;
+        float QuantBScale = QuantBScaleBegin[src_blk_offset];
         uint8_t zp = 8;
 
         if (QuantBZPBegin) {
             size_t ZPCountK = MlasDivRoundup(BlockCountK, 2);
-            SafeInt<size_t> src_zp_offset =  SafeInt<size_t>(ZPCountK) * n + k_blk / 2;
+            size_t src_zp_offset =  SafeInt<size_t>(ZPCountK) * n + k_blk / 2;
             bool low_zp = k_blk % 2 == 0;
-            const std::byte* QuantBZP = QuantBZPBegin + src_zp_offset.Value();
+            const std::byte* QuantBZP = QuantBZPBegin + src_zp_offset;
             const std::byte low_mask{0X0f};
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
         float result = -QuantBScale * zp;
 
-        const SafeInt<size_t> dst_offset = ( SafeInt<size_t>(n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        BlockSumBegin[dst_offset.Value()] = result;
+        size_t dst_offset = ( SafeInt<size_t>(n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+        BlockSumBegin[dst_offset] = result;
 
         if (BlkLen == 16) {
         } else if (BlkLen >= SubBlkLen) {
@@ -162,8 +162,8 @@ PackQuantB(
             const size_t n = tid / SubBlkCountK;
             const size_t k_subblk = tid % SubBlkCountK;
 
-            const SafeInt<size_t> src_data_offset =  SafeInt<size_t>(n) * BlockCountK * BlkDataSize + k_subblk * SubBlkDataSize;
-            const std::byte* QuantBData = QuantBDataBegin + src_data_offset.Value();
+            size_t src_data_offset =  SafeInt<size_t>(n) * BlockCountK * BlkDataSize + k_subblk * SubBlkDataSize;
+            const std::byte* QuantBData = QuantBDataBegin + src_data_offset;
 
             size_t PackBytePairCount = SubBlkBytePairCount;
             size_t PackDataSize = SubBlkDataSize;
@@ -192,7 +192,7 @@ PackQuantB(
                 PackDataSize = BlkDataSize;
                 const size_t k_blks_remaining = BlockCountK - (SubBlkCountK - 1) * SubBlkLen / BlkLen;
                 for (size_t k = 0; k < k_blks_remaining; k++) {
-                    const SafeInt<size_t> k_blk =  SafeInt<size_t>(k_subblk) * SubBlkLen / BlkLen + k;
+                    size_t k_blk =  SafeInt<size_t>(k_subblk) * SubBlkLen / BlkLen + k;
                     if (BlkLen == 16) {
                         // not to do the compute order layout yet
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
@@ -202,7 +202,7 @@ PackQuantB(
                         assert(SubBlkLen == 128);
                     } else {
                         int blks_per_sub = (int)(SubBlkLen / BlkLen);
-                        const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk.Value(), blks_per_sub);
+                        const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
                         pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData, PackBytePairCount, PackDataSize);
                     }
@@ -218,8 +218,8 @@ PackQuantB(
                     pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                 } else {
                     int blks_per_sub = (int)(SubBlkLen / BlkLen);
-                    const SafeInt<size_t> k_blk =  SafeInt<size_t>(k_subblk) * blks_per_sub;
-                    const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk.Value(), blks_per_sub);
+                    size_t k_blk =  SafeInt<size_t>(k_subblk) * blks_per_sub;
+                    const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
                     std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
                     pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                 }
@@ -311,29 +311,29 @@ Q8PackQuantB(
             const size_t c_4 = c & (~3), c_res = c & 3;
             const size_t r_subblk = tid % SubBlkCountK;
 
-            const SafeInt<size_t> data_offset =  SafeInt<size_t>(c) * StrideN + r_subblk * SubBlkLen;
-            const std::byte* src = QuantBDataBegin + data_offset.Value();
+            size_t data_offset =  SafeInt<size_t>(c) * StrideN + r_subblk * SubBlkLen;
+            const std::byte* src = QuantBDataBegin + data_offset;
 
             if (c_4 + 4 <= N) {                                              // full 4 cols
                 if (RemainderBlockCountK && r_subblk == SubBlkCountK - 1) {  // remainder blocks
-                    const SafeInt<size_t> subblk_data_offset =  SafeInt<size_t>(c_4) * StrideN + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
+                    const size_t subblk_data_offset =  SafeInt<size_t>(c_4) * StrideN + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
                     std::byte* dest =
-                        PackedQuantBDataBegin + subblk_data_offset.Value();
+                        PackedQuantBDataBegin + subblk_data_offset;
                     for (size_t i = 0; i < RemainderBlockCountK; i++) {
                         std::copy(src, src + BlkSize, dest);
                         src += BlkSize;
                         dest += BlkSize * 4;
                     }
                 } else {  // full subblock
-                    const SafeInt<size_t> subblk_data_offset =  SafeInt<size_t>(c_4) * StrideN + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
+                    const size_t subblk_data_offset =  SafeInt<size_t>(c_4) * StrideN + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
                     std::byte* dest =
-                        PackedQuantBDataBegin + subblk_data_offset.Value();
+                        PackedQuantBDataBegin + subblk_data_offset;
                     std::copy(src, src + SubBlkSize, dest);
                 }
             } else {  // remainder cols
-                const SafeInt<size_t> remain_data_offset =  SafeInt<size_t>(c) * StrideN + r_subblk * SubBlkSize;
+                const size_t remain_data_offset =  SafeInt<size_t>(c) * StrideN + r_subblk * SubBlkSize;
                 std::byte* dest =
-                    PackedQuantBDataBegin + remain_data_offset.Value();
+                    PackedQuantBDataBegin + remain_data_offset;
                 std::copy(src, src + std::min(SubBlkSize, StrideN - r_subblk * SubBlkSize), dest);
             }
         }
@@ -352,8 +352,8 @@ Q8ComputePackBlkSum(
     const size_t BlockCountK
 )
 {
-    SafeInt<size_t> size =  SafeInt<size_t>(N) * BlockCountK;
-    std::vector<float, MlasAlignedAllocator<float, 32>> QuantBScaleBeginCopy(size.Value());
+    size_t size =  SafeInt<size_t>(N) * BlockCountK;
+    std::vector<float, MlasAlignedAllocator<float, 32>> QuantBScaleBeginCopy(size);
     std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
 
     MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
@@ -361,30 +361,30 @@ Q8ComputePackBlkSum(
         const size_t n_4 = n & (~3), n_res = n & 3;
         const size_t k_blk = tid % BlockCountK;
 
-        const SafeInt<size_t> src_blk_offset =  SafeInt<size_t>(n) * BlockCountK + k_blk;
-        const float& QuantBScale = QuantBScaleBeginCopy[src_blk_offset.Value()];
+        const size_t src_blk_offset =  SafeInt<size_t>(n) * BlockCountK + k_blk;
+        const float& QuantBScale = QuantBScaleBeginCopy[src_blk_offset];
         uint8_t zp = 128;
         if (QuantBZPBegin) {
-            const std::byte* QuantBZP = QuantBZPBegin + src_blk_offset.Value();
+            const std::byte* QuantBZP = QuantBZPBegin + src_blk_offset;
             zp = (uint8_t)(*QuantBZP);
         }
 
-        const SafeInt<size_t> dst_offset = ( SafeInt<size_t>(n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        *(BlockSumBegin + dst_offset.Value()) = -QuantBScale * zp;
+        const size_t dst_offset = ( SafeInt<size_t>(n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
 
         if (n_4 + 4 > N) {
-            SafeInt<size_t> ptr_offset =  SafeInt<size_t>(n) * BlockCountK + k_blk;
-            *(QuantBScaleBegin + ptr_offset.Value()) = QuantBScale;
+            size_t ptr_offset =  SafeInt<size_t>(n) * BlockCountK + k_blk;
+            *(QuantBScaleBegin + ptr_offset) = QuantBScale;
         } else if (BlkLen >= SubBlkLen) {
-            SafeInt<size_t> ptr_offset =  SafeInt<size_t>(n_4) * BlockCountK + k_blk * 4 + n_res;
-            *(QuantBScaleBegin + ptr_offset.Value()) = QuantBScale;
+            size_t ptr_offset =  SafeInt<size_t>(n_4) * BlockCountK + k_blk * 4 + n_res;
+            *(QuantBScaleBegin + ptr_offset) = QuantBScale;
         } else {
             size_t blks_per_sub = SubBlkLen / BlkLen;
             size_t remainder_blk = BlockCountK % blks_per_sub;
             size_t sub_blk_count_k = MlasDivRoundup(BlockCountK, blks_per_sub);
             size_t k_subblk = k_blk / blks_per_sub;
             size_t k_blk_res = k_blk % blks_per_sub;
-            SafeInt<size_t> dest_offset;
+            size_t dest_offset;
 
             if (remainder_blk && k_subblk == sub_blk_count_k - 1) {  // remainder blocks
                 dest_offset =  SafeInt<size_t>(n_4) * BlockCountK + k_blk * 4 + n_res;
@@ -392,7 +392,7 @@ Q8ComputePackBlkSum(
                 dest_offset =  SafeInt<size_t>(n_4) * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
             }
 
-            *(QuantBScaleBegin + dest_offset.Value()) = QuantBScale;
+            *(QuantBScaleBegin + dest_offset) = QuantBScale;
         }
     });
 }

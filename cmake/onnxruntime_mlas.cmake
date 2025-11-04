@@ -829,7 +829,7 @@ endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
-    onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET})
+    onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET} safeint_interface)
 
     target_compile_definitions(${mlas_target} PRIVATE ${mlas_private_compile_definitions})
 

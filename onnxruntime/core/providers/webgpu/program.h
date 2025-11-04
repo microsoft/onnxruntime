@@ -226,7 +226,6 @@ struct ProgramInput {
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   const Tensor* tensor;
-  uint32_t segments = 1;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool use_override_shape;
@@ -246,7 +245,6 @@ struct ProgramOutput {
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
-  uint32_t segments = 1;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool is_atomic;
@@ -348,18 +346,6 @@ class ProgramBase {
   inline const ProgramMetadata& Metadata() const { return metadata_; }
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
-  inline void setSegmentsForInput(size_t index, uint32_t segments) {
-    if (index >= inputs_.size()) {
-      throw std::out_of_range("input index out of range");
-    }
-    inputs_[index].segments = segments;
-  }
-  inline void setSegmentsForOutput(size_t index, uint32_t segments) {
-    if (index >= outputs_.size()) {
-      throw std::out_of_range("output index out of range");
-    }
-    outputs_[index].segments = segments;
-  }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
   inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }

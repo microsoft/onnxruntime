@@ -87,7 +87,7 @@ const MODEL_TEST_TYPES_CASES: Array<{
   },
 ];
 
-describe('E2E Tests - simple E2E tests', () => {
+describe('API Tests - simple API tests', () => {
   MODEL_TEST_TYPES_CASES.forEach((testCase) => {
     it(`${testCase.model}`, async () => {
       const session = await InferenceSession.create(testCase.model);

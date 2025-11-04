@@ -39,7 +39,10 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
   return Status::OK();
 }
 
-Status ProgramManager::CalculateSegmentsForInputsAndOutputs(ProgramBase& program) {
+Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const {
+  inputs_segments.resize(program.Inputs().size(), 1);
+  outputs_segments.resize(program.Outputs().size(), 1);
+
   const uint64_t maxStorageBufferBindingSize = webgpu_context_.DeviceLimits().maxStorageBufferBindingSize;
 
   // Inputs
@@ -47,7 +50,7 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(ProgramBase& program
     const auto& input = program.Inputs()[i];
     if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
-      program.setSegmentsForInput(i, segments);
+      inputs_segments[i] = segments;
     }
   }
   // Outputs
@@ -55,7 +58,7 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(ProgramBase& program
     const auto& output = program.Outputs()[i];
     if (output.tensor && output.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
-      program.setSegmentsForOutput(i, segments);
+      outputs_segments[i] = segments;
     }
   }
   return Status::OK();
@@ -63,6 +66,8 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(ProgramBase& program
 
 Status ProgramManager::Build(const ProgramBase& program,
                              const ProgramMetadata& program_metadata,
+                             const std::span<uint32_t> inputs_segments,
+                             const std::span<uint32_t> outputs_segments,
 #ifndef NDEBUG  // if debug build
                              const std::string& program_key,
 #endif
@@ -74,6 +79,8 @@ Status ProgramManager::Build(const ProgramBase& program,
   auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
+                             inputs_segments,
+                             outputs_segments,
                              device,
                              webgpu_context_.DeviceLimits(),
                              normalized_dispatch_x,
@@ -83,8 +90,10 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   ORT_RETURN_IF_ERROR(program.GenerateShaderCode(shader_helper));
 
-  // Finalize inputs after GenerateShaderCode() to ensure indirect buffer is added as the last input
-  shader_helper.FinalizeInputs();
+  // Add indirect buffer as the last shader input when using indirect dispatch.
+  if (program.IndirectDispatchTensor() != nullptr) {
+    shader_helper.AddInput("indirect_buffer", ShaderUsage::None);
+  }
 
   ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForInputs());
   ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForOutputs());

@@ -6,7 +6,7 @@ import * as path from 'path';
 
 import { assertTensorEqual, SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT } from '../test-utils';
 
-describe('E2E Tests - InferenceSession.run()', async () => {
+describe('API Tests - InferenceSession.run()', async () => {
   let session: InferenceSession;
   const input0 = new Tensor('float32', SQUEEZENET_INPUT0_DATA, [1, 3, 224, 224]);
   const expectedOutput0 = new Tensor('float32', SQUEEZENET_OUTPUT0_DATA, [1, 1000, 1, 1]);

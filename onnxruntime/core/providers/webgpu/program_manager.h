@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <span>
 #include <string>
 #include <unordered_map>
 
@@ -38,10 +39,12 @@ class ProgramManager {
   ProgramManager(WebGpuContext& webgpu_context) : webgpu_context_(webgpu_context) {}
 
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
-  Status CalculateSegmentsForInputsAndOutputs(ProgramBase& program);
+  Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,
+               const std::span<uint32_t> inputs_segments,
+               const std::span<uint32_t> outputs_segments,
 #ifndef NDEBUG  // if debug build
                const std::string& program_key,
 #endif
