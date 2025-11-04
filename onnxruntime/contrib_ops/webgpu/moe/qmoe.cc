@@ -123,7 +123,6 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
  private:
 };
 
-
 Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* hidden_state = context.Input<Tensor>(0);
   const Tensor* router_logits = context.Input<Tensor>(1);

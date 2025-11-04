@@ -16,11 +16,11 @@ namespace webgpu {
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
-Status MoEProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status MoEProgram::GenerateShaderCode(ShaderHelper& /*unused*/) const {
   return Status::OK();
 }
 
-Status MoE::ComputeInternal(ComputeContext& context) const {
+Status MoE::ComputeInternal(ComputeContext& /*unused*/) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MoE is not implemented in WebGPU");
 }
 
