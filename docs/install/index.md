@@ -70,7 +70,7 @@ pip install flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-directml
 ```
 
-### Install ONNX Runtime GPU
+### Install ONNX Runtime GPU (CUDA or TensorRT)
 
 #### CUDA 12.x
 The default CUDA version for [onnxruntime-gpu in pypi](https://pypi.org/project/onnxruntime-gpu) is 12.x since 1.19.0.
