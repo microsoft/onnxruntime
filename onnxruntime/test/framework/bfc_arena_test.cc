@@ -451,7 +451,7 @@ TEST(BFCArenaTest, TestExtendStrategy) {
         0, true, config};
     auto allocator = CreateAllocator(device_info);
     size_t block_size = 1 << 20;  // 1MB
-    BFCArena& a = *static_cast<BFCArena*>(allocator.get());
+    auto& a = *allocator;
     a.Alloc(block_size);
     AllocatorStats stats;
     a.GetStats(&stats);

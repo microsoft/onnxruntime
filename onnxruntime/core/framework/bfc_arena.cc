@@ -13,11 +13,10 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    int max_dead_bytes_per_chunk,
                    int initial_growth_chunk_size_bytes,
                    int64_t max_power_of_two_extend_bytes)
-    : IAllocator(OrtMemoryInfo(resource_allocator->Info().name.c_str(),
-                               OrtAllocatorType::OrtArenaAllocator,
-                               resource_allocator->Info().device,
-                               resource_allocator->Info().mem_type)),
-      arena_type_(ArenaType::BaseArena),
+    : IArena(OrtMemoryInfo(resource_allocator->Info().name.c_str(),
+                           OrtAllocatorType::OrtArenaAllocator,
+                           resource_allocator->Info().device,
+                           resource_allocator->Info().mem_type)),
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
@@ -841,7 +840,6 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
                max_dead_bytes_per_chunk,
                initial_growth_chunk_size_bytes,
                max_power_of_two_extend_bytes) {
-  arena_type_ = ArenaType::StreamAwareArena;
 }
 
 void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream) {

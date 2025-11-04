@@ -177,6 +177,16 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 
   return alloc.Alloc(size);
 }
+
+IArena* IArena::SafeArenaCast(IAllocator* allocator) {
+#if !defined(ORT_NO_RTTI)
+  auto* result = dynamic_cast<IArena*>(allocator);
+  return result;
+#else
+  return static_cast<IArena*>(allocator);
+#endif
+}
+
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }

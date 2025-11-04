@@ -348,4 +348,13 @@ void AllocatorDefaultFree(void* p);
 void* AllocatorDefaultAllocAligned(size_t size, size_t alignment);
 void AllocatorDefaultFreeAligned(void* p, size_t alignment);
 
+class IArena : public IAllocator {
+ public:
+  using IAllocator::IAllocator;
+  virtual Status Shrink() = 0;
+  // Only implemented when IsStreamAware() returns true
+  virtual void ReleaseStreamBuffers(Stream* /*stream*/) {}
+  static IArena* SafeArenaCast(IAllocator* allocator);
+};
+
 }  // namespace onnxruntime
