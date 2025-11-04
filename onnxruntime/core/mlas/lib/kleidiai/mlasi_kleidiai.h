@@ -27,7 +27,7 @@
 #if onnxruntime_KLEIDIAI_DEBUG_LOGGING || onnxruntime_KLEIDIAI_KERNEL_LOGGING
 #define KLEIDIAI_LOG(tag, msg) \
     do { \
-        std::cout << __FILE__ << __LINE__ << "[KLEIDIAI " << tag << "]: " << msg << std::endl; \
+        std::cout << "[KLEIDIAI " << tag << "]: " << __FILE__ << " : " << __LINE__ << " : " << msg << std::endl; \
     } while(false)
 #endif
 
