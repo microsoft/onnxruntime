@@ -59,7 +59,18 @@ RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 FROM base AS final
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
-RUN adduser --uid $BUILD_UID $BUILD_USER --disabled-password --gecos "ONNX Runtime Developer" \
-    && chown -R $BUILD_USER:$BUILD_USER /home/$BUILD_USER
+
+RUN if getent passwd $BUILD_UID > /dev/null; then \
+        echo "User with UID $BUILD_UID exists. Modifying." && \
+        export EXISTING_USER=$(id -un $BUILD_UID) && \
+        usermod -l $BUILD_USER $EXISTING_USER && \
+        groupmod -n $BUILD_USER $(id -gn $EXISTING_USER) && \
+        usermod -d /home/$BUILD_USER -m $BUILD_USER && \
+        chown -R $BUILD_USER:$BUILD_USER /home/$BUILD_USER; \
+    else \
+        echo "User with UID $BUILD_UID does not exist. Creating." && \
+        adduser --uid $BUILD_UID $BUILD_USER --disabled-password --gecos "ONNX Runtime Developer"; \
+    fi
+
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
