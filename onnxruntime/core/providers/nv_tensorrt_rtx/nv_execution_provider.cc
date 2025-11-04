@@ -2214,8 +2214,8 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                 nvinfer1::ICudaEngine* trt_engine,
                                                 bool detailed_build_log) {
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
-  // bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
-  bool refit_with_external_data = true;
+  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
+  refit_with_external_data = true;
   bool refit_complete = false;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   if (refit_from_file) {
@@ -2308,9 +2308,10 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
       if (refit_names.find(proto_name) != refit_names.end()) {
         if (proto.has_data_location()) {
           if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
-            
-            if (user_weights.find(proto_name) != user_weights.end()) {
-              auto& weight = user_weights[proto_name];
+
+            auto it = user_weights.find(proto_name);
+            if (it != user_weights.end()) {
+              auto& weight = it->second;
               names.push_back(weight.Name());
               bytes.push_back(static_cast<const char*>(weight.Data()));
               sizes.push_back(weight.Size());

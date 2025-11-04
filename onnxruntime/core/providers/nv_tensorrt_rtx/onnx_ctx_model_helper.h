@@ -11,6 +11,7 @@
 
 #include "core/providers/nv_tensorrt_rtx/nv_includes.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/nv_tensorrt_rtx/nv_execution_provider.h"
 
 namespace onnxruntime {
 
