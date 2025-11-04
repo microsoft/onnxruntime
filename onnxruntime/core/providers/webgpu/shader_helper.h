@@ -71,8 +71,6 @@ class ShaderHelper final {
                const WebGpuContext& webgpu_context,
                const std::span<uint32_t> inputs_segments,
                const std::span<uint32_t> outputs_segments,
-               const wgpu::Device& device,
-               const wgpu::Limits& limits,
                uint32_t dispatch_group_size_x,
                uint32_t dispatch_group_size_y,
                uint32_t dispatch_group_size_z);
