@@ -112,6 +112,8 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/ios_pod'
 
     - template: use-xcode-version.yml
+      parameters:
+        xcodeVersion: 16.4
 
     - task: NodeTool@0
       inputs:
