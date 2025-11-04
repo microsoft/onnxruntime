@@ -70,6 +70,7 @@ void ORT_API_CALL Memcpy::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 OrtStatus* Memcpy::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
   const OrtEpApi& ep_api = Ort::GetEpApi();
   Ort::KernelContext kernel_context(kernel_ctx);
+  (void)this->state_;  // NOTE: Unused in this example.
 
   try {
     Ort::ConstValue input = kernel_context.GetInput(0);
