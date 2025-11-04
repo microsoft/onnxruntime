@@ -62,21 +62,16 @@ Return Value:
     // Compute the number of bytes required to hold the packed buffer.
     //
     size_t bytes = 0;
-    if (TransA == CblasNoTrans) {
-        switch (TransB) {
-            case CblasNoTrans:
-                bytes = kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
-                break;
-            case CblasTrans:
-                bytes = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(N, K);
-                break;
-            default:
-                KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize TransB is neither CblasNoTrans nor CblasTrans, returning 0.");
-                return 0;
-        }
-    } else {
-        KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize TransA is CblasTrans, returning 0.");
-        return 0;
+    switch (TransB) {
+        case CblasNoTrans:
+            bytes = kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
+            break;
+        case CblasTrans:
+            bytes = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(N, K);
+            break;
+        default:
+            KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize TransB is neither CblasNoTrans nor CblasTrans, returning 0.");
+            return 0;
     }
 
     return bytes;

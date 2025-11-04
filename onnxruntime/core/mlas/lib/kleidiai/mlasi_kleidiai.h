@@ -25,9 +25,11 @@
 #endif
 
 // General logging. "tag" is expected to qualify the type of message.
-#define KLEIDIAI_LOG(tag, msg) std::cout << "[KLEIDIAI " << tag << "]: " << msg << std::endl;
-
 #if onnxruntime_KLEIDIAI_DEBUG_LOGGING
+#define KLEIDIAI_LOG(tag, msg) \
+    do { \
+        std::cout << __FILE__ << __LINE__ << "[KLEIDIAI " << tag << "]: " << msg << std::endl; \
+    } while(false)
     // General debug messages.
     #define KLEIDIAI_DEBUG_LOG(msg) KLEIDIAI_LOG("DEBUG", msg)
 #else
