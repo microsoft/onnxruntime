@@ -123,6 +123,118 @@ TEST_P(CompileApiTest, SmallSplitModel) {
   SmallModelTest(test_param, false);
 }
 
+// place holder
+struct CustomInitializerHandlerState {
+};
+
+static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
+                                                             const char* initializer_name,
+                                                             const OrtValue* c_initializer_value,
+                                                             const OrtExternalInitializerInfo* c_ori_external_info,
+                                                             OrtExternalInitializerInfo** c_new_external_info) {
+  Ort::Status final_status{nullptr};
+
+  ORT_TRY {
+    Ort::ConstExternalInitializerInfo ori_external_info{c_ori_external_info};
+
+    const auto location = ori_external_info.GetFilePath();
+    const auto offset = ori_external_info.GetFileOffset();
+    const auto byte_size = ori_external_info.GetByteSize();
+
+    // Provide caller (ORT) with the new external info.
+    // The new external info is just a copy of the original external info to preserve the external data.
+    Ort::ExternalInitializerInfo new_external_info{nullptr};
+    if (Ort::Status status = Ort::ExternalInitializerInfo::Create(location.c_str(), offset, byte_size, new_external_info);
+        !status.IsOK()) {
+      return status.release();
+    }
+
+    *c_new_external_info = new_external_info.release();
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status{ex};
+    }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &final_status]() {
+      final_status = Ort::Status(ex.what(), ORT_FAIL);
+    }));
+  }
+
+  return final_status.release();
+}
+
+TEST_P(CompileApiTest, WeightStrippedEngineWithLargeModel) {
+  const auto& test_param = GetCompileParam();
+  // with embed mode == 1 the resulting file will be over the 2GB proto limit
+  if (test_param.embed_mode == 1) {
+    GTEST_SKIP();
+  }
+  std::string test_name = test_param.to_string();
+  PathString model_name = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + ".onnx");
+  PathString external_data_name = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + ".onnx_data");
+  PathString model_name_ctx = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + "_ctx.onnx");
+  PathString model_name_ctx_data = path_utils::MakePathString("nv_execution_provider_compile_large_" + test_name + "_ctx.onnx_data");
+  clearFileIfExists(model_name_ctx);
+  clearFileIfExists(model_name_ctx_data);
+  // This accelerates test iterations if the large model was already generated
+  if (!std::filesystem::exists(model_name) || !std::filesystem::exists(external_data_name)) {
+    CreateLargeLLMModel(model_name, external_data_name);
+  }
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> option_map{
+      {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer,
+       std::to_string(test_param.bytestream_io || test_param.external_initialzier_for_parser)}};
+  auto ep = AppendTrtEtxEP(session_options, option_map);
+
+  Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
+  model_compile_options.SetEpContextEmbedMode(test_param.embed_mode);
+
+  void* output_context = nullptr;
+  size_t output_context_size = 0;
+  std::vector<char> input_onnx, input_data;
+  std::vector<PathString> file_names;
+  std::vector<char*> file_buffers;
+  std::vector<size_t> lengths;
+  if (test_param.bytestream_io) {
+    input_onnx = readBinaryFile(model_name);
+    input_data = readBinaryFile(external_data_name);
+    file_names = {external_data_name};
+    file_buffers = {input_data.data()};
+    lengths = {input_data.size()};
+    session_options.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
+
+    model_compile_options.SetInputModelFromBuffer(input_onnx.data(), input_onnx.size());
+    model_compile_options.SetOutputModelBuffer(Ort::AllocatorWithDefaultOptions(), &output_context, &output_context_size);
+  } else {
+    model_compile_options.SetInputModelPath(model_name.c_str());
+    model_compile_options.SetOutputModelPath(model_name_ctx.c_str());
+    model_compile_options.SetOutputModelExternalInitializersFile(model_name_ctx_data.c_str(), 1024);
+  }
+  // place holder
+  CustomInitializerHandlerState custom_state = {};
+
+  model_compile_options.SetOutputModelGetInitializerLocationFunc(TestHandleInitializerDataFunc,
+                                                                 reinterpret_cast<void*>(&custom_state));
+
+  // AOT time
+  ASSERT_TRUE(Ort::CompileModel(*ort_env, model_compile_options).IsOK());
+
+  // JIT time
+  std::unique_ptr<Ort::Session> session;
+  if (test_param.bytestream_io) {
+    session = std::make_unique<Ort::Session>(*ort_env, output_context, output_context_size, session_options);
+  } else {
+    session = std::make_unique<Ort::Session>(*ort_env, model_name_ctx.c_str(), session_options);
+  }
+
+  auto io_binding = generate_io_binding(*session);
+  Ort::RunOptions run_options;
+  session->Run(run_options, io_binding);
+}
+
 TEST_P(CompileApiTest, LargeModel) {
   const auto& test_param = GetCompileParam();
   // with embed mode == 1 the resulting file will be over the 2GB proto limit
