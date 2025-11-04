@@ -300,7 +300,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       ORT_RETURN_IF_ERROR(status);
 
       //
-      // Step 5: multiply fc2_outputs with router_values and accumulate
+      // Step 6: multiply fc2_outputs with router_values and accumulate
       //
       QMoEFinalMixProgram final_mix;
       final_mix
