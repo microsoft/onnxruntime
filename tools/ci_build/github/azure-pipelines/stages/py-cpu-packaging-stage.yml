@@ -94,6 +94,8 @@ stages:
             PythonVersion: '3.12'
           Python313_x64:
             PythonVersion: '3.13'
+          Python314_x64:
+            PythonVersion: '3.14'
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         ExtraParam: ${{ parameters.build_py_parameters }}
@@ -138,7 +140,7 @@ stages:
           parameters:
             ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
               symbolExpiryTime: 60
-            includePublicSymbolServer: true            
+            includePublicSymbolServer: true
             symbolsArtifactName: onnxruntime_cpu_win_x64_$(PythonVersion)
             symbolsVersion: $(Build.BuildId)
             symbolProject: 'ONNX Runtime'
@@ -204,13 +206,20 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.12'
-          
+
       - template: ../templates/py-macos.yml
         parameters:
           arch: 'arm64'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.13'
+
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.14'
 
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM
