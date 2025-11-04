@@ -340,6 +340,7 @@ class NvExecutionProvider : public IExecutionProvider {
                                     size_t onnx_model_bytestream_size,
                                     const void* onnx_external_data_bytestream,
                                     size_t onnx_external_data_bytestream_size,
+                                    std::unordered_map<std::string, TensorrtUserWeights>& user_weights,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool detailed_build_log);
 
@@ -357,7 +358,7 @@ class NvExecutionProvider : public IExecutionProvider {
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
   bool weight_stripped_engine_enable_ = false;
-  bool weight_stripped_engine_refit_ = false;
+  bool weight_stripped_engine_refit_ = true;
   std::string onnx_model_folder_path_;
   const void* onnx_model_bytestream_;
   size_t onnx_model_bytestream_size_;

@@ -52,6 +52,7 @@ class TensorRTCacheModelHandler {
                             std::string ep_context_model_path,
                             std::string compute_capability,
                             bool weight_stripped_engine_refit,
+                            std::unordered_map<std::string, TensorrtUserWeights>& user_weights,
                             std::string onnx_model_folder_path,
                             const void* onnx_model_bytestream,
                             size_t onnx_model_bytestream_size,
@@ -63,6 +64,7 @@ class TensorRTCacheModelHandler {
         ep_context_model_path_(ep_context_model_path),
         compute_capability_(compute_capability),
         weight_stripped_engine_refit_(weight_stripped_engine_refit),
+        user_weights_(user_weights),
         onnx_model_folder_path_(onnx_model_folder_path),
         onnx_model_bytestream_(onnx_model_bytestream),
         onnx_model_bytestream_size_(onnx_model_bytestream_size),
@@ -82,6 +84,7 @@ class TensorRTCacheModelHandler {
   std::string ep_context_model_path_;  // If using context model, it implies context model and engine cache is in the same directory
   std::string compute_capability_;
   bool weight_stripped_engine_refit_;
+  std::unordered_map<std::string, TensorrtUserWeights>& user_weights_;
   std::string onnx_model_folder_path_;
   const void* onnx_model_bytestream_;
   size_t onnx_model_bytestream_size_;

@@ -293,6 +293,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
                                                      onnx_model_bytestream_size_,
                                                      onnx_external_data_bytestream_,
                                                      onnx_external_data_bytestream_size_,
+                                                     user_weights_,
                                                      (*trt_engine_).get(),
                                                      detailed_build_log_);
       if (status != Status::OK()) {
@@ -353,6 +354,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
                                                      onnx_model_bytestream_size_,
                                                      onnx_external_data_bytestream_,
                                                      onnx_external_data_bytestream_size_,
+                                                     user_weights_,
                                                      (*trt_engine_).get(),
                                                      detailed_build_log_);
       if (status != Status::OK()) {

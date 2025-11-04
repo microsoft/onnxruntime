@@ -979,6 +979,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   max_shared_mem_size_ = info.max_shared_mem_size;
   dump_subgraphs_ = info.dump_subgraphs;
   weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
+  weight_stripped_engine_enable_ = true;
   // make runtime cache path absolute and create directory if it doesn't exist
   if (!info.runtime_cache_path.empty()) {
     std::filesystem::path p(info.runtime_cache_path);
@@ -2209,10 +2210,12 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                 size_t onnx_model_bytestream_size,
                                                 const void* onnx_external_data_bytestream,
                                                 size_t onnx_external_data_bytestream_size,
+                                                std::unordered_map<std::string, TensorrtUserWeights>& user_weights,
                                                 nvinfer1::ICudaEngine* trt_engine,
                                                 bool detailed_build_log) {
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
-  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
+  // bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
+  bool refit_with_external_data = true;
   bool refit_complete = false;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   if (refit_from_file) {
@@ -2305,6 +2308,16 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
       if (refit_names.find(proto_name) != refit_names.end()) {
         if (proto.has_data_location()) {
           if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
+            
+            if (user_weights.find(proto_name) != user_weights.end()) {
+              auto& weight = user_weights[proto_name];
+              names.push_back(weight.Name());
+              bytes.push_back(static_cast<const char*>(weight.Data()));
+              sizes.push_back(weight.Size());
+              continue;
+            }
+
+
             // Default values for reading into external_data blob.
             int64_t offset = 0;
             size_t length = 0;
@@ -2878,6 +2891,32 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
   }
 
+  std::unordered_map<std::string, TensorrtUserWeights> user_weights;
+  if (weight_stripped_engine_enable_) {
+    auto c_api = Ort::GetApi();
+    const InitializedTensorSet& allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    user_weights.reserve(allInitializers.size());
+    for (auto& entry : allInitializers) {
+      OrtValue initializer_value;
+      auto* tp = entry.second;
+      if (utils::HasRawData(*tp)) {
+        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size())));
+      } else if (graph_body_viewer.GetOrtValueInitializer(tp->name(), initializer_value)) {
+        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+        size_t size = 0;
+        const void* ptr = nullptr;
+        Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
+        Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
+        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), ptr, size)));
+      } else if (utils::HasExternalDataInMemory(*tp)) {
+        // only copy and take ownership of the data if none of the above conditions are met
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(std::move(full_init->name()), std::move(full_init->raw_data()))));
+      }
+    }
+  }
+
   if (weight_stripped_engine_refit_) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
     auto status = RefitEngine(model_path_,
@@ -2887,6 +2926,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                               onnx_model_bytestream_size_,
                               onnx_external_data_bytestream_,
                               onnx_external_data_bytestream_size_,
+                              user_weights,
                               trt_engine.get(),
                               detailed_build_log_);
     if (status != Status::OK()) {
@@ -3185,12 +3225,39 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
+  std::unordered_map<std::string, TensorrtUserWeights> user_weights;
+  if (weight_stripped_engine_enable_) {
+    auto c_api = Ort::GetApi();
+    const InitializedTensorSet& allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    user_weights.reserve(allInitializers.size());
+    for (auto& entry : allInitializers) {
+      OrtValue initializer_value;
+      auto* tp = entry.second;
+      if (utils::HasRawData(*tp)) {
+        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size())));
+      } else if (graph_body_viewer.GetOrtValueInitializer(tp->name(), initializer_value)) {
+        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+        size_t size = 0;
+        const void* ptr = nullptr;
+        Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
+        Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
+        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), ptr, size)));
+      } else if (utils::HasExternalDataInMemory(*tp)) {
+        // only copy and take ownership of the data if none of the above conditions are met
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(std::move(full_init->name()), std::move(full_init->raw_data()))));
+      }
+    }
+  }
+
   // Get engine binary data and deserialize it
   auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine,
                                                            runtime_.get(),
                                                            model_path_,
                                                            compute_capability_,
                                                            weight_stripped_engine_enable_,
+                                                           user_weights,
                                                            onnx_model_folder_path_,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
