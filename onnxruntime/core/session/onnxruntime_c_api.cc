@@ -3440,7 +3440,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ void** extSemFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ SemaphoreEpMap* semaphoreEpMap) {
   API_IMPL_BEGIN
   auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   if (!inference_session) {
@@ -3464,8 +3464,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* ses
     const onnxruntime::IExecutionProvider* const_provider = execution_providers.Get(provider_type);
     if (const_provider) {
       auto* provider = const_cast<onnxruntime::IExecutionProvider*>(const_provider);
-      auto status = provider->GetExtSemaphore(graphicsInteropParams, extSemFence);
+      auto status = provider->GetExtSemaphore(graphicsInteropParams, &semaphoreEpMap->extSemFence);
       if(status.IsOK()) {
+        semaphoreEpMap->selectedEp = provider;
         return nullptr;
       }
       if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
@@ -3478,9 +3479,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
-  if(extSemFence == nullptr) {
+  if(semaphoreEpMap->extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
   }
   if(stream == nullptr) {
@@ -3492,30 +3493,15 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ v
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
   }
 
-  const auto& session_state = session->GetSessionState();
-  const auto& execution_providers = session_state.GetExecutionProviders();
-  const auto& graph_viewer = session_state.GetGraphViewer();
-
-  // Collect the unique set of execution providers assigned to nodes in the graph.
-  std::unordered_set<std::string> active_provider_types;
-  for (const auto& node : graph_viewer.Nodes()) {
-    if (!node.GetExecutionProviderType().empty()) {
-      active_provider_types.insert(node.GetExecutionProviderType());
+  const onnxruntime::IExecutionProvider* selectedEp = static_cast<const onnxruntime::IExecutionProvider*>(semaphoreEpMap->selectedEp);
+  if(selectedEp){
+    auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(selectedEp);
+    auto status = execution_provider->SetupInteropEpWait(semaphoreEpMap->extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
+    if(status.IsOK()) {
+      return nullptr;
     }
-  }
-
-  // Call SetupInteropEpWait only for the providers that are actively being used.
-  for (const auto& provider_type : active_provider_types) {
-    const onnxruntime::IExecutionProvider* provider = execution_providers.Get(provider_type);
-    if (provider) {
-      auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
-      auto status = execution_provider->SetupInteropEpWait(extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
-      if(status.IsOK()) {
-        return nullptr;
-      }
-      if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
-        return ToOrtStatus(status);
-      }
+    if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
+      return ToOrtStatus(status);
     }
   }
 
@@ -3523,9 +3509,9 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ v
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
-  if(extSemFence == nullptr) {
+  if(semaphoreEpMap->extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
   }
   if(stream == nullptr) {
@@ -3537,30 +3523,15 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
   }
 
-  const auto& session_state = session->GetSessionState();
-  const auto& execution_providers = session_state.GetExecutionProviders();
-  const auto& graph_viewer = session_state.GetGraphViewer();
-
-  // Collect the unique set of execution providers assigned to nodes in the graph.
-  std::unordered_set<std::string> active_provider_types;
-  for (const auto& node : graph_viewer.Nodes()) {
-    if (!node.GetExecutionProviderType().empty()) {
-      active_provider_types.insert(node.GetExecutionProviderType());
+  const onnxruntime::IExecutionProvider* selectedEp = static_cast<const onnxruntime::IExecutionProvider*>(semaphoreEpMap->selectedEp);
+  if(selectedEp){
+    auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(selectedEp);
+    auto status = execution_provider->SetupInteropEpSignal(OrtApis::GetEpApi(), semaphoreEpMap->extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
+    if(status.IsOK()) {
+      return nullptr;
     }
-  }
-
-  // Call SetupInteropEpSignal only for the providers that are actively being used.
-  for (const auto& provider_type : active_provider_types) {
-    const onnxruntime::IExecutionProvider* provider = execution_providers.Get(provider_type);
-    if (provider) {
-      auto* execution_provider = const_cast<onnxruntime::IExecutionProvider*>(provider);
-      auto status = execution_provider->SetupInteropEpSignal(OrtApis::GetEpApi(), extSemFence, OrtApis::SyncStream_GetHandle(stream), fenceValue);
-      if(status.IsOK()) {
-        return nullptr;
-      }
-      if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
-        return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
-      }
+    if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
+      return ToOrtStatus(status);
     }
   }
 
@@ -3764,19 +3735,19 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ void** extSemFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ SemaphoreEpMap* semaphoreEpMap) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForGraphicsInterop is not supported in a minimal build.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpWait is not supported in a minimal build.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpSignal is not supported in a minimal build.");
   API_IMPL_END

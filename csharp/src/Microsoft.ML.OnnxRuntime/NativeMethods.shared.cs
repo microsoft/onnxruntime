@@ -2764,13 +2764,13 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* OrtStatus* */ DOrtGetOrtFenceForGraphicsInterop(
             IntPtr /* OrtSession* */ session,
             IntPtr /* struct GraphicsInteropParams* */ graphicsInteropParams,
-            out IntPtr /* void** */ extSemFence
+            out IntPtr /* SemaphoreEpMap* */ semaphoreEpMap
             );
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtInteropEpWait(
             IntPtr /* OrtSession* */ session,
-            IntPtr /* void* */ extSemFence,
+            IntPtr /* SemaphoreEpMap* */ semaphoreEpMap,
             IntPtr /* OrtSyncStream* */ stream,
             uint /* uint64_t */ fenceValue
             );
@@ -2778,7 +2778,7 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* OrtStatus* */ DOrtInteropEpSignal(
             IntPtr /* OrtSession* */ session,
-            IntPtr /* void* */ extSemFence,
+            IntPtr /* SemaphoreEpMap* */ semaphoreEpMap,
             IntPtr /* OrtSyncStream* */ stream,
             uint /* uint64_t */ fenceValue
             );

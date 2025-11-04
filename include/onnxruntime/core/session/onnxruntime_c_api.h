@@ -572,6 +572,11 @@ typedef struct GraphicsInteropParams {
 
 } GraphicsInteropParams;
 
+typedef struct SemaphoreEpMap {
+  void* extSemFence;
+  void* selectedEp;
+} SemaphoreEpMap;
+
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
  * This delegate is called by the EP selection code to allow the user to provide custom device selection logic.
@@ -6597,7 +6602,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ void** extSemFence);
+  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ SemaphoreEpMap* semaphoreEpMap);
 
   /**
    * \brief Wait on a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
@@ -6622,7 +6627,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /**
    * \brief Signal a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
@@ -6647,7 +6652,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* extSemFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /** \brief Get the native handle of the sync stream.
    *
