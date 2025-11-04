@@ -5,39 +5,36 @@
 
 #include <gsl/span>
 
-#include "example_plugin_ep_utils.h"
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
 
-class ExampleEpFactory;
-struct MulKernel;
+class EpFactoryVirtualGpu;
+struct VirtualCompiledAdd;
 
 /// <summary>
-/// Example EP that can compile a single Mul operator.
+/// Example EP for a virtual GPU OrtHardwareDevice that was created by the EP factory itself (not ORT).
+/// Can only compile/execute a single Add node. Only used to test that an EP can provide additional hardware devices.
 /// </summary>
-class ExampleEp : public OrtEp, public ApiPtrs {
+class EpVirtualGpu : public OrtEp {
  public:
   struct Config {
     bool enable_ep_context = false;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 
-  ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger);
+  EpVirtualGpu(EpFactoryVirtualGpu& factory, const Config& config, const OrtLogger& logger);
+  ~EpVirtualGpu();
 
-  ~ExampleEp();
+  const OrtApi& GetOrtApi() const { return ort_api_; }
+  const OrtEpApi& GetEpApi() const { return ep_api_; }
 
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>>& Kernels() {
-    return kernels_;
+  std::unordered_map<std::string, std::unique_ptr<VirtualCompiledAdd>>& GetCompiledSubgraphs() {
+    return compiled_subgraphs_;
   }
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
-
-  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(_In_ OrtEp* this_ptr,
-                                                     _In_ const OrtMemoryInfo* memory_info,
-                                                     _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept;
-
-  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(_In_ OrtEp* this_ptr,
-                                                               _In_ const OrtMemoryDevice* memory_device,
-                                                               _Outptr_ OrtSyncStreamImpl** stream) noexcept;
 
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
                                                    OrtEpGraphSupportInfo* graph_support_info) noexcept;
@@ -54,12 +51,11 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
-  OrtStatus* SaveConstantInitializers(const OrtGraph* graph);
-
-  ExampleEpFactory& factory_;
-  std::string name_;
   Config config_{};
+  const OrtApi& ort_api_;
+  const OrtEpApi& ep_api_;
+  const OrtModelEditorApi& model_editor_api_;
+  std::string name_;
   const OrtLogger& logger_;
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
-  std::unordered_map<std::string, FloatInitializer> float_initializers_;
+  std::unordered_map<std::string, std::unique_ptr<VirtualCompiledAdd>> compiled_subgraphs_;
 };

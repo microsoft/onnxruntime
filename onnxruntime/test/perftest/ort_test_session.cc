@@ -750,6 +750,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
   if (!performance_test_config.run_config.optimized_model_path.empty()) {
     session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
+    if (!performance_test_config.run_config.optimized_model_data_path.empty()) {
+      session_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName,
+                                     performance_test_config.run_config.optimized_model_data_path.c_str());
+      if (!performance_test_config.run_config.optimized_model_weight_min_size.empty()) {
+        session_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes,
+                                       performance_test_config.run_config.optimized_model_weight_min_size.c_str());
+      }
+      if (performance_test_config.run_config.optimized_save_optimized_prepacks) {
+        session_options.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers, "1");
+      }
+    }
   }
   if (performance_test_config.run_config.set_denormal_as_zero) {
     warn_dup_config_entry(kOrtSessionOptionsConfigSetDenormalAsZero);

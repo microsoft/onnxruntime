@@ -751,9 +751,18 @@ if (onnxruntime_USE_WEBGPU)
           #   Some build warnings are not allowed to be disabled in project level.
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
 
-          # Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
-          # in the uniform and converting to fp16 before using.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch)
+          # The uniform_and_storage_buffer_16_bit_access.patch contains the following changes:
+          #
+          # - (private) Android devices don't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+          #   in the uniform and converting to fp16 before using.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch &&
+
+          # The safari_polyfill.patch contains the following changes:
+          #
+          # - (private) Fix compatibility issues with Safari. Contains the following changes:
+          #   - Polyfill for `device.AdapterInfo` (returns `undefined` in Safari v26.0)
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn
