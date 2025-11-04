@@ -872,23 +872,7 @@ namespace Microsoft.ML.OnnxRuntime
             // Define the library name required for iOS
             internal const string DllName = "__Internal";
 #else
-            // For desktop platforms, explicitly specify the DLL name with extension to avoid
-            // issues on case-sensitive filesystems (including Windows with case-sensitivity enabled).
-            //
-            // Previous behavior relied on .NET automatically adding platform-specific extensions:
-            //   Windows: onnxruntime -> onnxruntime.dll
-            //   Linux: onnxruntime -> libonnxruntime.so
-            //   macOS: onnxruntime -> libonnxruntime.dylib
-            //
-            // By specifying "onnxruntime.dll" explicitly, we ensure consistent behavior across
-            // case-sensitive and case-insensitive filesystems. This requires that native libraries
-            // for all platforms be named "onnxruntime.dll" in their respective runtime folders,
-            // or that appropriate symlinks/aliases be created during packaging.
-            //
-            // NuGet packages should contain:
-            //   - runtimes/win-{arch}/native/onnxruntime.dll
-            //   - runtimes/linux-{arch}/native/onnxruntime.dll (symlink to libonnxruntime.so)
-            //   - runtimes/osx-{arch}/native/onnxruntime.dll (symlink to libonnxruntime.dylib)
+            // Note: the file name in ONNX Runtime nuget package must be onnxruntime.dll instead of onnxruntime.DLL(Windows filesystem can be case sensitive)
             internal const string DllName = "onnxruntime.dll";
 #endif
         }
