@@ -615,6 +615,7 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
 
 // Test plugin EP's use of the EpGraphSupportInfo_LookUpKernel API.
 TEST(PluginExecutionProviderTest, GetCapability_LookUpKernel) {
+  // Helper that calls IExecutionProvider::GetCapability and checks expected results.
   auto run_test = [](IExecutionProvider& ep, const std::unordered_set<std::string>& expected_claimed_nodes,
                      test_plugin_ep::LookUpKernelFunc lookup_kernel_func) {
     const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
@@ -623,7 +624,6 @@ TEST(PluginExecutionProviderTest, GetCapability_LookUpKernel) {
     ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/add_mul_add.onnx"), model, nullptr,
                                  DefaultLoggingManager().DefaultLogger()));
 
-    // Call IExecutionProvider::GetCapability and check expected results (no claimed nodes)
     {
       ep.SetLogger(&logger);
 
@@ -652,7 +652,7 @@ TEST(PluginExecutionProviderTest, GetCapability_LookUpKernel) {
   // Build dummy kernel lookup function that always returns null. Used by OrtEp using EpGraphSupportInfo_LookUpKernel().
   // Expect that the plugin EP will not claim any nodes because no valid kernel definitions are registered.
   {
-    auto mock_kernel_lookup_fn = [](const Node& node) -> const KernelCreateInfo* {
+    auto mock_kernel_lookup_fn = [](const Node& /*node*/) -> const KernelCreateInfo* {
       return nullptr;
     };
 
