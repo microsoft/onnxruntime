@@ -162,7 +162,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                            "FC3 gating is not yet implemented for non-SwiGLU activations on WebGPU.");
   }
 
-  const int max_tokens = 256; // TODO: maybe 512 ?
+  const int max_tokens = 256;  // TODO: maybe 512 ?
   const uint32_t num_experts = static_cast<uint32_t>(moe_params.num_experts);
   const uint32_t hidden_size = static_cast<uint32_t>(moe_params.hidden_size);
   const int64_t fc1_output_size = is_swiglu && swiglu_fusion_ > 0 ? 2 * moe_params.inter_size : moe_params.inter_size;
