@@ -7,7 +7,6 @@
 #include <HTP/QnnHtpDevice.h>
 #include <HTP/QnnHtpPerfInfrastructure.h>
 
-
 namespace onnxruntime {
 namespace qnn {
 namespace power {
@@ -57,6 +56,6 @@ class HtpPowerConfigManager {
 
   std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> power_configs_;
 };
-}  // namespace powerconfig
+}  // namespace power
 }  // namespace qnn
 }  // namespace onnxruntime

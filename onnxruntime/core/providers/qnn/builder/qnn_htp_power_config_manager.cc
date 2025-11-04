@@ -58,17 +58,16 @@ Status HtpPowerConfigManager::AddRpcControlLatency(const uint32_t& rpc_control_l
 }
 
 std::string_view PerformanceModeToString(HtpPerformanceMode htp_performance_mode) {
-  constexpr std::array<std::pair<HtpPerformanceMode, std::string_view>, 10> perf_string_map = {{
-    {HtpPerformanceMode::kHtpDefault, "default"},
-    {HtpPerformanceMode::kHtpSustainedHighPerformance, "sustained_high_performance"},
-    {HtpPerformanceMode::kHtpBurst, "burst"},
-    {HtpPerformanceMode::kHtpHighPerformance, "high_performance"},
-    {HtpPerformanceMode::kHtpPowerSaver, "power_saver"},
-    {HtpPerformanceMode::kHtpLowPowerSaver, "low_power_saver"},
-    {HtpPerformanceMode::kHtpHighPowerSaver, "high_power_saver"},
-    {HtpPerformanceMode::kHtpLowBalanced, "low_balanced"},
-    {HtpPerformanceMode::kHtpBalanced, "balanced"},
-    {HtpPerformanceMode::kHtpExtremePowerSaver, "extreme_power_saver"}}};
+  constexpr std::array<std::pair<HtpPerformanceMode, std::string_view>, 10> perf_string_map = {{{HtpPerformanceMode::kHtpDefault, "default"},
+                                                                                                {HtpPerformanceMode::kHtpSustainedHighPerformance, "sustained_high_performance"},
+                                                                                                {HtpPerformanceMode::kHtpBurst, "burst"},
+                                                                                                {HtpPerformanceMode::kHtpHighPerformance, "high_performance"},
+                                                                                                {HtpPerformanceMode::kHtpPowerSaver, "power_saver"},
+                                                                                                {HtpPerformanceMode::kHtpLowPowerSaver, "low_power_saver"},
+                                                                                                {HtpPerformanceMode::kHtpHighPowerSaver, "high_power_saver"},
+                                                                                                {HtpPerformanceMode::kHtpLowBalanced, "low_balanced"},
+                                                                                                {HtpPerformanceMode::kHtpBalanced, "balanced"},
+                                                                                                {HtpPerformanceMode::kHtpExtremePowerSaver, "extreme_power_saver"}}};
 
   for (auto it = perf_string_map.begin(); it != perf_string_map.end(); it++) {
     if (it->first == htp_performance_mode) {
@@ -101,7 +100,7 @@ Status HtpPowerConfigManager::AddHtpPerformanceMode(const HtpPerformanceMode& ht
 
 Status HtpPowerConfigManager::SetPowerConfig(uint32_t htp_power_config_client_id,
                                              const QNN_INTERFACE_VER_TYPE& qnn_interface) {
-  if (power_configs_.size() < 0) {
+  if (!power_configs_.empty()) {
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface.deviceGetInfrastructure(&qnn_device_infra);
     ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -249,6 +248,6 @@ Status HtpPowerConfigManager::SetHtpPerformancePowerConfig(QnnHtpPerfInfrastruct
   return Status::OK();
 }
 
-}  // namespace powerconfig
+}  // namespace power
 }  // namespace qnn
 }  // namespace onnxruntime

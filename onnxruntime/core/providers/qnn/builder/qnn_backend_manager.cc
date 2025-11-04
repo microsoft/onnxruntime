@@ -13,6 +13,7 @@
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
+#include "HTP/QnnHtpPerfInfrastructure.h"
 #include "HTP/QnnHtpSystemContext.h"
 #include "IR/QnnIrCommon.h"
 #include "IR/QnnIrGraph.h"
