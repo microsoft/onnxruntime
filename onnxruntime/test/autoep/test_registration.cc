@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include <filesystem>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -36,7 +33,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
   // should be one device for the example EP
   auto num_test_ep_devices = std::count_if(ep_devices, ep_devices + num_devices,
-                                           [&ep_name, &c_api](const OrtEpDevice* device) {
+                                           [&](const OrtEpDevice* device) {
                                              return c_api->EpDevice_EpName(device) == ep_name;
                                            });
   ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
@@ -58,7 +55,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
 
   // should be one device for the example EP
   auto test_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
-                                     [&ep_name](Ort::ConstEpDevice& device) {
+                                     [&](Ort::ConstEpDevice& device) {
                                        return device.EpName() == ep_name;
                                      });
   ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by the test library.";
@@ -82,7 +79,9 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_NE(device.Vendor(), nullptr);
   Ort::ConstKeyValuePairs device_metadata = device.Metadata();
   std::unordered_map<std::string, std::string> metadata_entries = device_metadata.GetKeyValuePairs();
+#if defined(_WIN32)
   ASSERT_GT(metadata_entries.size(), 0);  // should have at least SPDRP_HARDWAREID on Windows
+#endif
 
   // and this should unload it without throwing
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
@@ -95,12 +94,12 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   const std::string& registration_name = "example_plugin_ep_virt_gpu";
   const std::string& ep_name = Utils::example_ep_virt_gpu_info.ep_name;
 
-  auto get_plugin_ep_devices = [&ep_name]() -> std::vector<Ort::ConstEpDevice> {
+  auto get_plugin_ep_devices = [&]() -> std::vector<Ort::ConstEpDevice> {
     std::vector<Ort::ConstEpDevice> all_ep_devices = ort_env->GetEpDevices();
     std::vector<Ort::ConstEpDevice> ep_devices;
 
     std::copy_if(all_ep_devices.begin(), all_ep_devices.end(), std::back_inserter(ep_devices),
-                 [&ep_name](Ort::ConstEpDevice& device) {
+                 [&](Ort::ConstEpDevice& device) {
                    return device.EpName() == ep_name;
                  });
 
@@ -170,5 +169,3 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
 }
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32

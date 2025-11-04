@@ -11,13 +11,13 @@
 #include "../plugin_ep_utils.h"
 
 EpFactoryVirtualGpu::EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api,
-                                         const OrtModelEditorApi& model_editor_api, const OrtLogger& default_logger)
+                                         const OrtModelEditorApi& model_editor_api,
+                                         const OrtLogger& /*default_logger*/)
     : OrtEpFactory{},
       ort_api_(ort_api),
       ep_api_(ep_api),
       model_editor_api_(model_editor_api),
-      allow_virtual_devices_{false},
-      default_logger_{default_logger} {
+      allow_virtual_devices_{false} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;

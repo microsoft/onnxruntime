@@ -27,7 +27,7 @@ parameters:
   displayName: QNN SDK version
   type: string
   default: 2.39.0.250926
-  
+
 - name: is1ES
   displayName: 'Whether the pipeline is running in 1ES'
   type: boolean
@@ -50,7 +50,7 @@ jobs:
   variables:
   - name: extra_build_args
     ${{ if ne(parameters.extra_build_arg, '') }}:
-      value: -x ${{ parameters.extra_build_arg }}
+      value: '-x "${{ parameters.extra_build_arg }}"'
     ${{ if eq(parameters.extra_build_arg, '') }}:
       value: ''
   steps:
@@ -79,4 +79,3 @@ jobs:
       arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
     env:
       ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
-
