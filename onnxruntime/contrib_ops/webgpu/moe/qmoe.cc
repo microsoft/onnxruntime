@@ -272,7 +272,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       ORT_RETURN_IF_ERROR(status);
 
       //
-      // Step 4: apply swigly
+      // Step 4: apply swiglu
       //
       if (is_swiglu) {
         SwigLuProgram swiglu;
