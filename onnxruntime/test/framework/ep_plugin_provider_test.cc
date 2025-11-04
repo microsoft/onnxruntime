@@ -32,6 +32,7 @@ struct ApiPtrs {
 
 static void CheckStringInFile(const PathString& filename, const std::string& look_for) {
   std::ifstream ifs{filename};
+  ASSERT_TRUE(ifs);
   std::string content(std::istreambuf_iterator<char>{ifs},
                       std::istreambuf_iterator<char>{});
 
@@ -40,6 +41,7 @@ static void CheckStringInFile(const PathString& filename, const std::string& loo
 
 static void CheckFileIsEmpty(const PathString& filename) {
   std::ifstream ifs{filename};
+  ASSERT_TRUE(ifs);
   std::string content(std::istreambuf_iterator<char>{ifs},
                       std::istreambuf_iterator<char>{});
 
