@@ -159,7 +159,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   }
   if (!is_swiglu && fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "FC3 gating is not yet implemented for non-SwiGLU activations on CPU.");
+                           "FC3 gating is not yet implemented for non-SwiGLU activations on WebGPU.");
   }
 
   const int max_tokens = 256; // TODO: maybe 512 ?
