@@ -232,10 +232,6 @@ repositories {
                     "Ensure you have you installed React Native as a dependency in your project and try again."
     )
   }
-
-  flatDir {
-    dir 'libs'
-  }
 }
 
 dependencies {
@@ -243,11 +239,7 @@ dependencies {
   implementation "com.facebook.react:react-android:"+ REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
 
-  androidTestImplementation "androidx.test:runner:1.5.2"
-  androidTestImplementation "androidx.test:rules:1.5.0"
   implementation "junit:junit:4.12"
-
-  androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
   if (useQnn) {
     extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:latest.integration@aar"

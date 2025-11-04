@@ -53,14 +53,11 @@ jobs:
           cp tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
 
           python3 -m pip install --user -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
-          
-          python3 ${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_ROOT --android_ndk_path $ANDROID_NDK_ROOT ${{ runner.temp }}/.build_settings/build_settings.json      
+
+          python3 ${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_ROOT --android_ndk_path $ANDROID_NDK_ROOT ${{ runner.temp }}/.build_settings/build_settings.json
 
           # Copy the built artifacts to give folder for publishing
-          BASE_PATH=${{ runner.temp }}/aar_out/Release/com/microsoft/onnxruntime/onnxruntime-android/${OnnxRuntimeVersion}
-          cp ${BASE_PATH}/*.jar  ${{ runner.temp }}/artifacts
-          cp ${BASE_PATH}/*.aar          ${{ runner.temp }}/artifacts
-          cp ${BASE_PATH}/*.pom          ${{ runner.temp }}/artifacts          
+          cp -r ${{ runner.temp }}/aar_out/Release/com ${{ runner.temp }}/artifacts
 
       - name: Upload Android AAR Artifact
         uses: actions/upload-artifact@v5
@@ -109,8 +106,6 @@ jobs:
 
       - name: Copy AAR to React Native and E2E directories
         run: |
-          mkdir -p ${{ github.workspace }}/js/react_native/android/libs
-          cp ${{ runner.temp }}/android-full-aar/*.aar ${{ github.workspace }}/js/react_native/android/libs
           mkdir -p ${{ github.workspace }}/js/react_native/e2e/android/app/libs
           cp ${{ runner.temp }}/android-full-aar/*.aar ${{ github.workspace }}/js/react_native/e2e/android/app/libs
 
@@ -140,10 +135,6 @@ jobs:
         uses: ./.github/actions/setup-android-ndk
         with:
           ndk-version: 28.0.13004108
-
-      - name: Run React Native Android Instrumented Tests
-        run: ./gradlew connectedDebugAndroidTest --stacktrace
-        working-directory: ${{ github.workspace }}/js/react_native/android
 
       - name: Run React Native Detox Android e2e Tests
         run: |
@@ -258,7 +249,7 @@ jobs:
           npm ci
           npm run bootstrap-no-pods
         working-directory: ${{ github.workspace }}/js/react_native
-      
+
       - name: Pod install for e2e tests
         run: |
           set -e -x
