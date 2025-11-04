@@ -503,7 +503,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo*
   const onnxruntime::KernelCreateInfo* create_info =
       graph_support_info->kernel_lookup.LookUpKernel(ep_node->GetInternalNode());
 
-  *out_kernel_def = static_cast<const OrtKernelDef*>(create_info->kernel_def.get());
+  *out_kernel_def = create_info != nullptr ? static_cast<const OrtKernelDef*>(create_info->kernel_def.get()) : nullptr;
   return nullptr;
   API_IMPL_END
 }

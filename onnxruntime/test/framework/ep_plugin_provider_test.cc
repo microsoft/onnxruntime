@@ -611,6 +611,74 @@ TEST(PluginExecutionProviderTest, GetCapability_ClaimNodesAssignedToOtherEP) {
   std::filesystem::remove(log_file);
 }
 
+// Test plugin EP's use of the EpGraphSupportInfo_LookUpKernel API.
+TEST(PluginExecutionProviderTest, GetCapability_LookUpKernel) {
+  auto run_test = [](IExecutionProvider& ep, const std::unordered_set<std::string>& expected_claimed_nodes,
+                     test_plugin_ep::LookUpKernelFunc lookup_kernel_func) {
+    const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/add_mul_add.onnx"), model, nullptr,
+                                 DefaultLoggingManager().DefaultLogger()));
+
+    // Call IExecutionProvider::GetCapability and check expected results (no claimed nodes)
+    {
+      ep.SetLogger(&logger);
+
+      GraphViewer graph_viewer(model->MainGraph());
+      auto compute_capabilities = ep.GetCapability(graph_viewer,
+                                                   test_plugin_ep::MockKernelLookup(lookup_kernel_func),
+                                                   GraphOptimizerRegistry(nullptr, nullptr, &logger),
+                                                   nullptr);
+
+      ASSERT_EQ(compute_capabilities.size(), expected_claimed_nodes.empty() ? 0 : 1);
+
+      if (compute_capabilities.size() == 1) {
+        ASSERT_EQ(compute_capabilities[0]->sub_graph->nodes.size(), expected_claimed_nodes.size());
+
+        for (NodeIndex node_index : compute_capabilities[0]->sub_graph->nodes) {
+          const Node* node = graph_viewer.GetNode(node_index);
+          ASSERT_NE(node, nullptr);
+          EXPECT_EQ(expected_claimed_nodes.count(node->Name()), 1);
+        }
+      }
+    }
+  };
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  // Build dummy kernel lookup function that always returns null. Used by OrtEp using EpGraphSupportInfo_LookUpKernel().
+  // Expect that the plugin EP will not claim any nodes because no valid kernel definitions are registered.
+  {
+    auto mock_kernel_lookup_fn = [](const Node& node) -> const KernelCreateInfo* {
+      return nullptr;
+    };
+
+    ort_ep->GetCapability = GetCapabilityTakeSingleNode;
+    std::unordered_set<std::string> expected_claimed_nodes;  // Empty. No nodes should be claimed.
+    run_test(*ep, expected_claimed_nodes, mock_kernel_lookup_fn);
+  }
+
+  // Test a kernel lookup function that only returns a kernel definition for a Mul node.
+  // Expect that plugin EP will take only the Mul node.
+  {
+    KernelDefBuilder builder;
+    builder.SetName("Mul").SinceVersion(1).Provider("TestOrtEp");
+    auto kernel_create_info = std::make_unique<KernelCreateInfo>(builder.Build(), nullptr);
+
+    auto mock_kernel_lookup_fn = [&kernel_create_info](const Node& node) -> const KernelCreateInfo* {
+      if (kernel_create_info->kernel_def->OpName() == node.OpType()) {
+        return kernel_create_info.get();
+      }
+      return nullptr;
+    };
+
+    ort_ep->GetCapability = GetCapabilityTakeSingleNode;
+    std::unordered_set<std::string> expected_claimed_nodes = {"mul_0"};
+    run_test(*ep, expected_claimed_nodes, mock_kernel_lookup_fn);
+  }
+}
+
 TEST(PluginExecutionProviderTest, KernelDefCxxApis) {
   auto check_kernel_def = [&](const KernelDef& expected, Ort::ConstKernelDef actual) -> void {
     EXPECT_EQ(expected.OpName(), actual.GetOperatorType());
