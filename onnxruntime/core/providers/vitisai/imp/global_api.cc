@@ -129,7 +129,8 @@ struct OrtVitisAIEpAPI {
     auto status1 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_error_handling", (void**)&compile_onnx_model_vitisai_ep_with_error_handling);
     auto status2 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options", (void**)&compile_onnx_model_with_options);
     auto status3 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_v3", (void**)&compile_onnx_model_vitisai_ep_v3);
-    if ((!status1.IsOK()) && (!status2.IsOK()) && (!status3.IsOK())) {
+    auto status4 = env.GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_v4", (void**)&compile_onnx_model_vitisai_ep_v4);
+    if ((!status1.IsOK()) && (!status2.IsOK()) && (!status3.IsOK()) && (!status4.IsOK())) {
       ::onnxruntime::LogRuntimeError(0, status2, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status2);
     }
