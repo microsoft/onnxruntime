@@ -15,7 +15,7 @@ $MAIN {
     let token_idx = hiddenstate_for_expert[expert_base + workgroup_idx];
     tokens[workgroup_idx] = token_idx;
 
-    // copy hiden state for this token
+    // copy hidden state for this token
     let step = (uniforms.hidden_size + workgroup_size_x  - 1) / workgroup_size_x;
     let wg_offset = local_idx * step;
     let src_offset = token_idx * uniforms.hidden_size + wg_offset;
