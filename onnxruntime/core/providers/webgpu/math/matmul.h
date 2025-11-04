@@ -31,8 +31,7 @@ class SplitKConfig {
   bool enable_split_k_ = false;
   uint32_t split_dim_inner_ = 0;
   uint32_t min_dim_inner_with_split_k_ = 0;
-  uint32_t max_dim_a_outer_with_split_k_ = 0;
-  uint32_t max_dim_b_outer_with_split_k_ = 0;
+  float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.0f;
 };
 
 MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,

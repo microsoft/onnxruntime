@@ -51,16 +51,16 @@ SplitKConfig SplitKConfig::GetSplitKConfig(const ComputeContext& context) {
   SplitKConfig config = {};
 
   if (adapter_info.vendor == std::string_view{"intel"}) {
-    if (adapter_info.architecture == std::string_view{"xe-lpg"} ||
-        adapter_info.architecture == std::string_view{"xe-2lpg"} ||
-        adapter_info.architecture == std::string_view{"xe-2hpg"}) {
+    if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
+        adapter_info.architecture == std::string_view{"xe-2hpg"} ||
+        adapter_info.architecture == std::string_view{"xe-lpg"} ||
+        adapter_info.architecture == std::string_view{"gen-12hp"}) {
       config.enable_split_k_ = true;
 
       // Below thresholds are only verified on the above Intel GPUs.
       config.split_dim_inner_ = 256;
       config.min_dim_inner_with_split_k_ = config.split_dim_inner_ * 2 + 1;
-      config.max_dim_a_outer_with_split_k_ = 196;
-      config.max_dim_b_outer_with_split_k_ = 768;
+      config.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.6f;
     }
   }
   return config;
@@ -84,11 +84,11 @@ bool SplitKConfig::UseSplitK(
   // `MatMulFillBiasBeforeSplitKProgram`.
   use_split_k &= is_channels_last;
 
-  // Split-K works best when `dim_inner` is large and both `a_outer` and `b_outer` are relatively small.
-  use_split_k &=
-      dim_a_outer <= max_dim_a_outer_with_split_k_ &&
-      dim_b_outer <= max_dim_b_outer_with_split_k_ &&
-      dim_inner >= min_dim_inner_with_split_k_;
+  // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
+  // `dim_b_outer`. Currently we use `(dim_a_outer * dim_b_outer * 1.0f / dim_inner)` as the
+  // metric to decide whether to use Split-K or not.
+  use_split_k &= (dim_inner >= min_dim_inner_with_split_k_);
+  use_split_k &= ((dim_a_outer * dim_b_outer * 1.0f / dim_inner) <= max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_);
 
   return use_split_k;
 }
