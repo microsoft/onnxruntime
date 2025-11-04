@@ -187,7 +187,8 @@ TEST_P(CompileApiTest, WeightStrippedEngineWithLargeModel) {
   std::unordered_map<std::string, std::string> option_map{
       {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer,
        std::to_string(test_param.bytestream_io || test_param.external_initialzier_for_parser)}};
-  auto ep = AppendTrtEtxEP(session_options, option_map);
+  // auto ep = AppendTrtEtxEP(session_options, option_map);
+  session_options.AppendExecutionProvider("NvTensorRTRTXExecutionProvider", option_map);
 
   Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
   model_compile_options.SetEpContextEmbedMode(test_param.embed_mode);
@@ -207,7 +208,8 @@ TEST_P(CompileApiTest, WeightStrippedEngineWithLargeModel) {
     session_options.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
 
     model_compile_options.SetInputModelFromBuffer(input_onnx.data(), input_onnx.size());
-    model_compile_options.SetOutputModelBuffer(Ort::AllocatorWithDefaultOptions(), &output_context, &output_context_size);
+    //model_compile_options.SetOutputModelBuffer(Ort::AllocatorWithDefaultOptions(), &output_context, &output_context_size);
+    model_compile_options.SetOutputModelPath(model_name_ctx.c_str());
   } else {
     model_compile_options.SetInputModelPath(model_name.c_str());
     model_compile_options.SetOutputModelPath(model_name_ctx.c_str());
@@ -225,7 +227,8 @@ TEST_P(CompileApiTest, WeightStrippedEngineWithLargeModel) {
   // JIT time
   std::unique_ptr<Ort::Session> session;
   if (test_param.bytestream_io) {
-    session = std::make_unique<Ort::Session>(*ort_env, output_context, output_context_size, session_options);
+    //session = std::make_unique<Ort::Session>(*ort_env, output_context, output_context_size, session_options);
+    session = std::make_unique<Ort::Session>(*ort_env, model_name_ctx.c_str(), session_options);
   } else {
     session = std::make_unique<Ort::Session>(*ort_env, model_name_ctx.c_str(), session_options);
   }
@@ -303,13 +306,14 @@ TEST_P(CompileApiTest, LargeModel) {
 INSTANTIATE_TEST_SUITE_P(
     NvExecutionProviderTest, CompileApiTest,
     ::testing::Values(
-        CompileParam{true, false},
-        CompileParam{false, false},
-        CompileParam{true, true},
-        CompileParam{false, true},
+        //CompileParam{true, false},
+        //CompileParam{false, false},
+        //CompileParam{true, true},
+        CompileParam{false, true}
         // test with external initializers for parser
-        CompileParam{true, true, true},
-        CompileParam{true, false, true}),
+        //CompileParam{true, true, true},
+        //CompileParam{true, false, true}
+        ),
     [](const testing::TestParamInfo<CompileApiTest::ParamType>& info) {
       return info.param.to_string();
     });

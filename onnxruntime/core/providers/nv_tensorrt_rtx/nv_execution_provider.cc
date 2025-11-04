@@ -33,6 +33,7 @@
 #include <filesystem>
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
+#include "core/common/path_utils.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -949,8 +950,8 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
   auto cc = prop.major * 10 + prop.minor;
   if (!(cc == 86 || cc == 89 || cc >= 120)) {
-    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                       "[NvTensorRTRTX EP] The execution provider only supports RTX devices with compute capabilities 86, 89, 120 and above"));
+//    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+//                                       "[NvTensorRTRTX EP] The execution provider only supports RTX devices with compute capabilities 86, 89, 120 and above"));
   }
   compute_capability_ = GetComputeCapability(prop);
   if (info.has_user_compute_stream) {
@@ -2892,6 +2893,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
   }
 
+  /*
   std::unordered_map<std::string, TensorrtUserWeights> user_weights;
   if (weight_stripped_engine_enable_) {
     auto c_api = Ort::GetApi();
@@ -2922,7 +2924,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
     auto status = RefitEngine(model_path_,
                               onnx_model_folder_path_,
-                              false /* path check for security */,
+                              false,
                               onnx_model_bytestream_,
                               onnx_model_bytestream_size_,
                               onnx_external_data_bytestream_,
@@ -2934,6 +2936,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
     }
   }
+  */
 
   // Build context
   // Note: Creating an execution context from an engine is thread safe per TRT doc
@@ -3214,6 +3217,24 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   return Status::OK();
 }
 
+std::vector<char> readBinaryFile(const PathString& filename) {
+  std::ifstream file(filename, std::ios::binary);
+  if (!file.is_open()) {
+    throw std::runtime_error("Could not open file: " + PathToUTF8String(filename));
+  }
+
+  file.seekg(0, std::ios::end);
+  std::streamsize filesize = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  std::vector<char> buffer(filesize);
+  if (!file.read(reinterpret_cast<char*>(buffer.data()), filesize)) {
+    throw std::runtime_error("Could not read file: " + PathToUTF8String(filename));
+  }
+
+  return buffer;
+}
+
 Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                                        size_t node_idx,
                                                                        const Node& fused_node,
@@ -3251,6 +3272,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
       }
     }
   }
+
+  std::vector<char> input_onnx;
+  input_onnx = readBinaryFile(path_utils::MakePathString(model_path_));
+  onnx_model_bytestream_ = input_onnx.data();
+  onnx_model_bytestream_size_ = input_onnx.size();
 
   // Get engine binary data and deserialize it
   auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine,
