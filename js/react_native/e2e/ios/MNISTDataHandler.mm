@@ -4,6 +4,7 @@
 #import "MNISTDataHandler.h"
 #import <Foundation/Foundation.h>
 #import <React/RCTLog.h>
+#include <vector>
 
 NS_ASSUME_NONNULL_BEGIN
 
