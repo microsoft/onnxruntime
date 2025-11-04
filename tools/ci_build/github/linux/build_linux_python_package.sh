@@ -18,7 +18,7 @@ PYTHON_EXES=(
 while getopts "d:p:x:c:e" parameter_Option
 do case "${parameter_Option}"
 in
-#GPU|CPU|NPU.
+#GPU|WEBGPU|CPU|NPU.
 d) BUILD_DEVICE=${OPTARG};;
 p)
   # Check if OPTARG is empty or starts with a hyphen, indicating a missing or invalid argument for -p
@@ -32,7 +32,7 @@ p)
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 e) ENABLE_CACHE=true;;
-*) echo "Usage: $0 -d <GPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
+*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
    exit 1;;
 esac
 done
@@ -70,6 +70,9 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=60-real;70-real;75-real;80-real;86-real;90a-real;90-virtual" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+fi
+if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
+    BUILD_ARGS+=("--use_webgpu")
 fi
 
 if [ "$BUILD_DEVICE" == "NPU" ]; then
