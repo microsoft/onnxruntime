@@ -146,7 +146,6 @@ static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
   Ort::Status final_status{nullptr};
 
   ORT_TRY {
-   
     Ort::ConstExternalInitializerInfo ori_external_info{c_ori_external_info};
 
     const auto location = ori_external_info.GetFilePath();
