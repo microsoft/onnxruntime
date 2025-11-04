@@ -18,6 +18,8 @@ namespace webgpu {
 
 ShaderHelper::ShaderHelper(const ProgramBase& program,
                            const ProgramMetadata& program_metadata,
+                           const std::span<uint32_t> inputs_segments,
+                           const std::span<uint32_t> outputs_segments,
                            const wgpu::Device& device,
                            const wgpu::Limits& limits,
                            uint32_t dispatch_group_size_x,
@@ -25,6 +27,8 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
                            uint32_t dispatch_group_size_z)
     : device_{device},
       limits_{limits},
+      inputs_segments_{inputs_segments},
+      outputs_segments_{outputs_segments},
       dispatch_group_size_x_{dispatch_group_size_x},
       dispatch_group_size_y_{dispatch_group_size_y},
       dispatch_group_size_z_{dispatch_group_size_z},
@@ -95,13 +99,6 @@ Status ShaderHelper::Init() {
   return Status::OK();
 }
 
-void ShaderHelper::FinalizeInputs() {
-  // Automatically add indirect buffer as the last shader input when using indirect dispatch.
-  if (program_.IndirectDispatchTensor() != nullptr) {
-    AddInput("indirect_buffer", ShaderUsage::None);
-  }
-}
-
 const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, ShaderUsage usage) {
   const size_t input_index = input_vars_.size();
   ORT_ENFORCE(input_index < program_.Inputs().size(),
@@ -109,7 +106,7 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims, program_.Inputs()[input_index].segments);
+  return AddVariableImpl(true, name, usage, dims, inputs_segments_[input_index]);
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -119,7 +116,7 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(false, name, usage, dims, program_.Outputs()[output_index].segments);
+  return AddVariableImpl(false, name, usage, dims, outputs_segments_[output_index]);
 }
 
 const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
