@@ -358,9 +358,11 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
                                                    info.hardware_devices.size(), &options, &logger,
                                                    &ep)));
   } else {
+    PluginExecutionProviderFactory factory(*info.ep_factory, info.devices, info.hardware_devices, info.ep_metadata);
     std::unique_ptr<PluginExecutionProvider> plugin_ep;
-    ORT_RETURN_IF_ERROR(PluginExecutionProvider::Create(*info.ep_factory, info.devices, info.hardware_devices,
-                                                        info.ep_metadata, options, logger, plugin_ep));
+
+    ORT_RETURN_IF_ERROR(factory.CreatePluginExecutionProvider(options, logger, plugin_ep));
+
     ep = std::move(plugin_ep);
   }
 

@@ -44,18 +44,51 @@ PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_
   }
 }
 
+PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_factory,
+                                                               gsl::span<const OrtEpDevice* const> ep_devices,
+                                                               gsl::span<const OrtHardwareDevice* const> hw_devices,
+                                                               gsl::span<const OrtKeyValuePairs* const> ep_metadata)
+    : ep_factory_{ep_factory},
+      devices_{ep_devices.begin(), ep_devices.end()},
+      hardware_devices_{hw_devices.begin(), hw_devices.end()},
+      ep_metadata_{ep_metadata.begin(), ep_metadata.end()} {
+}
+
 std::unique_ptr<IExecutionProvider>
 PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
                                                const OrtLogger& session_logger) {
   std::unique_ptr<PluginExecutionProvider> plugin_ep;
-  Status status = PluginExecutionProvider::Create(ep_factory_, devices_, hardware_devices_,
-                                                  ep_metadata_, session_options, session_logger, plugin_ep);
+  Status status = CreatePluginExecutionProvider(session_options, session_logger, plugin_ep);
+
   if (!status.IsOK()) {
     LOGS(*session_logger.ToInternal(), ERROR) << "Error creating execution provider: " << status.ToString();
     return nullptr;
   }
 
   return plugin_ep;
+}
+
+Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
+    const OrtSessionOptions& session_options,
+    const OrtLogger& logger,
+    /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
+  plugin_ep = nullptr;
+  OrtEp* ort_ep = nullptr;
+
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(),
+                                                              ep_metadata_.data(), hardware_devices_.size(),
+                                                              &session_options, &logger, &ort_ep)));
+  ORT_RETURN_IF(ort_ep == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
+                "' returned a NULL OrtEp instance");
+
+  std::shared_ptr<KernelRegistry> kernel_registry;
+  ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
+
+  plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+                                                        session_options, ep_factory_, devices_,
+                                                        kernel_registry,
+                                                        *logger.ToInternal());
+  return Status::OK();
 }
 
 /// <summary>
@@ -125,32 +158,6 @@ static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
                                 });
 
   return node_iter != ep_nodes.end() ? &(*node_iter)->GetInternalNode() : nullptr;
-}
-
-/*static*/
-Status PluginExecutionProvider::Create(OrtEpFactory& ep_factory,
-                                       gsl::span<const OrtEpDevice* const> ep_devices,
-                                       gsl::span<const OrtHardwareDevice* const> hw_devices,
-                                       gsl::span<const OrtKeyValuePairs* const> ep_metadata,
-                                       const OrtSessionOptions& session_options,
-                                       const OrtLogger& logger,
-                                       /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
-  plugin_ep = nullptr;
-  OrtEp* ort_ep = nullptr;
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory.CreateEp(&ep_factory, hw_devices.data(), ep_metadata.data(),
-                                                             hw_devices.size(), &session_options, &logger,
-                                                             &ort_ep)));
-  ORT_RETURN_IF(ort_ep == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory.GetName(&ep_factory),
-                "' returned a NULL OrtEp instance");
-
-  std::shared_ptr<KernelRegistry> kernel_registry;
-  ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
-
-  plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory)),
-                                                        session_options, ep_factory, ep_devices,
-                                                        kernel_registry,
-                                                        *logger.ToInternal());
-  return Status::OK();
 }
 
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
