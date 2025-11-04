@@ -3,7 +3,7 @@
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
 
-// This implemnts:
+// This implements:
 // gate, up = gate_up[..., 0::2], gate_up[..., 1::2]
 // gate = gate.clamp(min=None, max=self.limit)
 // up = up.clamp(min=-self.limit, max=self.limit)
