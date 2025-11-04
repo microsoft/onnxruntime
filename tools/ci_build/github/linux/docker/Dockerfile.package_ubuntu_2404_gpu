@@ -12,9 +12,8 @@ ARG TRT_VERSION
 ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
 
-ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 
-# --- OPTIMIZED: Combined system and Python installs ---
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         git \
@@ -30,7 +29,7 @@ RUN apt-get update && \
 # --- Fix for Ubuntu 24.04 (PEP 668) to allow global pip installs ---
 RUN find /usr/lib/python3* -name "EXTERNALLY-MANAGED" -exec rm -f {} +
 
-RUN pip install --upgrade pip
+RUN python3 -m pip install --upgrade pip
 
 # Install TensorRT
 RUN apt-get update && \
@@ -60,7 +59,7 @@ RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
 FROM base as final
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000
-RUN adduser --uid $BUILD_UID $BUILD_USER --disabled-password --gecos "" \
+RUN adduser --uid $BUILD_UID $BUILD_USER --disabled-password --gecos "ONNX Runtime Developer" \
     && chown -R $BUILD_USER:$BUILD_USER /home/$BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
