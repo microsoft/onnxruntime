@@ -79,9 +79,9 @@ struct OrtVitisAIEpAPI {
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_with_error_handling)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v3)(
-      const std::filesystem::path& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func);
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_vitisai_ep_v4)(
-      const std::filesystem::path& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func, const onnxruntime::logging::Logger& logger);
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options, void* status, vaip_core::error_report_func func, const onnxruntime::logging::Logger& logger);
   void (*vaip_execution_provider_deletor)(std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>*) noexcept = [](std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* p) noexcept { delete p; };
   uint32_t (*vaip_get_version)();
   void (*create_ep_context_nodes)(
@@ -191,7 +191,7 @@ vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> c
   if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4) {
     Status status = Status::OK();
     auto status_ptr = reinterpret_cast<void*>(&status);
-    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error, logger), vaip_execution_provider_deletor);
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v4(model_path.u8string(), graph_viewer.GetGraph(), options, status_ptr, change_status_with_error, logger), vaip_execution_provider_deletor);
     if (!status.IsOK()) {
       ORT_THROW(status);
     }
@@ -199,7 +199,7 @@ vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> c
   } else if (s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3) {
     Status status = Status::OK();
     auto status_ptr = reinterpret_cast<void*>(&status);
-    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3(model_path, graph_viewer.GetGraph(), options, status_ptr, change_status_with_error), vaip_execution_provider_deletor);
+    auto ret = vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_vitisai_ep_v3(model_path.u8string(), graph_viewer.GetGraph(), options, status_ptr, change_status_with_error), vaip_execution_provider_deletor);
     if (!status.IsOK()) {
       ORT_THROW(status);
     }
