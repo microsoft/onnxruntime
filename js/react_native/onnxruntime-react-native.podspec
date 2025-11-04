@@ -28,8 +28,8 @@ Pod::Spec.new do |spec|
   if respond_to?(:install_modules_dependencies, true)
     install_modules_dependencies(spec)
   else
-    s.dependency "React-Core"
-    s.dependency "React-callinvoker"
+    spec.dependency "React-Core"
+    spec.dependency "React-callinvoker"
   end
 
   spec.xcconfig = {
