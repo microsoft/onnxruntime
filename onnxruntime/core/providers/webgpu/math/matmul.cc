@@ -60,7 +60,7 @@ SplitKConfig SplitKConfig::GetSplitKConfig(const ComputeContext& context) {
       // Below thresholds are only verified on the above Intel GPUs.
       config.split_dim_inner_ = 256;
       config.min_dim_inner_with_split_k_ = config.split_dim_inner_ * 2 + 1;
-      config.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 48.0f;
+      config.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 54.0f;
     }
   }
   return config;
