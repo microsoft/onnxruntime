@@ -36,7 +36,7 @@ describe('OnnxruntimeModuleExample', () => {
     await delay(500);
 
     // Run the tests
-    await element(by.text('Run Tests')).tap();
+    await element(by.text('Run All Tests')).tap();
     await delay(500);
 
     // Check have no error
