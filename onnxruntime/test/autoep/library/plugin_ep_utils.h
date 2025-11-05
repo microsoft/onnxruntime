@@ -39,6 +39,13 @@
     }                                                    \
   } while (false)
 
+// Ignores an OrtStatus* while taking ownership of it so that it does not get leaked.
+#define IGNORE_ORTSTATUS(status_expr)      \
+  do {                                  \
+    OrtStatus* _status = (status_expr); \
+    Ort::Status _ignored{_status};      \
+  } while (false)
+
 #ifdef _WIN32
 #define EP_WSTR(x) L##x
 #define EP_FILE_INTERNAL(x) EP_WSTR(x)
@@ -47,12 +54,12 @@
 #define EP_FILE __FILE__
 #endif
 
-#define LOG(level, ...)                                                                               \
-  do {                                                                                                \
-    std::ostringstream ss;                                                                            \
-    ss << __VA_ARGS__;                                                                                \
-    Ort::Status ignored{api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), \
-                                               EP_FILE, __LINE__, __FUNCTION__)};                     \
+#define LOG(level, ...)                                                                            \
+  do {                                                                                             \
+    std::ostringstream ss;                                                                         \
+    ss << __VA_ARGS__;                                                                             \
+    IGNORE_ORTSTATUS(api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), \
+                                            EP_FILE, __LINE__, __FUNCTION__));                     \
   } while (false)
 
 #define RETURN_ERROR(code, ...)                       \
