@@ -393,6 +393,7 @@ static constexpr OrtModelEditorApi ort_model_editor_api = {
     &OrtModelEditorAPI::SessionGetOpsetForDomain,
     &OrtModelEditorAPI::ApplyModelToModelEditorSession,
     &OrtModelEditorAPI::FinalizeModelEditorSession,
+    // End of Version 22 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

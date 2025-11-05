@@ -145,7 +145,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                            BufferCacheMode::Disabled);
 
     // create program manager
-    program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
+    program_mgr_ = std::make_unique<ProgramManager>(*this);
 
     // set query type
 #if !defined(__wasm__)
@@ -178,12 +178,7 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
-  // Finalize program inputs by adding the indirect buffer as the last input if needed.
-  if (program.IndirectDispatchTensor() != nullptr) {
-    program.AddInput({program.IndirectDispatchTensor(), ProgramTensorMetadataDependency::None});
-  }
-
+Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -191,6 +186,7 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
     return Status::OK();
   }
 
+  // validate inputs and outputs are on WebGPU buffers
   if (ValidationMode() >= ValidationMode::Basic) {
     ORT_ENFORCE(std::all_of(inputs.begin(), inputs.end(), [](const ProgramInput& input) {
                   const auto* tensor = input.tensor;
@@ -200,6 +196,12 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
                          !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All inputs must be tensors on WebGPU buffers.");
+
+    if (program.IndirectDispatchTensor() != nullptr) {
+      ORT_ENFORCE(!inputs.empty() && inputs.back().tensor == program.IndirectDispatchTensor(),
+                  "The indirect dispatch tensor must be the last input. "
+                  "Ensure no call to program.AddInput() occurs after program.SetIndirectDispatchTensor().");
+    }
 
     ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](const ProgramOutput& output) {
                   const auto* tensor = output.tensor;
@@ -257,6 +259,18 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
     }
   }
 
+  // "Segments" is a feature that allows big buffer to be used in shader.
+  //
+  // For example, if `maxStorageBufferBindingSize` is 128MB, a 200MB sized input buffer can be split into two segments
+  // (128MB + 72MB) to be bound to the shader. In this case, the input segment count is 2. There will be 2 input
+  // bindings in the shader for this input buffer.
+  //
+  // See https://github.com/microsoft/onnxruntime/pull/25962 for more information.
+
+  std::vector<uint32_t> inputs_segments;
+  std::vector<uint32_t> outputs_segments;
+  ORT_RETURN_IF_ERROR(program_mgr_->CalculateSegmentsForInputsAndOutputs(program, inputs_segments, outputs_segments));
+
   uint32_t x = program.DispatchGroupSizeX();
   uint32_t y = program.DispatchGroupSizeY();
   uint32_t z = program.DispatchGroupSizeZ();
@@ -268,11 +282,10 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
     ORT_ENFORCE(x == 0 && y == 0 && z == 0,
                 "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
   }
-  ORT_RETURN_IF_ERROR(program_mgr_->CalculateSegmentsForInputsAndOutputs(program));
 
   bool is_1d_dispatch = (y == 1 && z == 1);
 
-  auto key = CalculateProgramCacheKey(program, is_1d_dispatch);
+  auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
 
   if (is_profiling_) {
     PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
@@ -292,6 +305,8 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
     std::vector<int> shape_uniform_ranks;
     auto status = program_mgr_->Build(program,
                                       metadata,
+                                      inputs_segments,
+                                      outputs_segments,
 #ifndef NDEBUG  // if debug build
                                       key,
 #endif
@@ -449,13 +464,13 @@ Status WebGpuContext::Run(ComputeContext& context, ProgramBase& program) {
   std::vector<uint32_t> bind_buffers_segments;
   bind_buffers.reserve(total_buffer_count);
   bind_buffers_segments.reserve(total_buffer_count);
-  for (const auto& input : inputs) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
-    bind_buffers_segments.push_back(input.segments);
+  for (size_t i = 0; i < inputs.size(); i++) {
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(inputs[i].tensor->DataRaw())));
+    bind_buffers_segments.push_back(inputs_segments[i]);
   }
-  for (const auto& output : outputs) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
-    bind_buffers_segments.push_back(output.segments);
+  for (size_t i = 0; i < outputs.size(); i++) {
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(outputs[i].tensor->MutableDataRaw()));
+    bind_buffers_segments.push_back(outputs_segments[i]);
   }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
@@ -550,11 +565,11 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
   required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
 
-  if (small_storage_buffer_binding_size_for_testing_) {
-    // No matter how small it is set, the minimum storage buffer binding size in WebGPU is 128 MB.
-    required_limits.maxStorageBufferBindingSize = 134217728;
-  } else {
+  if (max_storage_buffer_binding_size_ == 0) {
+    // If not set by the user, use the adapter limit.
     required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  } else {
+    required_limits.maxStorageBufferBindingSize = max_storage_buffer_binding_size_;
   }
 
   required_limits.maxBufferSize = adapter_limits.maxBufferSize;
@@ -756,10 +771,9 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
 
+  const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
   for (size_t buffer_idx = 0; buffer_idx < bind_buffers.size(); ++buffer_idx) {
     WGPUBuffer buffer = bind_buffers[buffer_idx];
-    uint64_t buffer_size = wgpuBufferGetSize(buffer);
-    const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
     const uint32_t total_segments = bind_buffers_segments[buffer_idx];
     // `total_segments` we used is calculated by tensor size, not actual buffer size. Because for bucketed buffer,
     // the actual buffer size may be larger than the tensor size, an extreme case is that tensor size = 127MB, buffer size = 256MB,
@@ -767,13 +781,14 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
     // there is no data for the second segment.
     if (total_segments > 1) {
       uint64_t offset = 0;
+      uint64_t buffer_size = wgpuBufferGetSize(buffer);
       for (uint32_t segment = 0; segment < total_segments; ++segment) {
         uint64_t segment_size = std::min(kMaxBufferSize, buffer_size - offset);
         bind_group_entries.push_back({nullptr, entry_index++, buffer, offset, segment_size, nullptr, nullptr});
         offset += segment_size;
       }
     } else {
-      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, std::min(kMaxBufferSize, buffer_size), nullptr, nullptr});
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
     }
   }
 
@@ -955,7 +970,12 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device, config.small_storage_buffer_binding_size_for_testing, config.power_preference));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
+                                                                    device,
+                                                                    config.validation_mode,
+                                                                    config.preserve_device,
+                                                                    config.max_storage_buffer_binding_size,
+                                                                    config.power_preference));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

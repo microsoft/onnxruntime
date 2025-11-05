@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <span>
 #include <sstream>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
@@ -67,6 +68,8 @@ class ShaderHelper final {
  public:
   ShaderHelper(const ProgramBase& program,
                const ProgramMetadata& program_metadata,
+               const std::span<uint32_t> inputs_segments,
+               const std::span<uint32_t> outputs_segments,
                const wgpu::Device& device,
                const wgpu::Limits& limits,
                uint32_t dispatch_group_size_x,
@@ -74,11 +77,6 @@ class ShaderHelper final {
                uint32_t dispatch_group_size_z);
 
   Status Init();
-
-  // Finalize inputs by automatically adding the indirect buffer if needed.
-  // This should be called after GenerateShaderCode() to ensure the indirect buffer
-  // is registered as the last input.
-  void FinalizeInputs();
 
   // Add an input variable to the shader.
   //
@@ -164,6 +162,8 @@ class ShaderHelper final {
 
   const wgpu::Device& device_;
   const wgpu::Limits& limits_;
+  const std::span<uint32_t> inputs_segments_;
+  const std::span<uint32_t> outputs_segments_;
   uint32_t dispatch_group_size_x_;
   uint32_t dispatch_group_size_y_;
   uint32_t dispatch_group_size_z_;
