@@ -129,14 +129,10 @@ inline Status ComputeOutputShapeForAttention(
                          static_cast<int64_t>(parameters.kv_num_heads),
                          static_cast<int64_t>(parameters.total_sequence_length),
                          static_cast<int64_t>(parameters.v_head_size)};
-  if (qk_matmul_output_mode == QKMatMulOutputMode::kNone) {
-    output_qk_shape = {};
-  } else {
-    output_qk_shape = {static_cast<int64_t>(parameters.batch_size),
-                       static_cast<int64_t>(parameters.q_num_heads),
-                       static_cast<int64_t>(parameters.q_sequence_length),
-                       static_cast<int64_t>(parameters.total_sequence_length)};
-  }
+  output_qk_shape = {static_cast<int64_t>(parameters.batch_size),
+                     static_cast<int64_t>(parameters.q_num_heads),
+                     static_cast<int64_t>(parameters.q_sequence_length),
+                     static_cast<int64_t>(parameters.total_sequence_length)};
   return Status::OK();
 }
 }  // namespace attention_helper

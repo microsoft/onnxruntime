@@ -146,6 +146,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   TensorShape present_value_shape;
   TensorShape output_qk_shape;
 
+  // ComputeOutputShapeForAttention also checks the validity of the inputs.
   ORT_ENFORCE(attention_helper::ComputeOutputShapeForAttention(
                   Q,
                   K,
