@@ -91,6 +91,8 @@ void LaunchGatherBlockQuantizedKernel(const T1* data,
   bool uint8_storage = std::is_same<T1, uint8_t>::value;
   int64_t uint8_padding = 0;
   if (uint8_storage && param.bits != 8) {
+    // for uint8_t with bits==4, packing happens along last dimensions, i.e. quantize_axis
+    // for odd num_quantize_blocks, we have a padding block
     const int64_t elems_per_byte = 8 / param.bits;
     const int64_t num_blocks_per_row = (param.quantize_dim + param.block_size - 1) / param.block_size;
     uint8_padding = (elems_per_byte - (num_blocks_per_row % elems_per_byte)) % elems_per_byte;
