@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import * as React from 'react';
-import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, View, Platform } from 'react-native';
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
 import { Buffer } from 'buffer';
 import RNFS from 'react-native-fs';
@@ -148,6 +148,14 @@ const styles = StyleSheet.create({
   },
 });
 
+const readAsset = async (asset: string): Promise<Buffer> => {
+  if (Platform.OS === 'android') {
+    return Buffer.from(await RNFS.readFileAssets(asset, 'base64'), 'base64');
+  } else {
+    return Buffer.from(await RNFS.readFile(`${RNFS.MainBundlePath}/${asset}`, 'base64'), 'base64');
+  }
+};
+
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export default class BasicTypesTest extends React.PureComponent<{}, State> {
   private sessions: Map<string, InferenceSession> = new Map();
@@ -185,11 +193,6 @@ export default class BasicTypesTest extends React.PureComponent<{}, State> {
       newResults[index] = { ...newResults[index], ...update };
       return { testResults: newResults };
     });
-  };
-
-  getModelBuffer = async (model: TestModel): Promise<Buffer> => {
-    const base64Str = await RNFS.readFileAssets(model.asset, 'base64');
-    return Buffer.from(base64Str, 'base64');
   };
 
   createTensorData = (dataType: keyof Tensor.DataTypeMap, size = 5): Tensor.DataType => {
@@ -254,7 +257,7 @@ export default class BasicTypesTest extends React.PureComponent<{}, State> {
 
     try {
       // Get model path
-      const bytes = await this.getModelBuffer(model);
+      const bytes = await readAsset(model.asset);
 
       // Create session
       const session = await InferenceSession.create(bytes);
