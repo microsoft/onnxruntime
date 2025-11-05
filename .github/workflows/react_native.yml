@@ -107,7 +107,7 @@ jobs:
       - name: Copy AAR to React Native and E2E directories
         run: |
           mkdir -p ${{ github.workspace }}/js/react_native/e2e/android/app/libs
-          cp ${{ runner.temp }}/android-full-aar/*.aar ${{ github.workspace }}/js/react_native/e2e/android/app/libs
+          cp -r ${{ runner.temp }}/android-full-aar/com ${{ github.workspace }}/js/react_native/e2e/android/app/libs
 
       - name: Install dependencies and bootstrap
         run: |
