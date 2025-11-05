@@ -45,3 +45,18 @@ void profiler_collect(
 std::unique_ptr<onnxruntime::IExecutionProvider>
 CreateExecutionProviderFromAnotherEp(const std::string& lib, const OrtSessionOptions& session_options,
                                      std::unordered_map<std::string, std::string>& provider_options);
+
+/**
+ * Get compiled model compatibility information from execution providers.
+ * Returns a JSON string containing compatibility metadata, or empty optional if unavailable.
+ */
+std::optional<std::string> get_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps);
+
+/**
+ * Validate compiled model compatibility information against current runtime environment.
+ * Returns OrtCompiledModelCompatibility status, or empty optional if unavailable.
+ */
+std::optional<OrtCompiledModelCompatibility> validate_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const std::string& compatibility_info);
