@@ -599,24 +599,19 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
-// Opset 23 — aligns with ONNX schema parameter names:
-//   T1 = X
-//   T2 = Y_scale
-//   T3 = Y / Y_zero_point (quantized output)
-#define REGISTER_QUANTIZELINEAR_OPSET23(T)                                            \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                               \
-      QuantizeLinear,                                                                     \
-      23,                                                                                 \
-      23,                                                                                 \
-      T,                                                                              \
-      KernelDefBuilder()                                                                  \
-          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),                   \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()})              \
-          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),                   \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()})              \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),                   \
+#define REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(T)                        \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
+      QuantizeLinear,                                                       \
+      23,                                                                   \
+      23,                                                                   \
+      T,                                                                    \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>)
-
 
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T, start_version, end_version)    \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
@@ -665,19 +660,18 @@ REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
 #endif
 
-
 // Opset 23
-REGISTER_QUANTIZELINEAR_OPSET23(int8_t)
-REGISTER_QUANTIZELINEAR_OPSET23(uint8_t)
-REGISTER_QUANTIZELINEAR_OPSET23(int16_t)
-REGISTER_QUANTIZELINEAR_OPSET23(uint16_t)
-REGISTER_QUANTIZELINEAR_OPSET23(Int4x2)
-REGISTER_QUANTIZELINEAR_OPSET23(UInt4x2)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(int8_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(uint8_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(int16_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(uint16_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Int4x2)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(UInt4x2)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_QUANTIZELINEAR_OPSET23(Float8E4M3FN)
-REGISTER_QUANTIZELINEAR_OPSET23(Float8E4M3FNUZ)
-REGISTER_QUANTIZELINEAR_OPSET23(Float8E5M2)
-REGISTER_QUANTIZELINEAR_OPSET23(Float8E5M2FNUZ)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E5M2)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E5M2FNUZ)
 #endif
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.
