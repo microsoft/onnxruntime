@@ -145,6 +145,32 @@ std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
   return std::make_unique<profiling::VitisaiProfiler>();
 }
 
+std::string VitisAIExecutionProvider::GetCompiledModelCompatibilityInfo(
+    const onnxruntime::GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!execution_providers_) {
+    return {};
+  }
+  auto result = get_compiled_model_compatibility_info(**execution_providers_);
+  return result.value_or(std::string{});
+}
+
+common::Status VitisAIExecutionProvider::ValidateCompiledModelCompatibilityInfo(
+    const std::string& compatibility_info,
+    OrtCompiledModelCompatibility& model_compatibility) const {
+  if (!execution_providers_) {
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
+  }
+  auto result = validate_compiled_model_compatibility_info(**execution_providers_, compatibility_info);
+  if (result.has_value()) {
+    model_compatibility = result.value();
+    return Status::OK();
+  }
+  model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  return Status::OK();
+}
+
 std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> result;
   // We do not want arena for 4k alignment, as it would not respect alignment.

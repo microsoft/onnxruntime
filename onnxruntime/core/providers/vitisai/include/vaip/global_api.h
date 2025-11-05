@@ -40,3 +40,18 @@ using EventInfo = std::tuple<
 void profiler_collect(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);
+
+/**
+ * Get compiled model compatibility information from execution providers.
+ * Returns a JSON string containing compatibility metadata, or empty optional if unavailable.
+ */
+std::optional<std::string> get_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps);
+
+/**
+ * Validate compiled model compatibility information against current runtime environment.
+ * Returns OrtCompiledModelCompatibility status, or empty optional if unavailable.
+ */
+std::optional<OrtCompiledModelCompatibility> validate_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const std::string& compatibility_info);
