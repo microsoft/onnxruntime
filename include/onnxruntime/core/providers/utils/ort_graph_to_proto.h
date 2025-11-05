@@ -467,9 +467,14 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
         if constexpr (endian::native == endian::big) {
           size_t element_size = 0;
           GetTensorElementSize(initializer_elem_type, element_size);
-          SwapByteOrderInplace(const_cast<void*>(data), data_bytes, element_size);
+          // create local copy of data and do endianess conversion
+          auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
+          std::memcpy(raw_data_buf.get(), data, data_bytes);
+          SwapByteOrderInplace(raw_data_buf.get(), data_bytes, element_size);
+          tensor_proto->set_raw_data(raw_data_buf.get(), data_bytes);
+        } else {
+          tensor_proto->set_raw_data(data, data_bytes);
         }
-        tensor_proto->set_raw_data(data, data_bytes);
       }
     }
   } catch (const Ort::Exception& ex) {
@@ -734,9 +739,14 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
         if constexpr (endian::native == endian::big) {
           size_t element_size = 0;
           GetTensorElementSize(element_type, element_size);
-          SwapByteOrderInplace(const_cast<void*>(data), data_bytes, element_size);
+          // create local copy of data and do endianess conversion
+          auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
+          std::memcpy(raw_data_buf.get(), data, data_bytes);
+          SwapByteOrderInplace(raw_data_buf.get(), data_bytes, element_size);
+          tensor_proto.set_raw_data(raw_data_buf.get(), data_bytes);
+        } else {
+          tensor_proto.set_raw_data(data, data_bytes);
         }
-        tensor_proto.set_raw_data(data, data_bytes);
 
         *(attr_proto.mutable_t()) = std::move(tensor_proto);
         break;
