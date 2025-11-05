@@ -719,11 +719,26 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
       return factory.ort_api.CreateStatus(ORT_FAIL, "Failed to initialize CUDA for CIG context creation");
     }
 
+    // Get LUID from CUDA device
+    cudaDeviceProp cuda_prop;
+    cudaError_t cuda_err = cudaGetDeviceProperties(&cuda_prop, device_id);
+    if (cuda_err != cudaSuccess) {
+      return factory.ort_api.CreateStatus(ORT_FAIL, "Failed to get CUDA device properties");
+    }
+
     // Create CIG context based on graphics API type
     CUcontext cig_context = nullptr;
     
     if (graphicsInteropParams->extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence) {
 #if DX_FOR_INTEROP && _WIN32
+      // Get LUID of memory device and D3D12 device and compare it to that of memory device
+      uint64_t cuda_luid = *reinterpret_cast<const uint64_t*>(cuda_prop.luid);
+      LUID d3d12_luid = graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice->GetAdapterLuid();
+      uint64_t d3d12_luid_64 = (static_cast<uint64_t>(d3d12_luid.HighPart) << 32) | d3d12_luid.LowPart;
+      if (d3d12_luid_64 != cuda_luid) {
+        return factory.ort_api.CreateStatus(ORT_FAIL, "D3D12 device LUID does not match CUDA device LUID");
+      }
+
       // Create CIG context bound to D3D12 command queue
       CUctxCigParam ctxCigParams = { CIG_DATA_TYPE_D3D12_COMMAND_QUEUE, graphicsInteropParams->DevicePtr.DXDeviceParams.pCommandQueue };
       CUctxCreateParams ctxParams = { nullptr, 0, &ctxCigParams };

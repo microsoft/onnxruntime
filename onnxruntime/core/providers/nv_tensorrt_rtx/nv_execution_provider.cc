@@ -98,7 +98,7 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
   {
     (void)GetPerThreadContext();
   }
-  cudaExternalSemaphore_t cSemFence = reinterpret_cast<cudaExternalSemaphore_t>(extSemFence);
+  cudaExternalSemaphore_t cSemFence;
   cudaExternalSemaphoreHandleDesc semHandleDesc = {};
 
   assert(graphicsInteropParams->extSyncPrimitive == fenceInteropParams->extSyncPrimitive && 
@@ -148,6 +148,7 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
   {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to import external semaphore");
   }
+  CloseHandle(semHandleDesc.handle.win32.handle);
   *extSemFence = cSemFence;
 
   return Status::OK();

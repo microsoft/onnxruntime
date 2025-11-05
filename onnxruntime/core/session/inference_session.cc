@@ -731,8 +731,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 
 InferenceSession::~InferenceSession() {
 
-  for (void* ortFence : ort_fences_for_cleanup_) {
-    auto* sptr_ptr = static_cast<std::shared_ptr<SemaphoreEpMap>*>(ortFence);
+  for (auto* sptr_ptr : ort_fences_for_cleanup_) {
     delete sptr_ptr;
   }
   ort_fences_for_cleanup_.clear();

@@ -152,10 +152,21 @@ class IExecutionProvider {
     const OrtSyncStreamImpl* streamImpl;
     OrtSyncNotificationImpl* streamNotification;
     streamImpl = ortEpApi->SyncStream_GetImpl(static_cast<OrtSyncStream*>(stream));
-    streamImpl->CreateNotification(const_cast<OrtSyncStreamImpl*>(streamImpl), &streamNotification);
 
-    streamNotification->Activate(streamNotification);
-    streamNotification->WaitOnHost(streamNotification);
+    OrtStatus* status = nullptr;
+    status = streamImpl->CreateNotification(const_cast<OrtSyncStreamImpl*>(streamImpl), &streamNotification);
+    if(status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create notification");
+    }
+
+    status = streamNotification->Activate(streamNotification);
+    if(status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to activate notification");
+    }
+    status = streamNotification->WaitOnHost(streamNotification);
+    if(status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait on host");
+    }
     return Status::OK();
   }
 
