@@ -40,7 +40,7 @@
   } while (false)
 
 // Ignores an OrtStatus* while taking ownership of it so that it does not get leaked.
-#define IGNORE_ORTSTATUS(status_expr)      \
+#define IGNORE_ORTSTATUS(status_expr)   \
   do {                                  \
     OrtStatus* _status = (status_expr); \
     Ort::Status _ignored{_status};      \
