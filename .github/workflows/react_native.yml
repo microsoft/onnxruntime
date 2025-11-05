@@ -160,6 +160,15 @@ jobs:
             echo "Emulator PID file was expected to exist but does not."
           fi
 
+      - name: Upload Android Test Results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: android-test-results
+          path: |
+            ${{ github.workspace }}/js/react_native/e2e/android-test-results.xml
+            ${{ github.workspace }}/js/react_native/e2e/artifacts
+
   react_native_ci_ios_build:
     name: React Native CI iOS Build
     runs-on: macos-14
@@ -266,3 +275,12 @@ jobs:
                          --loglevel verbose \
                          --take-screenshots failing
         working-directory: ${{ github.workspace }}/js/react_native/e2e
+
+      - name: Upload iOS Test Results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ios-test-results
+          path: |
+            ${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml
+            ${{ github.workspace }}/js/react_native/e2e/artifacts
