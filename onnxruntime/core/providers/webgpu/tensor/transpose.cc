@@ -168,12 +168,10 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
     //
     // TODO: Revert this change once the driver issue is fixed.
     if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      // Only adjusted the dispatch size when rank is 4 yet.
-      if (rank == static_cast<size_t>(4)) {
-        dispatch_x = ceil_div(input_shape[0] * input_shape[1], 2);
-        dispatch_y = ceil_div(input_shape[2], 4);
-        dispatch_z = ceil_div(input_shape[3], 8);
-      }
+      uint32_t dispatch_size = dispatch_x;
+      dispatch_x = 4;
+      dispatch_y = 8;
+      dispatch_z = ceil_div(dispatch_size, dispatch_x * dispatch_y);
     }
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z);
   }
