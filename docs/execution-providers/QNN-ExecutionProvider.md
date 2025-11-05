@@ -64,6 +64,7 @@ The QNN Execution Provider supports a number of configuration options. These pro
 |---|-----|
 |'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. See `backend_type` 'cpu'.|
 |'libQnnHtp.so' or 'QnnHtp.dll'|Enable HTP backend. See `backend_type` 'htp'.|
+|'libQnnGpu.so' or 'QnnGpu.dll'|Enable GPU backend. See `backend_type` 'gpu'.|
 
 **Note:** `backend_path` is an alternative to `backend_type`. At most one of the two should be specified.
 `backend_path` requires a platform-specific path (e.g., `libQnnCpu.so` vs. `QnnCpu.dll`) but also allows one to specify an arbitrary path.
@@ -391,6 +392,22 @@ Available session configurations include:
 - [ep.context_enable](https://github.com/microsoft/onnxruntime/blob/a4cfdc1c28ac95ec6fd0667e856b6a6b8dd1020c/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L243): [Enable QNN context cache](./QNN-ExecutionProvider.md#qnn-context-binary-cache-feature) feature to dump a cached version of the model in order to decrease session creation time.
 
 The above snippet only specifies the `backend_path` provider option. Refer to the [Configuration options section](./QNN-ExecutionProvider.md#configuration-options) for a list of all available QNN EP provider options.
+
+## Running a model with QNN EP's GPU backend
+
+The QNN GPU backend can run models with 32-bit/16-bit floating-point activations and weights as such without prior quantization. A 16-bit floating-point model generally can run inference faster on the GPU compared to its 32-bit version. To help reduce the size of large models, quantizing weights to `uint8`, while keeping activations in float is also supported.
+
+Other than the quantized model requirement mentioned in the above HTP backend section, all other requirements are valid for the GPU backend also. So is the model inference sample code except for the portion where you specify the backend.
+
+```python
+# Create an ONNX Runtime session.
+# TODO: Provide the path to your ONNX model
+session = onnxruntime.InferenceSession("model.onnx",
+                                       sess_options=options,
+                                       providers=["QNNExecutionProvider"],
+                                       provider_options=[{"backend_path": "QnnGpu.dll"}]) # Provide path to Gpu dll in QNN SDK
+
+```
 
 ## QNN context binary cache feature
 There's a QNN context which contains QNN graphs after converting, compiling, finalizing the model. QNN can serialize the context into binary file, so that user can use it for futher inference directly (without the QDQ model) to improve the model loading cost.
