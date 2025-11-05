@@ -55,7 +55,7 @@ stages:
             PYTHON_VERSION: ${{ python_version }}
             EP_NAME: gpu
             CudaVersion: ${{ parameters.cuda_version }}
-            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;86-real;89-real;90-virtual"
+            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;120-real;120-virtual"
             use_tensorrt: True
 
     - template: py-linux-gpu-stage.yml
