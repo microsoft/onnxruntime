@@ -43,8 +43,6 @@ void Utils::GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*&
   } else {
     ep_device = *it;
   }
-
-  ep_device = *it;
 }
 
 void Utils::RegisterAndGetNvTensorRtRtxEp(Ort::Env& env, RegisteredEpDeviceUniquePtr& registered_ep) {

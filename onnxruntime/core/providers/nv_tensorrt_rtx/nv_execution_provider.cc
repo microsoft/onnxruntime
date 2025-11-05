@@ -950,8 +950,8 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
   auto cc = prop.major * 10 + prop.minor;
   if (!(cc == 86 || cc == 89 || cc >= 120)) {
-//    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                       "[NvTensorRTRTX EP] The execution provider only supports RTX devices with compute capabilities 86, 89, 120 and above"));
+    ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                       "[NvTensorRTRTX EP] The execution provider only supports RTX devices with compute capabilities 86, 89, 120 and above"));
   }
   compute_capability_ = GetComputeCapability(prop);
   if (info.has_user_compute_stream) {
@@ -1503,10 +1503,10 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
     }
   }
 
-  // If dump_ep_context_model_ is enabled,
+  // If dump_ep_context_model_ and weight_stripped_engine_enable_ are enabled,
   // making sure all initializers that have external data are added as inputs to EPContext node.
   std::vector<std::string> initializers_as_inputs;
-  if (dump_ep_context_model_) {
+  if (dump_ep_context_model_ && weight_stripped_engine_enable_) {
     // Add initializers as inputs to the EPContext node
     const InitializedTensorSet& allInitializers = graph.GetAllInitializedTensors();
     for (auto& entry : allInitializers) {
@@ -3255,20 +3255,29 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     for (auto& entry : allInitializers) {
       OrtValue initializer_value;
       auto* tp = entry.second;
-      if (utils::HasRawData(*tp)) {
+
+      // Check if this is in-memory external data (data stored in OrtValue)
+      if (utils::HasExternalDataInMemory(*tp)) {
+        // Try to get the OrtValue for this initializer
+        OrtValue ort_value;
+        if (graph_body_viewer.GetOrtValueInitializer(tp->name(), initializer_value)) {
+          // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+          size_t size = 0;
+          const void* ptr = nullptr;
+          Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
+          Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
+          user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), ptr, size)));
+        } else {
+          // If we can't get the OrtValue, it is a bug
+          ORT_THROW("Initializer ", tp->name(),
+                    " has in-memory external data but cannot get OrtValue during shape inference");
+        }
+      }
+      // raw data
+      else if (utils::HasRawData(*tp)) {
         user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size())));
-      } else if (graph_body_viewer.GetOrtValueInitializer(tp->name(), initializer_value)) {
-        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-        size_t size = 0;
-        const void* ptr = nullptr;
-        Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
-        Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
-        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), ptr, size)));
-      } else if (utils::HasExternalDataInMemory(*tp)) {
-        // only copy and take ownership of the data if none of the above conditions are met
-        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(std::move(full_init->name()), std::move(full_init->raw_data()))));
+      } else {
+        // If none of the above conditions are met, we might need to get external data from TensorProto on our own here.
       }
     }
   }
