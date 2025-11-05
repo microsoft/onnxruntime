@@ -730,6 +730,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
+
+  for (void* ortFence : ort_fences_for_cleanup_) {
+    auto* sptr_ptr = static_cast<std::shared_ptr<SemaphoreEpMap>*>(ortFence);
+    delete sptr_ptr;
+  }
+  ort_fences_for_cleanup_.clear();
+  
   if (session_options_.enable_profiling) {
     ORT_TRY {
       EndProfiling();

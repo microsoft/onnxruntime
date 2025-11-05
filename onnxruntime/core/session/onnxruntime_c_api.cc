@@ -3373,6 +3373,10 @@ ORT_API_STATUS_IMPL(OrtApis::SetupCigContextForEpDevice, _In_ const OrtEpDevice*
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and graphicsInteropParams must be provided.");
   }
 
+  if (ep_device->device_memory_info == nullptr)
+  {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device must have valid device_memory_info.");
+  }
   const OrtDevice* device = ep_device->device_memory_info ? &ep_device->device_memory_info->device : nullptr;
 
   if (device == nullptr || device->MemType() != OrtDevice::MemType::DEFAULT) {
@@ -3407,6 +3411,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and stream must be provided.");
   }
 
+  if (ep_device->device_memory_info == nullptr)
+  {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device must have valid device_memory_info.");
+  }
   const OrtDevice* device = ep_device->device_memory_info ? &ep_device->device_memory_info->device : nullptr;
 
   if (device == nullptr || device->MemType() != OrtDevice::MemType::DEFAULT) {
@@ -3440,12 +3448,16 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ SemaphoreEpMap* semaphoreEpMap) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ void** ortFence) {
   API_IMPL_BEGIN
   auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   if (!inference_session) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
   }
+
+  auto semaphore_ep_map_sptr = std::make_shared<SemaphoreEpMap>();
+  semaphore_ep_map_sptr->extSemFence = nullptr;
+  semaphore_ep_map_sptr->selectedEp = nullptr;
 
   const auto& session_state = inference_session->GetSessionState();
   const auto& execution_providers = session_state.GetExecutionProviders();
@@ -3464,9 +3476,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* ses
     const onnxruntime::IExecutionProvider* const_provider = execution_providers.Get(provider_type);
     if (const_provider) {
       auto* provider = const_cast<onnxruntime::IExecutionProvider*>(const_provider);
-      auto status = provider->GetExtSemaphore(graphicsInteropParams, &semaphoreEpMap->extSemFence);
+      auto status = provider->GetExtSemaphore(graphicsInteropParams, fenceInteropParams, &semaphore_ep_map_sptr->extSemFence);
       if(status.IsOK()) {
-        semaphoreEpMap->selectedEp = provider;
+        semaphore_ep_map_sptr->selectedEp = provider;
+        auto* wrapper = new std::shared_ptr<SemaphoreEpMap>(semaphore_ep_map_sptr);
+        inference_session->RegisterOrtFenceForCleanup(wrapper);
+        *ortFence = wrapper;
         return nullptr;
       }
       if (status.Code() != onnxruntime::common::StatusCode::NOT_IMPLEMENTED) {
@@ -3479,8 +3494,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
+  auto* sptr_ptr = static_cast<std::shared_ptr<SemaphoreEpMap>*>(ortFence);
+  auto* semaphoreEpMap = sptr_ptr->get();
+
   if(semaphoreEpMap->extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
   }
@@ -3509,8 +3527,11 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ S
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
+  auto* sptr_ptr = static_cast<std::shared_ptr<SemaphoreEpMap>*>(ortFence);
+  auto* semaphoreEpMap = sptr_ptr->get();  // Get raw pointer for existing code
+
   if(semaphoreEpMap->extSemFence == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External Fence Semaphore is null.");
   }
@@ -3735,19 +3756,19 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ SemaphoreEpMap* semaphoreEpMap) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ void** ortFence) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForGraphicsInterop is not supported in a minimal build.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpWait is not supported in a minimal build.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpSignal is not supported in a minimal build.");
   API_IMPL_END

@@ -62,7 +62,7 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
   OrtStatus* SetupCigContext(const OrtMemoryDevice* memory_device,
                              const struct GraphicsInteropParams* graphicsInteropParams) noexcept override {
     if (ep_factory_.SetupCigContext == nullptr) {
-      return nullptr;  // Optional feature not supported by this EP
+      return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CIG context is not supported by this EP"); 
     }
     return ep_factory_.SetupCigContext(&ep_factory_, memory_device, graphicsInteropParams);
   }

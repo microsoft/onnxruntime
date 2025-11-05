@@ -554,11 +554,6 @@ typedef VkResult (VKAPI_PTR *PFN_vkResetFences)(VkDevice device, uint32_t fenceC
 
 typedef struct GraphicsInteropParams {
   ExternalSyncPrimitive extSyncPrimitive;
-  union FencePtr {
-    struct ID3D12Fence* pFence;
-    VkFence pVkFence;
-    VkSemaphore pVkSemaphore;
-  } FencePtr;
   union DevicePtr {
     struct DXDeviceParams {
       struct ID3D12Device* pDevice;
@@ -571,6 +566,19 @@ typedef struct GraphicsInteropParams {
   } DevicePtr;
 
 } GraphicsInteropParams;
+
+typedef struct FenceInteropParams {
+  ExternalSyncPrimitive extSyncPrimitive;
+  union FencePtr {
+    struct ID3D12Fence* pFence;
+    VkFence pVkFence;
+    VkSemaphore pVkSemaphore;
+  } FencePtr;
+  struct VulkanDeviceParams {
+    VkDevice pVkDevice;
+    PFN_vkGetDeviceProcAddr pVkGetDeviceProcAddr;
+  } VulkanDeviceParams;
+} FenceInteropParams;
 
 typedef struct SemaphoreEpMap {
   void* extSemFence;
@@ -6602,7 +6610,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _Outptr_ SemaphoreEpMap* semaphoreEpMap);
+  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ void** ortFence);
 
   /**
    * \brief Wait on a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
@@ -6627,7 +6635,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /**
    * \brief Signal a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
@@ -6652,7 +6660,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ SemaphoreEpMap* semaphoreEpMap, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /** \brief Get the native handle of the sync stream.
    *

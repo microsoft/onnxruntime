@@ -653,6 +653,10 @@ class InferenceSession {
     return session_id_;
   }
 
+  void RegisterOrtFenceForCleanup(void* ortFence) {
+    ort_fences_for_cleanup_.push_back(ortFence);
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -1045,6 +1049,7 @@ class InferenceSession {
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
+  std::vector<void*> ort_fences_for_cleanup_;
 };
 
 struct SessionIOBinding {

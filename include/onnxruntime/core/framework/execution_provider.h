@@ -92,16 +92,17 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, void** extSemFence) {
-    auto interop_params_sptr = std::make_shared<GraphicsInteropParams>(*graphicsInteropParams);
-    *extSemFence = new std::shared_ptr<GraphicsInteropParams>(interop_params_sptr);
+  virtual Status GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, struct FenceInteropParams* fenceInteropParams, void** extSemFence) {
+    auto interop_params_sptr = std::make_shared<FenceInteropParams>(*fenceInteropParams);
+    *extSemFence = new std::shared_ptr<FenceInteropParams>(interop_params_sptr);
+    ORT_UNUSED_PARAMETER(graphicsInteropParams);
     return Status::OK();
   }
 
   virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
-    auto* sptr_ptr = static_cast<std::shared_ptr<GraphicsInteropParams>*>(extSemFence);
-    std::shared_ptr<GraphicsInteropParams> interopWaitParamsSptr = *sptr_ptr;
+    auto* sptr_ptr = static_cast<std::shared_ptr<FenceInteropParams>*>(extSemFence);
+    std::shared_ptr<FenceInteropParams> interopWaitParamsSptr = *sptr_ptr;
     delete sptr_ptr;
 
     auto* interopWaitParams = interopWaitParamsSptr.get();
@@ -119,22 +120,22 @@ class IExecutionProvider {
     else if(extSyncPrimitive == ExternalSyncPrimitive_VulkanSemaphore)
     {
 #if VULKAN_FOR_INTEROP
-      PFN_vkWaitOnFences pfnVkWaitOnFences = (PFN_vkWaitOnFences)interopWaitParams->DevicePtr.VulkanDeviceParams.pVkGetDeviceProcAddr(
-          interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, "vkWaitOnFences");
+      PFN_vkWaitOnFences pfnVkWaitOnFences = (PFN_vkWaitOnFences)interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr(
+          interopWaitParams->VulkanDeviceParams.pVkDevice, "vkWaitOnFences");
 
       if (!pfnVkWaitOnFences) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get function pointer for vkWaitOnFences");
       }
-      VkResult result = pfnVkWaitOnFences(interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence, 1, UINT64_MAX);
+      VkResult result = pfnVkWaitOnFences(interopWaitParams->VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence, 1, UINT64_MAX);
 
       if (result != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "vkWaitOnFences failed with Vulkan error code: " + std::to_string(result));
       }
 
-      PFN_vkResetFences pfnVkResetFences = (PFN_vkResetFences)interopWaitParams->DevicePtr.VulkanDeviceParams.pVkGetDeviceProcAddr(
-          interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, "vkResetFences");
+      PFN_vkResetFences pfnVkResetFences = (PFN_vkResetFences)interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr(
+          interopWaitParams->VulkanDeviceParams.pVkDevice, "vkResetFences");
       if (pfnVkResetFences) {
-        pfnVkResetFences(interopWaitParams->DevicePtr.VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence);
+        pfnVkResetFences(interopWaitParams->VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence);
       }
 
       return Status::OK();

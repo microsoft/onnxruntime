@@ -92,7 +92,7 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
-Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, void** extSemFence)
+Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, struct FenceInteropParams* fenceInteropParams, void** extSemFence)
 {
   if (!info_.has_user_compute_stream) 
   {
@@ -100,13 +100,16 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
   }
   cudaExternalSemaphore_t cSemFence = reinterpret_cast<cudaExternalSemaphore_t>(extSemFence);
   cudaExternalSemaphoreHandleDesc semHandleDesc = {};
-  ExternalSyncPrimitive extSyncPrimitive = graphicsInteropParams->extSyncPrimitive;
+
+  assert(graphicsInteropParams->extSyncPrimitive == fenceInteropParams->extSyncPrimitive && 
+    "ExternalSyncPrimitive mismatch between graphicsInteropParams and fenceInteropParams");
+  ExternalSyncPrimitive extSyncPrimitive = fenceInteropParams->extSyncPrimitive;
 
   if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
   {
 #if DX_FOR_INTEROP && _WIN32
       HANDLE sharedFenceHandle = nullptr;
-      if(graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice->CreateSharedHandle(graphicsInteropParams->FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
+      if(graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice->CreateSharedHandle(fenceInteropParams->FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create shared handle for D3D12 fence");
       }
       semHandleDesc.type = cudaExternalSemaphoreHandleTypeD3D12Fence;
@@ -119,7 +122,7 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
 #if _WIN32
       VkSemaphoreGetWin32HandleInfoKHR handleInfo = {};
       handleInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
-      handleInfo.semaphore = graphicsInteropParams->FencePtr.pVkSemaphore;
+      handleInfo.semaphore = fenceInteropParams->FencePtr.pVkSemaphore;
       handleInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
 
       HANDLE sharedFenceHandle = nullptr;
