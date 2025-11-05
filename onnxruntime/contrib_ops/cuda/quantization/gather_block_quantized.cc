@@ -98,10 +98,12 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   }
 
   // Special int4‐in‐uint8 packing tweak: expand the last dim by components
+  // after_gather_dim must be multiplied by number of components per byte
   if constexpr (std::is_same_v<T1, uint8_t>) {
     uint32_t components = 8 / static_cast<int>(bits_);
     if (components > 1) {
       output_shape.back() *= components;
+      after_gather_dim *= components;
     }
   }
 
@@ -124,6 +126,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   param.after_gather_dim = after_gather_dim;
   param.gather_axis_dim = data_shape[gather_axis_];
   param.ind_dim = ind_dim;
+  param.quantize_dim = output_shape.back();
   param.bits = bits_;
   param.block_size = block_size_;
   param.gather_axis = gather_axis_;

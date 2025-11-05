@@ -15,6 +15,7 @@ struct GatherBlockQuantizedParam {
   int64_t after_gather_dim;
   int64_t gather_axis_dim;
   int64_t ind_dim;
+  int64_t quantize_dim;
   int64_t bits;
   int64_t block_size;
   int64_t gather_axis;

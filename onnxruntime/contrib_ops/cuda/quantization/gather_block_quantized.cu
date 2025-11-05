@@ -40,10 +40,13 @@ __global__ void GatherBlockQuantizedKernel(
     int64_t after_gather_dim,
     int64_t gather_axis_dim,
     int64_t ind_dim,
+    int64_t quantize_dim,
     int64_t bits,
     int64_t block_size,
     int64_t gather_axis,
     int64_t N,
+    int64_t uint8_padding,
+    bool uint8_storage,
     bool sign) {
   int64_t out_idx = blockDim.x * blockIdx.x + threadIdx.x;
   if (out_idx >= N) return;
@@ -58,9 +61,14 @@ __global__ void GatherBlockQuantizedKernel(
   int64_t block_id = in_idx / block_size;
 
   // unpack zero_point for this block:
-  int64_t offset = 0;
+  int64_t offset = uint8_storage ? 1 << (bits - 1) : 0;
   if (zero_points) {
-    offset = get_val(zero_points, block_id, bits, sign);
+    int64_t zp_idx = block_id;
+    if (uint8_padding != 0) {
+      // offset by number of rows of quantized dim * padding per row
+      zp_idx += (in_idx / quantize_dim) * uint8_padding;
+    }
+    offset = get_val(zero_points, zp_idx, bits, sign);
   }
 
   // unpack the raw quantized code for this element:
@@ -80,9 +88,16 @@ void LaunchGatherBlockQuantizedKernel(const T1* data,
   // Require quant_axis is last dim
   int blocksPerGrid = (int)(ceil(static_cast<float>(param.N) / GridDim::maxThreadsPerBlock));
   bool sign = std::is_same<T1, Int4x2>::value;
+  bool uint8_storage = std::is_same<T1, uint8_t>::value;
+  int64_t uint8_padding = 0;
+  if (uint8_storage && param.bits != 8) {
+    const int64_t elems_per_byte = 8 / param.bits;
+    const int64_t num_blocks_per_row = (param.quantize_dim + param.block_size - 1) / param.block_size;
+    uint8_padding = (elems_per_byte - (num_blocks_per_row % elems_per_byte)) % elems_per_byte;
+  }
 
   GatherBlockQuantizedKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(data, indices, scales, zero_points, output,
-                                                                                              param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits, param.block_size, param.gather_axis, param.N, sign);
+                                                                                              param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.quantize_dim, param.bits, param.block_size, param.gather_axis, param.N, uint8_padding, uint8_storage, sign);
 }
 
 template void LaunchGatherBlockQuantizedKernel<uint8_t, float, int32_t>(const uint8_t*, const int32_t*, const float*, const uint8_t*, float*, GatherBlockQuantizedParam);
