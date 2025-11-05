@@ -70,14 +70,17 @@ OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ OrtSyncNotificat
   void* handle = impl.ort_api.SyncStream_GetHandle(stream);
   static_cast<void>(handle);
 
+  auto event = impl.event_;
+  static_cast<void>(event);
+
   // Setup the event or similar that will be activated on notification.
   // See CudaNotification or CannNotification for examples.
   //
   // e.g.
-  // CUDA: cudaStreamWaitEvent(static_cast<cudaStream_t>(device_stream.GetHandle()), event_)
-  // CANN: aclrtStreamWaitEvent(static_cast<aclrtStream>(device_stream.GetHandle()), event_)
+  // CUDA: cudaStreamWaitEvent(static_cast<cudaStream_t>(handle), event)
+  // CANN: aclrtStreamWaitEvent(static_cast<aclrtStream>(handle), event)
   //
-  // `event_` should be a member that is created in the ctor.
+  // `NotificationImpl::event_` should be a member that is created in the ctor.
   // The stream handle should come from the StreamImpl instance and can be the real type so no static_cast is needed.
   return nullptr;
 }
@@ -85,11 +88,13 @@ OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ OrtSyncNotificat
 /*static*/
 OrtStatus* ORT_API_CALL NotificationImpl::WaitOnHostImpl(_In_ OrtSyncNotificationImpl* this_ptr) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
-  static_cast<void>(impl);
+
+  auto event = impl.event_;
+  static_cast<void>(event);
 
   // e.g.
-  // CUDA: cudaEventSynchronize(event_)
-  // CANN: aclrtSynchronizeEvent(event_)
+  // CUDA: cudaEventSynchronize(event)
+  // CANN: aclrtSynchronizeEvent(event)
   return nullptr;
 }
 
