@@ -103,6 +103,7 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
 
   assert(graphicsInteropParams->extSyncPrimitive == fenceInteropParams->extSyncPrimitive && 
     "ExternalSyncPrimitive mismatch between graphicsInteropParams and fenceInteropParams");
+  (void)graphicsInteropParams;  // Suppress unused parameter warning in release builds where assert is compiled out
   ExternalSyncPrimitive extSyncPrimitive = fenceInteropParams->extSyncPrimitive;
 
   if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
@@ -144,11 +145,13 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
 #endif
 #endif
   }
-  if(cudaImportExternalSemaphore(&cSemFence, &semHandleDesc) != CUDA_SUCCESS)
+  if(cudaImportExternalSemaphore(&cSemFence, &semHandleDesc) != cudaSuccess)
   {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to import external semaphore");
   }
+#ifdef _WIN32
   CloseHandle(semHandleDesc.handle.win32.handle);
+#endif
   *extSemFence = cSemFence;
 
   return Status::OK();
