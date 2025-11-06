@@ -631,6 +631,7 @@ void Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
 }
 
+#ifdef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0_QuantizedAxis1_Uint8_4Bits_WithZeroPoints) {
   Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits<uint8_t, float, int32_t>();
   Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits<uint8_t, MLFloat16, int32_t>();
@@ -644,6 +645,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0_QuantizedAxis1_Uint8_8Bits_WithZero
   Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits<uint8_t, float, int64_t>();
   Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_8Bits<uint8_t, MLFloat16, int64_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis1_WithZeroPoints() {
@@ -768,6 +770,7 @@ void Test_GatherAxis_WithZeroPoints_NoPading() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
 }
 
+#ifdef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxisWithZeroPointsNoPading) {
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int32_t>();
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int32_t>();
@@ -778,6 +781,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxisWithZeroPointsNoPading) {
   Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int64_t>();
   Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int64_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis_NoPading_4bit() {
@@ -810,12 +814,14 @@ void Test_GatherAxis_NoPading_4bit() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
 }
 
+#ifdef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8_4Bits) {
   Test_GatherAxis_NoPading_4bit<uint8_t, float, int32_t>();
   Test_GatherAxis_NoPading_4bit<uint8_t, MLFloat16, int32_t>();
   Test_GatherAxis_NoPading_4bit<uint8_t, float, int64_t>();
   Test_GatherAxis_NoPading_4bit<uint8_t, MLFloat16, int64_t>();
 }
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis_NoPading_8bit() {
@@ -848,12 +854,14 @@ void Test_GatherAxis_NoPading_8bit() {
                                 gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
 }
 
+#ifdef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8) {
   Test_GatherAxis_NoPading_8bit<uint8_t, float, int32_t>();
   Test_GatherAxis_NoPading_8bit<uint8_t, MLFloat16, int32_t>();
   Test_GatherAxis_NoPading_8bit<uint8_t, float, int64_t>();
   Test_GatherAxis_NoPading_8bit<uint8_t, MLFloat16, int64_t>();
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
