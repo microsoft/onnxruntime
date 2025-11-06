@@ -359,8 +359,8 @@ def create_cpu_moe_onnx_graph(
     fc2_bias=None,
     fc1_scales=None,
     fc2_scales=None,
-    fc1_zero_points=None,  # New parameter
-    fc2_zero_points=None,  # New parameter
+    fc1_zero_points=None,
+    fc2_zero_points=None,
     use_swiglu=False,
     use_quant=False,
     quant_bits=4,

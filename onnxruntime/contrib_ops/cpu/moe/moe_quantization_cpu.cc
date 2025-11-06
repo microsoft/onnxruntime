@@ -706,7 +706,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t n = static_cast<size_t>(fc1_out_features);
       const size_t k = static_cast<size_t>(hidden_size);
 
-      MLAS_BLK_QUANT_TYPE q_type;
+      MLAS_BLK_QUANT_TYPE q_type = BlkQ4Sym;  // Initialize to default
       // Direct Q4 GEMM only supports symmetric quantization, so we disable it if zero_points are provided.
       bool use_direct_q4_gemm = (fc1_zp_data == nullptr) &&
                                 CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
@@ -887,7 +887,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t n2 = static_cast<size_t>(hidden_size);
       const size_t k2 = static_cast<size_t>(inter_size);
 
-      MLAS_BLK_QUANT_TYPE q_type2;
+      MLAS_BLK_QUANT_TYPE q_type2 = BlkQ4Sym;  // Initialize to default
       bool use_direct_q4_gemm_fc2 = (fc2_zp_data == nullptr) &&
                                     CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                                                      hidden_size, inter_size, q_type2);
