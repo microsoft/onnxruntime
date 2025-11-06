@@ -21,6 +21,8 @@ struct NvExecutionProviderInfo {
   int device_id{0};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
+  bool has_user_aux_streams{false};
+  void* user_aux_streams{nullptr};
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
   size_t max_workspace_size{0};
