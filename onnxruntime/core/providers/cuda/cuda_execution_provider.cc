@@ -14,6 +14,7 @@
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
+#include "core/providers/cuda/cuda_mempool_arena.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
 #ifndef USE_CUDA_MINIMAL
@@ -152,19 +153,37 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
     return CreateAllocator(default_memory_info);
   } else {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId id) {
-          return std::make_unique<CUDAAllocator>(id, CUDA);
-        },
-        device_id,
-        true,
-        {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1, -1L)},
-        // make it stream aware
-        true);
+#if ORT_CUDA_HAS_MEMPOOL_API
+    // Check if we are running against older version of CUDA runtime
+    const bool use_cuda_mempool =
+        default_memory_arena_cfg != nullptr && default_memory_arena_cfg->use_cuda_mempool == 1 && cuda::IsCudaMemPoolSupported();
 
-    // CUDA malloc/free is expensive so always use an arena
-    return CreateAllocator(default_memory_info);
+    if (use_cuda_mempool) {
+      auto device = OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, device_id);
+      auto mem_info = OrtMemoryInfo("CUDAMemPoolArena", OrtAllocatorType::OrtArenaAllocator, device, OrtMemTypeDefault);
+
+      auto mempool_allocator = std::make_shared<cuda::CudaMempoolArena>(mem_info,
+                                                                        default_memory_arena_cfg->cuda_mempool_max_free_space,
+                                                                        default_memory_arena_cfg->cuda_mempool_bytes_to_keep,
+                                                                        default_memory_arena_cfg->cuda_mempool_initial_pool_size_bytes);
+
+      return mempool_allocator;
+    } else
+#endif
+    {
+      AllocatorCreationInfo default_memory_info(
+          [](OrtDevice::DeviceId id) {
+            return std::make_unique<CUDAAllocator>(id, CUDA);
+          },
+          device_id,
+          true,
+          {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                    : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1, -1L)},
+          // make it stream aware
+          true);
+      // CUDA malloc/free is expensive so always use an arena
+      return CreateAllocator(default_memory_info);
+    }
   }
 }
 

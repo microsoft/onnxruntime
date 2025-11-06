@@ -58,6 +58,22 @@ Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg&
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_mem));
   }
 
+  if (auto it = kvps_entries.find(ConfigKeyNames::UseCudaMemPool); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.use_cuda_mempool));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolMaxFreeSpace); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_max_free_space));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolBytesToKeep); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_bytes_to_keep));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolInitialPoolSizeBytes); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_initial_pool_size_bytes));
+  }
+
   if (!cfg.IsValid()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid arena configuration. Please check the values provided.");

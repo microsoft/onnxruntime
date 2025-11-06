@@ -3,6 +3,8 @@
 
 #include "cuda_mempool_arena.h"
 
+#if ORT_CUDA_HAS_MEMPOOL_API
+
 #include <algorithm>
 
 #include "core/providers/cuda/shared_inc/cuda_call.h"  // ORT CudaCall helpers
@@ -22,17 +24,19 @@ CudaMempoolArena::CudaMempoolArena(const OrtMemoryInfo& memory_info,
       bytes_to_keep_(bytes_to_keep),
       initial_pool_size_bytes_(initial_pool_size_bytes) {
   // Create a process-local device memory pool for device_id_.
+  // 'cudaMemAllocationTypeDevice' (for cudaMemPoolProps.allocType) not clear when it is available
+
   cudaMemPoolProps props{};
-  props.allocType = cudaMemAllocationTypePinned;  // With CUDA 12.5 must be specified as pinned
-  props.handleTypes = cudaMemHandleTypeNone;      // local to process
-  props.location.type = cudaMemLocationTypeDevice;
+  props.allocType = cudaMemAllocationTypePinned;    // Pinned is not the same as pinned allocator
+  props.handleTypes = cudaMemHandleTypeNone;        // local to process
+  props.location.type = cudaMemLocationTypeDevice;  // Device memory
   props.location.id = device_id_;
 
   CUDA_CALL_THROW(cudaMemPoolCreate(&pool_, &props));
 
   if (pool_release_threshold_ != 0) {
     CUDA_CALL_THROW(cudaMemPoolSetAttribute(pool_, cudaMemPoolAttrReleaseThreshold,
-                                       &pool_release_threshold_));
+                                            &pool_release_threshold_));
   }
 
   if (initial_pool_size_bytes_ > 0) {
@@ -54,15 +58,15 @@ CudaMempoolArena::~CudaMempoolArena() {
     (void)cudaFreeAsync(p, s);  // ignore errors in destructor
   }
 
+  // Now it is safe to drop our bookkeeping.
+  alloc_map_.clear();
+  stream_map_.clear();
+
   // 2) Synchronize all streams we know about (those that ever held allocations).
   SyncAllKnownStreams_NoThrow();
 
   // 3) Safety barrier: ensure any frees enqueued on destroyed/unknown streams are completed.
   (void)cudaDeviceSynchronize();  // ignore errors in destructor
-
-  // Now it is safe to drop our bookkeeping.
-  alloc_map_.clear();
-  stream_map_.clear();
 
   // 4) Trim to zero and destroy the pool.
   if (pool_) {
@@ -235,3 +239,5 @@ void CudaMempoolArena::SyncAllKnownStreams_NoThrow() {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif  // ORT_CUDA_HAS_MEMPOOL_API

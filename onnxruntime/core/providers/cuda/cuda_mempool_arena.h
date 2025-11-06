@@ -3,6 +3,18 @@
 
 #pragma once
 
+// ---- CUDA feature gates ----
+// Stream-ordered allocator (cudaMallocAsync/cudaMemPool*) was introduced in CUDA 11.2 (runtime 11020).
+#ifndef ORT_CUDA_HAS_MEMPOOL_API
+#if defined(CUDART_VERSION) && (CUDART_VERSION >= 11020)
+#define ORT_CUDA_HAS_MEMPOOL_API 1
+#else
+#define ORT_CUDA_HAS_MEMPOOL_API 0
+#endif
+#endif
+
+#if ORT_CUDA_HAS_MEMPOOL_API
+
 #include <cuda_runtime_api.h>
 #include <cstdint>
 #include <mutex>
@@ -15,8 +27,19 @@
 namespace onnxruntime {
 namespace cuda {
 
+inline bool IsCudaMemPoolSupported() {
+  int ort_cuda_rt_version = 0;
+  cudaError_t cuda_status = cudaRuntimeGetVersion(&ort_cuda_rt_version);
+  return cuda_status == cudaSuccess && ort_cuda_rt_version >= 11020;
+}
+
 /**
  * @brief Stream-aware CUDA allocator implemented on top of a private `cudaMemPool_t`.
+ *        The purpose of this arena is to assist with memory allocations in environments where
+ *        a single process is hosting more than one cuda session. This arena hosts cuda memory pool
+ *        which has some tunable parameters to control its memory usage and de-allocates memory back to
+ *        the device according to the specified params. This is opposite to the BFCArena which only
+ *        attempts to free memory on Shrink() at the end of the run.
  *
  * ### Behavior
  * - Creates a **process-local** CUDA mempool for a specific device (from `OrtMemoryInfo`).
@@ -89,6 +112,8 @@ class CudaMempoolArena final : public IArena {
 
   /**
    * @brief Reserve @p size bytes; implemented in terms of `Alloc(size)`.
+   *   This is done so all the memory is gone including initializers when
+   *   the session is torn down.
    * @return device pointer or nullptr when size == 0
    * @throws on allocation failure
    */
@@ -114,8 +139,6 @@ class CudaMempoolArena final : public IArena {
    */
   Status Shrink() override;
 
- public:
-  // Make deletion of copy/move operations visible at public scope.
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaMempoolArena);
 
  private:
@@ -156,3 +179,5 @@ class CudaMempoolArena final : public IArena {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif  // ORT_CUDA_HAS_MEMPOOL_API
