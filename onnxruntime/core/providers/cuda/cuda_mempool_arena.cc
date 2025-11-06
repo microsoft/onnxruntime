@@ -3,11 +3,10 @@
 
 #include "cuda_mempool_arena.h"
 
-#if ORT_CUDA_HAS_MEMPOOL_API
-
 #include <algorithm>
 
 #include "core/providers/cuda/shared_inc/cuda_call.h"  // ORT CudaCall helpers
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -16,13 +15,16 @@ namespace cuda {
 
 CudaMempoolArena::CudaMempoolArena(const OrtMemoryInfo& memory_info,
                                    uint64_t pool_release_threshold,
-                                   size_t bytes_to_keep,
-                                   size_t initial_pool_size_bytes)
+                                   size_t bytes_to_keep_on_shrink,
+                                   const logging::Logger* logger)
     : IArena(memory_info),
-      device_id_(memory_info.device.Id()),
       pool_release_threshold_(pool_release_threshold),
-      bytes_to_keep_(bytes_to_keep),
-      initial_pool_size_bytes_(initial_pool_size_bytes) {
+      bytes_to_keep_on_shrink_(bytes_to_keep_on_shrink),
+      logger_(logger) {
+  if (logger_ == nullptr) {
+    logger_ = &::onnxruntime::logging::LoggingManager::DefaultLogger();
+  }
+
   // Create a process-local device memory pool for device_id_.
   // 'cudaMemAllocationTypeDevice' (for cudaMemPoolProps.allocType) not clear when it is available
 
@@ -30,7 +32,7 @@ CudaMempoolArena::CudaMempoolArena(const OrtMemoryInfo& memory_info,
   props.allocType = cudaMemAllocationTypePinned;    // Pinned is not the same as pinned allocator
   props.handleTypes = cudaMemHandleTypeNone;        // local to process
   props.location.type = cudaMemLocationTypeDevice;  // Device memory
-  props.location.id = device_id_;
+  props.location.id = this->Info().device.Id();
 
   CUDA_CALL_THROW(cudaMemPoolCreate(&pool_, &props));
 
@@ -39,11 +41,9 @@ CudaMempoolArena::CudaMempoolArena(const OrtMemoryInfo& memory_info,
                                             &pool_release_threshold_));
   }
 
-  if (initial_pool_size_bytes_ > 0) {
-    // Pre-reserve pool backing memory to the requested size.
-    size_t reserved = initial_pool_size_bytes_;
-    CUDA_CALL_THROW(cudaMemPoolSetAttribute(pool_, cudaMemPoolAttrReservedMemCurrent, &reserved));
-  }
+  LOGS(*logger_, INFO) << "CudaMempoolArena created on device " << this->Info().device.Id()
+                       << " with pool_release_threshold=" << pool_release_threshold_
+                       << " bytes_to_keep_on_shrink=" << bytes_to_keep_on_shrink_ << ".";
 
   // Intentionally DO NOT call cudaDeviceSetMemPool(device_id_, pool_);
   // All allocations explicitly target this pool via cudaMallocFromPoolAsync.
@@ -80,12 +80,15 @@ void* CudaMempoolArena::Alloc(size_t size) {
   if (size == 0) return nullptr;
 
   void* p = nullptr;
-  constexpr cudaStream_t kDefaultStream = static_cast<cudaStream_t>(0);
+  constexpr const cudaStream_t kDefaultStream = static_cast<cudaStream_t>(0);
   cudaError_t err = cudaMallocFromPoolAsync(&p, size, pool_, kDefaultStream);
   if (err != cudaSuccess) {
     ORT_THROW("CudaMempoolArena::Alloc: cudaMallocFromPoolAsync failed: ",
               cudaGetErrorString(err), " (", static_cast<int>(err), "), size=", size);
   }
+
+  LOGS(*logger_, VERBOSE) << "CudaMempoolArena::Alloc: allocated "
+                          << size << " bytes at " << p << " on default stream.";
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -116,6 +119,10 @@ void* CudaMempoolArena::AllocOnStream(size_t size, Stream* stream) {
               cudaGetErrorString(err), " (", static_cast<int>(err), "), size=", size);
   }
 
+  LOGS(*logger_, VERBOSE) << "CudaMempoolArena::AllocOnStream: allocated "
+                          << size << " bytes at " << p << " on stream "
+                          << reinterpret_cast<uintptr_t>(s) << ".";
+
   {
     std::lock_guard<std::mutex> lock(mutex_);
     AllocationRecord rec{size, s};
@@ -143,6 +150,8 @@ void CudaMempoolArena::Free(void* p) {
     auto it = alloc_map_.find(p);
     if (it == alloc_map_.end()) {
       // Not owned by this allocator; ignore per ORT convention.
+      LOGS(*logger_, WARNING) << "CudaMempoolArena::Free: pointer "
+                              << p << " not found in allocation map; ignoring.";
       return;
     }
 
@@ -192,6 +201,10 @@ void CudaMempoolArena::ReleaseStreamBuffers(Stream* stream) {
     stream_map_.erase(sit);
   }
 
+  LOGS(*logger_, VERBOSE) << "CudaMempoolArena::ReleaseStreamBuffers: freeing "
+                          << to_free.size() << " allocations on stream "
+                          << reinterpret_cast<uintptr_t>(s) << ".";
+
   for (void* p : to_free) {
     CUDA_CALL_THROW(cudaFreeAsync(p, s));
   }
@@ -199,7 +212,18 @@ void CudaMempoolArena::ReleaseStreamBuffers(Stream* stream) {
 
 Status CudaMempoolArena::Shrink() {
   // Trim the pool; live allocations are not affected.
-  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemPoolTrimTo(pool_, bytes_to_keep_)));
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemPoolTrimTo(pool_, bytes_to_keep_on_shrink_)));
+
+  // Query current reserved size. cudaMemPoolAttrReservedMemCurrent
+  size_t reserved_size = 0;
+  if (CUDA_CALL(cudaMemPoolGetAttribute(pool_, cudaMemPoolAttrReservedMemCurrent,
+                                        &reserved_size))
+          .IsOK()) {
+    LOGS(*logger_, INFO) << "CudaMempoolArena::Shrink: pool reserved size after trim: "
+                         << reserved_size << " bytes.";
+  } else {
+    LOGS(*logger_, INFO) << "CudaMempoolArena pool has been shrunk; unable to query reserved size.";
+  }
 
   // Right-size maps under lock.
   std::lock_guard<std::mutex> lock(mutex_);
@@ -239,5 +263,3 @@ void CudaMempoolArena::SyncAllKnownStreams_NoThrow() {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif  // ORT_CUDA_HAS_MEMPOOL_API

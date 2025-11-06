@@ -8,10 +8,10 @@
 
 #include <cstdint>
 
-#include "core/common/inlined_containers.h"          // InlinedVector
-#include "core/framework/allocator.h"                // OrtMemoryInfo, IAllocator, AllocatorStats, onnxruntime::CUDA
+#include "core/common/inlined_containers.h"  // InlinedVector
+#include "core/framework/allocator.h"        // OrtMemoryInfo, IAllocator, AllocatorStats, onnxruntime::CUDA
 #include "core/framework/execution_provider.h"
-#include "core/framework/stream_handles.h"           // onnxruntime::Stream (interface)
+#include "core/framework/stream_handles.h"  // onnxruntime::Stream (interface)
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
@@ -48,15 +48,14 @@ static void TouchDevice(void* p, size_t bytes, ::cudaStream_t s, unsigned char v
 struct MPArenaParams {
   uint64_t release_threshold = 1ull << 20;  // 1 MB (recommended in allocator docs)
   size_t bytes_to_keep = 4ull << 20;        // 4 MB (small trim target for tests)
-  size_t initial_reserve = 10ull << 20;     // 10 MB (recommended in allocator docs)
 };
 
 OrtArenaCfg CreateArenaCfgFromParams(const MPArenaParams& params) {
   OrtArenaCfg cfg;
-  cfg.use_cuda_mempool = 1; // Key switch
-  cfg.cuda_mempool_max_free_space = params.release_threshold;
-  cfg.cuda_mempool_bytes_to_keep = params.bytes_to_keep;
-  cfg.cuda_mempool_initial_pool_size_bytes = params.initial_reserve;
+  cfg.initial_chunk_size_bytes = 0;  // Make  BFCArena for CUDAPinned not to allocate anything here
+  cfg.use_cuda_mempool = 1;          // Key switch
+  cfg.cuda_mempool_release_threshold = params.release_threshold;
+  cfg.cuda_mempool_bytes_to_keep_on_shrink = params.bytes_to_keep;
   return cfg;
 }
 
@@ -79,7 +78,6 @@ AllocatorPtr GetCudaMempoolArena(IExecutionProvider& cuda_ep) {
   return allocators[0];
 }
 
-
 // --------- Minimal test Stream adapter ---------
 //
 // Adapts a cudaStream_t to ORT's Stream interface.
@@ -97,7 +95,6 @@ class TestCudaStream final : public onnxruntime::Stream {
     // ORT expects GetHandle() to return the native handle (cast to void*).
     return Stream::GetHandle();
   }
-
 };
 
 // --------- Test fixture ---------
@@ -109,7 +106,13 @@ class CudaMempoolArenaTest : public ::testing::Test {
       GTEST_SKIP() << "CUDA memory pools not supported on this device/driver.";
     }
 
+    const auto& logger = onnxruntime::logging::LoggingManager::DefaultLogger();
+    orig_severity_ = logger.GetSeverity();
+    orig_verbosity_ = logger.VLOGMaxLevel();
+    logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+    logging::LoggingManager::SetDefaultLoggerVerbosity(0);
     cuda_ep_ = CreateCudaExecutionProvider(arena_cfg_);
+    cuda_ep_->SetLogger(&logger);
     arena_ = GetCudaMempoolArena(*cuda_ep_);
     mem_info_ = arena_->Info();
   }
@@ -118,8 +121,12 @@ class CudaMempoolArenaTest : public ::testing::Test {
     arena_.reset();
     cuda_ep_.reset();
     ::cudaDeviceSynchronize();
+    logging::LoggingManager::SetDefaultLoggerSeverity(orig_severity_);
+    logging::LoggingManager::SetDefaultLoggerVerbosity(orig_verbosity_);
   }
 
+  logging::Severity orig_severity_;
+  int orig_verbosity_;
   OrtArenaCfg arena_cfg_ = CreateArenaCfgFromParams(MPArenaParams());
   std::unique_ptr<IExecutionProvider> cuda_ep_;
   AllocatorPtr arena_;
@@ -250,6 +257,7 @@ TEST_F(CudaMempoolArenaTest, Destructor_CompletesQueuedFrees_EvenIfStreamDestroy
 
   {
     auto cuda_prov = CreateCudaExecutionProvider(arena_cfg_);
+    cuda_prov->SetLogger(&onnxruntime::logging::LoggingManager::DefaultLogger());
     auto alloc = GetCudaMempoolArena(*cuda_ep_);
     {
       TestCudaStream ort_s(s, mem_info_.device);
@@ -282,4 +290,4 @@ TEST_F(CudaMempoolArenaTest, Destructor_CompletesQueuedFrees_EvenIfStreamDestroy
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif // USE_CUDA
+#endif  // USE_CUDA

@@ -3,36 +3,20 @@
 
 #pragma once
 
-// ---- CUDA feature gates ----
-// Stream-ordered allocator (cudaMallocAsync/cudaMemPool*) was introduced in CUDA 11.2 (runtime 11020).
-#ifndef ORT_CUDA_HAS_MEMPOOL_API
-#if defined(CUDART_VERSION) && (CUDART_VERSION >= 11020)
-#define ORT_CUDA_HAS_MEMPOOL_API 1
-#else
-#define ORT_CUDA_HAS_MEMPOOL_API 0
-#endif
-#endif
-
-#if ORT_CUDA_HAS_MEMPOOL_API
-
 #include <cuda_runtime_api.h>
 #include <cstdint>
 #include <mutex>
 
 #include "core/common/common.h"                      // ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE, ORT_THROW/ENFORCE
 #include "core/common/inlined_containers.h"          // InlinedHashMap, InlinedHashSet, InlinedVector
-#include "core/framework/allocator.h"                // IAllocator, IArena (work branch), Stream, OrtMemoryInfo, AllocatorStats
 #include "core/providers/cuda/cuda_stream_handle.h"  // ORT Stream -> cudaStream_t
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
-namespace cuda {
-
-inline bool IsCudaMemPoolSupported() {
-  int ort_cuda_rt_version = 0;
-  cudaError_t cuda_status = cudaRuntimeGetVersion(&ort_cuda_rt_version);
-  return cuda_status == cudaSuccess && ort_cuda_rt_version >= 11020;
+namespace logging {
+class Logger;
 }
-
+namespace cuda {
 /**
  * @brief Stream-aware CUDA allocator implemented on top of a private `cudaMemPool_t`.
  *        The purpose of this arena is to assist with memory allocations in environments where
@@ -68,16 +52,15 @@ class CudaMempoolArena final : public IArena {
    * @param memory_info              `OrtMemoryInfo` whose device id selects the CUDA device.
    * @param pool_release_threshold   Optional release threshold (bytes) for `cudaMemPoolAttrReleaseThreshold`.
    *                                 If 0, the attribute is not set. **Recommended value: 1 MB.**
-   * @param bytes_to_keep            Target size retained by `Shrink()` (passed to `cudaMemPoolTrimTo`).
-   * @param initial_pool_size_bytes  If > 0, pre‑reserve pool capacity by setting
-   *                                 `cudaMemPoolAttrReservedMemCurrent`. **Recommended value: 10 MB.**
+   * @param bytes_to_keep_on_shrink  Target size (bytes) for `cudaMemPoolTrimTo()` on `Shrink()`.
+   * @param logger                   Cuda EP Logger
    *
    * The created pool is process-local and is **not** set as the device default pool.
    */
   CudaMempoolArena(const OrtMemoryInfo& memory_info,
                    uint64_t pool_release_threshold,
-                   size_t bytes_to_keep,
-                   size_t initial_pool_size_bytes);
+                   size_t bytes_to_keep_on_shrink,
+                   const logging::Logger* logger);
 
   /**
    * @brief Destructor:
@@ -157,10 +140,10 @@ class CudaMempoolArena final : public IArena {
   };
 
   // ---- Pool/context configuration (immutable) ----
-  const int device_id_;
   uint64_t pool_release_threshold_;
-  size_t bytes_to_keep_;
+  size_t bytes_to_keep_on_shrink_;
   size_t initial_pool_size_bytes_;
+  const logging::Logger* logger_;
   cudaMemPool_t pool_{nullptr};
 
   // ---- Bookkeeping (guarded by mutex_) ----
@@ -179,5 +162,3 @@ class CudaMempoolArena final : public IArena {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif  // ORT_CUDA_HAS_MEMPOOL_API

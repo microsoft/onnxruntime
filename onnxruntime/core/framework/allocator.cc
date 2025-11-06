@@ -62,16 +62,12 @@ Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg&
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.use_cuda_mempool));
   }
 
-  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolMaxFreeSpace); it != kvps_entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_max_free_space));
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolReleaseThreshold); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_release_threshold));
   }
 
-  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolBytesToKeep); it != kvps_entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_bytes_to_keep));
-  }
-
-  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolInitialPoolSizeBytes); it != kvps_entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_initial_pool_size_bytes));
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolBytesToKeepOnShrink); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_bytes_to_keep_on_shrink));
   }
 
   if (!cfg.IsValid()) {

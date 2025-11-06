@@ -40,13 +40,11 @@ struct OrtArenaCfg {
   int64_t max_power_of_two_extend_bytes;  // use -1 to allow ORT to choose the default
   // Use CudaMemPool based arena if available (starting with cuda 11.2)
   int use_cuda_mempool = -1;
-  // Max free space to hold onto before releasing back to the system for CudaMemPool
-  // use 0 to release immediatly on free
-  uint64_t cuda_mempool_max_free_space = 0;
+  // Amount of reserved memory in bytes to hold onto before trying
+  // to release memory back to the OS.
+  uint64_t cuda_mempool_release_threshold = 0;
   // Bytes to keep on shrink for CudaMemPool, 0 is to attempt to release all, allocated space not affected.
-  size_t cuda_mempool_bytes_to_keep = 0;
-  // Initial pool size to reserve for CudaMemPool, 0 disables pre-reserve.
-  size_t cuda_mempool_initial_pool_size_bytes = 0;
+  size_t cuda_mempool_bytes_to_keep_on_shrink = 0;
 
   bool IsValid() {
     return arena_extend_strategy >= -1 && arena_extend_strategy <= 1 &&
@@ -65,9 +63,8 @@ struct OrtArenaCfg {
     static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
     static constexpr const char* MaxMem = "arena.max_mem";
     static constexpr const char* UseCudaMemPool = "arena.use_cuda_mempool";
-    static constexpr const char* CudaMempoolMaxFreeSpace = "arena.cuda_mempool_max_free_space";
-    static constexpr const char* CudaMempoolBytesToKeep = "arena.cuda_mempool_bytes_to_keep";
-    static constexpr const char* CudaMempoolInitialPoolSizeBytes = "arena.cuda_mempool_initial_pool_size_bytes";
+    static constexpr const char* CudaMempoolReleaseThreshold = "arena.cuda_mempool_release_threshold";
+    static constexpr const char* CudaMempoolBytesToKeepOnShrink = "arena.cuda_mempool_bytes_to_keep_on_shrink";
   };
 
   static onnxruntime::common::Status FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg);
