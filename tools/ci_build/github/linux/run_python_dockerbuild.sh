@@ -2,7 +2,7 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:x:c:p:v:" parameter_Option
+while getopts "i:d:x:c:p:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
@@ -10,8 +10,7 @@ d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
-v) CUDA_VERSION=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|WEBGPU|CPU|NPU> [-x <extra_build_arg>] [-c <build_config>]  [-v <cuda_version>]"
+*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>]"
    exit 1;;
 esac
 done
@@ -28,11 +27,6 @@ if [ "${BUILD_EXTR_PAR}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=("-x" "${BUILD_EXTR_PAR}")
 fi
 
-if [ "${CUDA_VERSION}" != "" ] ; then
-    echo "CUDA_VERSION is set to ${CUDA_VERSION}"
-    DOCKER_SCRIPT_OPTIONS+=("-v" "${CUDA_VERSION}")
-fi
-
 docker run -e SYSTEM_COLLECTIONURI --rm \
     --volume /data/onnx:/data/onnx:ro \
     --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
@@ -44,6 +38,7 @@ docker run -e SYSTEM_COLLECTIONURI --rm \
     -e BUILD_BUILDNUMBER \
     -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
     -e DEFAULT_TRAINING_PACKAGE_DEVICE \
+    -e CUDA_VERSION \
     $ADDITIONAL_DOCKER_PARAMETER \
     "$DOCKER_IMAGE" tools/ci_build/github/linux/build_linux_python_package.sh "${DOCKER_SCRIPT_OPTIONS[@]}"
 
