@@ -2099,8 +2099,6 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/utils.h"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/data_types.h"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/data_types.cc"
-          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/memcpy.h"
-          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/memcpy.cc"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/squeeze.h"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/squeeze.cc"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/mul.h"

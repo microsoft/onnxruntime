@@ -7,20 +7,14 @@
 #include "kernels/utils.h"
 
 // Include kernels:
-#include "kernels/memcpy.h"
 #include "kernels/mul.h"
 
 // Forward declarations of kernel classes used as template args for BuildKernelCreateInfo
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyToHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 7, Mul);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 13, Squeeze);
 
 // Table of BuildKernelCreateInfo functions for each operator
 static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
-    BuildKernelCreateInfo<void>,  // Dummy to avoid table becoming empty.
-    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyFromHost)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 1, MemcpyToHost)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 7, Mul)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 13, Squeeze)>,
 };
@@ -29,8 +23,7 @@ constexpr size_t num_kernel_create_info_funcs = sizeof(build_kernel_create_info_
                                                 sizeof(build_kernel_create_info_funcs[0]);
 
 size_t GetNumKernels() {
-  static_assert(num_kernel_create_info_funcs >= 1);
-  return num_kernel_create_info_funcs - 1;
+  return num_kernel_create_info_funcs;
 }
 
 OrtStatus* CreateKernelRegistry(const char* ep_name, void* create_kernel_state, OrtKernelRegistry** kernel_registry) {
