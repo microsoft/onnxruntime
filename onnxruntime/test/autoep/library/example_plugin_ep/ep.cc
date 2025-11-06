@@ -16,12 +16,12 @@
 #include "ep_stream_support.h"
 
 /// <summary>
-/// Example implementation of ONNX Mul for compiling EP. Does not handle many things like broadcasting.
+/// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
 /// </summary>
-struct CompiledMul {
-  CompiledMul(const OrtApi& ort_api, const OrtLogger& logger,
-              const std::unordered_map<std::string, FloatInitializer>& float_initializers,
-              std::string input0_name, std::string input1_name)
+struct MulKernel {
+  MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
+            const std::unordered_map<std::string, FloatInitializer>& float_initializers,
+            std::string input0_name, std::string input1_name)
       : ort_api(ort_api),
         logger(logger),
         float_initializers(float_initializers),
@@ -52,7 +52,7 @@ struct CompiledMul {
   OrtStatus* Compute(OrtKernelContext* kernel_ctx) {
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
                                               OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                              "CompiledMul::Compute", ORT_FILE, __LINE__, __FUNCTION__));
+                                              "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
     Ort::KernelContext kernel_context(kernel_ctx);
     try {
       gsl::span<const float> input0;
@@ -100,7 +100,7 @@ struct CompiledMul {
 
       size_t num_outputs = kernel_context.GetOutputCount();
       if (num_outputs != 1) {
-        throw Ort::Exception("Expected 1 output for CompiledMul", ORT_INVALID_ARGUMENT);
+        throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
       }
 
       auto output = kernel_context.GetOutput(0, shape0);
@@ -159,7 +159,6 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
-  GetKernelRegistry = GetKernelRegistryImpl;                  // optional. can be nullptr
 
   auto status = ort_api.Logger_LogMessage(&logger_,
                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -348,12 +347,12 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
       return status.release();
     }
 
-    // Associate the name of the fused node with our CompiledMul.
+    // Associate the name of the fused node with our MulKernel.
     auto fused_node_name = fused_node.GetName();
-    ep->compiled_subgraphs_.emplace(std::move(fused_node_name), std::make_unique<CompiledMul>(ep->ort_api, ep->logger_,
-                                                                                              ep->float_initializers_,
-                                                                                              node_input_names[0],
-                                                                                              node_input_names[1]));
+    ep->kernels_.emplace(std::move(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
+                                                                                 ep->float_initializers_,
+                                                                                 node_input_names[0],
+                                                                                 node_input_names[1]));
 
     // Update the OrtNodeComputeInfo associated with the graph.
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
@@ -384,19 +383,6 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
   for (size_t i = 0; i < num_node_compute_infos; i++) {
     delete node_compute_infos[i];
   }
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL ExampleEp::GetKernelRegistryImpl(
-    _In_ OrtEp* this_ptr,
-    _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry) noexcept {
-  ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
-
-  *kernel_registry = nullptr;
-
-  // Get the cached kernel registry from parent factory to avoid recreating the kernel registry for every EP instance.
-  RETURN_IF_ERROR(ep->factory_.GetKernelRegistryForEp(*ep, kernel_registry));
-  return nullptr;
 }
 
 // Creates EPContext nodes from the given fused nodes.
@@ -530,27 +516,27 @@ OrtStatus* ExampleNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
   ExampleEp& ep = node_compute_info->ep;
 
   std::string fused_node_name = ep.ep_api.NodeComputeContext_NodeName(compute_context);
-  auto subgraph_it = ep.CompiledSubgraphs().find(fused_node_name);
-  if (subgraph_it == ep.CompiledSubgraphs().end()) {
-    std::string message = "Unable to get compiled subgraph for fused node with name " + fused_node_name;
+  auto kernel_it = ep.Kernels().find(fused_node_name);
+  if (kernel_it == ep.Kernels().end()) {
+    std::string message = "Unable to get kernel for fused node with name " + fused_node_name;
     return ep.ort_api.CreateStatus(ORT_EP_FAIL, message.c_str());
   }
 
-  CompiledMul& subgraph = *subgraph_it->second;
-  *compute_state = &subgraph;
+  MulKernel& kernel = *kernel_it->second;
+  *compute_state = &kernel;
   return nullptr;
 }
 
 OrtStatus* ExampleNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
                                                OrtKernelContext* kernel_context) {
   (void)this_ptr;
-  CompiledMul& subgraph = *reinterpret_cast<CompiledMul*>(compute_state);
-  return subgraph.Compute(kernel_context);
+  MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
+  return kernel.Compute(kernel_context);
 }
 
 void ExampleNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
   (void)this_ptr;
-  CompiledMul& subgraph = *reinterpret_cast<CompiledMul*>(compute_state);
-  (void)subgraph;
+  MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
+  (void)kernel;
   // Do nothing for this example.
 }

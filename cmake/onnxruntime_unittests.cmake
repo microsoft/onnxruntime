@@ -1988,8 +1988,6 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
   #
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.cc"
-                                                "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/kernels/*.h"
-                                                "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/kernels/*.cc"
                                                 "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
@@ -2048,6 +2046,50 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
   source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
 
   #
+  # example_kernel_plugin_ep
+  #
+  set(onnxruntime_autoep_test_example_kernel_plugin_ep_src
+          "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep_lib_entry.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep_factory.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep_factory.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep_kernel_registration.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep_kernel_registration.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/data_types.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/data_types.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/memcpy.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/memcpy.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/squeeze.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/squeeze.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/mul.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/mul.cc")
+  onnxruntime_add_shared_library_module(example_kernel_plugin_ep ${onnxruntime_autoep_test_example_kernel_plugin_ep_src})
+  target_include_directories(example_kernel_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_kernel_plugin_ep PRIVATE onnxruntime)
+
+  if(UNIX)
+    if (APPLE)
+	    set(ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG "-Xlinker -dead_strip")
+    elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      string(CONCAT ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/ep_lib.def")
+  endif()
+
+  set_property(TARGET example_kernel_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG})
+
+  set_target_properties(example_kernel_plugin_ep PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_example_kernel_plugin_ep_src})
+
+  #
   # test library
   #
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
@@ -2082,7 +2124,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
           TARGET onnxruntime_autoep_test
           SOURCES ${onnxruntime_autoep_test_SRC} ${onnxruntime_unittest_main_src}
           LIBS ${onnxruntime_autoep_test_LIBS}
-          DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu
+          DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_kernel_plugin_ep
   )
 endif()
 

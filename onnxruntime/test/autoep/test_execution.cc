@@ -112,9 +112,6 @@ TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
   }
 }
 
-// Runs a model on a plugin EP that only supports one of three model nodes.
-// Because the plugin EP pretends to run on GPU, this unit test will also use the plugin EP's
-// kernel registry to create Memcpy ops that copy the I/O to/from the EP.
 TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   RegisteredEpDeviceUniquePtr example_ep;
   Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);

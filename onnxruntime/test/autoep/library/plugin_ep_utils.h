@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <functional>
 #include <optional>
 #include <string>
@@ -146,4 +147,38 @@ inline std::optional<std::vector<int64_t>> GetTensorShape(Ort::ConstValueInfo va
 
   const auto type_shape = type_info.GetTensorTypeAndShapeInfo();
   return type_shape.GetShape();
+}
+
+template <typename T>
+inline ONNXTensorElementDataType GetTensorElemDataType() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+}
+
+template <>
+inline ONNXTensorElementDataType GetTensorElemDataType<float>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+
+template <>
+inline ONNXTensorElementDataType GetTensorElemDataType<int64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+}
+
+template <typename T>
+inline OrtStatus* GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                                             /*out*/ gsl::span<const T>& data,
+                                             /*out*/ std::vector<int64_t>& shape) {
+  Ort::ConstValue input = kernel_context.GetInput(index);
+  auto type_shape = input.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+  RETURN_IF(elem_type != GetTensorElemDataType<T>(), Ort::GetApi(),
+            "EP expected kernel input of tensor type");
+
+  const T* float_data = input.GetTensorData<T>();
+  size_t num_elems = type_shape.GetElementCount();
+  data = gsl::span<const T>(float_data, num_elems);
+  shape = type_shape.GetShape();
+
+  return nullptr;
 }

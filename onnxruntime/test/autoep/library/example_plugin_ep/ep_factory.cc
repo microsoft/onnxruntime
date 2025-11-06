@@ -9,7 +9,6 @@
 #include "ep_allocator.h"
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
-#include "ep_kernel_registration.h"
 #include "ep_stream_support.h"
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
@@ -72,12 +71,6 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                        OrtAllocatorType::OrtDeviceAllocator,
                                        &mem_info);
   ort_api.ReleaseMemoryInfo(mem_info);
-}
-
-ExampleEpFactory::~ExampleEpFactory() {
-  if (kernel_registry_ != nullptr) {
-    Ort::GetEpApi().ReleaseKernelRegistry(kernel_registry_);
-  }
 }
 
 /*static*/
@@ -316,29 +309,5 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
     *stream = sync_stream.release();
   }
 
-  return nullptr;
-}
-
-OrtStatus* ExampleEpFactory::GetKernelRegistryForEp(ExampleEp& ep, const OrtKernelRegistry** out_kernel_registry) {
-  *out_kernel_registry = nullptr;
-
-  if (GetNumKernels() == 0) {
-    return nullptr;
-  }
-
-  if (kernel_registry_ == nullptr) {
-    void* op_kernel_state = &ep;  // Optional state that is provided to kernels on creation (can be null).
-                                  // This example just passes the entire OrtEp to the kernel.
-
-    const char* ep_name = ep.GetName(static_cast<const OrtEp*>(&ep));
-
-    // This statement creates the kernel registry and caches it in the OrtEpFactory instance.
-    // We assume that all EPs created by this factory can use the same kernel registry. This may not be the
-    // case in a more complex OrtEpFactory that can create EP instances that are each configured for different
-    // hardware devices. In such a scenario, a different kernel registry may be created for each EP configuration.
-    RETURN_IF_ERROR(CreateKernelRegistry(ep_name, op_kernel_state, &kernel_registry_));
-  }
-
-  *out_kernel_registry = kernel_registry_;
   return nullptr;
 }

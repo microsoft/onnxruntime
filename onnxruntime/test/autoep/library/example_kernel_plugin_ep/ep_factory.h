@@ -5,25 +5,26 @@
 
 #include <mutex>
 
-#include "ep_arena.h"
-#include "ep_data_transfer.h"
-#include "../plugin_ep_utils.h"
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
+
+class KernelEp;
 
 /// <summary>
-/// Example EP factory that can create an OrtEp and return information about the supported hardware devices.
+/// EP factory that creates an OrtEp instance that uses kernel registration.
 /// </summary>
-class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
+class KernelEpFactory : public OrtEpFactory {
  public:
-  ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger);
+  KernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtLogger& default_logger);
+  ~KernelEpFactory();
 
-  OrtDataTransferImpl* GetDataTransfer() const {
-    return data_transfer_impl_.get();
-  }
+  const OrtApi& GetOrtApi() const { return ort_api_; }
+  const OrtEpApi& GetEpApi() const { return ep_api_; }
+  const std::string& GetEpName() const { return ep_name_; }
 
-  // Get the shared arena allocator if created.
-  ArenaAllocator* GetArenaAllocator() const {
-    return arena_allocator_.get();
-  }
+  // Called by child OrtEp instances to retrieve the cached kernel registry for that EP.
+  OrtStatus* GetKernelRegistryForEp(KernelEp& ep, /*out*/ const OrtKernelRegistry** kernel_registry);
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -67,21 +68,16 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 
-  const OrtLogger& default_logger_;        // default logger for the EP factory
-  const std::string ep_name_;              // EP name
-  const std::string vendor_{"Contoso"};    // EP vendor name
-  const uint32_t vendor_id_{0xB357};       // EP vendor ID
+  const OrtApi& ort_api_;
+  const OrtEpApi& ep_api_;
+  const std::string ep_name_{"KernelEp"};
+  const std::string vendor_{"Contoso2"};   // EP vendor name
+  const uint32_t vendor_id_{0xB358};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version
 
-  // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
-  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-  MemoryInfoUniquePtr default_memory_info_;
-  MemoryInfoUniquePtr readonly_memory_info_;  // used for initializers
-
-  bool arena_allocator_using_default_settings_{true};
-  std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
-  uint32_t num_arena_users_{0};
-  std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
-
-  std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
+  // Cached kernel registry used by all OrtEp instances created by this factory. Refer to OrtEp::GetKernelRegistry.
+  //
+  // Note: If this factory instead created EP instances that each supported different hardware configurations, then
+  // the factory could cache a different kernel registry per EP configuration.
+  OrtKernelRegistry* kernel_registry_ = nullptr;
 };
