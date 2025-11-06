@@ -708,6 +708,50 @@ TEST(GatherBlockQuantizedOpTest, GatherAxisWithZeroPointsNoPading) {
 }
 
 template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis_NoPading_4bit() {
+  // BUG: CUDA kernel does NOT subtract default zero point (8 for 4-bit) when no explicit zero_points provided
+  // Row 0 data: [-8,-7,-6,-5,...] repeated
+  // Packed (add offset 8): [0,1,2,3,...] repeated
+  // Row 0 scales: [1.0, 2.0, 1.0] (indices 0,1,2 from [1,2,1,2,1,2])
+  // CUDA output: [0*1, 1*1, 2*1, 3*1, ...] [0*2, 1*2, 2*2, 3*2, ...] [0*1, 1*1, 2*1, 3*1, ...]
+  //            = [0, 1, 2, 3, ...] [0, 2, 4, 6, ...] [0, 1, 2, 3, ...]
+  std::vector<int> data = {
+      -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5,
+      -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5,
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4,
+      7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4, 7, 6, 5, 4};
+
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {0};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {};
+  std::vector<float> output = {
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+      0, 2, 4, 6, 0, 2, 4, 6, 0, 2, 4, 6, 0, 2, 4, 6,
+      8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8_4Bits) {
+  Test_GatherAxis_NoPading_4bit<uint8_t, float, int32_t>();
+  Test_GatherAxis_NoPading_4bit<uint8_t, MLFloat16, int32_t>();
+  Test_GatherAxis_NoPading_4bit<uint8_t, float, int64_t>();
+  Test_GatherAxis_NoPading_4bit<uint8_t, MLFloat16, int64_t>();
+}
+
+template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis_NoPading_8bit() {
   std::vector<int> data = {
       127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112,
