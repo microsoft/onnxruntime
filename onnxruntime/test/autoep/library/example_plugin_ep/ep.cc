@@ -381,7 +381,7 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                          size_t num_node_compute_infos) noexcept {
   (void)this_ptr;
   for (size_t i = 0; i < num_node_compute_infos; i++) {
-    delete node_compute_infos[i];
+    delete static_cast<ExampleNodeComputeInfo*>(node_compute_infos[i]);
   }
 }
 
@@ -399,7 +399,7 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
       std::vector<std::string> value_names;
       value_names.reserve(value_infos.size());
 
-      for (const auto vi : value_infos) {
+      for (const auto& vi : value_infos) {
         value_names.push_back(vi.GetName());
       }
 

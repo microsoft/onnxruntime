@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include <filesystem>
 // #include <absl/base/config.h>
 #include <gmock/gmock.h>
@@ -20,6 +17,7 @@
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -178,7 +176,9 @@ TEST(AutoEpSelection, CpuEP) {
 TEST(AutoEpSelection, CudaEP) {
   Ort::KeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
-  RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda", provider_options);
+  const auto cuda_ep_lib_path =
+      std::filesystem::path{GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"))};
+  RunBasicTest(kCudaExecutionProvider, cuda_ep_lib_path, provider_options);
 }
 #endif
 
@@ -512,5 +512,3 @@ TEST(AutoEpSelection, PolicyDelegateReturnsError) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32
