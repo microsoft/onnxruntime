@@ -6303,8 +6303,5 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
   test.Run();
 }
 
-
-
-
 }  // namespace test
 }  // namespace onnxruntime
