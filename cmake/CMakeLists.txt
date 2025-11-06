@@ -1656,9 +1656,25 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   endif()
 endif()
 
-#Now the 'onnxruntime_EXTERNAL_LIBRARIES' variable should be sealed. It will be used in onnxruntime.cmake which will be included in the next.
-#The order of the following targets matters. Right depends on left. If target A appears before target B. Then A.cmake can not use variables defined in B.cmake.
-set(ONNXRUNTIME_CMAKE_FILES onnxruntime_flatbuffers onnxruntime_common onnxruntime_mlas onnxruntime_graph onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME})
+# From this point on, onnxruntime_EXTERNAL_LIBRARIES should be no longer be modified. It will be used in
+# onnxruntime.cmake which will be included next.
+
+# The order of the CMake file names (which exclude the ".cmake" suffix) in ONNXRUNTIME_CMAKE_FILES matters. Later CMake
+# files may depend on earlier ones but earlier ones cannot depend on later ones. For example, if A appears before B,
+# then A.cmake cannot use variables defined in B.cmake.
+set(ONNXRUNTIME_CMAKE_FILES
+    onnxruntime_flatbuffers
+    onnxruntime_common
+    onnxruntime_mlas
+    onnxruntime_graph
+    onnxruntime_lora
+    onnxruntime_framework
+    onnxruntime_util
+    onnxruntime_providers
+    onnxruntime_optimizer
+    onnxruntime_session
+    ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME}
+    )
 
 if (onnxruntime_USE_WINML)
   # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a

@@ -1775,24 +1775,27 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
-} provider_host_;
+} g_provider_host;
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
 struct ProviderSharedLibrary {
-  void Ensure() {
-    if (handle_)
-      return;
+  Status Initialize() {
+    if (handle_) {
+      return Status::OK();
+    }
 
     auto full_path = Env::Default().GetRuntimePath() +
                      PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
-    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
+    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
-    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
 
-    PProvider_SetHost(&provider_host_);
+    PProvider_SetHost(&g_provider_host);
+
+    return Status::OK();
   }
 
   void Unload() {
@@ -1819,7 +1822,7 @@ struct ProviderSharedLibrary {
 static ProviderSharedLibrary s_library_shared;
 
 bool InitProvidersSharedLibrary() try {
-  s_library_shared.Ensure();
+  ORT_THROW_IF_ERROR(s_library_shared.Initialize());
   return true;
 } catch (const std::exception&) {
   return false;
@@ -1841,7 +1844,7 @@ Status ProviderLibrary::Load() {
   try {
     std::lock_guard<std::mutex> lock{mutex_};
     if (!provider_) {
-      s_library_shared.Ensure();
+      ORT_RETURN_IF_ERROR(s_library_shared.Initialize());
 
       if (absolute_) {
         // If filename_ is not absolute it should not be loaded.
