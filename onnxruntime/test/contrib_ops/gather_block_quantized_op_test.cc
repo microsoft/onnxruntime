@@ -701,6 +701,10 @@ TEST(GatherBlockQuantizedOpTest, GatherAxisWithZeroPointsNoPading) {
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int32_t>();
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, float, int64_t>();
   Test_GatherAxis_WithZeroPoints_NoPading<Int4x2, MLFloat16, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int32_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, float, int64_t>();
+  Test_GatherAxis_WithZeroPoints_NoPading<UInt4x2, MLFloat16, int64_t>();
 }
 
 template <typename T1, typename T2, typename Tind>
@@ -740,8 +744,6 @@ TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8) {
   Test_GatherAxis_NoPading_8bit<uint8_t, float, int64_t>();
   Test_GatherAxis_NoPading_8bit<uint8_t, MLFloat16, int64_t>();
 }
-
-
 
 }  // namespace test
 }  // namespace onnxruntime
