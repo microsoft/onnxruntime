@@ -3692,11 +3692,28 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         if (!hasNInputShapes(ctx, 3)) {
           return;
         }
-        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        const TensorShapeProto& original_data_shape = ctx.getInputType(0)->tensor_type().shape();
         const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
         const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
 
+        bool uint8_storage = (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8);
+
+        TensorShapeProto data_shape = original_data_shape;
         int r = data_shape.dim_size();
+        if (uint8_storage && (r == scales_shape.dim_size() + 1)) {
+          TensorShapeProto reshaped_data_shape;
+          for (int i = 0; i < r - 2; ++i) {
+            *reshaped_data_shape.add_dim() = data_shape.dim(i);
+          }
+          // merge the last two dimensions
+          if (!data_shape.dim(r - 2).has_dim_value() || !data_shape.dim(r - 1).has_dim_value()) {
+            fail_shape_inference("data shape's last two dimensions must have dim value to be merged");
+          }
+          reshaped_data_shape.add_dim()->set_dim_value(data_shape.dim(r - 2).dim_value() * data_shape.dim(r - 1).dim_value());
+          data_shape = reshaped_data_shape;
+          r -= 1;
+        }
+
         if (r <= 1) {
           fail_shape_inference("data tensor must have rank > 1");
         }
@@ -3719,7 +3736,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
 
-        if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
+        if (uint8_storage) {
           if (gather_axis != 0) {
             fail_shape_inference("gather_axis must be 0, for uint8 data");
           }

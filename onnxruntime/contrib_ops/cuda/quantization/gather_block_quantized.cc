@@ -63,8 +63,25 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);
 
-  auto data_shape = data->Shape().GetDims();
-  int64_t data_rank = data->Shape().NumDimensions();
+  auto data_tensor_shape = data->Shape();
+  int64_t data_rank = static_cast<int64_t>(data_tensor_shape.NumDimensions());
+  int64_t scales_rank = static_cast<int64_t>(scales->Shape().NumDimensions());
+  if (std::is_same<T1, uint8_t>::value && data_rank != scales_rank) {
+    ORT_ENFORCE(data_rank == scales_rank + 1, "For uint8_t data type, data rank must be equal to scales rank + 1 if they differ.");
+    // collapse last two dimensions of data
+    auto original_data_shape = data_tensor_shape.GetDims();
+
+    TensorShapeVector new_data_shape;
+    new_data_shape.reserve(data_rank - 1);
+    for (int64_t i = 0; i < data_rank - 1; ++i) {
+      new_data_shape.push_back(original_data_shape[i]);
+    }
+    new_data_shape.back() *= original_data_shape.back();
+
+    data_tensor_shape = TensorShape(new_data_shape);
+    data_rank -= 1;
+  }
+  auto data_shape = data_tensor_shape.GetDims();
 
   auto indices_shape = indices->Shape().GetDims();
   int64_t indices_rank = static_cast<int64_t>(indices->Shape().NumDimensions());

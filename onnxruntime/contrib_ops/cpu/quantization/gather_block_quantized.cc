@@ -68,6 +68,7 @@ class GatherBlockQuantized : public OpKernel {
     const Tensor* scales_tensor;
     const Tensor* zero_points_tensor;
     Tensor* output_tensor;
+    TensorShape data_shape;
     int64_t gather_axis;
     int64_t quantize_axis;
   };
@@ -102,8 +103,25 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
   p.scales_tensor = context->Input<Tensor>(2);
   p.zero_points_tensor = context->Input<Tensor>(3);
 
-  const auto& data_shape = p.data_tensor->Shape();
-  const auto data_rank = data_shape.NumDimensions();
+  p.data_shape = p.data_tensor->Shape();
+  auto data_rank = static_cast<int64_t>(p.data_shape.NumDimensions());
+  auto scales_rank = static_cast<int64_t>(p.scales_tensor->Shape().NumDimensions());
+  if (std::is_same<T1, uint8_t>::value && data_rank != scales_rank) {
+    ORT_ENFORCE(data_rank == scales_rank + 1, "For uint8_t data type, data rank must be equal to scales rank + 1 if they differ.");
+    // collapse last two dimensions of data
+    auto original_data_shape = p.data_shape.GetDims();
+
+    TensorShapeVector new_data_shape;
+    new_data_shape.reserve(data_rank - 1);
+    for (int64_t i = 0; i < static_cast<int64_t>(data_rank) - 1; ++i) {
+      new_data_shape.push_back(original_data_shape[i]);
+    }
+    new_data_shape.back() *= original_data_shape.back();
+
+    p.data_shape = TensorShape(new_data_shape);
+    data_rank -= 1;
+  }
+
   p.gather_axis = HandleNegativeAxis(gather_axis_, narrow<int64_t>(data_rank));
 
   p.quantize_axis = HandleNegativeAxis(quantize_axis_, narrow<int64_t>(data_rank));
@@ -122,13 +140,13 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
   // get output tensor
   // replace the dimension for p.gather_axis with the shape from the indices
   for (int64_t i = 0; i < p.gather_axis; ++i)
-    shape.push_back(data_shape[narrow<size_t>(i)]);
+    shape.push_back(p.data_shape[narrow<size_t>(i)]);
 
   for (const auto dim : indices_shape.GetDims())
     shape.push_back(dim);
 
   for (int64_t i = p.gather_axis + 1; i < static_cast<int64_t>(data_rank); ++i)
-    shape.push_back(data_shape[narrow<size_t>(i)]);
+    shape.push_back(p.data_shape[narrow<size_t>(i)]);
 
   // When bits==4 and data is stored as uint8_t, each element has two int4 values.
   // The shape in the onnx model reflects that by having the last dimension be half the number of values.
@@ -149,12 +167,12 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
 
   // validate quantization parameters
   const auto& scales_shape = p.scales_tensor->Shape();
-  ORT_RETURN_IF_NOT(data_shape.NumDimensions() == scales_shape.NumDimensions(),
+  ORT_RETURN_IF_NOT(p.data_shape.NumDimensions() == scales_shape.NumDimensions(),
                     "data and scales must have the same rank.");
-  for (size_t i = 0; i < data_shape.NumDimensions(); ++i) {
+  for (size_t i = 0; i < p.data_shape.NumDimensions(); ++i) {
     ORT_RETURN_IF_NOT(i == static_cast<size_t>(p.quantize_axis)
-                          ? (data_shape[i] * components + block_size_ - 1) / block_size_ == scales_shape[i]
-                          : data_shape[i] == scales_shape[i],
+                          ? (p.data_shape[i] * components + block_size_ - 1) / block_size_ == scales_shape[i]
+                          : p.data_shape[i] == scales_shape[i],
                       "data and scales do not match shapes.");
   }
 
@@ -298,7 +316,6 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
   int64_t components = std::is_same_v<T1, uint8_t> ? (8 / static_cast<int>(bits_)) : 1;
-  const auto& data_shape = p.data_tensor->Shape();
   // re-shape the data tensor to [gather_M, gather_axis_dim, gather_block]
   // re-shape the indices tensor to [gather_N]
   // re-shape the output tensor to [gather_M, gather_N, gather_block]
@@ -307,9 +324,9 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   //  2> block is picked from data based on value from indices: axis_i = indices[blk_i % gather_N],
   //  3> get the corresponding block in data tensor: data_blk = data[blk_i / gather_N, axis_i, :],
   //  4> pick the element from the block: value_i = data_blk[blk_ele_i]
-  const int64_t gather_block = data_shape.SizeFromDimension(SafeInt<size_t>(p.gather_axis) + 1) * components;
-  const int64_t gather_axis_dim = data_shape[narrow<size_t>(p.gather_axis)];
-  const int64_t gather_M = data_shape.SizeToDimension(narrow<size_t>(p.gather_axis));
+  const int64_t gather_block = p.data_shape.SizeFromDimension(SafeInt<size_t>(p.gather_axis) + 1) * components;
+  const int64_t gather_axis_dim = p.data_shape[narrow<size_t>(p.gather_axis)];
+  const int64_t gather_M = p.data_shape.SizeToDimension(narrow<size_t>(p.gather_axis));
   const int64_t gather_N = p.indices_tensor->Shape().Size();
   // re-shape the data tensor to [quantize_M, quantize_axis_dim, quantize_N]
   // For an index i in the output tensor:
@@ -321,8 +338,8 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   //      data_i % (quantize_axis_dim * quantize_N) / quantize_N,
   //      data_i % quantize_N)
   //  4> get scale index: (x, y / block_size_, z)
-  const int64_t quantize_axis_dim = data_shape[narrow<size_t>(p.quantize_axis)] * components;
-  const int64_t quantize_N = data_shape.SizeFromDimension(SafeInt<size_t>(p.quantize_axis) + 1);
+  const int64_t quantize_axis_dim = p.data_shape[narrow<size_t>(p.quantize_axis)] * components;
+  const int64_t quantize_N = p.data_shape.SizeFromDimension(SafeInt<size_t>(p.quantize_axis) + 1);
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   const auto* data_ptr = p.data_tensor->template Data<T1>();
