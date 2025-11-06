@@ -42,6 +42,11 @@ variables:
       value: $(Agent.TempDirectory)\v13.0
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: $(Agent.TempDirectory)\v12.8
+  - name: cmake_cuda_arch
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: 75-real;80-real;86-real;89-real;90-real;120-real;120-virtual
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: 52-real;61-real;75-real;86-real;89-real;120-real;120-virtual
 
 resources:
   repositories:
@@ -102,7 +107,7 @@ extends:
           msbuildPlatform: x64
           packageName: x64-cuda
           CudaVersion: ${{ parameters.CudaVersion }}
-          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.cmake_cuda_arch }}"
           runTests: false
           buildJava: false
           java_artifact_id: onnxruntime_gpu

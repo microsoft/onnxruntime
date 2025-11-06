@@ -48,6 +48,15 @@ stages:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
             use_tensorrt: True
 
+      - template: py-linux-gpu-stage.yml
+        parameters:
+            arch: 'x86_64'
+            machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            cuda_version: ${{ parameters.cuda_version }}
+            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+
     - ${{ if eq(parameters.cuda_version, '13.0') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
         - template: py-win-gpu-stage.yml
@@ -55,14 +64,14 @@ stages:
             PYTHON_VERSION: ${{ python_version }}
             EP_NAME: gpu
             CudaVersion: ${{ parameters.cuda_version }}
-            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;86-real;89-real;90-virtual"
+            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;120-real;120-virtual"
             use_tensorrt: True
 
-    - template: py-linux-gpu-stage.yml
-      parameters:
-          arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
-          extra_build_arg: ${{ parameters.build_py_parameters }}
-          cmake_build_type: ${{ parameters.cmake_build_type }}
-          cuda_version: ${{ parameters.cuda_version }}
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+      - template: py-linux-gpu-stage.yml
+        parameters:
+            arch: 'x86_64'
+            machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            cuda_version: ${{ parameters.cuda_version }}
+            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251017.1
