@@ -18,7 +18,7 @@ PYTHON_EXES=(
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
-while getopts "d:p:x:c:e" parameter_Option
+while getopts "d:p:x:c:e:v:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU|WEBGPU|CPU|NPU.
@@ -35,7 +35,8 @@ p)
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 e) ENABLE_CACHE=true;;
-*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
+v) CUDA_VERSION=${OPTARG};;
+*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-e (enable_cache)] [-v <cuda_version>]"
    exit 1;;
 esac
 done
@@ -81,6 +82,7 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
 
     SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
+    echo "CUDA_VERSION is ${CUDA_VERSION}, and SHORT_CUDA_VERSION is ${SHORT_CUDA_VERSION}"
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
 fi
 if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
