@@ -450,6 +450,9 @@ TEST(ConvFp16Test, Conv2D_MatMul_SplitK_No_Bias) {
   vector<float> X_float32(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
   vector<float> W_float32(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
 
+  vector<MLFloat16> X = FloatsToMLFloat16s(X_float32);
+  vector<MLFloat16> W = FloatsToMLFloat16s(W_float32);
+
   // Calculate expected output values
   vector<float> expected_vals_float32;
   expected_vals_float32.resize(M * N);
@@ -459,15 +462,12 @@ TEST(ConvFp16Test, Conv2D_MatMul_SplitK_No_Bias) {
       for (int k = 0; k < K; ++k) {
         int x_index = k * M + m;
         int w_index = n * K + k;
-        sum += X_float32[x_index] * W_float32[w_index];
+        sum += X[x_index].ToFloat() * W[w_index].ToFloat();
       }
       int y_index = n * M + m;
       expected_vals_float32[y_index] = sum;
     }
   }
-
-  vector<MLFloat16> X = FloatsToMLFloat16s(X_float32);
-  vector<MLFloat16> W = FloatsToMLFloat16s(W_float32);
   vector<MLFloat16> expected_vals = FloatsToMLFloat16s(expected_vals_float32);
 
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false,
@@ -504,6 +504,10 @@ TEST(ConvFp16Test, Conv2D_MatMul_SplitK_With_Bias) {
   vector<float> W_float32(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
   vector<float> B_float32(random.Gaussian<float>(AsSpan(B_shape), 0.0f, 0.25f));
 
+  vector<MLFloat16> X = FloatsToMLFloat16s(X_float32);
+  vector<MLFloat16> W = FloatsToMLFloat16s(W_float32);
+  vector<MLFloat16> B = FloatsToMLFloat16s(B_float32);
+
   // Calculate expected output values
   vector<float> expected_vals_float32;
   expected_vals_float32.resize(M * N);
@@ -513,17 +517,13 @@ TEST(ConvFp16Test, Conv2D_MatMul_SplitK_With_Bias) {
       for (int k = 0; k < K; ++k) {
         int x_index = k * M + m;
         int w_index = n * K + k;
-        sum += X_float32[x_index] * W_float32[w_index];
+        sum += X[x_index].ToFloat() * W[w_index].ToFloat();
       }
-      sum += B_float32[n];
+      sum += B[n].ToFloat();
       int y_index = n * M + m;
       expected_vals_float32[y_index] = sum;
     }
   }
-
-  vector<MLFloat16> X = FloatsToMLFloat16s(X_float32);
-  vector<MLFloat16> W = FloatsToMLFloat16s(W_float32);
-  vector<MLFloat16> B = FloatsToMLFloat16s(B_float32);
   vector<MLFloat16> expected_vals = FloatsToMLFloat16s(expected_vals_float32);
 
   TestConvFp16Op(
