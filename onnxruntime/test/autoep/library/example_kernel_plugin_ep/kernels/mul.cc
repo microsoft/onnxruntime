@@ -41,6 +41,7 @@ void ORT_API_CALL Mul::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
   Ort::KernelContext kernel_context(kernel_ctx);
   (void)this->state_;  // NOTE: Unused in this example.
+  (void)this->info_;   // NOTE: Unused in this example.
 
   try {
     gsl::span<const float> input0;

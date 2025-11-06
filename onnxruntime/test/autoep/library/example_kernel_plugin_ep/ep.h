@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <gsl/span>
-
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
