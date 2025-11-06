@@ -209,7 +209,7 @@ class QDQMatMul(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def reg2quant(self):
         node = self.node
         assert node.op_type == "MatMul"
 
@@ -224,8 +224,8 @@ class QDQMatMul(QDQOperatorBase):
                     tensor_name, default_axis=1, op_type=node.op_type
                 )
                 if is_per_channel:
-                    self.quantizer.quantize_weight_tensor_per_channel(tensor_name, channel_axis)
+                    self.quantizer.reg2quant_weight_tensor_per_channel(tensor_name, channel_axis)
                 else:
-                    self.quantizer.quantize_weight_tensor(tensor_name)
+                    self.quantizer.reg2quant_weight_tensor(tensor_name)
             else:
-                self.quantizer.quantize_activation_tensor(tensor_name)
+                self.quantizer.reg2quant_activation_tensor(tensor_name)
