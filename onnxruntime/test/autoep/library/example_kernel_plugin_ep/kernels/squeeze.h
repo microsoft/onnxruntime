@@ -8,6 +8,7 @@
 struct Squeeze : public OrtKernelImpl {
  private:
   struct PrivateTag {};
+
  public:
   static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel);
 
