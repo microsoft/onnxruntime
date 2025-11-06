@@ -552,6 +552,11 @@ typedef PFN_vkVoidFunction (VKAPI_PTR *PFN_vkGetDeviceProcAddr)(VkDevice device,
 typedef VkResult (VKAPI_PTR *PFN_vkWaitOnFences)(VkDevice device, uint32_t fenceCount, const VkFence* pFences, VkBool32 waitAll, uint64_t timeout);
 typedef VkResult (VKAPI_PTR *PFN_vkResetFences)(VkDevice device, uint32_t fenceCount, const VkFence* pFences);
 
+typedef struct VulkanDeviceParams {
+  VkDevice pVkDevice;
+  PFN_vkGetDeviceProcAddr pVkGetDeviceProcAddr;
+} VulkanDeviceParams;
+
 typedef struct GraphicsInteropParams {
   ExternalSyncPrimitive extSyncPrimitive;
   union DevicePtr {
@@ -559,10 +564,7 @@ typedef struct GraphicsInteropParams {
       struct ID3D12Device* pDevice;
       struct ID3D12CommandQueue* pCommandQueue;
     } DXDeviceParams;
-    struct VulkanDeviceParams {
-      VkDevice pVkDevice;
-      PFN_vkGetDeviceProcAddr pVkGetDeviceProcAddr;
-    } VulkanDeviceParams;
+    VulkanDeviceParams VulkanDeviceParams;
   } DevicePtr;
 
 } GraphicsInteropParams;
@@ -574,10 +576,7 @@ typedef struct FenceInteropParams {
     VkFence pVkFence;
     VkSemaphore pVkSemaphore;
   } FencePtr;
-  struct VulkanDeviceParams {
-    VkDevice pVkDevice;
-    PFN_vkGetDeviceProcAddr pVkGetDeviceProcAddr;
-  } VulkanDeviceParams;
+  VulkanDeviceParams VulkanDeviceParams;
 } FenceInteropParams;
 
 typedef struct SemaphoreEpMap {
