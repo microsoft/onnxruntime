@@ -38,15 +38,15 @@ variables:
   - name: ReleaseVersionSuffix
     value: ''
   - name: win_cuda_home
-    ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: $(Agent.TempDirectory)\v13.0
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: $(Agent.TempDirectory)\v12.8
-  - name: CmakeCudaArchitectures
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: 75-real;80-real;86-real;89-real;90-real;120-real;120-virtual
+      value: $(Agent.TempDirectory)\v13.0
+  - name: CmakeCudaArchitectures
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: 52-real;61-real;75-real;86-real;89-real;90-virtual
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: 75-real;80-real;86-real;89-real;90-real;120-real;120-virtual
 
 resources:
   repositories:
