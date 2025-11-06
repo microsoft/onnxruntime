@@ -14,11 +14,7 @@
 			blurb:
 				'ONNX Runtime will be used in the Boost Edge AI session at Microsoft Ignite 2024, as well as behind the scenes as an inference runtime in many other sessions. ONNX Runtime, equipped with NPU acceleration, enables developers to efficiently deploy state-of-the-art models on edge devices including mobile phones.',
 			linkarr: [
-				{ name: 'Microsoft Ignite Page', link: 'https://ignite.microsoft.com/en-US/home' },
-				{
-					name: 'Boost Edge AI (IRL Session)',
-					link: 'https://ignite.microsoft.com/en-US/sessions/THR602?source=sessions'
-				}
+				{ name: 'Microsoft Ignite Page', link: 'https://ignite.microsoft.com/en-US/home' }
 			],
 			image: ignite2024,
 			imagealt:
