@@ -10,9 +10,11 @@
 #include <set>
 #include <list>
 #include <type_traits>
+#include <core/framework/allocator.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
@@ -225,8 +227,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    Ort::CUDAProviderOptions cuda_options;
 
+    Ort::CUDAProviderOptions cuda_options;
     const char* config_val = nullptr;
     switch (performance_test_config.run_config.cudnn_conv_algo) {
       case 0:
@@ -255,6 +257,24 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       provider_options["user_compute_stream"] = stream_str;
     }
     cuda_options.Update(provider_options);
+
+    if (performance_test_config.run_config.cuda_mempool_arena_config) {
+      // Enable and configure cuda_mempool arena
+      const size_t release_threshold =
+          static_cast<size_t>(std::atoll(performance_test_config.run_config.cuda_mempool_arena_config->release_threshold.c_str()));
+      const size_t bytes_to_keep_on_shrink =
+          static_cast<size_t>(std::atoll(performance_test_config.run_config.cuda_mempool_arena_config->bytes_to_keep.c_str()));
+      // Create a map of properties for the arena configuration
+      std::unordered_map<std::string, size_t> arena_config_map = {
+          {"use_cuda_mempool", 1U},
+          {"cuda_mempool_bytes_to_keep_on_shrink", bytes_to_keep_on_shrink},
+          {"cuda_mempool_release_threshold", release_threshold},
+      };
+      // Must be kept alive while session is alive
+      Ort::ArenaCfg cuda_arena_cfg(arena_config_map);
+      cuda_mempool_arena_cfg_ = std::move(cuda_arena_cfg);
+      (*cuda_options).default_memory_arena_cfg = cuda_mempool_arena_cfg_;
+    }
 
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else

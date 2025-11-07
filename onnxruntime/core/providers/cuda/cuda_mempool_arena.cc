@@ -214,13 +214,17 @@ Status CudaMempoolArena::Shrink() {
   // Trim the pool; live allocations are not affected.
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemPoolTrimTo(pool_, bytes_to_keep_on_shrink_)));
 
+  size_t current_in_use = 0;
+  ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaMemPoolGetAttribute(pool_, cudaMemPoolAttrUsedMemCurrent,
+                                                            &current_in_use)));
+
   // Query current reserved size. cudaMemPoolAttrReservedMemCurrent
   size_t reserved_size = 0;
   if (CUDA_CALL(cudaMemPoolGetAttribute(pool_, cudaMemPoolAttrReservedMemCurrent,
                                         &reserved_size))
           .IsOK()) {
-    LOGS(*logger_, INFO) << "CudaMempoolArena::Shrink: pool reserved size after trim: "
-                         << reserved_size << " bytes.";
+    LOGS(*logger_, INFO) << "CudaMempoolArena::Shrink: pool current_in_use: " << current_in_use
+                         << " reserved size after trim : " << reserved_size << " bytes.";
   } else {
     LOGS(*logger_, INFO) << "CudaMempoolArena pool has been shrunk; unable to query reserved size.";
   }
