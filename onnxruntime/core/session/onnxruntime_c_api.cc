@@ -4397,11 +4397,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::SessionGetMemoryInfoForOutputs,
     &OrtApis::SessionGetEpDeviceForInputs,
 
-    &OrtApis::SetupGraphicsInteropContextForEpDevice,
     &OrtApis::CreateSyncStreamForEpDevice,
-    &OrtApis::GetOrtFenceForGraphicsInterop,
-    &OrtApis::InteropEpWait,
-    &OrtApis::InteropEpSignal,
     &OrtApis::SyncStream_GetHandle,
     &OrtApis::ReleaseSyncStream,
 
@@ -4411,6 +4407,11 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::GetModelCompatibilityForEpDevices,
     &OrtApis::CreateExternalInitializerInfo,
     &OrtApis::TensorTypeAndShape_HasShape,
+    
+    &OrtApis::SetupGraphicsInteropContextForEpDevice,
+    &OrtApis::GetOrtFenceForGraphicsInterop,
+    &OrtApis::InteropEpWait,
+    &OrtApis::InteropEpSignal,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

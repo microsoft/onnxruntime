@@ -738,16 +738,9 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForInputs, _In_ const OrtSession* session,
                     _Out_writes_(num_inputs) const OrtEpDevice** inputs_ep_devices,
                     _In_ size_t num_inputs);
 
-ORT_API_STATUS_IMPL(SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device,
-                    _In_ const struct GraphicsInteropParams* graphicsInteropParams);
-
 ORT_API_STATUS_IMPL(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** stream);
-
-ORT_API_STATUS_IMPL(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
-ORT_API_STATUS_IMPL(InteropEpWait, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
-ORT_API_STATUS_IMPL(InteropEpSignal, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
 ORT_API(void*, SyncStream_GetHandle, _In_ OrtSyncStream* stream);
 
@@ -758,4 +751,11 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
+
+ORT_API_STATUS_IMPL(SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device, 
+                    _In_ const struct GraphicsInteropParams* graphicsInteropParams);
+
+ORT_API_STATUS_IMPL(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
+ORT_API_STATUS_IMPL(InteropEpWait, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+ORT_API_STATUS_IMPL(InteropEpSignal, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 }  // namespace OrtApis

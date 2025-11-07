@@ -443,9 +443,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetEpDeviceForInputs;
 
         public IntPtr CreateSyncStreamForEpDevice;
-        public IntPtr GetOrtFenceForGraphicsInterop;
-        public IntPtr InteropEpWait;
-        public IntPtr InteropEpSignal;
         public IntPtr SyncStream_GetHandle;
         public IntPtr ReleaseSyncStream;
 
@@ -454,6 +451,10 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Graph_GetModelMetadata;
         public IntPtr GetModelCompatibilityForEpDevices;
         public IntPtr CreateExternalInitializerInfo;
+        
+        public IntPtr GetOrtFenceForGraphicsInterop;
+        public IntPtr InteropEpWait;
+        public IntPtr InteropEpSignal;
     }
 
     internal static class NativeMethods
@@ -850,21 +851,6 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
 
-            OrtGetOrtFenceForGraphicsInterop =
-                (DOrtGetOrtFenceForGraphicsInterop)Marshal.GetDelegateForFunctionPointer(
-                    api_.GetOrtFenceForGraphicsInterop,
-                    typeof(DOrtGetOrtFenceForGraphicsInterop));
-
-            OrtInteropEpWait =
-                (DOrtInteropEpWait)Marshal.GetDelegateForFunctionPointer(
-                    api_.InteropEpWait,
-                    typeof(DOrtInteropEpWait));
-
-            OrtInteropEpSignal =
-                (DOrtInteropEpSignal)Marshal.GetDelegateForFunctionPointer(
-                    api_.InteropEpSignal,
-                    typeof(DOrtInteropEpSignal));
-
             OrtSyncStream_GetHandle =
                 (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
                     api_.SyncStream_GetHandle,
@@ -879,6 +865,21 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCopyTensors)Marshal.GetDelegateForFunctionPointer(
                     api_.CopyTensors,
                     typeof(DOrtCopyTensors));
+
+            OrtGetOrtFenceForGraphicsInterop =
+                (DOrtGetOrtFenceForGraphicsInterop)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetOrtFenceForGraphicsInterop,
+                    typeof(DOrtGetOrtFenceForGraphicsInterop));
+
+            OrtInteropEpWait =
+                (DOrtInteropEpWait)Marshal.GetDelegateForFunctionPointer(
+                    api_.InteropEpWait,
+                    typeof(DOrtInteropEpWait));
+
+            OrtInteropEpSignal =
+                (DOrtInteropEpSignal)Marshal.GetDelegateForFunctionPointer(
+                    api_.InteropEpSignal,
+                    typeof(DOrtInteropEpSignal));
         }
 
         internal class NativeLib
