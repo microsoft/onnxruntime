@@ -1308,24 +1308,24 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
 
   // Simple but realistic test data
   std::vector<float> q = {
-      0.5f, 0.8f,   // batch 0, head 0, token 0
-      0.3f, 0.9f,   // batch 0, head 0, token 1
-      0.7f, 0.4f,   // batch 0, head 1, token 0
-      0.6f, 0.2f    // batch 0, head 1, token 1
+      0.5f, 0.8f,  // batch 0, head 0, token 0
+      0.3f, 0.9f,  // batch 0, head 0, token 1
+      0.7f, 0.4f,  // batch 0, head 1, token 0
+      0.6f, 0.2f   // batch 0, head 1, token 1
   };
 
   std::vector<float> k = {
-      0.1f, 0.7f,   // batch 0, head 0, token 0
-      0.4f, 0.6f,   // batch 0, head 0, token 1
-      0.8f, 0.3f,   // batch 0, head 1, token 0
-      0.2f, 0.9f    // batch 0, head 1, token 1
+      0.1f, 0.7f,  // batch 0, head 0, token 0
+      0.4f, 0.6f,  // batch 0, head 0, token 1
+      0.8f, 0.3f,  // batch 0, head 1, token 0
+      0.2f, 0.9f   // batch 0, head 1, token 1
   };
 
   std::vector<float> v = {
-      1.0f, 2.0f,   // batch 0, head 0, token 0
-      3.0f, 4.0f,   // batch 0, head 0, token 1
-      0.5f, 1.5f,   // batch 0, head 1, token 0
-      2.5f, 3.5f    // batch 0, head 1, token 1
+      1.0f, 2.0f,  // batch 0, head 0, token 0
+      3.0f, 4.0f,  // batch 0, head 0, token 1
+      0.5f, 1.5f,  // batch 0, head 1, token 0
+      2.5f, 3.5f   // batch 0, head 1, token 1
   };
 
   ASSERT_EQ(q.size(), batch_size * q_num_heads * q_sequence_length * head_size);
