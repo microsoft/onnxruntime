@@ -84,7 +84,7 @@ void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_o
 // Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   // Create session with example plugin EP
@@ -99,7 +99,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
 // Uses the PREFER_CPU policy to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
 
   {
     // PREFER_CPU pick our example EP over ORT CPU EP. TODO: Actually assert this.
@@ -111,7 +111,7 @@ TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
 
 TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   // Create session with example plugin EP
@@ -126,7 +126,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
 // This test uses the OrtCompileApi but could also be done by setting the appropriate session option configs.
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   {
@@ -156,7 +156,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
 // Generate an EPContext model with a plugin EP that uses a virtual GPU.
 TEST(OrtEpLibrary, PluginEp_VirtGpu_GenEpContextModel) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep);
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   {
@@ -192,7 +192,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
   std::filesystem::remove(expected_output_model_file);
 
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
   std::unordered_map<std::string, std::string> ep_options;
 
@@ -241,7 +241,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
 
 TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   RegisteredEpDeviceUniquePtr example_kernel_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_kernel_ep_info, example_kernel_ep);
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_kernel_ep_info, example_kernel_ep));
   Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
 
   // Create session with example kernel-based plugin EP
