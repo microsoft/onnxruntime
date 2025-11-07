@@ -23,23 +23,13 @@ $MAIN {
   let token_size = uniforms.hidden_size + 2u * uniforms.kv_hidden_size;
   let base_offset = batch_idx * uniforms.sequence_length * token_size + seq_idx * token_size;
 
-  // Calculate position_id (needed for rotary embedding)
-  let seqlen_i = seqlens.getByOffset(batch_idx);
-  let seqlen = u32(seqlen_i);
-  var position_id: u32 = 0u;
-  if (uniforms.first_prompt_flag == 1u) {
-    let total_seqlen = seqlen + 1u;
-    position_id = select(1u, seq_idx, seq_idx < total_seqlen);
-  } else if (uniforms.subsequent_prompt_flag == 1u) {
+  if (in_head_idx < uniforms.half_rotary_dim) {
+    // Calculate position_id (needed for rotary embedding)
+    let seqlen_i = seqlens.getByOffset(batch_idx);
+    let seqlen = u32(seqlen_i);
     let total_seqlen = seqlen + 1u;
     let past_seqlen = total_seqlen - uniforms.sequence_length;
-    let cand = past_seqlen + seq_idx;
-    position_id = select(1u, cand, cand < total_seqlen);
-  } else {
-    position_id = seqlen;
-  }
-
-  if (in_head_idx < uniforms.half_rotary_dim) {
+    let position_id = past_seqlen + seq_idx;
     // Process a rotary pair (i, j)
     let cos_v = cos_cache.getByIndices(vec2<u32>(position_id, in_head_idx));
     let sin_v = sin_cache.getByIndices(vec2<u32>(position_id, in_head_idx));

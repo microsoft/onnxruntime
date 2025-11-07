@@ -100,7 +100,6 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
                    {key, ProgramTensorMetadataDependency::Rank},
                    {val, ProgramTensorMetadataDependency::Rank}})
       .AddUniformVariables({
-          {static_cast<uint32_t>(params.batch_size_)},
           {static_cast<uint32_t>(params.sequence_length_)},
           {static_cast<uint32_t>(params.hidden_size_)},
           {static_cast<uint32_t>(params.kv_hidden_size_)},
@@ -108,8 +107,6 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
           {static_cast<uint32_t>(params.kv_num_heads_)},
           {static_cast<uint32_t>(head_size)},
           {half_rotary_embedding_dim},
-          {static_cast<uint32_t>(params.is_first_prompt_ ? 1 : 0)},
-          {static_cast<uint32_t>(params.is_subsequent_prompt_ ? 1 : 0)},
           {static_cast<uint32_t>(dispatch_size)},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);

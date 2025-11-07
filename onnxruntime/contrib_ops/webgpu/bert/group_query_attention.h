@@ -52,7 +52,6 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"sequence_length", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
       {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
@@ -60,8 +59,6 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
       {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
-      {"first_prompt_flag", ProgramUniformVariableDataType::Uint32},
-      {"subsequent_prompt_flag", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 
  private:
