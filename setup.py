@@ -54,7 +54,9 @@ if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
+cuda_major_version = None
 is_cuda_version_12 = False
+is_cuda_version_13 = False
 rocm_version = None
 is_migraphx = False
 is_openvino = False
@@ -62,10 +64,16 @@ is_qnn = False
 qnn_version = None
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
-    # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
     if cuda_version:
-        is_cuda_version_12 = cuda_version.startswith("12.")
+        try:
+            cuda_major_version = int(cuda_version.split(".")[0])
+            is_cuda_version_12 = cuda_major_version == 12
+            is_cuda_version_13 = cuda_major_version == 13
+        except (ValueError, IndexError):
+            # Fallback to string checks if parsing fails
+            is_cuda_version_12 = cuda_version.startswith("12.")
+            is_cuda_version_13 = cuda_version.startswith("13.")
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
     package_name = "onnxruntime-migraphx"
@@ -222,20 +230,26 @@ try:
                     "libcuda.so.1",
                     "libcublas.so.11",
                     "libcublas.so.12",
+                    "libcublas.so.13",
                     "libcublasLt.so.11",
                     "libcublasLt.so.12",
+                    "libcublasLt.so.13",
                     "libcudart.so.11.0",
                     "libcudart.so.12",
+                    "libcudart.so.13",
                     "libcudnn.so.8",
                     "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
                     "libnvJitLink.so.12",
+                    "libnvJitLink.so.13",
                     "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
                     "libnvrtc.so.12",
+                    "libnvrtc.so.13",
                     "libnvrtc-builtins.so.11",
                     "libnvrtc-builtins.so.12",
+                    "libnvrtc-builtins.so.13",
                 ]
 
                 rocm_dependencies = [
@@ -783,8 +797,15 @@ with open(requirements_path) as f:
 
 # Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
 if package_name == "onnxruntime-trt-rtx":
-    install_requires.append("nvidia-cuda-runtime-cu12~=12.0")
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
+    # Determine CUDA major version for correct runtime package
+    cuda_runtime_major = "12"  # Default to CUDA 12
+    if cuda_version:
+        try:
+            cuda_runtime_major = cuda_version.split(".")[0]
+        except (ValueError, IndexError):
+            pass
+    install_requires.append(f"nvidia-cuda-runtime-cu{cuda_runtime_major}~={cuda_runtime_major}.0")
 
 
 def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
@@ -823,18 +844,31 @@ def save_build_and_package_info(package_name, version_number, cuda_version, rocm
 save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version)
 
 extras_require = {}
-if package_name == "onnxruntime-gpu" and is_cuda_version_12:
-    extras_require = {
-        "cuda": [
-            "nvidia-cuda-nvrtc-cu12~=12.0",
-            "nvidia-cuda-runtime-cu12~=12.0",
-            "nvidia-cufft-cu12~=11.0",
-            "nvidia-curand-cu12~=10.0",
-        ],
-        "cudnn": [
-            "nvidia-cudnn-cu12~=9.0",
-        ],
-    }
+if package_name == "onnxruntime-gpu":
+    if is_cuda_version_12:
+        extras_require = {
+            "cuda": [
+                "nvidia-cuda-nvrtc-cu12~=12.0",
+                "nvidia-cuda-runtime-cu12~=12.0",
+                "nvidia-cufft-cu12~=11.0",
+                "nvidia-curand-cu12~=10.0",
+            ],
+            "cudnn": [
+                "nvidia-cudnn-cu12~=9.0",
+            ],
+        }
+    elif is_cuda_version_13:
+        extras_require = {
+            "cuda": [
+                "nvidia-cuda-nvrtc-cu13~=13.0",
+                "nvidia-cuda-runtime-cu13~=13.0",
+                "nvidia-cufft-cu13~=11.0",
+                "nvidia-curand-cu13~=10.0",
+            ],
+            "cudnn": [
+                "nvidia-cudnn-cu13~=9.0",
+            ],
+        }
 
 setup(
     name=package_name,
