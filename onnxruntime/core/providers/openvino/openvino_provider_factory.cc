@@ -188,6 +188,36 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
 
+static void ParseInnerMap(const nlohmann::json& json_map, ov::AnyMap& inner_map, size_t level = 0) {
+  const size_t max_levels = 8;
+  if (level >= max_levels) {
+    ORT_THROW("ParseInnerMap: load_config can have only up to " + std::to_string(max_levels) +
+        " levels of nested maps. Current level = " + std::to_string(level));
+  }
+
+  if (!json_map.is_object()) {
+    ORT_THROW("ParseInnerMap: Expected an object as input");
+  }
+
+  for (auto& [inner_key, inner_value] : json_map.items()) {
+    if (inner_value.is_string()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<std::string>());
+    } else if (inner_value.is_number_integer()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<int64_t>());
+    } else if (inner_value.is_number_float()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<double>());
+    } else if (inner_value.is_boolean()) {
+      inner_map[inner_key] = ov::Any(inner_value.get<bool>());
+    } else if (inner_value.is_object()) {
+      auto inner_inner_map = ov::AnyMap();
+      ParseInnerMap(inner_value, inner_inner_map, level + 1);
+      inner_map[inner_key] = std::move(inner_inner_map);
+    } else {
+      ORT_THROW("load_config: unsupported JSON value type=" + std::string(inner_value.type_name()) + ", for key=" + inner_key);
+    }
+  }
+}
+
 // Initializes a ProviderInfo struct from a ProviderOptions map and a ConfigOptions map.
 static void ParseProviderInfo(const ProviderOptions& provider_options,
                               const ConfigOptions* config_options,
@@ -267,19 +297,7 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
             ORT_THROW("Invalid JSON structure: Expected an object for device properties.");
           }
 
-          for (auto& [inner_key, inner_value] : value.items()) {
-            if (inner_value.is_string()) {
-              inner_map[inner_key] = inner_value.get<std::string>();
-            } else if (inner_value.is_number_integer()) {
-              inner_map[inner_key] = inner_value.get<int64_t>();
-            } else if (inner_value.is_number_float()) {
-              inner_map[inner_key] = inner_value.get<double>();
-            } else if (inner_value.is_boolean()) {
-              inner_map[inner_key] = inner_value.get<bool>();
-            } else {
-              LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
-            }
-          }
+          ParseInnerMap(value, inner_map);
           target_map[key] = std::move(inner_map);
         }
       } catch (const nlohmann::json::parse_error& e) {
