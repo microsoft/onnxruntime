@@ -3633,8 +3633,8 @@ inline KernelDefBuilder& KernelDefBuilder::SetOutputMemType(size_t output_index,
 }
 
 inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
-                                                             const OrtMLDataType* data_types) {
-  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, &data_types, 1));
+                                                             const OrtMLDataType* data_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, &data_type, 1));
   return *this;
 }
 
@@ -3650,20 +3650,11 @@ inline KernelDef KernelDefBuilder::Build() {
   return KernelDef(kernel_def);
 }
 
-inline KernelRegistry::KernelRegistry(OrtKernelRegistry* p) : detail::Base<OrtKernelRegistry>{p} {
+inline KernelRegistry::KernelRegistry() {
+  ThrowOnError(GetEpApi().CreateKernelRegistry(&p_));
 }
 
-/*static*/
-inline Status KernelRegistry::Create(KernelRegistry& out) {
-  OrtKernelRegistry* registry = nullptr;
-  OrtStatus* status = GetEpApi().CreateKernelRegistry(&registry);
-  if (status != nullptr) {
-    return Status{status};
-  }
-
-  out = KernelRegistry(registry);
-
-  return Status{nullptr};
+inline KernelRegistry::KernelRegistry(OrtKernelRegistry* p) : detail::Base<OrtKernelRegistry>{p} {
 }
 
 inline Status KernelRegistry::AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,

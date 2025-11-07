@@ -3352,17 +3352,14 @@ struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
  * Used by plugin EPs to register definitions for supported kernels.
  */
 struct KernelRegistry : detail::Base<OrtKernelRegistry> {
-  ///< Create an empty object, must be assigned a valid one to be used
-  KernelRegistry() {}
+  ///< Wrapper around OrtEpApi::CreateKernelRegistry
+  KernelRegistry();
 
   ///< Create an empty object, must be assigned a valid one to be used
   explicit KernelRegistry(std::nullptr_t) {}
 
   ///< Take ownership of a pointer created with the C API.
   explicit KernelRegistry(OrtKernelRegistry* ort_kernel_registry);
-
-  ///< Wrapper around OrtEpApi::CreateKernelRegistry that does not throw an exception.
-  static Status Create(KernelRegistry& out);
 
   ///< Wraps KernelRegistry_AddKernel
   Status AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,

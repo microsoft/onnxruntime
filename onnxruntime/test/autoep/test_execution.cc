@@ -246,6 +246,8 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
 
   // Create session with example kernel-based plugin EP
   Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP.
+
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
