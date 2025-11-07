@@ -1250,7 +1250,6 @@ TEST(AttentionTest, AttentionNoPastKeyValue) {
   int v_head_size = 3;           // V.shape[3]
   int past_sequence_length = 0;  // No past state
 
-  // Realistic test data based on existing patterns
   std::vector<float> q = {
       0.548814f, 0.715189f, 0.602763f,  // batch 0, head 0, token 0
       0.423655f, 0.645894f, 0.437587f,  // batch 0, head 0, token 1
@@ -1276,7 +1275,6 @@ TEST(AttentionTest, AttentionNoPastKeyValue) {
   ASSERT_EQ(k.size(), batch_size * kv_num_heads * kv_sequence_length * head_size);
   ASSERT_EQ(v.size(), batch_size * kv_num_heads * kv_sequence_length * v_head_size);
 
-  // Expected output computed by running the attention operation manually
   std::vector<float> expected_y = {
       0.087969f, 0.398663f, 0.232264f,  // batch 0, head 0, token 0
       0.087969f, 0.398663f, 0.232264f,  // batch 0, head 0, token 1
@@ -1332,7 +1330,6 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
   ASSERT_EQ(k.size(), batch_size * kv_num_heads * kv_sequence_length * head_size);
   ASSERT_EQ(v.size(), batch_size * kv_num_heads * kv_sequence_length * v_head_size);
 
-  // Expected output computed by attention mechanism
   std::vector<float> expected_y = {
       2.146067f, 3.146067f,  // batch 0, head 0, token 0
       2.146067f, 3.146067f,  // batch 0, head 0, token 1
