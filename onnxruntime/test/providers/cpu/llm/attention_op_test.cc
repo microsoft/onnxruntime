@@ -1238,9 +1238,7 @@ TEST(AttentionTest, TestAttention4DWithPastAndPresentQkMatmulBias4DMaskCausal) {
   );
 }
 
-// Test for attention when past_key and past_value are nullptr (using AddOptionalInputEdge)
-// This test verifies the updated logic handles the case correctly when no past state is provided.
-// AddOptionalInputEdge creates a true nullptr input to the kernel, testing the nullptr handling logic.
+// Test for attention when past_key and past_value are nullptr.
 TEST(AttentionTest, AttentionNoPastKeyValue) {
   int batch_size = 1;            // Q.shape[0]
   int q_num_heads = 2;           // Q.shape[1]
@@ -1376,38 +1374,6 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
             expected_y, expected_present_key, expected_present_value, std::vector<float>(),
             false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
-}
-
-// Test that explicitly shows AddOptionalInputEdge creates nullptr inputs for past_key and past_value
-// This directly tests the updated logic in the attention kernel for handling nullptr past state
-TEST(AttentionTest, AttentionExplicitNullptrTest) {
-  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
-
-  // Set up simple 1x1x2x2 inputs for minimal test
-  std::vector<float> q_data = {1.0f, 0.0f, 0.0f, 1.0f};      // 1x1x2x2
-  std::vector<float> k_data = {1.0f, 0.0f, 0.0f, 1.0f};      // 1x1x2x2
-  std::vector<float> v_data = {2.0f, 3.0f, 4.0f, 5.0f};      // 1x1x2x2
-  std::vector<float> expected_y = {2.0f, 3.0f, 4.0f, 5.0f};  // 1x1x2x2
-
-  // Add inputs - Q, K, V are provided
-  test.AddInput<float>("Q", {1, 1, 2, 2}, q_data);
-  test.AddInput<float>("K", {1, 1, 2, 2}, k_data);
-  test.AddInput<float>("V", {1, 1, 2, 2}, v_data);
-
-  // Add optional inputs as nullptr using AddOptionalInputEdge
-  // This creates true nullptr pointers that are passed to the kernel
-  test.AddOptionalInputEdge<float>();  // attn_mask -> nullptr
-  test.AddOptionalInputEdge<float>();  // past_key -> nullptr
-  test.AddOptionalInputEdge<float>();  // past_value -> nullptr
-
-  // Add expected output
-  test.AddOutput<float>("Y", {1, 1, 2, 2}, expected_y, false, 0, 1e-4f);
-
-  // Run test with CPU provider only to test the updated logic
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
