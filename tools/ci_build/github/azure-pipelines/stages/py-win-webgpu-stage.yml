@@ -131,6 +131,8 @@ stages:
 
   - stage: Win_py_webgpu_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_webgpu_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+    # Skip this stage for Python 3.14 for now until onnx package support python 3.14.
+    condition: and(succeeded(), ne('${{ parameters.PYTHON_VERSION }}', '3.14'))
     jobs:
     - job: Win_py_webgpu_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
       workspace:
