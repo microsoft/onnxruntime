@@ -281,10 +281,10 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
     // copy the type from query to present key
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+    // ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
     // copy the type from query to present value
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+    // ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
 
     int64_t total_sequence_length_value = 0;
     const auto* total_sequence_length_data = ctx.getInputData(6);
@@ -1237,13 +1237,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present state key with support for format BNSH. When past_key uses same tensor as present_key"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T")
+                "U")
         .Output(2,
                 "present_value",
                 "present state value with support for format BNSH. When past_value uses same tensor as present_value"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T")
+                "U")
         .Output(3,
                 "output_qk",
                 "Values of QK matrix multiplication, either before or after softmax normalization",
