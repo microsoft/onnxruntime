@@ -190,7 +190,7 @@ TEST_F(CudaMempoolArenaTest, ReleaseStreamBuffers_SchedulesFrees) {
     TestCudaStream ort_s(s, mem_info_.device);
 
     InlinedVector<void*> ptrs;
-    for (int i = 0; i < ptrs.capacity(); ++i) {
+    for (size_t i = 0; i < ptrs.capacity(); ++i) {
       void* p = arena_->AllocOnStream(kBytes, &ort_s);
       ASSERT_NE(p, nullptr);
       TouchDevice(p, kBytes, s);
@@ -218,7 +218,7 @@ TEST_F(CudaMempoolArenaTest, Shrink_TrimsPool_And_AllowsFurtherUse) {
   const size_t kBytes = 2 << 20;
 
   InlinedVector<void*> ptrs;
-  for (int i = 0; i < ptrs.capacity(); ++i) {
+  for (size_t i = 0; i < ptrs.capacity(); ++i) {
     void* p = arena_->Alloc(kBytes);
     ASSERT_NE(p, nullptr);
     ASSERT_EQ(::cudaSuccess, ::cudaMemsetAsync(p, 0xEF, kBytes, /*stream=*/0));
@@ -263,7 +263,7 @@ TEST_F(CudaMempoolArenaTest, Destructor_CompletesQueuedFrees_EvenIfStreamDestroy
       TestCudaStream ort_s(s, mem_info_.device);
 
       InlinedVector<void*> ptrs;
-      for (int i = 0; i < ptrs.capacity(); ++i) {
+      for (size_t i = 0; i < ptrs.capacity(); ++i) {
         void* p = alloc->AllocOnStream(kBytes, &ort_s);
         ASSERT_NE(p, nullptr);
         TouchDevice(p, kBytes, s);
