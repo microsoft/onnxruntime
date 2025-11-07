@@ -99,7 +99,7 @@ class IExecutionProvider {
     return Status::OK();
   }
 
-  virtual Status SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue) {
+  virtual Status SetupInteropEpWait(void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(stream);
     auto* sptr_ptr = static_cast<std::shared_ptr<FenceInteropParams>*>(extSemFence);
     std::shared_ptr<FenceInteropParams> interopWaitParamsSptr = *sptr_ptr;
@@ -144,9 +144,8 @@ class IExecutionProvider {
     ORT_UNUSED_PARAMETER(fenceValue);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
   }
-  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue) {
+  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue) {
     ORT_UNUSED_PARAMETER(extSemFence);
-    ORT_UNUSED_PARAMETER(stream);
     ORT_UNUSED_PARAMETER(fenceValue);
 
     const OrtSyncStreamImpl* streamImpl;

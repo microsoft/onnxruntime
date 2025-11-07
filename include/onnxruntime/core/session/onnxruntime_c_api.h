@@ -329,6 +329,7 @@ ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
 ORT_RUNTIME_CLASS(SyncStream);  // Opaque class to create an onnxruntime::Stream.
+ORT_RUNTIME_CLASS(Fence);
 ORT_RUNTIME_CLASS(ExternalInitializerInfo);
 
 #ifdef _MSC_VER
@@ -6563,7 +6564,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(SetupCigContextForEpDevice, _In_ const OrtEpDevice* ep_device,
+  ORT_API2_STATUS(SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device,
                   _In_ const struct GraphicsInteropParams* graphicsInteropParams);
 
   /** \brief Create an OrtSyncStream for the given OrtEpDevice.
@@ -6573,7 +6574,7 @@ struct OrtApi {
    *
    * An error code of ORT_NOT_IMPLEMENTED will be returned if the EP does not support OrtSyncStream.
    *
-   * If SetupCigContextForEpDevice was called previously for this ep_device, the stream will be
+   * If SetupGraphicsInteropContextForEpDevice was called previously for this ep_device, the stream will be
    * created on the CIG context. Otherwise, it will be created on the default context.
    *
    * \param[in] ep_device The OrtEpDevice instance to create the sync stream for.
@@ -6609,7 +6610,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ void** ortFence);
+  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
 
   /**
    * \brief Wait on a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
@@ -6634,7 +6635,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /**
    * \brief Signal a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
@@ -6659,7 +6660,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ void* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /** \brief Get the native handle of the sync stream.
    *

@@ -157,7 +157,7 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
   return Status::OK();
 }
 
-Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, uint64_t fenceValue)
+Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue)
 {
   LOGS_DEFAULT(VERBOSE) << "NvExecutionProvider::SetupInteropEpWait() called.";
 
@@ -165,7 +165,7 @@ Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, 
   cudaExternalSemaphoreWaitParams waitParams = {};
   waitParams.params.fence.value = fenceValue;
   cudaExternalSemaphore_t cSemFence = static_cast<cudaExternalSemaphore_t>(extSemFence);
-  cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
+  cudaStream_t cudaStream = static_cast<cudaStream_t>(Ort::GetApi().SyncStream_GetHandle(stream));
   cudaError_t result = cudaWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
   if(result != cudaSuccess)
   {
@@ -175,11 +175,11 @@ Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, void* stream, 
   return Status::OK();
 }
 
-Status NvExecutionProvider::SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, void* stream, uint64_t fenceValue)
+Status NvExecutionProvider::SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue)
 {
   LOGS_DEFAULT(VERBOSE) << "NvExecutionProvider::SetupInteropEpSignal() called.";
 
-  cudaStream_t cudaStream = static_cast<cudaStream_t>(stream);
+  cudaStream_t cudaStream = static_cast<cudaStream_t>(Ort::GetApi().SyncStream_GetHandle(stream));
 
   // make Graphics API wait for the CUDA kernel to finish
   cudaExternalSemaphoreSignalParams signalParams = {};
