@@ -8,6 +8,8 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
 
+import contextlib
+
 __version__ = "1.24.0"
 __author__ = "Microsoft"
 
@@ -133,21 +135,48 @@ def _get_package_root(package_name: str, directory_name: str | None = None):
     return None
 
 
+def _extract_cuda_major_version(version_str: str) -> str:
+    """Extract CUDA major version from version string (e.g., '12.1' -> '12').
+
+    Args:
+        version_str: CUDA version string to parse
+
+    Returns:
+        Major version as string, or "12" if parsing fails
+    """
+    if not version_str:
+        return "12"
+
+    with contextlib.suppress(AttributeError, IndexError):
+        return version_str.split(".")[0]
+
+    return "12"
+
+
+def _get_cufft_version(cuda_major: str) -> str:
+    """Get cufft library version based on CUDA major version.
+
+    Args:
+        cuda_major: CUDA major version as string (e.g., "12", "13")
+
+    Returns:
+        cufft version as string
+    """
+    # cufft versions: CUDA 12.x -> 11, CUDA 13.x -> 12
+    return "12" if cuda_major == "13" else "11"
+
+
 def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = True):
     # Dynamically determine CUDA major version from build info
-    cuda_major_version = "12"  # Default fallback to CUDA 12
-    if cuda_version:
-        try:
-            cuda_major_version = cuda_version.split(".")[0]
-        except (AttributeError, IndexError):
-            pass  # Use default if parsing fails
+    cuda_major_version = _extract_cuda_major_version(cuda_version)
+    cufft_version = _get_cufft_version(cuda_major_version)
 
     if is_windows:
         # Path is relative to site-packages directory.
         cuda_dll_paths = [
             ("nvidia", "cublas", "bin", f"cublasLt64_{cuda_major_version}.dll"),
             ("nvidia", "cublas", "bin", f"cublas64_{cuda_major_version}.dll"),
-            ("nvidia", "cufft", "bin", "cufft64_11.dll"),
+            ("nvidia", "cufft", "bin", f"cufft64_{cufft_version}.dll"),
             ("nvidia", "cuda_runtime", "bin", f"cudart64_{cuda_major_version}.dll"),
         ]
         cudnn_dll_paths = [
@@ -166,7 +195,7 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
             ("nvidia", "cublas", "lib", f"libcublas.so.{cuda_major_version}"),
             ("nvidia", "cuda_nvrtc", "lib", f"libnvrtc.so.{cuda_major_version}"),
             ("nvidia", "curand", "lib", "libcurand.so.10"),
-            ("nvidia", "cufft", "lib", "libcufft.so.11"),
+            ("nvidia", "cufft", "lib", f"libcufft.so.{cufft_version}"),
             ("nvidia", "cuda_runtime", "lib", f"libcudart.so.{cuda_major_version}"),
         ]
 
@@ -209,12 +238,7 @@ def print_debug_info():
 
     if cuda_version:
         # Print version of installed packages that is related to CUDA or cuDNN DLLs.
-        # Determine CUDA major version to check for correct nvidia packages
-        cuda_major = "12"  # Default
-        try:
-            cuda_major = cuda_version.split(".")[0]
-        except (AttributeError, IndexError):
-            pass
+        cuda_major = _extract_cuda_major_version(cuda_version)
 
         packages = [
             "torch",
@@ -331,19 +355,15 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
         # Check if torch CUDA version matches onnxruntime CUDA version
         torch_cuda_major = None
         if torch_version and "+cu" in torch_version:
-            try:
+            with contextlib.suppress(ValueError, IndexError):
                 # Extract CUDA version from torch (e.g., "2.0.0+cu121" -> 12)
                 cu_part = torch_version.split("+cu")[1]
                 torch_cuda_major = int(cu_part[:2])  # First 2 digits are major version
-            except (ValueError, IndexError):
-                pass
 
         ort_cuda_major = None
         if cuda_version:
-            try:
+            with contextlib.suppress(ValueError, IndexError):
                 ort_cuda_major = int(cuda_version.split(".")[0])
-            except (ValueError, IndexError):
-                pass
 
         is_torch_cuda_compatible = torch_cuda_major == ort_cuda_major if (torch_cuda_major and ort_cuda_major) else False
 

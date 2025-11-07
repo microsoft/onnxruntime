@@ -4,6 +4,7 @@
 # ------------------------------------------------------------------------
 # pylint: disable=C0103
 
+import contextlib
 import datetime
 import logging
 import platform
@@ -801,10 +802,8 @@ if package_name == "onnxruntime-trt-rtx":
     # Determine CUDA major version for correct runtime package
     cuda_runtime_major = "12"  # Default to CUDA 12
     if cuda_version:
-        try:
+        with contextlib.suppress(ValueError, IndexError):
             cuda_runtime_major = cuda_version.split(".")[0]
-        except (ValueError, IndexError):
-            pass
     install_requires.append(f"nvidia-cuda-runtime-cu{cuda_runtime_major}~={cuda_runtime_major}.0")
 
 
