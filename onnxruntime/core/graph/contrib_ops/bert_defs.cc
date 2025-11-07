@@ -1185,13 +1185,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_key",
                "past state key with support for format BNSH. When past_key uses same tensor as present_key"
                "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
-               "T",
+               "U",
                OpSchema::Optional)
         .Input(4,
                "past_value",
                "past state value with support for format BNSH. When past_value uses same tensor as present_value"
                "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
-               "T",
+               "U",
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
@@ -1250,6 +1250,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("U", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3, 3);

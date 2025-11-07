@@ -31,6 +31,7 @@ namespace contrib {
       kCpuExecutionProvider,                                            \
       KernelDefBuilder()                                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("U", DataTypeImpl::GetTensorType<MLFloat16>())\
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()), \
       GroupQueryAttention<T>);
 
@@ -213,10 +214,19 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
 
-  // Compute the attention score and apply the score to V
-  return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
-                        head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
-                        output_qk, seqlens_k, parameters, allocator, context);
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    // Compute the attention score and apply the score to V
+    return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
+                          head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
+                          output_qk, seqlens_k, parameters, allocator, context);
+  } else {
+    // Compute the attention score and apply the score to V
+    return ApplyAttentionMixed(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
+                          head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
+                          output_qk, seqlens_k, parameters, allocator, context);
+  }
+
+
 }
 }  // namespace contrib
 }  // namespace onnxruntime

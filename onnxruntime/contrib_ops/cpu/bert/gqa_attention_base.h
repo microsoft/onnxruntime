@@ -134,6 +134,91 @@ class GQAAttentionBase {
     return Status::OK();
   }
 
+  Status ApplyAttentionMixed(const float* Q,                                 // Q data with shape BxNxSxH
+                            const float* K,                                 // K data with shape BxN_kvxSxH
+                            const float* V,                                 // V data with shape BxN_kvxSxH
+                            const float* head_sink,                         // Head sink for smooth softmax, nullptr if not used
+                            const Tensor* attention_bias,               // Attention bias to add to QxK'
+                            const Tensor* past_key,                     // past K input tensor (if not using past state)
+                            const Tensor* past_value,                   // past V input tensor (if not using past state)
+                            Tensor* output,                             // output tensor
+                            Tensor* present_key,                        // present K output tensor (if separating present KV)
+                            Tensor* present_value,                      // present V output tensor (if separating present KV)
+                            Tensor* output_qk,                          // output QK buffer
+                            const Tensor* seqlens_k,                    // past sequence lengths tensor
+                            GroupQueryAttentionParameters& parameters,  // attention parameters
+                            AllocatorPtr allocator,                     // allocator for temporary tensors
+                            OpKernelContext* context) const {
+    const bool is_prompt = parameters.is_first_prompt;
+    const int batch_size = parameters.batch_size;
+    const int sequence_length = parameters.sequence_length;
+    const int total_sequence_length = parameters.total_sequence_length;
+    const int head_size = parameters.head_size;
+    const int hidden_size = parameters.hidden_size;
+    const bool packed_qkv = parameters.is_packed_qkv;
+
+    auto* tp = context->GetOperatorThreadPool();
+
+    int seqlen_past_kv_cache = 0;
+    if (past_key != nullptr && past_value != nullptr) {
+      seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
+    }
+    int seqlen_present_kv_cache = static_cast<int>(present_key->Shape().GetDims()[2]);
+
+    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache * sizeof(float);
+    auto attention_probs = allocator->Alloc(bytes);
+    BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
+
+    const MLFloat16* past_key_data = past_key != nullptr ? past_key->Data<MLFloat16>() : nullptr;
+    MLFloat16* present_key_data = present_key != nullptr ? present_key->MutableData<MLFloat16>() : nullptr;
+    const MLFloat16* past_value_data = past_value != nullptr ? past_value->Data<MLFloat16>() : nullptr;
+    MLFloat16* present_value_data = present_value != nullptr ? present_value->MutableData<MLFloat16>() : nullptr;
+
+    const float* attention_bias_data = attention_bias != nullptr ? attention_bias->Data<float>() : nullptr;
+    auto attention_bias_shape = attention_bias != nullptr ? attention_bias->Shape().GetDims() : gsl::span<const int64_t>{};
+
+    bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
+
+    const float* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
+
+    float* output_qk_buffer = output_qk != nullptr ? output_qk->MutableData<float>() : nullptr;
+
+    const size_t kv_cache_size_bytes = past_key->Shape().Size() * sizeof(float);
+
+    const auto alloc_kv = [&]() -> float* {
+      return static_cast<float*>(allocator->Alloc(kv_cache_size_bytes));
+    };
+
+    float* key_cache_fp32 = alloc_kv();
+    BufferUniquePtr scratch_buffer_key_fp32(key_cache_fp32, BufferDeleter(allocator));
+
+    float* value_cache_fp32 = alloc_kv();
+    BufferUniquePtr scratch_buffer_value_fp32(value_cache_fp32, BufferDeleter(allocator));
+
+
+    MlasConvertHalfToFloatBuffer(past_key_data, key_cache_fp32, past_key->Shape().Size());
+    MlasConvertHalfToFloatBuffer(past_value_data, value_cache_fp32, past_value->Shape().Size());
+
+
+     ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
+                           batch_size, sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
+                           seqlen_present_kv_cache, head_size, key_cache_fp32, key_cache_fp32, output_qk_buffer,
+                           past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
+
+     // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
+     const float* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
+     ComputeVxAttentionScore(output->MutableData<float>(), static_cast<float*>(attention_probs), v,
+                             seqlens_k->Data<int32_t>(),
+                             batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
+                             hidden_size, value_cache_fp32, value_cache_fp32, past_present_share_buffer, packed_qkv,
+                             is_prompt, tp, allocator);
+
+     MlasConvertFloatToHalfBuffer(key_cache_fp32, present_key_data, present_key->Shape().Size());
+     MlasConvertFloatToHalfBuffer(value_cache_fp32, present_value_data, present_value->Shape().Size());
+
+    return Status::OK();
+  }
+
  private:
   // Helper function to compute the attention probs. It does 2 things:
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
