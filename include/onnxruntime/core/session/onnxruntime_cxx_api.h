@@ -3341,7 +3341,7 @@ struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
   KernelDefBuilder& SetExecutionProvider(const char* ep_name);
   KernelDefBuilder& SetInputMemType(size_t input_index, OrtMemType mem_type);
   KernelDefBuilder& SetOutputMemType(size_t output_index, OrtMemType mem_type);
-  KernelDefBuilder& AddTypeConstraint(const char* arg_name, const OrtMLDataType* data_types);
+  KernelDefBuilder& AddTypeConstraint(const char* arg_name, const OrtMLDataType* data_type);
   KernelDefBuilder& AddTypeConstraint(const char* arg_name, const std::vector<const OrtMLDataType*>& data_types);
 
   KernelDef Build();
