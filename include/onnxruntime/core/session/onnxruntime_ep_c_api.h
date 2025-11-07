@@ -930,6 +930,9 @@ struct OrtEp {
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
    *
+   * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
+   *       uses a kernel registry instead.
+   *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Compile, _In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
@@ -942,6 +945,9 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \param[inout] node_compute_infos The OrtNodeComputeInfo instances to release.
    * \param[in] num_node_compute_infos The number of OrtNodeComputeInfo instances.
+   *
+   * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
+   *       uses a kernel registry instead.
    *
    * \since Version 1.23.
    */

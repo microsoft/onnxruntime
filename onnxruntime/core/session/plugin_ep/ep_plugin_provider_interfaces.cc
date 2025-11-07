@@ -188,7 +188,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {
-  if (ort_ep_ && !api_node_compute_infos_.empty()) {
+  if (ort_ep_ && !api_node_compute_infos_.empty() && ort_ep_->ReleaseNodeComputeInfos != nullptr) {
     ort_ep_->ReleaseNodeComputeInfos(ort_ep_.get(), api_node_compute_infos_.data(),
                                      api_node_compute_infos_.size());
   }
@@ -413,7 +413,11 @@ static Status ConvertEpContextNodes(const std::string& ep_name, const std::vecto
 
 Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                         std::vector<NodeComputeInfo>& node_compute_infos) {
-  const logging::Logger* logger = GetLogger();
+  ORT_RETURN_IF(ort_ep_->Compile == nullptr, "OrtEp for ", Type(), " did not provide a valid Compile() function");
+  ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
+                " did not provide a valid ReleaseNodeComputeInfos() function");
+
+  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
   std::vector<const OrtGraph*> api_graphs;
@@ -479,16 +483,16 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
                   "instance for graph at index ", i);
 
     NodeComputeInfo compute_info;
-    compute_info.create_state_func = [api_node_compute_info, logger](ComputeContext* context,
-                                                                     FunctionState* compute_state) -> int {
+    compute_info.create_state_func = [api_node_compute_info, &logger](ComputeContext* context,
+                                                                      FunctionState* compute_state) -> int {
       Status status = ToStatusAndRelease(
           api_node_compute_info->CreateState(api_node_compute_info,
                                              reinterpret_cast<OrtNodeComputeContext*>(context),
                                              compute_state));
       const bool success = status.IsOK();
       if (!success) {
-        LOGS(*logger, ERROR) << "OrtNodeComputeInfo::CreateComputeState() failed with error: "
-                             << status.ErrorMessage();
+        LOGS(logger, ERROR) << "OrtNodeComputeInfo::CreateComputeState() failed with error: "
+                            << status.ErrorMessage();
       }
 
       return success ? 0 : 1;
