@@ -8,10 +8,10 @@
 
 #include "utils.h"
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    13,
+    13, 24,
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))),
@@ -30,12 +30,6 @@ OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ std::
   Ort::ConstKernelInfo kernel_info(info);
 
   try {
-    size_t num_inputs = kernel_info.GetInputCount();
-    if (num_inputs != 2) {
-      Ort::Status status("Squeeze for example KernelEp only supports axes as an input (opset >= 13)", ORT_EP_FAIL);
-      return status.release();
-    }
-
     kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
@@ -98,12 +92,20 @@ OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
     std::vector<int64_t> shape0;
     RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 0, input0, shape0));
 
-    gsl::span<const int64_t> axes_input;
-    std::vector<int64_t> axes_shape;
-    RETURN_IF_ERROR(GetKernelInputDataAndShape<int64_t>(kernel_context, 1, axes_input, axes_shape));
-    assert(axes_shape.size() == 1);
+    size_t num_inputs = kernel_context.GetInputCount();
+    std::vector<int64_t> axes;
 
-    std::vector<int64_t> output_shape = ComputeOutputShape(shape0, axes_input);
+    if (num_inputs == 2) {
+      // Axes is an explicit input.
+      gsl::span<const int64_t> axes_input;
+      std::vector<int64_t> axes_shape;
+      RETURN_IF_ERROR(GetKernelInputDataAndShape<int64_t>(kernel_context, 1, axes_input, axes_shape));
+      assert(axes_shape.size() == 1);
+
+      axes.assign(axes_input.begin(), axes_input.end());
+    }
+
+    std::vector<int64_t> output_shape = ComputeOutputShape(shape0, axes);
     Ort::UnownedValue output = kernel_context.GetOutput(0, output_shape);
     float* output_data = output.GetTensorMutableData<float>();
 

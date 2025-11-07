@@ -238,5 +238,46 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
 
   std::filesystem::remove(expected_output_model_file);
 }
+
+TEST(OrtEpLibrary, KernelPluginEp_Inference) {
+  RegisteredEpDeviceUniquePtr example_kernel_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_kernel_ep_info, example_kernel_ep);
+  Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
+
+  // Create session with example kernel-based plugin EP
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  // This model has Squeeze -> Mul. The example plugin EP supports both using registered kernels.
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/squeeze_mul.onnx"), session_options);
+
+  // Create inputs
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 3> a_shape = {3, 1, 2};
+  std::array<int64_t, 2> b_shape = {3, 2};
+
+  std::array<float, 6> a_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+
+  std::vector<Ort::Value> ort_inputs{};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), b_shape.data(), b_shape.size()));
+
+  std::array ort_input_names{"A", "B"};
+
+  // Run session and get outputs
+  std::array output_names{"C"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 6, 12, 20, 30, 42));
+}
 }  // namespace test
 }  // namespace onnxruntime

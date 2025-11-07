@@ -5,15 +5,15 @@
 #include "mul.h"
 #include "utils.h"
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Mul,
     kOnnxDomain,
-    7,
+    7, 24,
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     Mul)
 
-Mul::Mul(const OrtKernelInfo* info, void* state) : info_{info}, state_{state} {
+Mul::Mul(const OrtKernelInfo* info, void* state, PrivateTag) : info_{info}, state_{state} {
   ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
@@ -23,7 +23,7 @@ Mul::Mul(const OrtKernelInfo* info, void* state) : info_{info}, state_{state} {
 OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
                        /*out*/ std::unique_ptr<Mul>& result) {
   // Note: can do basic validation or preprocessing via the OrtKernelInfo APIs.
-  result = std::make_unique<Mul>(info, state);
+  result = std::make_unique<Mul>(info, state, PrivateTag{});
   return nullptr;
 }
 

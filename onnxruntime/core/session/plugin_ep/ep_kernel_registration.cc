@@ -28,10 +28,13 @@ class PluginEpOpKernel final : public OpKernel {
                        /*out*/ std::unique_ptr<PluginEpOpKernel>& op_kernel);
 
   ~PluginEpOpKernel() {
-    kernel_impl_->Release(kernel_impl_);
+    if (kernel_impl_ != nullptr) {
+      kernel_impl_->Release(kernel_impl_);
+    }
   }
 
   Status Compute(OpKernelContext* ctx) const override {
+    ORT_RETURN_IF(kernel_impl_ == nullptr, "Unexpected NULL OrtKernelImpl for plugin EP");
     return ToStatusAndRelease(kernel_impl_->Compute(kernel_impl_, reinterpret_cast<OrtKernelContext*>(ctx)));
   }
 
@@ -98,15 +101,16 @@ KernelCreateInfo MakePluginEpKernelCreateInfo(const KernelDef* kernel_def,
 Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry) {
   kernel_registry = nullptr;
 
-  if (ort_ep.GetKernelRegistry == nullptr) {
+  if (ort_ep.ort_version_supported < 24) {
+    // OrtEp::GetKernelRegistry was added in ORT 1.24.0, but this OrtEp uses an older ORT version.
     return Status::OK();
   }
 
-  const OrtKernelRegistry* ep_kernel_registry = nullptr;
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep.GetKernelRegistry(&ort_ep, &ep_kernel_registry)));
+  if (ort_ep.GetKernelRegistry != nullptr) {
+    const OrtKernelRegistry* ep_kernel_registry = nullptr;
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep.GetKernelRegistry(&ort_ep, &ep_kernel_registry)));
 
-  if (ep_kernel_registry != nullptr) {
-    kernel_registry = ep_kernel_registry->registry;
+    kernel_registry = ep_kernel_registry != nullptr ? ep_kernel_registry->registry : nullptr;
   }
 
   return Status::OK();

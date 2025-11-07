@@ -10,13 +10,13 @@
 #include "kernels/mul.h"
 
 // Forward declarations of kernel classes used as template args for BuildKernelCreateInfo
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 7, Mul);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 13, Squeeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 7, 24, Mul);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 13, 24, Squeeze);
 
 // Table of BuildKernelCreateInfo functions for each operator
 static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
-    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 7, Mul)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 13, Squeeze)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 7, 24, Mul)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 13, 24, Squeeze)>,
 };
 
 constexpr size_t num_kernel_create_info_funcs = sizeof(build_kernel_create_info_funcs) /
