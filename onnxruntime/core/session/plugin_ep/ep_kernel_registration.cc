@@ -20,8 +20,7 @@ class PluginEpOpKernel final : public OpKernel {
   struct PrivateTag {};
 
  public:
-  PluginEpOpKernel(const OpKernelInfo& info, PrivateTag)
-      : OpKernel{info} {}
+  PluginEpOpKernel(const OpKernelInfo& info, PrivateTag) : OpKernel{info} {}  // must use ::Create()
 
   static Status Create(FuncManager& fn_manager, const OpKernelInfo& info,
                        OrtKernelCreateFunc kernel_create_func, void* kernel_create_func_state,

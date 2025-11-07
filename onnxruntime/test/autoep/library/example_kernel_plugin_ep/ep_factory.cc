@@ -135,19 +135,6 @@ OrtStatus* ORT_API_CALL KernelEpFactory::GetSupportedDevicesImpl(OrtEpFactory* t
 
       ep_devices[num_ep_devices++] = ep_device;
     }
-
-    // C++ API equivalent. Throws on error.
-    //{
-    //  Ort::ConstHardwareDevice device(devices[i]);
-    //  if (device.Type() == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
-    //    Ort::KeyValuePairs ep_metadata;
-    //    Ort::KeyValuePairs ep_options;
-    //    ep_metadata.Add("supported_devices", "CrackGriffin 7+");
-    //    ep_options.Add("run_really_fast", "true");
-    //    Ort::EpDevice ep_device{*this_ptr, device, ep_metadata.GetConst(), ep_options.GetConst()};
-    //    ep_devices[num_ep_devices++] = ep_device.release();
-    //  }
-    //}
   }
 
   return nullptr;
