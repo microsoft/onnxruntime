@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 23
+#define ORT_API_VERSION 24
 
 #ifdef __cplusplus
 extern "C" {
@@ -3963,6 +3963,9 @@ struct OrtApi {
    *     where op_type is the name of the operation, op_package_path is the path to the op package shared library,
    *     interface is the symbol name to register the op life cycle functions, and target is the backend type. For more
    *     details, refer to: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/op_packages.html
+   *     [Advanced] "skip_qnn_version_check": Set to "1" to allow a different version of QNN to be used than what was compiled
+   *     into ONNX Runtime. Differences in operator support, accuracy, performance, and QNN's ABI may lead to crashes, inaccurate
+   *     results, and poor performance. Use with caution and test thoroughly.
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
@@ -6584,7 +6587,7 @@ struct OrtApi {
    * \param[in] info The OrtTensorTypeAndShapeInfo instance.
    * \return true if the tensor has shape information, false otherwise.
    *
-   * \since Version 1.23
+   * \since Version 1.24
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
 };

@@ -52,6 +52,11 @@ jobs:
   variables:
     buildArch: x64
     CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ parameters.ExtraBuildArgs }}'
+    ${{ if eq(parameters.BuildConfig, 'Release') }}:
+      # Add '--enable_wasm_api_exception_catching' only for non-JSPI Release build
+      ExceptionHandlingBuildArgs: '--enable_wasm_api_exception_catching'
+    ${{ else }}:
+      ExceptionHandlingBuildArgs: ''
     runCodesignValidationInjection: false
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
@@ -110,7 +115,7 @@ jobs:
       ${{ else }}:
         AdditionalKey: wasm_inferencing | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing
-      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing --wasm_run_tests_in_browser'
+      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing $(ExceptionHandlingBuildArgs) --wasm_run_tests_in_browser'
       DisplayName: 'Build and test (browser) (simd + threads)'
       WithCache: ${{ parameters.WithCache }}
 
@@ -123,7 +128,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_jsep
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_jsep --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_jsep --use_jsep --use_webnn --target onnxruntime_webassembly $(ExceptionHandlingBuildArgs) --skip_tests'
         DisplayName: 'Build (simd + threads + JSEP)'
         WithCache: ${{ parameters.WithCache }}
 
@@ -136,8 +141,21 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_webgpu | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_webnn --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_webnn --target onnxruntime_webassembly $(ExceptionHandlingBuildArgs) --skip_tests'
         DisplayName: 'Build (simd + threads + WebGPU experimental)'
+        WithCache: ${{ parameters.WithCache }}
+
+  - ${{ if eq(parameters.BuildWebGPU, true) }}:
+    - template: build-linux-wasm-step.yml
+      parameters:
+        Today: $(Today)
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_inferencing_webgpu_jspi | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_inferencing_webgpu_jspi | ${{ parameters.BuildConfig }}
+        CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu_jspi
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi --use_webgpu --use_webnn --enable_wasm_jspi --target onnxruntime_webassembly --skip_tests'
+        DisplayName: 'Build (simd + threads + WebGPU experimental, JSPI)'
         WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.SkipPublish, false) }}:
@@ -152,6 +170,10 @@ jobs:
         if [ -d $(Build.BinariesDirectory)/wasm_inferencing_webgpu ]; then
           cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.asyncify.wasm $(Build.ArtifactStagingDirectory)/wasm/
           cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.asyncify.mjs $(Build.ArtifactStagingDirectory)/wasm/
+        fi
+        if [ -d $(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi ]; then
+          cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jspi.wasm $(Build.ArtifactStagingDirectory)/wasm/
+          cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jspi.mjs $(Build.ArtifactStagingDirectory)/wasm/
         fi
       displayName: 'Create Artifacts'
     - ${{ if eq(parameters.is1ES, false) }}:

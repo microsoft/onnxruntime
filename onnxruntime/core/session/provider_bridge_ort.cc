@@ -516,6 +516,7 @@ struct ProviderHostImpl : ProviderHost {
 
   // TypeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TypeProto>(); }
+  void TypeProto__operator_delete(ONNX_NAMESPACE::TypeProto* p) override { delete p; }
   void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) override { p->CopyFrom(*other); }
   bool TypeProto__has_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->has_tensor_type(); }
   const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->tensor_type(); }
@@ -1239,7 +1240,7 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                           const logging::Logger& logger) override {
-    return std::make_unique<Model>(model_proto, model_path, local_registries, logger);
+    return std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger);
   }
   std::unique_ptr<Model> Model__construct(const std::string& graph_name,
                                           bool is_onnx_domain_only,
@@ -1433,7 +1434,7 @@ struct ProviderHostImpl : ProviderHost {
 
   NodeArg& GraphUtils__AddInitializerWithExternalData(Graph& graph,
                                                       const ONNX_NAMESPACE::TensorProto& new_initializer) override {
-    return graph_utils::AddInitializerWithExternalData(graph, new_initializer);
+    return graph_utils::AddInitializerWithOrtValue(graph, new_initializer);
   }
 
   void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
@@ -1774,24 +1775,27 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
-} provider_host_;
+} g_provider_host;
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
 struct ProviderSharedLibrary {
-  void Ensure() {
-    if (handle_)
-      return;
+  Status Initialize() {
+    if (handle_) {
+      return Status::OK();
+    }
 
     auto full_path = Env::Default().GetRuntimePath() +
                      PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
-    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
+    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
-    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
 
-    PProvider_SetHost(&provider_host_);
+    PProvider_SetHost(&g_provider_host);
+
+    return Status::OK();
   }
 
   void Unload() {
@@ -1818,7 +1822,7 @@ struct ProviderSharedLibrary {
 static ProviderSharedLibrary s_library_shared;
 
 bool InitProvidersSharedLibrary() try {
-  s_library_shared.Ensure();
+  ORT_THROW_IF_ERROR(s_library_shared.Initialize());
   return true;
 } catch (const std::exception&) {
   return false;
@@ -1840,7 +1844,7 @@ Status ProviderLibrary::Load() {
   try {
     std::lock_guard<std::mutex> lock{mutex_};
     if (!provider_) {
-      s_library_shared.Ensure();
+      ORT_RETURN_IF_ERROR(s_library_shared.Initialize());
 
       if (absolute_) {
         // If filename_ is not absolute it should not be loaded.

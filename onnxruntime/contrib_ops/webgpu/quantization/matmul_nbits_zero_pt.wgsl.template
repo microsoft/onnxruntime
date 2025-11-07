@@ -3,6 +3,7 @@
 
 #param n_bits
 #param has_zero_points
+#param has_bias
 #param output_type_i32
 
 #if output_type_i32

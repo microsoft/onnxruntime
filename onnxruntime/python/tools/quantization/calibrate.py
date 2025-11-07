@@ -417,7 +417,14 @@ class MinMaxCalibrater(CalibraterBase):
             inputs = data_reader.get_next()
             if not inputs:
                 break
-            self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            self.intermediate_outputs.append(
+                [
+                    value if sess_o.name not in self.model_original_outputs else None
+                    for sess_o, value in zip(
+                        self.infer_session.get_outputs(), self.infer_session.run(None, inputs), strict=False
+                    )
+                ]
+            )
             if (
                 self.max_intermediate_outputs is not None
                 and len(self.intermediate_outputs) == self.max_intermediate_outputs

@@ -105,7 +105,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInpu
 bool BaseOpBuilder::HasSupportedOpSet(const Node& node, const logging::Logger& logger) const {
   auto since_version = node.SinceVersion();
   if (since_version < GetMinSupportedOpSet(node) || since_version > GetMaxSupportedOpSet(node)) {
-    LOGS(logger, VERBOSE) << node.OpType() << "is only supported for opset ["
+    LOGS(logger, VERBOSE) << node.OpType() << " is only supported for opset ["
                           << GetMinSupportedOpSet(node) << ", "
                           << GetMaxSupportedOpSet(node) << "]";
     return false;

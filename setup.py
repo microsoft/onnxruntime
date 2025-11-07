@@ -91,6 +91,9 @@ elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
     qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
+elif parse_arg_remove_boolean(sys.argv, "--use_webgpu"):
+    package_name = "onnxruntime-webgpu"
+
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -374,6 +377,10 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
     ]
     dl_libs.extend(qnn_deps)
+    # NV TensorRT RTX
+    nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
+    dl_libs.extend(nv_tensorrt_rtx_deps)
+    libs.extend(nv_tensorrt_rtx_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -454,6 +461,9 @@ else:
         "migraphx_tf.dll",
     ]
     libs.extend(migraphx_deps)
+    # NV TensorRT RTX Libs
+    nv_tensorrt_rtx_deps = ["tensorrt_onnxparser_rtx_*.dll", "tensorrt_rtx_*.dll"]
+    libs.extend(nv_tensorrt_rtx_deps)
 
 if is_manylinux:
     if is_openvino:
@@ -496,8 +506,15 @@ else:
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf"]
+# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)(and TensorRT RTX License and Acknowledgements for TRT RTX EP)
+extra = [
+    "LICENSE",
+    "ThirdPartyNotices.txt",
+    "Privacy.md",
+    "Qualcomm_LICENSE.pdf",
+    "TRT_RTX_LICENSE.txt",
+    "TRT_RTX_Acknowledgements.txt",
+]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
@@ -581,10 +598,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 if enable_training or enable_training_apis:
@@ -763,6 +780,11 @@ if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+# Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
+if package_name == "onnxruntime-trt-rtx":
+    install_requires.append("nvidia-cuda-runtime-cu12~=12.0")
+    cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
 
 
 def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):

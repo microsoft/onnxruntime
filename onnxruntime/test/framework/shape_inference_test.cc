@@ -129,6 +129,9 @@ const ORTCHAR_T* const OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2 = ORT_TSTR("testdata
 // that inference proceeds for all of the outputs when absent optional inputs are present
 TEST(ShapeInferenceCustomOpTest, custom_op_optional_input_inference_test) {
   MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
+  custom_op.InferOutputShapeFn = [](const OrtCustomOp* /*op*/, OrtShapeInferContext* /*ctx*/) -> OrtStatusPtr {
+    return nullptr;
+  };
 
   const auto& env = GetEnvironment();
 
