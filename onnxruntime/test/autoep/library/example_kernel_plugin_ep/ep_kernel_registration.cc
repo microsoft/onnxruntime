@@ -8,10 +8,7 @@
 
 // Include kernels:
 #include "kernels/mul.h"
-
-// Forward declarations of kernel classes used as template args for BuildKernelCreateInfo
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 7, 24, Mul);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 13, 24, Squeeze);
+#include "kernels/squeeze.h"
 
 // Table of BuildKernelCreateInfo functions for each operator
 static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
@@ -26,42 +23,40 @@ size_t GetNumKernels() {
   return num_kernel_create_info_funcs;
 }
 
-OrtStatus* CreateKernelRegistry(const char* ep_name, void* create_kernel_state, OrtKernelRegistry** kernel_registry) {
-  *kernel_registry = nullptr;
+OrtStatus* CreateKernelRegistry(const char* ep_name, void* create_kernel_state,
+                                OrtKernelRegistry** out_kernel_registry) {
+  *out_kernel_registry = nullptr;
 
   if (GetNumKernels() == 0) {
     return nullptr;
   }
 
-  const OrtEpApi& ep_api = Ort::GetEpApi();
-  RETURN_IF_ERROR(ep_api.CreateKernelRegistry(kernel_registry));
-
-  OrtStatus* status = nullptr;
+  Ort::KernelRegistry kernel_registry;
+  Ort::Status status = Ort::KernelRegistry::Create(kernel_registry);
+  if (!status.IsOK()) {
+    return status.release();
+  }
 
   // Add kernel creation info to registry
   for (auto& build_func : build_kernel_create_info_funcs) {
     KernelCreateInfo kernel_create_info = {};
-    status = build_func(ep_name, create_kernel_state, &kernel_create_info);
+    status = Ort::Status{build_func(ep_name, create_kernel_state, &kernel_create_info)};
 
-    if (status != nullptr) {
+    if (!status.IsOK()) {
       break;
     }
 
     if (kernel_create_info.kernel_def != nullptr) {
-      status = ep_api.KernelRegistry_AddKernel(*kernel_registry,
-                                               kernel_create_info.kernel_def,  // copied
-                                               kernel_create_info.kernel_create_func,
-                                               kernel_create_info.kernel_create_func_state);
-      if (status != nullptr) {
+      status = kernel_registry.AddKernel(kernel_create_info.kernel_def,
+                                         kernel_create_info.kernel_create_func,
+                                         kernel_create_info.kernel_create_func_state);
+
+      if (!status.IsOK()) {
         break;
       }
     }
   }
 
-  if (status != nullptr) {
-    ep_api.ReleaseKernelRegistry(*kernel_registry);
-    *kernel_registry = nullptr;
-  }
-
-  return status;
+  *out_kernel_registry = status.IsOK() ? kernel_registry.release() : nullptr;
+  return status.release();
 }

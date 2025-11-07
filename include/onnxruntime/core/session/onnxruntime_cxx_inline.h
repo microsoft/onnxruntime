@@ -3650,4 +3650,24 @@ inline KernelDef KernelDefBuilder::Build() {
   return KernelDef(kernel_def);
 }
 
+inline KernelRegistry::KernelRegistry(OrtKernelRegistry* p) : detail::Base<OrtKernelRegistry>{p} {
+}
+
+/*static*/
+inline Status KernelRegistry::Create(KernelRegistry& out) {
+  OrtKernelRegistry* registry = nullptr;
+  OrtStatus* status = GetEpApi().CreateKernelRegistry(&registry);
+  if (status != nullptr) {
+    return Status{status};
+  }
+
+  out = KernelRegistry(registry);
+
+  return Status{nullptr};
+}
+
+inline Status KernelRegistry::AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,
+                                        void* kernel_create_func_state) {
+  return Status{GetEpApi().KernelRegistry_AddKernel(p_, kernel_def, kernel_create_func, kernel_create_func_state)};
+}
 }  // namespace Ort

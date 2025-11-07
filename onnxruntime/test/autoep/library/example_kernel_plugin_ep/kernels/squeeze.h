@@ -3,7 +3,11 @@
 
 #pragma once
 
+#include "utils.h"
 #include "../../plugin_ep_utils.h"
+
+// Forward declarations of kernel classes used as template args for BuildKernelCreateInfo
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 13, 24, Squeeze);
 
 struct Squeeze : public OrtKernelImpl {
  private:
