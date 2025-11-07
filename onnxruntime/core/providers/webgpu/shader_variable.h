@@ -72,7 +72,6 @@ struct ShaderUsage {
     UseGetByOffsetSegments = 4096,        // use implementation of fn get_{name}_by_offset
     UseSetByOffsetSegments = 8192,        // use implementation of fn set_{name}_by_offset
     UseUniform = 32768,                   // use uniform for shape and stride
-    UseAtomicU32ForSplitK = 65536,        // use atomic<u32> for the output when using Split-K in MatMul
   } usage;
 
   ShaderUsage(decltype(usage) usage) : usage{usage} {}

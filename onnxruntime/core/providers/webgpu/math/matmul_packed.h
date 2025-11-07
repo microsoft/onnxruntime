@@ -41,10 +41,10 @@ class MatMulProgram final : public Program<MatMulProgram> {
 // we set the output values with `atomicLoad` and `atomicCompareExchangeWeak` instead of a direct
 // assignment (see the function `HandleMatMulWithSplitK()` in `gemm_utils.cc`), so we must initialize
 // the output with 0 or bias first to make sure `atomicLoad` won't return garbage data.
-class MatMulFillBiasBeforeSplitKProgram final : public Program<MatMulFillBiasBeforeSplitKProgram> {
+class MatMulFillBiasOrZeroBeforeSplitKProgram final : public Program<MatMulFillBiasOrZeroBeforeSplitKProgram> {
  public:
-  explicit MatMulFillBiasBeforeSplitKProgram(bool has_bias)
-      : Program{"MatMul_Fill_Bias_Before_Split_K"},
+  explicit MatMulFillBiasOrZeroBeforeSplitKProgram(bool has_bias)
+      : Program{"MatMul_Fill_Bias_Or_Zero_Before_Split_K"},
         has_bias_(has_bias) {
   }
 
@@ -53,9 +53,7 @@ class MatMulFillBiasBeforeSplitKProgram final : public Program<MatMulFillBiasBef
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32});
 
-  constexpr static uint32_t WORKGROUP_SIZE_X = 8;
-  constexpr static uint32_t WORKGROUP_SIZE_Y = 8;
-  constexpr static uint32_t ELEMENTS_PER_THREAD = 8;
+  constexpr static uint32_t WORKGROUP_SIZE_X = 64;
 
  private:
   bool has_bias_ = false;

@@ -62,13 +62,13 @@ void HandleMatMulWithSplitK(
   // so we must add them with atomic built-in functions. Because currently WebGPU doesn't support
   // atomic built-in functions on `f32` or `f16`, we implement the `atomicAdd` on `f32` and `f16`
   // with `atomicLoad` and `atomicCompareExchangeWeak`:
-  // 1. Get `old_output_u32` from `output[offset]` with `atomicLoad`.
-  // 2. Convert `old_output_u32` into `f32` (`old_output_f32`) or `vec2h` (`old_output_vec2h`).
+  // 1. Get `old_output_i32` from `output[offset]` with `atomicLoad`.
+  // 2. Convert `old_output_i32` into `f32` (`old_output_f32`) or `vec2h` (`old_output_vec2h`).
   // 3. Add incoming `value` into `old_output_f32` or `old_output_vec2h`.
-  // 4. Convert the result of step 3 into `u32` values.
+  // 4. Convert the result of step 3 into `i32` values.
   // 5. Try assigning the result of step 4 into `output[offset]` with `atomicCompareExchangeWeak`
-  //    and `old_output_u32`. The assignment will fail if at this time `output[offset]` is not
-  //    equal to `old_output_u32` (it is updated in another invocation). If the assignment fails
+  //    and `old_output_i32`. The assignment will fail if at this time `output[offset]` is not
+  //    equal to `old_output_i32` (it is updated in another invocation). If the assignment fails
   //    we have to go to step 1 and repeat all the above steps.
   switch (output_variable_type) {
     case ProgramVariableDataType::Float32x4: {
@@ -77,12 +77,12 @@ void HandleMatMulWithSplitK(
     for (var i = 0u; i < 4u; i++) {
         let offset = offset0 + i;
         while (true) {
-            let old_output_u32 = atomicLoad(&output[offset]);
-            let old_output_f32 = bitcast<f32>(old_output_u32);
+            let old_output_i32 = atomicLoad(&output[offset]);
+            let old_output_f32 = bitcast<f32>(old_output_i32);
             let new_output_f32 = old_output_f32 + value[i];
-            let new_output_u32 = bitcast<u32>(new_output_f32);
-            let output_compexchange = atomicCompareExchangeWeak(&output[offset], old_output_u32, new_output_u32);
-            if (output_compexchange.old_value ==  old_output_u32) {
+            let new_output_i32 = bitcast<i32>(new_output_f32);
+            let output_compexchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
+            if (output_compexchange.old_value ==  old_output_i32) {
                 break;
             }
         }
@@ -99,12 +99,12 @@ void HandleMatMulWithSplitK(
     for (var i = 0u; i < 2u; i++) {
         let offset= offset0 + i;
         while(true) {
-            let old_output_u32 = atomicLoad(&output[offset]);
-            let old_output_vec2h = bitcast<vec2h>(old_output_u32);
+            let old_output_i32 = atomicLoad(&output[offset]);
+            let old_output_vec2h = bitcast<vec2h>(old_output_i32);
             let new_output_vec2h = old_output_vec2h + vec2h_values[i];
-            let new_output_u32 = bitcast<u32>(new_output_vec2h);
-            let output_compexchange = atomicCompareExchangeWeak(&output[offset], old_output_u32, new_output_u32);
-            if (output_compexchange.old_value == old_output_u32) {
+            let new_output_i32 = bitcast<i32>(new_output_vec2h);
+            let output_compexchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
+            if (output_compexchange.old_value == old_output_i32) {
                 break;
             }
         }

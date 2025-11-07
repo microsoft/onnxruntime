@@ -200,19 +200,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
           .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
       return context.RunProgram(program);
     } else {
-      // Explicitly pass `SplitKConfig` to `CreateMatMulProgram()` to enable Split-K. Now it is not
-      // used in any other places that call `CreateMatMulProgram()` (e.g. in `MatMul::ComputeInternal()`).
-      // TODO: enable Split-K in all the places that call `CreateMatMulProgram()`.
+      // Explicitly pass `SplitKConfig` to `ComputeMatMul()` to enable Split-K. Now it is not
+      // used in any other places that call `ComputeMatMul()` (e.g. in `MatMul::ComputeInternal()`).
+      // TODO: enable Split-K in all the places that call `ComputeMatMul()`.
       SplitKConfig split_K_config = SplitKConfig::GetSplitKConfig(context);
-      MatMulProgram program = CreateMatMulProgram(activation_, matmul_inputs, output, is_channels_last, split_K_config, matmul_input_reshapes[0], matmul_input_reshapes[1]);
-      if (program.NeedSplitK()) {
-        // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
-        assert(is_channels_last);
-        MatMulFillBiasBeforeSplitKProgram fill_bias_program = CreateMatMulFillBiasBeforeSplitKProgram(
-            bias, output, matmul_input_reshapes[0], matmul_input_reshapes[1]);
-        ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
-      }
-      return context.RunProgram(program);
+      return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, split_K_config, matmul_input_reshapes[0], matmul_input_reshapes[1]);
     }
   }
   // Transpose weights

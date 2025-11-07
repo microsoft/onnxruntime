@@ -465,11 +465,6 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   for (size_t i = 0; i < output_vars_.size(); ++i) {
     const auto& output = output_vars_[i];
     bool is_atomic = program_.Outputs()[i].is_atomic;
-    ProgramVariableDataType atomic_type = output->type_;
-    if (output->usage_ & ShaderUsage::UseAtomicU32ForSplitK) {
-      is_atomic = true;
-      atomic_type = ProgramVariableDataType::Uint32;
-    }
     uint32_t segments = output->segments_;
     for (uint32_t seg = 0; seg < segments; ++seg) {
       ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read_write> ";
@@ -480,14 +475,14 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
       }
       ss << ": array<";
       if (is_atomic) {
-        if (atomic_type == ProgramVariableDataType::Float32) {
+        if (output->type_ == ProgramVariableDataType::Float32 || output->type_ == ProgramVariableDataType::Float16x4 || output->type_ == ProgramVariableDataType::Float32x4) {
           ss << "atomic<i32>";  // emulate float atomic via i32
-        } else if (atomic_type == ProgramVariableDataType::Uint32) {
+        } else if (output->type_ == ProgramVariableDataType::Uint32) {
           ss << "atomic<u32>";
-        } else if (atomic_type == ProgramVariableDataType::Int32) {
+        } else if (output->type_ == ProgramVariableDataType::Int32) {
           ss << "atomic<i32>";
         } else {
-          ORT_RETURN_IF(true, "Unsupported atomic type: ", int(atomic_type));
+          ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
         }
       } else {
         ss << output->StorageType();

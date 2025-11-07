@@ -34,12 +34,12 @@ class SplitKConfig {
   float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.0f;
 };
 
-MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
-                                  SplitKConfig split_k_config = SplitKConfig(),
-                                  const TensorShape& input_a_reshape = TensorShape(),
-                                  const TensorShape& input_b_reshape = TensorShape());
+Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
+                     SplitKConfig split_k_config = SplitKConfig(),
+                     const TensorShape& input_a_reshape = TensorShape(),
+                     const TensorShape& input_b_reshape = TensorShape());
 
-MatMulFillBiasBeforeSplitKProgram CreateMatMulFillBiasBeforeSplitKProgram(
+MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
     const TensorShape& input_a_shape,

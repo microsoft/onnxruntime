@@ -244,6 +244,7 @@ struct ProgramOutput {
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, AtomicTag);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component, AtomicTag);
 
   Tensor* tensor;
   uint32_t segments = 1;
