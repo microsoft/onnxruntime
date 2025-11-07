@@ -29,7 +29,9 @@ CudaMempoolArena::CudaMempoolArena(const OrtMemoryInfo& memory_info,
   // 'cudaMemAllocationTypeDevice' (for cudaMemPoolProps.allocType) not clear when it is available
 
   cudaMemPoolProps props{};
-  props.allocType = cudaMemAllocationTypePinned;    // Pinned is not the same as pinned allocator
+  // Pinned is not the same as pinned allocator, cudaMemLocationTypeDevice actually does not exist
+  // even though is present in some internet docs.
+  props.allocType = cudaMemAllocationTypePinned;
   props.handleTypes = cudaMemHandleTypeNone;        // local to process
   props.location.type = cudaMemLocationTypeDevice;  // Device memory
   props.location.id = this->Info().device.Id();

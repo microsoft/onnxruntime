@@ -52,7 +52,7 @@ struct MPArenaParams {
 
 OrtArenaCfg CreateArenaCfgFromParams(const MPArenaParams& params) {
   OrtArenaCfg cfg;
-  cfg.initial_chunk_size_bytes = 0;  // Make  BFCArena for CUDAPinned not to allocate anything here
+  cfg.initial_chunk_size_bytes = 0;  // Make BFCArena for CUDAPinned not to allocate anything here
   cfg.use_cuda_mempool = 1;          // Key switch
   cfg.cuda_mempool_release_threshold = params.release_threshold;
   cfg.cuda_mempool_bytes_to_keep_on_shrink = params.bytes_to_keep;

@@ -44,7 +44,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::uniform_int_distribution<int> dist_;
   Ort::AllocatorWithDefaultOptions default_allocator_;
   // Note: custom_allocator_, if used, must outlive the `Ort::Value`s allocated with it in test_inputs_ and outputs_.
-  // and must be declared before them to ensure it is destructed after them.
+  // and must be declared before them to ensure it is destroyed after them.
   Ort::Allocator custom_allocator_{nullptr};
   Ort::UnownedAllocator allocator_{default_allocator_};
   std::vector<std::vector<Ort::Value>> test_inputs_;

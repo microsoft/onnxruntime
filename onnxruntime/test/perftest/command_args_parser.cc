@@ -285,8 +285,13 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     if (!cuda_mempool_spec.empty()) {
       // Split the string with ';' separator in two parts
       std::vector<std::string> parts = absl::StrSplit(cuda_mempool_spec, ';');
-      test_config.run_config.cuda_mempool_arena_config = {
-          std::move(parts[0]), std::move(parts[1])};
+      if (parts.size() == 2U) {
+        test_config.run_config.cuda_mempool_arena_config = {
+            std::move(parts[0]), std::move(parts[1])};
+      } else {
+        std::cerr << "Invalid format for --enable_cuda_mempool. "
+                  << "Expected format : <pool_release_threshold;bytes_to_keep_on_shrink>" << std::endl;
+      }
     }
   }
 
