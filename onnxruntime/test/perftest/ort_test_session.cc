@@ -45,12 +45,15 @@ RunTiming OnnxRuntimeTestSession::Run() {
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
   Ort::RunOptions run_options;
+  for (const auto& kv : run_config_entries_) {
+    run_options.AddConfigEntry(kv.first.c_str(), kv.second.c_str());
+  }
+
   RunTiming timing;
   if (CUDA == device_memory_name_) {
     run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
     Ort::IoBinding io_binding(session_);
-    const OrtMemoryInfo* mem_info;
-    Ort::ThrowOnError(Ort::GetApi().AllocatorGetInfo(allocator_, &mem_info));
+    auto mem_info = allocator_.GetInfo();
 
     for (size_t i = 0; i < input_names_.size(); ++i) {
       io_binding.BindInput(input_names_[i], input[i]);
@@ -76,7 +79,11 @@ RunTiming OnnxRuntimeTestSession::Run() {
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo& m)
-    : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
+    : rand_engine_(rd()),
+      input_names_(m.GetInputCount()),
+      input_names_str_(m.GetInputCount()),
+      input_length_(m.GetInputCount()),
+      run_config_entries_(performance_test_config.run_config.run_config_entries) {
   Ort::SessionOptions session_options;
 
   // Add EP devices if any (created by plugin EP)
@@ -1014,7 +1021,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
-    allocator_ = custom_allocator_;
+    // Switch to custom
+    allocator_ = Ort::UnownedAllocator(custom_allocator_);
 
     // free dimensions are treated as 1 if not overridden
     transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };

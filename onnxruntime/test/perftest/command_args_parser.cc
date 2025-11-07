@@ -15,6 +15,8 @@
 #include <core/graph/constants.h>
 #include <core/platform/path_lib.h>
 #include <core/optimizer/graph_transformer_level.h>
+#include <core/session/onnxruntime_session_options_config_keys.h>
+#include <core/session/onnxruntime_run_options_config_keys.h>
 
 #include "test_configuration.h"
 #include "strings_helper.h"
@@ -150,6 +152,7 @@ ABSL_FLAG(std::string, C, "",
           "[Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n");
 ABSL_FLAG(std::string, R, "", "Allows user to register custom op by .so or .dll file.");
 ABSL_FLAG(bool, A, DefaultPerformanceTestConfig().run_config.enable_cpu_mem_arena, "Disables memory arena.");
+ABSL_FLAG(std::string, shrink_arena_between_runs, "", "When arena is enabled call Shrink for specified devices 'cpu:0;gpu:0'");
 ABSL_FLAG(bool, M, DefaultPerformanceTestConfig().run_config.enable_memory_pattern, "Disables memory pattern.");
 ABSL_FLAG(bool, s, DefaultPerformanceTestConfig().run_config.f_dump_statistics, "Shows statistics result, like P75, P90. If no result_file provided this defaults to on.");
 ABSL_FLAG(bool, v, DefaultPerformanceTestConfig().run_config.f_verbose, "Shows verbose information.");
@@ -265,6 +268,14 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // -A
   test_config.run_config.enable_cpu_mem_arena = absl::GetFlag(FLAGS_A);
+
+  // --shrink_arena_between_runs
+  if (test_config.run_config.enable_cpu_mem_arena) {
+    auto shrink_spec = absl::GetFlag(FLAGS_shrink_arena_between_runs);
+    test_config.run_config.run_config_entries.emplace(
+        kOrtRunOptionsConfigEnableMemoryArenaShrinkage,
+        std::move(shrink_spec));
+  }
 
   // -e
   {
