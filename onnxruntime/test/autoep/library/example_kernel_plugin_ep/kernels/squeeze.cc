@@ -3,7 +3,7 @@
 
 #include "squeeze.h"
 
-#include <gsl/gsl>
+#include <gsl/span>
 #include <cassert>
 
 #include "utils.h"

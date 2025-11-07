@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <gsl/gsl>
+#include <gsl/span>
 #include "mul.h"
 #include "utils.h"
 

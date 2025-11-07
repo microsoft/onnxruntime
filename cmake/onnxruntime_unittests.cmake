@@ -2105,7 +2105,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/mul.cc")
   onnxruntime_add_shared_library_module(example_kernel_plugin_ep ${onnxruntime_autoep_test_example_kernel_plugin_ep_src})
   target_include_directories(example_kernel_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(example_kernel_plugin_ep PRIVATE onnxruntime)
+  target_link_libraries(example_kernel_plugin_ep PRIVATE onnxruntime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)
