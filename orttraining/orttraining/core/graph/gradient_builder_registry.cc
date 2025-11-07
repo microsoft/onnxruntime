@@ -44,6 +44,7 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
 void GradientBuilderRegistry::RegisterGradientBuilders() {
   // Register gradient builders here.
   REGISTER_GRADIENT_BUILDER("Cast", GetCastGradient);
+  REGISTER_GRADIENT_BUILDER("CastLike", GetCastLikeGradient);
   REGISTER_GRADIENT_BUILDER("Sin", GetSinGradient);
   REGISTER_GRADIENT_BUILDER("Cos", GetCosGradient);
   REGISTER_GRADIENT_BUILDER("Log", GetLogGradient);
