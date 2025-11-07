@@ -740,7 +740,20 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
     // be also added to the subgraph's output list
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-        const auto& node_idx = it->GetNode().Index();
+        const auto& target_node = it->GetNode();
+        const auto& target_op_type = target_node.OpType();
+
+        if (target_op_type == "If" || target_op_type == "Loop" || target_op_type == "Scan") {
+          const auto& src_output_idx = it->GetSrcArgIndex();
+          if (src_output_idx < node->OutputDefs().size()) {
+            const auto* output_def = node->OutputDefs()[src_output_idx];
+            if (output_def && fused_outputs.find(output_def) == fused_outputs.end() && erased.find(output_def) == erased.end()) {
+              fused_outputs_to_add[output_def] = output_order++;
+            }
+          }
+          continue;
+        }
+        const auto& node_idx = target_node.Index();
         const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);
@@ -801,7 +814,12 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
     if (output.second->Exists()) {
       auto name = output.second->Name();
       if (std::find(graph_output_names.begin(), graph_output_names.end(), name) == graph_output_names.end()) {
-        output_names.push_back(name);
+        // if graph is split we dont know if output is used so we need this, otherwise if the graph isn't split
+        // then we can safely assume this output is a dangling output from a node and to discard it as part of the
+        // final graph output
+        if (is_graph_split) {
+          output_names.push_back(name);
+        }
       } else {
         graph_out_names.insert(name);
       }
@@ -979,6 +997,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "SimplifiedLayerNormalization",
                                                     "Sin",
                                                     "Sinh",
+                                                    "Size",
                                                     "SkipLayerNormalization",
                                                     "SkipSimplifiedLayerNormalization",
                                                     "Slice",
@@ -1052,12 +1071,37 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
   return mgx_subgraphx;
 }
 
+void MIGraphXExecutionProvider::dump_model_as_onnx(const std::string& onnx_buffer,
+                                                   const std::string& model_name) const {
+  // dump onnx file if environment var is set
+  if (dump_model_ops_) {
+    std::ofstream ofs(model_name, std::ios::binary);
+    if (!ofs.is_open()) {
+      ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
+    }
+    ofs.write(onnx_buffer.c_str(), onnx_buffer.size());
+    ofs.close();
+    LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
+  }
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                          const IKernelLookup& /*kernel_lookup*/,
                                          const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                          IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  if (graph_viewer.IsSubgraph()) {
+    const auto* parent_node = graph_viewer.ParentNode();
+    if (parent_node) {
+      const auto& parent_op_type = parent_node->OpType();
+      if (parent_op_type == "If" || parent_op_type == "Loop" || parent_op_type == "Scan") {
+        return result;
+      }
+    }
+  }
+
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
   graph_viewer.ToProto(*model_proto->mutable_graph(), true, true);
@@ -1066,41 +1110,33 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto->SerializeToString(onnx_string_buffer);
   model_path_ = graph_viewer.ModelPath();
 
-  // dump onnx file if environment var is set
-  if (dump_model_ops_) {
-    std::string model_name = graph_viewer.Name() + ".onnx";
-    std::ofstream ofs(model_name, std::ios::binary);
-    if (!ofs.is_open()) {
-      ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
-    }
-    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    ofs.close();
-    LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
-  }
+  dump_model_as_onnx(onnx_string_buffer, graph_viewer.Name() + ".onnx");
 
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
 
+  if (unsupported_nodes.size() > 0) {
+    LOGS_DEFAULT(WARNING) << "============= Unsupported nodes ====================";
+    for (auto idx : unsupported_nodes) {
+      LOGS_DEFAULT(WARNING) << graph_viewer.GetNode(idx)->OpType();
+    }
+    LOGS_DEFAULT(WARNING) << "************* Unsupported nodes ********************";
+  }
+
+  if (unsupported_nodes.size() > 10) {
+    return result;
+  }
+
+  bool is_graph_not_split = unsupported_nodes.empty();
+
   // If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
     auto sub_graph = GetSubGraph(node_indices, graph_viewer);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-  } else {  // unsupported_nodes_idx.empty()
-    if (dump_model_ops_) {
-      LOGS_DEFAULT(INFO) << "============= Unsupported nodes ====================";
-      for (auto idx : unsupported_nodes) {
-        LOGS_DEFAULT(INFO) << graph_viewer.GetNode(idx)->OpType();
-      }
-      LOGS_DEFAULT(INFO) << "************* Unsupported nodes ********************";
-    }
-
-    if (unsupported_nodes.size() > 10) {
-      return result;
-    }
-
+  } else {
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
     // check whether a subgrap should fallback to CPU
@@ -1324,16 +1360,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
 
-    if (dump_model_ops_) {
-      std::string onnx_name = fused_node.Name() + ".onnx";
-      std::ofstream ofs(onnx_name, std::ios::binary);
-      if (!ofs.is_open()) {
-        ORT_THROW("Failed to open file to dump ONNX model: " + onnx_name);
-      }
-      ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-      ofs.close();
-      LOGS_DEFAULT(INFO) << "ONNX model dumped to " << onnx_name;
-    }
+    dump_model_as_onnx(onnx_string_buffer, std::string{fused_node.Name() + ".onnx"});
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape || get_input_output_names(graph_body_viewer, input_names, output_names);

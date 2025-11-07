@@ -16,6 +16,7 @@
 #include "core/providers/migraphx/ort_trt_int8_cal_table.fbs.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
+#include "core/common/logging/severity.h"
 #include "core/common/path_string.h"
 #include "core/framework/murmurhash3.h"
 
@@ -137,6 +138,7 @@ inline bool canEvalNodeArgument(const GraphViewer& graph,
 
     // Input cannot be constant folded
     if (IsGraphInput(graph, input_name)) {
+      LOGS_DEFAULT(WARNING) << "Node:" << node->Name() << " Input:" << input_name << " Can't be const folded";
       return false;
     }
 
@@ -145,10 +147,12 @@ inline bool canEvalNodeArgument(const GraphViewer& graph,
       return isInputNode(n, input_name);
     });
     if (nit == in_nodes.end()) {
+      LOGS_DEFAULT(WARNING) << "Node:" << node->Name() << " Input:" << input_name << " Can't Find node to name";
       return false;
     }
 
     if (!canEvalShapeGeneral(graph, *nit, input_nodes)) {
+      LOGS_DEFAULT(WARNING) << "Node:" << node->Name() << " Input:" << input_name << " Can't eval shape";
       return false;
     }
   }

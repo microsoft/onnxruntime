@@ -70,6 +70,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
+  void dump_model_as_onnx(const std::string& onnx_buffer,
+                          const std::string& model_name) const;
+
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const IKernelLookup& /*kernel_lookup*/,
