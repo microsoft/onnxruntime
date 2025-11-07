@@ -109,6 +109,7 @@ struct QnnBackendManagerConfig {
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
   std::vector<OpPackage> op_packages;
+  bool skip_qnn_version_check;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -133,7 +134,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
         soc_model_(config.soc_model),
-        op_packages_(config.op_packages) {
+        op_packages_(config.op_packages),
+        skip_qnn_version_check_(config.skip_qnn_version_check) {
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -442,6 +444,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   bool vtcm_backup_buffer_sharing_enabled_ = false;
+  bool skip_qnn_version_check_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
