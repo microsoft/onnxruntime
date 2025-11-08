@@ -251,7 +251,7 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  // This model has Squeeze -> Mul. The example plugin EP supports both using registered kernels.
+  // This model has Squeeze, Mul, and Relu nodes. The example plugin EP supports all nodes using registered kernels.
   Ort::Session session(*ort_env, ORT_TSTR("testdata/squeeze_mul_relu.onnx"), session_options);
 
   // Create inputs
@@ -259,8 +259,8 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   std::array<int64_t, 3> a_shape = {3, 1, 2};
   std::array<int64_t, 2> b_shape = {3, 2};
 
-  std::array<float, 6> a_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
-  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, -6.f, 7.f};
+  std::array<float, 6> a_data = {1.f, -2.f, 3.f, 4.f, -5.f, 6.f};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, 6.f, 7.f};
 
   std::vector<Ort::Value> ort_inputs{};
   ort_inputs.emplace_back(
@@ -279,7 +279,7 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   Ort::Value& ort_output = ort_outputs[0];
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
-  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 6, 12, 0, 0, 42));
+  EXPECT_THAT(output_span, ::testing::ElementsAre(4, 0, 24, 0, 0, 84));
 }
 }  // namespace test
 }  // namespace onnxruntime
