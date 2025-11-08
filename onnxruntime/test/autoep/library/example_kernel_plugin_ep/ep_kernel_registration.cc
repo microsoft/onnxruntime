@@ -38,7 +38,7 @@ static OrtStatus* RegisterKernels(Ort::KernelRegistry& kernel_registry, const ch
     }
   }
 
-  return Ort::Status{nullptr};
+  return nullptr;
 }
 
 OrtStatus* CreateKernelRegistry(const char* ep_name, void* create_kernel_state,
