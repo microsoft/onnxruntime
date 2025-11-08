@@ -3331,6 +3331,8 @@ struct KernelDef : detail::ConstKernelDefImpl<OrtKernelDef> {
  * Used by plugin EPs to build a kernel definition.
  */
 struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
+  using InOutAliasPair = std::pair<int, int>;
+
   KernelDefBuilder();                           ///< Wraps OrtEpApi::CreateKernelDefBuilder
   explicit KernelDefBuilder(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used
   explicit KernelDefBuilder(OrtKernelDefBuilder* ort_kernel_def_builder);
@@ -3343,6 +3345,10 @@ struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
   KernelDefBuilder& SetOutputMemType(size_t output_index, OrtMemType mem_type);
   KernelDefBuilder& AddTypeConstraint(const char* arg_name, const OrtMLDataType* data_type);
   KernelDefBuilder& AddTypeConstraint(const char* arg_name, const std::vector<const OrtMLDataType*>& data_types);
+  KernelDefBuilder& AddInputOutputAlias(int input_index, int output_index);
+  KernelDefBuilder& AddInputOutputAliases(const std::vector<InOutAliasPair>& aliases);
+  KernelDefBuilder& AddInputOutputMutableAlias(int input_index, int output_index);
+  KernelDefBuilder& AddInputOutputMutableAliases(const std::vector<InOutAliasPair>& aliases);
 
   KernelDef Build();
 };

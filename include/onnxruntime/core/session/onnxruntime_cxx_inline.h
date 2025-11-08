@@ -3644,6 +3644,48 @@ inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_nam
   return *this;
 }
 
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAlias(int input_index, int output_index) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputAliases(p_, &input_index, &output_index, 1));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAliases(const std::vector<InOutAliasPair>& aliases) {
+  std::vector<int> input_indices;
+  std::vector<int> output_indices;
+
+  input_indices.reserve(aliases.size());
+  output_indices.reserve(aliases.size());
+  for (const std::pair<int, int>& alias : aliases) {
+    input_indices.push_back(alias.first);
+    output_indices.push_back(alias.second);
+  }
+
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputAliases(p_, input_indices.data(), output_indices.data(),
+                                                                 input_indices.size()));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAlias(int input_index, int output_index) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputMutableAliases(p_, &input_index, &output_index, 1));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAliases(const std::vector<InOutAliasPair>& aliases) {
+  std::vector<int> input_indices;
+  std::vector<int> output_indices;
+
+  input_indices.reserve(aliases.size());
+  output_indices.reserve(aliases.size());
+  for (const std::pair<int, int>& alias : aliases) {
+    input_indices.push_back(alias.first);
+    output_indices.push_back(alias.second);
+  }
+
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputMutableAliases(p_, input_indices.data(), output_indices.data(),
+                                                                        input_indices.size()));
+  return *this;
+}
+
 inline KernelDef KernelDefBuilder::Build() {
   OrtKernelDef* kernel_def = nullptr;
   ThrowOnError(GetEpApi().KernelDefBuilder_Build(p_, &kernel_def));

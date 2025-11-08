@@ -364,6 +364,76 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputAliases, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_reads_(num_io_indices) int const* input_indices,
+                    _In_reads_(num_io_indices) int const* output_indices,
+                    _In_ size_t num_io_indices) {
+  API_IMPL_BEGIN
+  if (num_io_indices == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one input/output alias");
+  }
+
+  if (input_indices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of input indices to alias");
+  }
+
+  if (output_indices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of output indices to alias");
+  }
+
+  if (num_io_indices == 1) {
+    kernel_def_builder->Alias(input_indices[0], output_indices[0]);
+  } else {
+    std::vector<std::pair<int, int>> pairs;
+    pairs.reserve(num_io_indices);
+
+    for (size_t i = 0; i < num_io_indices; ++i) {
+      pairs.push_back({input_indices[i], output_indices[i]});
+    }
+
+    kernel_def_builder->Alias(pairs);
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputMutableAliases, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                    _In_reads_(num_io_indices) int const* input_indices,
+                    _In_reads_(num_io_indices) int const* output_indices,
+                    _In_ size_t num_io_indices) {
+  API_IMPL_BEGIN
+  if (num_io_indices == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one input/output alias (mutable)");
+  }
+
+  if (input_indices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a valid array of input indices to alias (mutable)");
+  }
+
+  if (output_indices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a valid array of output indices to alias (mutable)");
+  }
+
+  if (num_io_indices == 1) {
+    kernel_def_builder->MayInplace(input_indices[0], output_indices[0]);
+  } else {
+    std::vector<std::pair<int, int>> pairs;
+    pairs.reserve(num_io_indices);
+
+    for (size_t i = 0; i < num_io_indices; ++i) {
+      pairs.push_back({input_indices[i], output_indices[i]});
+    }
+
+    kernel_def_builder->MayInplace(pairs);
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _Outptr_ OrtKernelDef** kernel_def_out) {
   API_IMPL_BEGIN
@@ -550,6 +620,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDefBuilder_SetInputMemType,
     &OrtExecutionProviderApi::KernelDefBuilder_SetOutputMemType,
     &OrtExecutionProviderApi::KernelDefBuilder_AddTypeConstraint,
+    &OrtExecutionProviderApi::KernelDefBuilder_AddInputOutputAliases,
+    &OrtExecutionProviderApi::KernelDefBuilder_AddInputOutputMutableAliases,
     &OrtExecutionProviderApi::KernelDefBuilder_Build,
     &OrtExecutionProviderApi::ReleaseKernelDef,
     &OrtExecutionProviderApi::KernelDef_GetOperatorType,

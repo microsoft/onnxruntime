@@ -683,7 +683,7 @@ struct OrtEpApi {
   ORT_API2_STATUS(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
                   _In_ size_t output_index, _In_ OrtMemType mem_type);
 
-  /** \brief Sets type constraints for a kernel argument represented as a string (e.g., "T").
+  /** \brief Adds type constraints for a kernel argument represented as a string (e.g., "T").
    *
    * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
    * \param[in] arg_name A null-terminated string representing the argument to constrain (e.g., "T").
@@ -698,6 +698,45 @@ struct OrtEpApi {
   ORT_API2_STATUS(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder* kernel_def_builder,
                   _In_ const char* arg_name, _In_reads_(num_types) const OrtMLDataType* const* types,
                   _In_ size_t num_types);
+
+  /** \brief Adds aliases for the given input and output pairs.
+   *
+   * \note Used for operators like Identity and Reshape to allow ORT to reuse the input buffer for the output
+   *       without modification.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] input_indices Array of input indices. Array must contain `num_io_indices` elements.
+   * \param[in] output_indices Array of output indices. Each output index is aliased with a corresponding
+   *                           input index in `input_indices`. Array must contain `num_io_indices` elements.
+   * \param[in] num_io_indices The number of input/output index pairs to alias.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_AddInputOutputAliases, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_reads_(num_io_indices) int const* input_indices,
+                  _In_reads_(num_io_indices) int const* output_indices,
+                  _In_ size_t num_io_indices);
+
+  /** \brief Adds mutable aliases for the given input and output pairs.
+   *
+   * \note Allows ORT to reuse and *modify* an input buffer (in-place) for the output buffer.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] input_indices Array of input indices. Array must contain `num_io_indices` elements.
+   * \param[in] output_indices Array of output indices. Each output index is aliased with a corresponding
+   *                           input index in `input_indices`. Array must contain `num_io_indices` elements.
+   * \param[in] num_io_indices The number of input/output index pairs to alias.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_AddInputOutputMutableAliases, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_reads_(num_io_indices) int const* input_indices,
+                  _In_reads_(num_io_indices) int const* output_indices,
+                  _In_ size_t num_io_indices);
 
   /** \brief Creates a OrtKernelDef instance from the given kernel definition builder.
    *

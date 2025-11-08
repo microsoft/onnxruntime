@@ -14,7 +14,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     13, 24,
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
-         .AddTypeConstraint("axes", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))),
+         .AddTypeConstraint("axes", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .AddInputOutputAlias(0, 0)),
     Squeeze)
 
 Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag)

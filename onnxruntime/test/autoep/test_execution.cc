@@ -252,7 +252,7 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   // This model has Squeeze -> Mul. The example plugin EP supports both using registered kernels.
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/squeeze_mul.onnx"), session_options);
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/squeeze_mul_relu.onnx"), session_options);
 
   // Create inputs
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -260,7 +260,7 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   std::array<int64_t, 2> b_shape = {3, 2};
 
   std::array<float, 6> a_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
-  std::array<float, 6> b_data = {2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, -6.f, 7.f};
 
   std::vector<Ort::Value> ort_inputs{};
   ort_inputs.emplace_back(
@@ -279,7 +279,7 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   Ort::Value& ort_output = ort_outputs[0];
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
-  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 6, 12, 20, 30, 42));
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 6, 12, 0, 0, 42));
 }
 }  // namespace test
 }  // namespace onnxruntime

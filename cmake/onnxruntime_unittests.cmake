@@ -2105,6 +2105,8 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/data_types.cc"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/squeeze.h"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/squeeze.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/relu.h"
+          "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/relu.cc"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/mul.h"
           "${TEST_SRC_DIR}/autoep/library/example_kernel_plugin_ep/kernels/mul.cc")
   onnxruntime_add_shared_library_module(example_kernel_plugin_ep ${onnxruntime_autoep_test_example_kernel_plugin_ep_src})

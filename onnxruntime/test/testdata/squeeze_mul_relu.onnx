@@ -1,9 +1,13 @@
-:¾
+:„
 '
 Asqueeze_output	squeeze_0"Squeeze
-"
++
 squeeze_output
-BCmul_0"Mul
+B
+mul_outputmul_0"Mul
+
+
+mul_outputCrelu_0"Relu
 Main_graphZ
 A
 
@@ -19,6 +23,11 @@ Main_graphZ
 
 j 
 squeeze_output
+
+
+j
+
+mul_output
 
 
 B

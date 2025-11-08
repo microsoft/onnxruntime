@@ -1,6 +1,6 @@
 from onnx import TensorProto, checker, helper, save, shape_inference
 
-# A --> Squeeze --> Mul --> C
+# A --> Squeeze --> Mul --> Relu --> C
 #                   ^
 #                   |
 # B ----------------+
@@ -15,8 +15,14 @@ graph_proto = helper.make_graph(
         helper.make_node(
             "Mul",
             inputs=["squeeze_output", "B"],
-            outputs=["C"],
+            outputs=["mul_output"],
             name="mul_0",
+        ),
+        helper.make_node(
+            "Relu",
+            inputs=["mul_output"],
+            outputs=["C"],
+            name="relu_0",
         ),
     ],
     name="Main_graph",
@@ -32,4 +38,4 @@ graph_proto = helper.make_graph(
 model = helper.make_model(graph_proto)
 model = shape_inference.infer_shapes(model)
 checker.check_model(model, True)
-save(model, "squeeze_mul.onnx")
+save(model, "squeeze_mul_relu.onnx")
