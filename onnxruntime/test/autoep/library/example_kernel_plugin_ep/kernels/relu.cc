@@ -55,7 +55,6 @@ void ORT_API_CALL Relu::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 }
 
 OrtStatus* Relu::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
-  // const OrtEpApi& ep_api = Ort::GetEpApi();
   Ort::KernelContext kernel_context(kernel_ctx);
   (void)this->state_;  // NOTE: Unused in this example.
   (void)this->info_;   // NOTE: Unused in this example.

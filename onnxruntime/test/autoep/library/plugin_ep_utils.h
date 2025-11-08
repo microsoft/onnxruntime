@@ -21,14 +21,6 @@
     }                          \
   } while (0)
 
-#define RETURN_IF_ERROR_CXX(fn) \
-  do {                          \
-    Ort::Status _status{(fn)};  \
-    if (!_status.IsOK()) {      \
-      return _status;           \
-    }                           \
-  } while (0)
-
 #define RETURN_IF(cond, ort_api, msg)                    \
   do {                                                   \
     if ((cond)) {                                        \

@@ -29,8 +29,8 @@ OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
 
 /*static*/
 OrtStatus* ORT_API_CALL Mul::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
-  Mul* memcpy = static_cast<Mul*>(this_ptr);
-  return memcpy->DoCompute(kernel_ctx);
+  Mul* mul = static_cast<Mul*>(this_ptr);
+  return mul->DoCompute(kernel_ctx);
 }
 
 /*static*/

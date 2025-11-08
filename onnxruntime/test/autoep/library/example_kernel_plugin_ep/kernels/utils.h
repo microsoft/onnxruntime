@@ -19,18 +19,18 @@ struct KernelCreateInfo {
   void* kernel_create_func_state = nullptr;
 };
 
-using BuildKernelCreateInfoFn = Ort::Status (*)(const char*, void*, KernelCreateInfo*);
+using BuildKernelCreateInfoFn = OrtStatus* (*)(const char*, void*, KernelCreateInfo*);
 
 template <typename T>
-Ort::Status BuildKernelCreateInfo(const char* ep_name, void* create_func_state, /*out*/ KernelCreateInfo* result);
+OrtStatus* BuildKernelCreateInfo(const char* ep_name, void* create_func_state, /*out*/ KernelCreateInfo* result);
 
 template <>
-inline Ort::Status BuildKernelCreateInfo<void>(const char* /*ep_name*/, void* /*create_func_state*/,
-                                               /*out*/ KernelCreateInfo* result) {
+inline OrtStatus* BuildKernelCreateInfo<void>(const char* /*ep_name*/, void* /*create_func_state*/,
+                                              /*out*/ KernelCreateInfo* result) {
   result->kernel_def = Ort::KernelDef{nullptr};
   result->kernel_create_func = nullptr;
   result->kernel_create_func_state = nullptr;
-  return Ort::Status{nullptr};
+  return nullptr;
 }
 
 static constexpr const char* kOnnxDomain = "";
@@ -42,7 +42,7 @@ static constexpr const char* kOnnxDomain = "";
 #define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, builder, kernel_class)            \
   class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, endver, name);                          \
   template <>                                                                                               \
-  Ort::Status                                                                                               \
+  OrtStatus*                                                                                                \
   BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, endver, name)>(         \
       const char* ep_name,                                                                                  \
       void* create_kernel_state,                                                                            \
@@ -67,10 +67,10 @@ static constexpr const char* kOnnxDomain = "";
       *result = KernelCreateInfo(std::move(kernel_def), kernel_create_func, create_kernel_state);           \
     } catch (const Ort::Exception& ex) {                                                                    \
       Ort::Status status(ex);                                                                               \
-      return status;                                                                                        \
+      return status.release();                                                                              \
     } catch (const std::exception& ex) {                                                                    \
       Ort::Status status(ex.what(), ORT_EP_FAIL);                                                           \
-      return status;                                                                                        \
+      return status.release();                                                                              \
     }                                                                                                       \
-    return Ort::Status{nullptr};                                                                            \
+    return nullptr;                                                                                         \
   }

@@ -49,9 +49,7 @@ OrtStatus* KernelEpFactory::GetKernelRegistryForEp(KernelEp& ep, const OrtKernel
   }
 
   if (kernel_registry_ == nullptr) {
-    void* op_kernel_state = &ep;  // Optional state that is provided to kernels on creation (can be null).
-                                  // This example just passes the entire OrtEp to the kernel.
-
+    void* op_kernel_state = nullptr;  // Optional state that is provided to kernels on creation (can be null).
     const char* ep_name = ep.GetName(static_cast<const OrtEp*>(&ep));
 
     // This statement creates the kernel registry and caches it in the OrtEpFactory instance.
@@ -102,7 +100,6 @@ OrtStatus* ORT_API_CALL KernelEpFactory::GetSupportedDevicesImpl(OrtEpFactory* t
   num_ep_devices = 0;
 
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
-    // C API
     const OrtHardwareDevice& device = *hw_devices[i];
     if (factory->ort_api_.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
       // these can be returned as nullptr if you have nothing to add.

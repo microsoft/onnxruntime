@@ -32,12 +32,12 @@ KernelEp::KernelEp(KernelEpFactory& factory, const OrtLogger& logger)
   Compile = nullptr;
   ReleaseNodeComputeInfos = nullptr;
 
-  auto status = ort_api_.Logger_LogMessage(&logger_,
-                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                           ("KernelEp has been created with name " + name_).c_str(),
-                                           ORT_FILE, __LINE__, __FUNCTION__);
   // ignore status for now
-  (void)status;
+  OrtStatus* status = ort_api_.Logger_LogMessage(&logger_,
+                                                 OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                                 ("KernelEp has been created with name " + name_).c_str(),
+                                                 ORT_FILE, __LINE__, __FUNCTION__);
+  Ort::Status _ignored{status};
 }
 
 KernelEp::~KernelEp() = default;
@@ -62,8 +62,6 @@ OrtStatus* ORT_API_CALL KernelEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGr
     }
 
     for (const auto& node : nodes) {
-      auto op_type = node.GetOperatorType();
-
       const OrtKernelDef* kernel_def = nullptr;
       RETURN_IF_ERROR(ep->ep_api_.EpGraphSupportInfo_LookUpKernel(graph_support_info, node, &kernel_def));
 
