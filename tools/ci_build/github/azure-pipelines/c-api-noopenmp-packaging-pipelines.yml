@@ -86,7 +86,7 @@ variables:
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
     value: '75-real;86-real;89-real;90-virtual'
   ${{ if eq(parameters.CudaVersion, '13.0') }}:
-    value: '75-real;80-real;86-real;89-real;90-real;120-real;120-virtual'
+    value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.

@@ -2,9 +2,9 @@
 set -e -x
 
 if [ "$CUDA_VERSION" == "12.8" ]; then
-    CUDA_ARCHS="60-real;70-real;75-real;80-real;90-real;120-real;120-virtual"
+    CUDA_ARCHS="60-real;70-real;75-real;80-real;90a-real;90-virtual"
 elif [ "$CUDA_VERSION" == "13.0" ]; then
-    CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;120-real;120-virtual"
+    CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual"
 else
     echo "Error: Unrecognized CUDA_VERSION: $CUDA_VERSION"
     exit 1
