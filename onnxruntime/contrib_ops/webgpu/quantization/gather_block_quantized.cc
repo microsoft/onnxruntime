@@ -38,28 +38,15 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
     shader.MainFunctionBody()
         << "let indices_indices = " << output.IndicesGet("output_indices", "uniforms.gather_axis") << ";\n";
   }
-#if 0
+
   shader.MainFunctionBody()
-      << "var data_indices = input_shape_indices_t(0);\n"
-      << "for (var i: u32 = 0; i < uniforms.gather_axis; i++) {\n"
-      << "  let index = " << output.IndicesGet("output_indices", "i") << ";\n  "
-      << x_shape.IndicesSet("data_indices", "i", "index") << ";\n};\n"
-      << "var index_from_indices = " << indices.GetByIndices("indices_indices") << ";\n"
-      << "if (index_from_indices < 0) { index_from_indices += " << x_shape_[gather_axis_] << ";}\n"
-      << x_shape.IndicesSet("data_indices", "uniforms.gather_axis", "u32(index_from_indices)") << ";\n"
-      << "for (var i = uniforms.gather_axis + 1; i < " << output_shape_.NumDimensions() << "; i++) {\n"
-      << "  let index = " << output.IndicesGet("output_indices", "i + " + std::to_string(indices_rank_ - 1)) << ";\n  "
-      << x_shape.IndicesSet("data_indices", "i", "index") << ";\n};\n"
-      << "  let data_offset = " << x_shape.IndicesToOffset("data_indices") << ";\n";
-#else
-  shader.MainFunctionBody()
-      << "var index_from_indices = " << indices.GetByIndices("indices_indices") << ";\n"
-      << "if (index_from_indices < 0) { index_from_indices += " << x_shape_[gather_axis_] << ";}\n"
+      << "var index = " << indices.GetByIndices("indices_indices") << ";\n"
+      << "if (index < 0) { index += " << x_shape_[gather_axis_] << ";}\n"
       << "var data_indices = input_shape_indices_t(0);\n";
 
   for (int i = 0, j = 0; i < x_shape.Rank(); i++) {
     if (static_cast<int>(i) == gather_axis_) {
-      shader.MainFunctionBody() << "  " << x_shape.IndicesSet("data_indices", i, "u32(index_from_indices)") << ";\n";
+      shader.MainFunctionBody() << "  " << x_shape.IndicesSet("data_indices", i, "u32(index)") << ";\n";
       j += indices.Rank();
     } else {
       shader.MainFunctionBody() << "  " << x_shape.IndicesSet("data_indices", i, output.IndicesGet("output_indices", j)) << ";\n";
@@ -69,7 +56,6 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
 
   shader.MainFunctionBody()
       << "  let data_offset = " << x_shape.IndicesToOffset("data_indices") << ";\n";
-#endif
 
   if (is_4bit) {
     shader.MainFunctionBody()
