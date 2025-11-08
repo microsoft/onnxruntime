@@ -7,11 +7,11 @@
  * - `kDeviceId`: Specifies the GPU device ID to use.
  * - `kHasUserComputeStream`: Indicates whether a user-provided compute stream is used.
  * - `kUserComputeStream`: Specifies the user-provided compute stream.
- * - `kHasUserAuxStream`: Indicates whether a user-provided aux stream is used.
- * - `kUserAuxStreams`: Specifies the user-provided aux stream.
+ * - `kHasUserAuxStreamArray`: Indicates whether a user-provided aux stream is used.
+ * - `kUserAuxStreamArray`: Specifies the user-provided aux stream.
  * - `kMaxWorkspaceSize`: Sets the maximum workspace size for GPU memory allocation.
  * - 'kMaxSharedMemSize': Sets the maximum amount of shared memory that TensorRT kernels are allowed to use
- * - `kMaxAuxiliaryStreams`: Sets the maximum number of auxiliary streams for TensorRT execution.
+ * - `kMaxAuxiliaryStreams`: Sets the maximum number of auxiliary streams for TensorRT execution. Also, should correspond to the size of kUserAuxStreamArray, if provided.
  * - `kDumpSubgraphs`: Enables or disables dumping of subgraphs for debugging.
  * - `kDetailedBuildLog`: Enables or disables detailed build logs for debugging.
  * - `kProfilesMinShapes`: Specifies the minimum shapes for profiling.
@@ -27,8 +27,8 @@ namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
 constexpr const char* kUserComputeStream = "user_compute_stream";
-constexpr const char* kHasUserAuxStream = "has_user_aux_streams";
-constexpr const char* kUserAuxStreams = "user_aux_streams";
+constexpr const char* kHasUserAuxStreamArray = "has_user_aux_stream_array";
+constexpr const char* kUserAuxStreamArray = "user_aux_stream_array";
 constexpr const char* kMaxWorkspaceSize = "nv_max_workspace_size";
 constexpr const char* kMaxSharedMemSize = "nv_max_shared_mem_size";
 constexpr const char* kMaxAuxiliaryStreams = "nv_max_auxiliary_streams";

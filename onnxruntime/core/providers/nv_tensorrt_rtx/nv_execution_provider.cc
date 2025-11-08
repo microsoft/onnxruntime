@@ -964,12 +964,12 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     stream_ = nullptr;  // Will be created in compute function
   }
 
-  if (info.has_user_aux_streams) {
+  if (info.has_user_aux_stream_array) {
     if(info.auxiliary_streams <= 0){
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams"));
     }
     external_aux_streams_ = true;
-    aux_streams_ = static_cast<cudaStream_t>(info.user_aux_streams);
+    aux_streams_ = static_cast<cudaStream_t>(info.user_aux_stream_array);
   } else {
     external_aux_streams_ = false;
     aux_streams_ = nullptr;
