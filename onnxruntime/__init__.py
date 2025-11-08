@@ -144,13 +144,7 @@ def _extract_cuda_major_version(version_str: str) -> str:
     Returns:
         Major version as string, or "12" if parsing fails
     """
-    if not version_str:
-        return "12"
-
-    with contextlib.suppress(AttributeError, IndexError):
-        return version_str.split(".")[0]
-
-    return "12"
+    return version_str.split(".")[0] if version_str else "12"
 
 
 def _get_cufft_version(cuda_major: str) -> str:
@@ -329,16 +323,17 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
             print("It can be downloaded at https://aka.ms/vs/17/release/vc_redist.x64.exe.")
 
     # Check if CUDA version is supported (12.x or 13.x+)
+    ort_cuda_major = None
     if cuda_version:
         try:
-            cuda_major = int(cuda_version.split(".")[0])
-            if cuda_major < 12 and (cuda or cudnn):
+            ort_cuda_major = int(cuda_version.split(".")[0])
+            if ort_cuda_major < 12 and (cuda or cudnn):
                 print(
                     f"\033[33mWARNING: {package_name} is built with CUDA {cuda_version}, which is not supported for preloading. "
                     f"CUDA 12.x or newer is required. Call preload_dlls with cuda=False and cudnn=False.\033[0m"
                 )
                 return
-        except (ValueError, IndexError, AttributeError):
+        except ValueError:
             print(
                 f"\033[33mWARNING: Unable to parse CUDA version '{cuda_version}'. "
                 "Skipping DLL preloading. Call preload_dlls with cuda=False and cudnn=False.\033[0m"
@@ -355,17 +350,14 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
         # Check if torch CUDA version matches onnxruntime CUDA version
         torch_cuda_major = None
         if torch_version and "+cu" in torch_version:
-            with contextlib.suppress(ValueError, IndexError):
+            with contextlib.suppress(ValueError):
                 # Extract CUDA version from torch (e.g., "2.0.0+cu121" -> 12)
                 cu_part = torch_version.split("+cu")[1]
                 torch_cuda_major = int(cu_part[:2])  # First 2 digits are major version
 
-        ort_cuda_major = None
-        if cuda_version:
-            with contextlib.suppress(ValueError, IndexError):
-                ort_cuda_major = int(cuda_version.split(".")[0])
-
-        is_torch_cuda_compatible = torch_cuda_major == ort_cuda_major if (torch_cuda_major and ort_cuda_major) else False
+        is_torch_cuda_compatible = (
+            torch_cuda_major == ort_cuda_major if (torch_cuda_major and ort_cuda_major) else False
+        )
 
         if "torch" in sys.modules:
             is_cuda_cudnn_imported_by_torch = is_torch_cuda_compatible

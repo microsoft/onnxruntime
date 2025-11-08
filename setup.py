@@ -4,7 +4,6 @@
 # ------------------------------------------------------------------------
 # pylint: disable=C0103
 
-import contextlib
 import datetime
 import logging
 import platform
@@ -56,8 +55,6 @@ wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
 cuda_major_version = None
-is_cuda_version_12 = False
-is_cuda_version_13 = False
 rocm_version = None
 is_migraphx = False
 is_openvino = False
@@ -67,14 +64,7 @@ qnn_version = None
 if wheel_name_suffix == "gpu":
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
     if cuda_version:
-        try:
-            cuda_major_version = int(cuda_version.split(".")[0])
-            is_cuda_version_12 = cuda_major_version == 12
-            is_cuda_version_13 = cuda_major_version == 13
-        except (ValueError, IndexError):
-            # Fallback to string checks if parsing fails
-            is_cuda_version_12 = cuda_version.startswith("12.")
-            is_cuda_version_13 = cuda_version.startswith("13.")
+        cuda_major_version = cuda_version.split(".")[0]
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
     package_name = "onnxruntime-migraphx"
@@ -798,13 +788,8 @@ with open(requirements_path) as f:
 
 # Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
 if package_name == "onnxruntime-trt-rtx":
-    cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
-    # Determine CUDA major version for correct runtime package
-    cuda_runtime_major = "12"  # Default to CUDA 12
-    if cuda_version:
-        with contextlib.suppress(ValueError, IndexError):
-            cuda_runtime_major = cuda_version.split(".")[0]
-    install_requires.append(f"nvidia-cuda-runtime-cu{cuda_runtime_major}~={cuda_runtime_major}.0")
+    major = cuda_major_version or "12"  # Default to CUDA 12
+    install_requires.append(f"nvidia-cuda-runtime-cu{major}~={major}.0")
 
 
 def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
@@ -845,7 +830,7 @@ save_build_and_package_info(package_name, version_number, cuda_version, rocm_ver
 extras_require = {}
 if package_name == "onnxruntime-gpu" and cuda_major_version:
     # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11
-    cufft_version = "12.0" if cuda_major_version == 13 else "11.0"
+    cufft_version = "12.0" if cuda_major_version == "13" else "11.0"
     extras_require = {
         "cuda": [
             f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
