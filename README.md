@@ -1,49 +1,69 @@
-<p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
+<p align="center">
+  <b>Français</b> | <a href="README.en.md">English</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a>
+</p>
 
-**ONNX Runtime is a cross-platform inference and training machine-learning accelerator**.
+<p align="center">
+  <img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" alt="Logo ONNX Runtime" />
+</p>
 
-**ONNX Runtime inference** can enable faster customer experiences and lower costs, supporting models from deep learning frameworks such as PyTorch and TensorFlow/Keras as well as classical machine learning libraries such as scikit-learn, LightGBM, XGBoost, etc. ONNX Runtime is compatible with different hardware, drivers, and operating systems, and provides optimal performance by leveraging hardware accelerators where applicable alongside graph optimizations and transforms. [Learn more &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-inferencing)
+<h1 align="center">ONNX Runtime</h1>
 
-**ONNX Runtime training** can accelerate the model training time on multi-node NVIDIA GPUs for transformer models with a one-line addition for existing PyTorch training scripts. [Learn more &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-training)
+<p align="center">
+  <strong>Un accélérateur multi-plateforme pour l'inférence et l'entraînement de modèles de machine learning.</strong>
+</p>
 
-## Get Started & Resources
+<p align="center">
+  <a href="https://github.com/microsoft/onnxruntime/releases"><img src="https://img.shields.io/github/v/release/microsoft/onnxruntime?style=for-the-badge" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/microsoft/onnxruntime?style=for-the-badge" alt="Licence"></a>
+  <a href="https://github.com/Microsoft/onnxruntime/issues"><img src="https://img.shields.io/github/issues/microsoft/onnxruntime?style=for-the-badge" alt="Problèmes ouverts"></a>
+</p>
 
-* **General Information**: [onnxruntime.ai](https://onnxruntime.ai)
+---
 
-* **Usage documentation and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
+## 🚀 Qu'est-ce que ONNX Runtime ?
 
-* **YouTube video tutorials**: [youtube.com/@ONNXRuntime](https://www.youtube.com/@ONNXRuntime)
+**ONNX Runtime** est un accélérateur haute performance conçu pour les modèles de machine learning, capable de gérer à la fois l'inférence et l'entraînement.
 
-* [**Upcoming Release Roadmap**](https://onnxruntime.ai/roadmap)
+* **⚡ Pour l'Inférence :** Accélérez vos expériences client et réduisez les coûts. ONNX Runtime prend en charge les modèles issus de frameworks populaires comme **PyTorch** et **TensorFlow/Keras**, ainsi que des bibliothèques classiques telles que **scikit-learn**, **LightGBM**, et **XGBoost**. Il est compatible avec divers matériels, pilotes et systèmes d'exploitation, garantissant des performances optimales en tirant parti des accélérateurs matériels et des optimisations de graphes. [En savoir plus &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-inferencing)
 
-* **Companion sample repositories**:
-  - ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
-  - ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
+* **🧠 Pour l'Entraînement :** Réduisez le temps d'entraînement de vos modèles de type "transformer" sur des configurations multi-nœuds de GPU NVIDIA. Il suffit d'une seule ligne de code à ajouter à vos scripts d'entraînement PyTorch existants. [En savoir plus &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-training)
 
-## Releases
+## 📚 Démarrage Rapide & Ressources
 
-The current release and past releases can be found here: https://github.com/microsoft/onnxruntime/releases.
+Toutes les informations dont vous avez besoin pour commencer ou approfondir vos connaissances.
 
-For details on the upcoming release, including release dates, announcements, features, and guidance on submitting feature requests, please visit the release roadmap: https://onnxruntime.ai/roadmap.
+| Ressource | Description |
+| :--- | :--- |
+| 🌐 **Site Web** | [onnxruntime.ai](https://onnxruntime.ai) - Informations générales. |
+| 📖 **Documentation** | [onnxruntime.ai/docs](https://onnxruntime.ai/docs) - Guides d'utilisation et tutoriels. |
+| 📺 **Tutoriels Vidéo** | [youtube.com/@ONNXRuntime](https://www.youtube.com/@ONNXRuntime) - Apprentissage visuel. |
+| 🛣️ **Feuille de Route** | [onnxruntime.ai/roadmap](https://onnxruntime.ai/roadmap) - Découvrez les fonctionnalités à venir. |
+| 💡 **Exemples (Inférence)** | [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples) - Dépôt de code compagnon. |
+| 🏋️ **Exemples (Entraînement)** | [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples) - Dépôt de code compagnon. |
 
-## Data/Telemetry
+## 📦 Versions (Releases)
 
-Windows distributions of this project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
+Retrouvez la version actuelle et les versions passées ici :
+[**github.com/microsoft/onnxruntime/releases**](https://github.com/microsoft/onnxruntime/releases)
 
-## Contributions and Feedback
+Pour des détails sur la prochaine version (dates, annonces, nouvelles fonctionnalités), consultez notre [feuille de route publique](https://onnxruntime.ai/roadmap).
 
-We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
+## 🤝 Contribuer & Feedback
 
-For feature requests or bug reports, please file a [GitHub Issue](https://github.com/Microsoft/onnxruntime/issues).
+Votre aide est la bienvenue !
 
-For general discussion or questions, please use [GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+* **Envie de contribuer ?** Veuillez consulter nos [**directives de contribution**](CONTRIBUTING.md).
+* **Signaler un bug ou demander une fonctionnalité ?** Ouvrez une [**GitHub Issue**](https://github.com/Microsoft/onnxruntime/issues).
+* **Poser une question ou discuter ?** Utilisez [**GitHub Discussions**](https://github.com/microsoft/onnxruntime/discussions).
 
-## Code of Conduct
+---
 
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
-or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+## 📊 Données & Télémétrie
 
-## License
+> Les distributions Windows de ce projet peuvent collecter des données d'utilisation et les envoyer à Microsoft pour nous aider à améliorer nos produits et services.
+> Lisez notre [**déclaration de confidentialité**](docs/Privacy.md) pour plus de détails.
 
-This project is licensed under the [MIT License](LICENSE).
+## ⚖️ Code de Conduite & Licence
+
+* Ce projet a adopté le [**Code de Conduite Microsoft Open Source**](https://opensource.microsoft.com/codeofconduct/). Pour plus d'informations, consultez la [FAQ du Code de Conduite](https://opensource.microsoft.com/codeofconduct/faq/) ou contactez [opencode@microsoft.com](mailto:opencode@microsoft.com).
+* Ce projet est sous [**Licence MIT**](LICENSE).
