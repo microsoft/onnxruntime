@@ -784,42 +784,6 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
   }
 };
 
-template <typename AGG>
-struct ReduceAggTraits {
-  static constexpr bool kHasPreOp = false;
-  static constexpr bool kHasPostOp = false;
-};
-
-template <typename T>
-struct ReduceAggTraits<ReduceAggregatorL1<T>> {
-  static constexpr bool kHasPreOp = true;
-  static constexpr bool kHasPostOp = false;
-};
-
-template <typename T>
-struct ReduceAggTraits<ReduceAggregatorL2<T>> {
-  static constexpr bool kHasPreOp = true;
-  static constexpr bool kHasPostOp = true;
-};
-
-template <typename T, typename TVAL>
-struct ReduceAggTraits<ReduceAggregatorSumSquare<T, TVAL>> {
-  static constexpr bool kHasPreOp = true;
-  static constexpr bool kHasPostOp = false;
-};
-
-template <typename T>
-struct ReduceAggTraits<ReduceAggregatorLogSum<T>> {
-  static constexpr bool kHasPreOp = false;
-  static constexpr bool kHasPostOp = true;
-};
-
-template <typename T>
-struct ReduceAggTraits<ReduceAggregatorLogSumExp<T>> {
-  static constexpr bool kHasPreOp = true;
-  static constexpr bool kHasPostOp = true;
-};
-
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
                                  gsl::span<const int64_t> reduced_axes,
                                  ResultsNoTransposePrepareForReduce& results);
