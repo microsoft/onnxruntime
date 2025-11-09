@@ -6135,7 +6135,9 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_Scalar) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {}, {9.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_ElementwiseSquare) {
   OpTester test("ReduceSumSquare", 18);
@@ -6143,7 +6145,9 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_ElementwiseSquare) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2}, {4.f, 9.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_2D_ElementwiseSquare) {
   OpTester test("ReduceSumSquare", 18);
@@ -6151,7 +6155,9 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_2D_ElementwiseSquare) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 3}, {1.f, 4.f, 9.f, 0.25f, 0.25f, 16.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_3D_ElementwiseSquare) {
   OpTester test("ReduceSumSquare", 18);
@@ -6159,7 +6165,9 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithEmptyAxes_3D_ElementwiseSquare) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 1, 3}, {1.f, 4.f, 9.f, 0.25f, 0.25f, 16.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_Scalar) {
@@ -6168,7 +6176,9 @@ TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_Scalar) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {}, {3.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_ElementwiseAbs) {
   OpTester test("ReduceL1", 18);
@@ -6176,7 +6186,9 @@ TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_ElementwiseAbs) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {4}, {2.f, 0.f, 3.5f, 4.0f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_2D_ElementwiseAbs) {
   OpTester test("ReduceL1", 18);
@@ -6184,7 +6196,9 @@ TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_2D_ElementwiseAbs) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 2}, {2.f, 0.f, 3.5f, 4.0f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_3D_ElementwiseAbs) {
   OpTester test("ReduceL1", 18);
@@ -6192,7 +6206,9 @@ TEST(ReductionOpTest, ReduceL1_NoopWithEmptyAxes_3D_ElementwiseAbs) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {1, 2, 2}, {2.f, 0.f, 3.5f, 4.0f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_Scalar) {
@@ -6201,7 +6217,9 @@ TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_Scalar) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {}, {3.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_ElementwiseAbs) {
   OpTester test("ReduceL2", 18);
@@ -6209,7 +6227,9 @@ TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_ElementwiseAbs) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {3}, {3.f, 0.f, 4.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_2D_ElementwiseAbs) {
   OpTester test("ReduceL2", 18);
@@ -6217,7 +6237,9 @@ TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_2D_ElementwiseAbs) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 2}, {3.f, 0.f, 4.f, 1.5f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_3D_ElementwiseAbs) {
   OpTester test("ReduceL2", 18);
@@ -6225,7 +6247,9 @@ TEST(ReductionOpTest, ReduceL2_NoopWithEmptyAxes_3D_ElementwiseAbs) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 1, 3}, {3.f, 0.f, 4.f, 1.5f, 2.5f, 1.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_Scalar) {
@@ -6234,7 +6258,9 @@ TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_Scalar) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {}, {1.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_ElementwiseLog) {
   OpTester test("ReduceLogSum", 18);
@@ -6242,7 +6268,9 @@ TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_ElementwiseLog) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2}, {1.f, 2.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_2D_ElementwiseLog) {
   OpTester test("ReduceLogSum", 18);
@@ -6250,7 +6278,9 @@ TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_2D_ElementwiseLog) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 2}, {1.f, 2.f, 0.5f, 3.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_3D_ElementwiseLog) {
@@ -6259,7 +6289,9 @@ TEST(ReductionOpTest, ReduceLogSum_NoopWithEmptyAxes_3D_ElementwiseLog) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 1, 3}, {1.f, 2.f, 0.5f, 3.f, 4.f, 5.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_Scalar) {
@@ -6268,7 +6300,9 @@ TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_Scalar) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {}, {2.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_Identity) {
   OpTester test("ReduceLogSumExp", 18);
@@ -6276,7 +6310,9 @@ TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_Identity) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {3}, {2.f, -0.5f, 0.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_2D_Identity) {
   OpTester test("ReduceLogSumExp", 18);
@@ -6284,7 +6320,9 @@ TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_2D_Identity) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 3}, {2.f, -0.5f, 0.f, 1.25f, -3.f, 4.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_3D_Identity) {
   OpTester test("ReduceLogSumExp", 18);
@@ -6292,7 +6330,9 @@ TEST(ReductionOpTest, ReduceLogSumExp_NoopWithEmptyAxes_3D_Identity) {
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2, 1, 3}, {2.f, -0.5f, 0.f, 1.25f, -3.f, 4.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare) {
@@ -6300,7 +6340,9 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
   test.AddInput<float>("data", {2}, {2.f, 3.f});
   test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
   test.AddOutput<float>("reduced", {2}, {4.f, 9.f});
-  test.Run();
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 }  // namespace test
