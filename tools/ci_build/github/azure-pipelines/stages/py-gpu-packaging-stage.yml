@@ -26,7 +26,7 @@ parameters:
 
 - name: cudnn_folder
   type: string
-  default: '9.13.0.50_cuda13'
+  default: '9.14.0.64_cuda13'
 
 - name: PythonVersions
   type: object
