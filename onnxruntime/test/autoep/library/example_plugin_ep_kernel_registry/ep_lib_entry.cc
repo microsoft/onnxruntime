@@ -29,7 +29,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   // Manual init for the C++ API
   Ort::InitApi(ort_api);
 
-  std::unique_ptr<OrtEpFactory> factory = std::make_unique<KernelEpFactory>(*ort_api, *ep_api, *default_logger);
+  std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleKernelEpFactory>(*ort_api, *ep_api, *default_logger);
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
@@ -43,7 +43,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
 }
 
 EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
-  delete static_cast<KernelEpFactory*>(factory);
+  delete static_cast<ExampleKernelEpFactory*>(factory);
   return nullptr;
 }
 

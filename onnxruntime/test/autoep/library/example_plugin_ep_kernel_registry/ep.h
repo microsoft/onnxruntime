@@ -7,15 +7,15 @@
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
-class KernelEpFactory;
+class ExampleKernelEpFactory;
 
 /// <summary>
 /// Example EP that uses kernel registration.
 /// </summary>
-class KernelEp : public OrtEp {
+class ExampleKernelEp : public OrtEp {
  public:
-  KernelEp(KernelEpFactory& factory, const OrtLogger& logger);
-  ~KernelEp();
+  ExampleKernelEp(ExampleKernelEpFactory& factory, const OrtLogger& logger);
+  ~ExampleKernelEp();
 
   const OrtApi& GetOrtApi() const { return ort_api_; }
   const OrtEpApi& GetEpApi() const { return ep_api_; }
@@ -30,7 +30,7 @@ class KernelEp : public OrtEp {
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
                                                    OrtEpGraphSupportInfo* graph_support_info) noexcept;
 
-  KernelEpFactory& factory_;
+  ExampleKernelEpFactory& factory_;
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
   std::string name_;

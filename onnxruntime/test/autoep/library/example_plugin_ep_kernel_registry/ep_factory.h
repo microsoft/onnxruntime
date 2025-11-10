@@ -9,22 +9,22 @@
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
-class KernelEp;
+class ExampleKernelEp;
 
 /// <summary>
 /// EP factory that creates an OrtEp instance that uses kernel registration.
 /// </summary>
-class KernelEpFactory : public OrtEpFactory {
+class ExampleKernelEpFactory : public OrtEpFactory {
  public:
-  KernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtLogger& default_logger);
-  ~KernelEpFactory();
+  ExampleKernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtLogger& default_logger);
+  ~ExampleKernelEpFactory();
 
   const OrtApi& GetOrtApi() const { return ort_api_; }
   const OrtEpApi& GetEpApi() const { return ep_api_; }
   const std::string& GetEpName() const { return ep_name_; }
 
   // Called by child OrtEp instances to retrieve the cached kernel registry for that EP.
-  OrtStatus* GetKernelRegistryForEp(KernelEp& ep, /*out*/ const OrtKernelRegistry** kernel_registry);
+  OrtStatus* GetKernelRegistryForEp(ExampleKernelEp& ep, /*out*/ const OrtKernelRegistry** kernel_registry);
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -70,7 +70,7 @@ class KernelEpFactory : public OrtEpFactory {
 
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
-  const std::string ep_name_{"KernelEp"};
+  const std::string ep_name_{"ExampleKernelEp"};
   const std::string vendor_{"Contoso2"};   // EP vendor name
   const uint32_t vendor_id_{0xB358};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version

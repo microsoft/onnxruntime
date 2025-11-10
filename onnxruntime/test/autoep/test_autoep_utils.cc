@@ -28,10 +28,10 @@ const Utils::ExamplePluginInfo Utils::example_ep_virt_gpu_info(
     // This EP's name is hardcoded to the following
     "EpVirtualGpu");
 
-const Utils::ExamplePluginInfo Utils::example_kernel_ep_info(
-    GetSharedLibraryFileName(ORT_TSTR("example_kernel_plugin_ep")),
-    "example_kernel_plugin_ep",
-    "KernelEp");
+const Utils::ExamplePluginInfo Utils::example_ep_kernel_registry_info(
+    GetSharedLibraryFileName(ORT_TSTR("example_plugin_ep_kernel_registry")),
+    "example_plugin_ep_kernel_registry",
+    "ExampleKernelEp");
 
 void Utils::GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device) {
   const OrtApi& c_api = Ort::GetApi();

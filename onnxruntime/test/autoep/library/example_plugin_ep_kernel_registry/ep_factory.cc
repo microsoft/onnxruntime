@@ -11,7 +11,8 @@
 #include "ep_kernel_registration.h"
 #include "../plugin_ep_utils.h"
 
-KernelEpFactory::KernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api, const OrtLogger& /*default_logger*/)
+ExampleKernelEpFactory::ExampleKernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
+                                               const OrtLogger& /*default_logger*/)
     : OrtEpFactory{},
       ort_api_(ort_api),
       ep_api_(ep_api) {
@@ -35,13 +36,14 @@ KernelEpFactory::KernelEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api, 
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 }
 
-KernelEpFactory::~KernelEpFactory() {
+ExampleKernelEpFactory::~ExampleKernelEpFactory() {
   if (kernel_registry_ != nullptr) {
     Ort::GetEpApi().ReleaseKernelRegistry(kernel_registry_);
   }
 }
 
-OrtStatus* KernelEpFactory::GetKernelRegistryForEp(KernelEp& ep, const OrtKernelRegistry** out_kernel_registry) {
+OrtStatus* ExampleKernelEpFactory::GetKernelRegistryForEp(ExampleKernelEp& ep,
+                                                          const OrtKernelRegistry** out_kernel_registry) {
   *out_kernel_registry = nullptr;
 
   if (GetNumKernels() == 0) {
@@ -64,38 +66,38 @@ OrtStatus* KernelEpFactory::GetKernelRegistryForEp(KernelEp& ep, const OrtKernel
 }
 
 /*static*/
-const char* ORT_API_CALL KernelEpFactory::GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
-  const auto* factory = static_cast<const KernelEpFactory*>(this_ptr);
+const char* ORT_API_CALL ExampleKernelEpFactory::GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const ExampleKernelEpFactory*>(this_ptr);
   return factory->ep_name_.c_str();
 }
 
 /*static*/
-const char* ORT_API_CALL KernelEpFactory::GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
-  const auto* factory = static_cast<const KernelEpFactory*>(this_ptr);
+const char* ORT_API_CALL ExampleKernelEpFactory::GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const ExampleKernelEpFactory*>(this_ptr);
   return factory->vendor_.c_str();
 }
 
 /*static*/
-uint32_t ORT_API_CALL KernelEpFactory::GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
-  const auto* factory = static_cast<const KernelEpFactory*>(this_ptr);
+uint32_t ORT_API_CALL ExampleKernelEpFactory::GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const ExampleKernelEpFactory*>(this_ptr);
   return factory->vendor_id_;
 }
 
 /*static*/
-const char* ORT_API_CALL KernelEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
-  const auto* factory = static_cast<const KernelEpFactory*>(this_ptr);
+const char* ORT_API_CALL ExampleKernelEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const ExampleKernelEpFactory*>(this_ptr);
   return factory->ep_version_.c_str();
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL KernelEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
-                                                                 const OrtHardwareDevice* const* hw_devices,
-                                                                 size_t num_devices,
-                                                                 OrtEpDevice** ep_devices,
-                                                                 size_t max_ep_devices,
-                                                                 size_t* p_num_ep_devices) noexcept {
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
+                                                                        const OrtHardwareDevice* const* hw_devices,
+                                                                        size_t num_devices,
+                                                                        OrtEpDevice** ep_devices,
+                                                                        size_t max_ep_devices,
+                                                                        size_t* p_num_ep_devices) noexcept {
   size_t& num_ep_devices = *p_num_ep_devices;
-  auto* factory = static_cast<KernelEpFactory*>(this_ptr);
+  auto* factory = static_cast<ExampleKernelEpFactory*>(this_ptr);
 
   num_ep_devices = 0;
 
@@ -138,67 +140,66 @@ OrtStatus* ORT_API_CALL KernelEpFactory::GetSupportedDevicesImpl(OrtEpFactory* t
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL KernelEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
-                                                      const OrtHardwareDevice* const* /*devices*/,
-                                                      const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                                      size_t num_devices,
-                                                      const OrtSessionOptions* /*session_options*/,
-                                                      const OrtLogger* logger,
-                                                      OrtEp** ep) noexcept {
-  auto* factory = static_cast<KernelEpFactory*>(this_ptr);
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
+                                                             const OrtHardwareDevice* const* /*devices*/,
+                                                             const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                                             size_t num_devices,
+                                                             const OrtSessionOptions* /*session_options*/,
+                                                             const OrtLogger* logger,
+                                                             OrtEp** ep) noexcept {
+  auto* factory = static_cast<ExampleKernelEpFactory*>(this_ptr);
   *ep = nullptr;
 
   if (num_devices != 1) {
     return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT,
-                                          "KernelEpFactory only supports selection for one device.");
+                                          "ExampleKernelEpFactory only supports selection for one device.");
   }
 
-  auto actual_ep = std::make_unique<KernelEp>(*factory, *logger);
+  auto actual_ep = std::make_unique<ExampleKernelEp>(*factory, *logger);
   *ep = actual_ep.release();
 
   return nullptr;
 }
 
 /*static*/
-void ORT_API_CALL KernelEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
-  KernelEp* dummy_ep = static_cast<KernelEp*>(ep);
-  delete dummy_ep;
+void ORT_API_CALL ExampleKernelEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
+  delete static_cast<ExampleKernelEp*>(ep);
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL KernelEpFactory::CreateAllocatorImpl(OrtEpFactory* /*this_ptr*/,
-                                                             const OrtMemoryInfo* /*memory_info*/,
-                                                             const OrtKeyValuePairs* /*allocator_options*/,
-                                                             OrtAllocator** allocator) noexcept {
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateAllocatorImpl(OrtEpFactory* /*this_ptr*/,
+                                                                    const OrtMemoryInfo* /*memory_info*/,
+                                                                    const OrtKeyValuePairs* /*allocator_options*/,
+                                                                    OrtAllocator** allocator) noexcept {
   // Don't support custom allocators in this example for simplicity. A GPU EP would normally support allocators.
   *allocator = nullptr;
   return nullptr;
 }
 
 /*static*/
-void ORT_API_CALL KernelEpFactory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/,
-                                                        OrtAllocator* /*allocator*/) noexcept {
+void ORT_API_CALL ExampleKernelEpFactory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/,
+                                                               OrtAllocator* /*allocator*/) noexcept {
   // Do nothing.
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL KernelEpFactory::CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
-                                                                OrtDataTransferImpl** data_transfer) noexcept {
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+                                                                       OrtDataTransferImpl** data_transfer) noexcept {
   // Don't support data transfer in this example for simplicity. A GPU EP would normally support it.
   *data_transfer = nullptr;
   return nullptr;
 }
 
 /*static*/
-bool ORT_API_CALL KernelEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+bool ORT_API_CALL ExampleKernelEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
   return false;
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL KernelEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* /*this_ptr*/,
-                                                                       const OrtMemoryDevice* /*memory_device*/,
-                                                                       const OrtKeyValuePairs* /*stream_options*/,
-                                                                       OrtSyncStreamImpl** stream) noexcept {
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* /*this_ptr*/,
+                                                                              const OrtMemoryDevice* /*memory_device*/,
+                                                                              const OrtKeyValuePairs* /*stream_opts*/,
+                                                                              OrtSyncStreamImpl** stream) noexcept {
   // Don't support sync streams in this example.
   *stream = nullptr;
   return nullptr;

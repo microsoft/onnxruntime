@@ -14,7 +14,7 @@
 #include "ep_factory.h"
 #include "../plugin_ep_utils.h"
 
-KernelEp::KernelEp(KernelEpFactory& factory, const OrtLogger& logger)
+ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const OrtLogger& logger)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       factory_{factory},
       ort_api_{factory.GetOrtApi()},
@@ -32,27 +32,25 @@ KernelEp::KernelEp(KernelEpFactory& factory, const OrtLogger& logger)
   Compile = nullptr;
   ReleaseNodeComputeInfos = nullptr;
 
-  // ignore status for now
-  OrtStatus* status = ort_api_.Logger_LogMessage(&logger_,
-                                                 OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                                 ("KernelEp has been created with name " + name_).c_str(),
-                                                 ORT_FILE, __LINE__, __FUNCTION__);
-  Ort::Status _ignored{status};
+  IGNORE_ORTSTATUS(ort_api_.Logger_LogMessage(&logger_,
+                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                              ("ExampleKernelEp has been created with name " + name_).c_str(),
+                                              ORT_FILE, __LINE__, __FUNCTION__));
 }
 
-KernelEp::~KernelEp() = default;
+ExampleKernelEp::~ExampleKernelEp() = default;
 
 /*static*/
-const char* ORT_API_CALL KernelEp::GetNameImpl(const OrtEp* this_ptr) noexcept {
-  const auto* ep = static_cast<const KernelEp*>(this_ptr);
+const char* ORT_API_CALL ExampleKernelEp::GetNameImpl(const OrtEp* this_ptr) noexcept {
+  const auto* ep = static_cast<const ExampleKernelEp*>(this_ptr);
   return ep->name_.c_str();
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL KernelEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
-                                                    OrtEpGraphSupportInfo* graph_support_info) noexcept {
+OrtStatus* ORT_API_CALL ExampleKernelEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
+                                                           OrtEpGraphSupportInfo* graph_support_info) noexcept {
   try {
-    KernelEp* ep = static_cast<KernelEp*>(this_ptr);
+    ExampleKernelEp* ep = static_cast<ExampleKernelEp*>(this_ptr);
 
     Ort::ConstGraph graph{ort_graph};
     std::vector<Ort::ConstNode> nodes = graph.GetNodes();
@@ -82,10 +80,10 @@ OrtStatus* ORT_API_CALL KernelEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGr
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL KernelEp::GetKernelRegistryImpl(
+OrtStatus* ORT_API_CALL ExampleKernelEp::GetKernelRegistryImpl(
     _In_ OrtEp* this_ptr,
     _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry) noexcept {
-  KernelEp* ep = static_cast<KernelEp*>(this_ptr);
+  ExampleKernelEp* ep = static_cast<ExampleKernelEp*>(this_ptr);
 
   *kernel_registry = nullptr;
 

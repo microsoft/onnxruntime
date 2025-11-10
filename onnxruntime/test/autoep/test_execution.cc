@@ -241,7 +241,8 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
 
 TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   RegisteredEpDeviceUniquePtr example_kernel_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_kernel_ep_info, example_kernel_ep));
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info,
+                                                         example_kernel_ep));
   Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
 
   // Create session with example kernel-based plugin EP

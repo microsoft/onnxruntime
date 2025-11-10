@@ -15,7 +15,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     14, 24,
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
-         .AddInputOutputMutableAlias(0, 0)),
+         .AddInputOutputMutableAlias({0, 0})),
     Relu)
 
 Relu::Relu(const OrtKernelInfo* info, void* state, PrivateTag)
