@@ -119,9 +119,20 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     zero_points_ptr = zero_points->Data<T1>();
   }
 
+  // For packed uint8_t with bits < 8,
+  // after_gather_dim has to be adjusted to match
+  // the unpacked output dims for correct kernel indexing
+  int64_t after_gather_dim_unpacked = after_gather_dim;
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    uint32_t components = 8 / static_cast<int>(bits_);
+    if (components > 1) {
+      after_gather_dim_unpacked *= components;
+    }
+  }
+
   GatherBlockQuantizedParam param;
   param.stream = Stream(ctx);
-  param.after_gather_dim = after_gather_dim;
+  param.after_gather_dim = after_gather_dim_unpacked;
   param.gather_axis_dim = data_shape[gather_axis_];
   param.ind_dim = ind_dim;
   param.bits = bits_;

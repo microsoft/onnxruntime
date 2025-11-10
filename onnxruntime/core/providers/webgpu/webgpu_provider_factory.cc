@@ -155,18 +155,32 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
     }
   }
 
-  std::string small_storage_buffer_binding_size_for_testing_str;
-  bool small_storage_buffer_binding_size_for_testing = false;
-  if (config_options.TryGetConfigEntry(kSmallStorageBufferBindingSizeForTesting, small_storage_buffer_binding_size_for_testing_str)) {
-    if (small_storage_buffer_binding_size_for_testing_str == "1" || small_storage_buffer_binding_size_for_testing_str == "true") {
-      small_storage_buffer_binding_size_for_testing = true;
-    } else if (small_storage_buffer_binding_size_for_testing_str == "0" || small_storage_buffer_binding_size_for_testing_str == "false") {
-      small_storage_buffer_binding_size_for_testing = false;
+  uint64_t max_storage_buffer_binding_size = 0;
+  std::string max_storage_buffer_binding_size_str;
+  if (config_options.TryGetConfigEntry(kMaxStorageBufferBindingSize, max_storage_buffer_binding_size_str)) {
+    ORT_ENFORCE(
+        std::errc{} == std::from_chars(
+                           max_storage_buffer_binding_size_str.data(),
+                           max_storage_buffer_binding_size_str.data() + max_storage_buffer_binding_size_str.size(),
+                           max_storage_buffer_binding_size)
+                           .ec,
+        "Invalid maxStorageBufferBindingSize value: ", max_storage_buffer_binding_size_str);
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << max_storage_buffer_binding_size;
+
+  // power preference
+  int power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);  // default
+  std::string power_preference_str;
+  if (config_options.TryGetConfigEntry(kPowerPreference, power_preference_str)) {
+    if (power_preference_str == kPowerPreference_HighPerformance) {
+      power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);
+    } else if (power_preference_str == kPowerPreference_LowPower) {
+      power_preference = static_cast<int>(WGPUPowerPreference_LowPower);
     } else {
-      ORT_THROW("Invalid small storage buffer binding size for testing: ", small_storage_buffer_binding_size_for_testing_str);
+      ORT_THROW("Invalid power preference: ", power_preference_str);
     }
   }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP small storage buffer binding size for testing: " << small_storage_buffer_binding_size_for_testing;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP power preference: " << power_preference;
 
   webgpu::WebGpuContextConfig context_config{
       context_id,
@@ -175,7 +189,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       reinterpret_cast<const void*>(dawn_proc_table),
       validation_mode,
       preserve_device,
-      small_storage_buffer_binding_size_for_testing,
+      max_storage_buffer_binding_size,
+      power_preference,
   };
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << context_id;
@@ -184,6 +199,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << dawn_proc_table;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << validation_mode;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << preserve_device;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP PowerPreference: " << power_preference;
 
   //
   // STEP.3 - prepare parameters for WebGPU context initialization.

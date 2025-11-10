@@ -49,6 +49,9 @@ ABSL_FLAG(size_t, c, DefaultPerformanceTestConfig().run_config.concurrent_sessio
 ABSL_FLAG(int, d, DefaultPerformanceTestConfig().run_config.cudnn_conv_algo, "Specifies CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default).");
 ABSL_FLAG(int, o, DefaultPerformanceTestConfig().run_config.optimization_level, "Specifies graph optimization level. Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).");
 ABSL_FLAG(std::string, u, "", "Specifies the optimized model path for saving.");
+ABSL_FLAG(std::string, opt_data, "", "Specifies the data file path (relative to the opt model) for saving weights when -u is in effect");
+ABSL_FLAG(int64_t, opt_weight_min_size, -1, "Min initializer size to save to --opt_data  when --opt_data is in effect");
+ABSL_FLAG(bool, opt_save_prepacks, false, "Saves pre-packs to the file specified by --opt_data along with weights");
 ABSL_FLAG(std::string, i, "",
           "Specifies EP specific runtime options as key-value pairs.\n Different runtime options available are: \n"
           "  [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n"
@@ -171,6 +174,10 @@ ABSL_FLAG(std::string, plugin_ep_options, "",
           "--plugin_ep_options \"ep_1_option_1_key|ep_1_option_1_value ...;;ep_3_option_1_key|ep_3_option_1_value ...;... \"");
 ABSL_FLAG(bool, list_ep_devices, false, "Prints all available device indices and their properties (including metadata). This option makes the program exit early without performing inference.\n");
 ABSL_FLAG(std::string, select_ep_devices, "", "Specifies a semicolon-separated list of device indices to add to the session and run with.");
+ABSL_FLAG(std::string, filter_ep_devices, "",
+          "Specifies EP or Device metadata entries as key-value pairs to filter ep devices passed to AppendExecutionProvider_V2.\n"
+          "[Usage]: --filter_ep_devices \"<key1>|<value1> <key2>|<value2>\" \n"
+          "Devices that match any of the key-value pair will be appended to the session. --select_ep_devices will take precedence over this option.\n");
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
@@ -395,7 +402,23 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   // -u
   {
     const auto& optimized_model_path = absl::GetFlag(FLAGS_u);
-    if (!optimized_model_path.empty()) test_config.run_config.optimized_model_path = ToPathString(optimized_model_path);
+    if (!optimized_model_path.empty()) {
+      test_config.run_config.optimized_model_path = ToPathString(optimized_model_path);
+      // --opt_data
+      const auto& opt_data_path = absl::GetFlag(FLAGS_opt_data);
+      if (!opt_data_path.empty()) {
+        test_config.run_config.optimized_model_data_path = opt_data_path;
+        // --opt_weight_min_size
+        if (absl::GetFlag(FLAGS_opt_weight_min_size) >= 0) {
+          test_config.run_config.optimized_model_weight_min_size =
+              std::to_string(absl::GetFlag(FLAGS_opt_weight_min_size));
+        }
+        // --opt_save_prepacks
+        if (absl::GetFlag(FLAGS_opt_save_prepacks)) {
+          test_config.run_config.optimized_save_optimized_prepacks = true;
+        }
+      }
+    }
   }
 
   // -I
@@ -488,6 +511,22 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   {
     const auto& select_ep_devices = absl::GetFlag(FLAGS_select_ep_devices);
     if (!select_ep_devices.empty()) test_config.selected_ep_device_indices = select_ep_devices;
+  }
+
+  // --filter_ep_devices
+  {
+    const auto& filter_ep_devices = absl::GetFlag(FLAGS_filter_ep_devices);
+    if (!filter_ep_devices.empty()) {
+      ORT_TRY {
+        ParseEpDeviceFilterKeyValuePairs(filter_ep_devices, test_config.filter_ep_device_kv_pairs);
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          fprintf(stderr, "Error parsing filter_ep_devices: %s\n", ex.what());
+        });
+        return false;
+      }
+    }
   }
 
   // --compile_ep_context

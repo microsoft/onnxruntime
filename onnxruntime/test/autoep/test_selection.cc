@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include <filesystem>
 // #include <absl/base/config.h>
 #include <gmock/gmock.h>
@@ -13,12 +10,14 @@
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "test_allocator.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -35,6 +34,12 @@ void DefaultDeviceSelection(const std::string& ep_name, std::vector<const OrtEpD
   for (size_t i = 0; i < num_devices; ++i) {
     const OrtEpDevice* device = ep_devices[i];
     if (c_api->EpDevice_EpName(device) == ep_name) {
+      const auto* hw_device = c_api->EpDevice_Device(device);
+      const OrtKeyValuePairs* hw_kvps = c_api->HardwareDevice_Metadata(hw_device);
+
+      const char* is_virtual = c_api->GetKeyValue(hw_kvps, kOrtHardwareDevice_MetadataKey_IsVirtual);
+      ASSERT_TRUE(is_virtual == nullptr || strcmp(is_virtual, "0") == 0);
+
       devices.push_back(device);
       break;
     }
@@ -171,7 +176,9 @@ TEST(AutoEpSelection, CpuEP) {
 TEST(AutoEpSelection, CudaEP) {
   Ort::KeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
-  RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda", provider_options);
+  const auto cuda_ep_lib_path =
+      std::filesystem::path{GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"))};
+  RunBasicTest(kCudaExecutionProvider, cuda_ep_lib_path, provider_options);
 }
 #endif
 
@@ -192,6 +199,9 @@ TEST(AutoEpSelection, DmlEP) {
       if (strcmp(c_api->EpDevice_EpName(ep_device), kDmlExecutionProvider) == 0) {
         const auto* device = c_api->EpDevice_Device(ep_device);
         const OrtKeyValuePairs* kvps = c_api->HardwareDevice_Metadata(device);
+
+        const char* is_virtual = c_api->GetKeyValue(kvps, kOrtHardwareDevice_MetadataKey_IsVirtual);
+        ASSERT_TRUE(is_virtual == nullptr || strcmp(is_virtual, "0") == 0);
 
         if (devices.empty()) {
           // add the first device
@@ -502,5 +512,3 @@ TEST(AutoEpSelection, PolicyDelegateReturnsError) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32

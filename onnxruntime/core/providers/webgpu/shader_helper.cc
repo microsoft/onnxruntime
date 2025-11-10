@@ -12,19 +12,23 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/string_utils.h"
 #include "core/providers/webgpu/string_macros.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 ShaderHelper::ShaderHelper(const ProgramBase& program,
                            const ProgramMetadata& program_metadata,
-                           const wgpu::Device& device,
-                           const wgpu::Limits& limits,
+                           const WebGpuContext& webgpu_context,
+                           const std::span<uint32_t> inputs_segments,
+                           const std::span<uint32_t> outputs_segments,
                            uint32_t dispatch_group_size_x,
                            uint32_t dispatch_group_size_y,
                            uint32_t dispatch_group_size_z)
-    : device_{device},
-      limits_{limits},
+    : webgpu_context_{webgpu_context},
+      limits_{webgpu_context.DeviceLimits()},
+      inputs_segments_{inputs_segments},
+      outputs_segments_{outputs_segments},
       dispatch_group_size_x_{dispatch_group_size_x},
       dispatch_group_size_y_{dispatch_group_size_y},
       dispatch_group_size_z_{dispatch_group_size_z},
@@ -54,6 +58,7 @@ Status ShaderHelper::Init() {
 
   // init body string stream
   bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
+  bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
   body_.reserve(4096);
   additional_implementation_.reserve(1024);
 
@@ -63,20 +68,30 @@ Status ShaderHelper::Init() {
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
-  if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
   }
-  if (!is_1d_dispatch) {
-    body_ss_ << ",\n"
-                "        @builtin(num_workgroups) num_workgroups : vec3<u32>";
-  }
-  body_ss_ << ") {\n";
-  if (is_1d_dispatch) {
+  // When using indirect dispatch, avoid @builtin(num_workgroups) to skip Dawn's validation
+  // and duplication overhead in TransformIndirectDispatchBuffer.
+  // Instead, the dispatch dimensions will be read from the indirect buffer at runtime.
+  if (use_indirect_dispatch) {
+    body_ss_ << ") {\n";
+    // For indirect dispatch, read the actual dispatch dimensions from the indirect buffer.
+    // The indirect buffer format is: [x, y, z] where x, y, z are the workgroup counts.
+    // We read these values to calculate workgroup_idx accurately based on actual dispatch.
+    body_ss_ << "  let num_workgroups_x = indirect_buffer[0];\n"
+                "  let num_workgroups_y = indirect_buffer[1];\n"
+                "  let workgroup_idx = workgroup_id.z * num_workgroups_x * num_workgroups_y + workgroup_id.y * num_workgroups_x + workgroup_id.x;\n"
+                "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
+  } else if (is_1d_dispatch) {
+    body_ss_ << ") {\n";
     body_ss_ << "  let global_idx = global_id.x;\n"
                 "  let workgroup_idx = workgroup_id.x;\n";
   } else {
+    body_ss_ << ",\n"
+                "        @builtin(num_workgroups) num_workgroups : vec3<u32>) {\n";
     body_ss_ << "  let workgroup_idx = workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x;\n"
                 "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
   }
@@ -91,7 +106,7 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims, program_.Inputs()[input_index].segments);
+  return AddVariableImpl(true, name, usage, dims, inputs_segments_[input_index]);
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -101,7 +116,7 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(false, name, usage, dims, program_.Outputs()[output_index].segments);
+  return AddVariableImpl(false, name, usage, dims, outputs_segments_[output_index]);
 }
 
 const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
@@ -380,14 +395,14 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                   [](const ProgramOutput& output) {
                     return output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
                   })) {
-    ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
+    ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
   }
-  if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
 #if !defined(__wasm__)
-  if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
 
     // Dawn enforces the subgroup matrix builtin arguments to be uniform in change https://dawn-review.googlesource.com/c/dawn/+/236054

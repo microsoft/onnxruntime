@@ -32,4 +32,4 @@ stages:
         extra_build_arg: ''
         cmake_build_type: Release
         cuda_version: 12.8
-        docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc12:20250714.2
+        docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1

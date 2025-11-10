@@ -137,8 +137,12 @@ static void FuseInitializerWithNode(Graph& graph,
   graph.RemoveEdge(node.Index(), next_node.Index(), 0, static_cast<int>(next_node_arg_index));
 
   // Add the new converted Tensor in next node as initializer potentially with external data
-  ONNX_NAMESPACE::TensorProto dst_tensor = utils::TensorToTensorProto(new_data.Get<Tensor>(), new_arg_name, false);
-  auto& new_arg = graph_utils::AddInitializer(graph, dst_tensor);
+  ONNX_NAMESPACE::TensorProto dst_tensor = utils::TensorToTensorProto(new_data.Get<Tensor>(), new_arg_name, true);
+  if (!utils::HasExternalData(dst_tensor)) {
+    new_data = OrtValue();  // Data is inline
+  }
+
+  auto& new_arg = graph_utils::AddInitializerWithOrtValue(graph, dst_tensor, std::move(new_data));
   graph_utils::ReplaceNodeInput(next_node, static_cast<int>(next_node_arg_index), new_arg);
 }
 

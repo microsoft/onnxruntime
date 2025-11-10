@@ -54,7 +54,10 @@ struct RunConfig {
   int intra_op_num_threads{0};
   int inter_op_num_threads{0};
   GraphOptimizationLevel optimization_level{ORT_ENABLE_ALL};
-  std::basic_string<ORTCHAR_T> optimized_model_path;
+  PathString optimized_model_path;
+  std::string optimized_model_data_path;  // Always UTF-8
+  std::string optimized_model_weight_min_size;
+  bool optimized_save_optimized_prepacks{false};
   int cudnn_conv_algo{0};
   bool do_cuda_copy_in_separate_stream{false};
   bool set_denormal_as_zero{false};
@@ -81,6 +84,7 @@ struct PerformanceTestConfig {
   std::basic_string<ORTCHAR_T> plugin_ep_names_and_libs;
   std::vector<std::string> registered_plugin_eps;
   std::string selected_ep_device_indices;
+  std::vector<std::pair<std::string, std::string>> filter_ep_device_kv_pairs;
   bool list_available_ep_devices = false;
 };
 

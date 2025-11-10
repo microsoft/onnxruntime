@@ -7,6 +7,8 @@
 #param sub_tile_count
 #param n_bits
 #param has_zero_points
+#param has_bias
+#param has_weight_idx
 
 #use .getByOffset .setByOffset
 
@@ -65,6 +67,14 @@ $MAIN {
     let local_col = local_idx % tile_size_k_vec;
     let local_row = local_idx / tile_size_k_vec;
 
+#if has_bias
+#if has_weight_idx
+    let b_bias_offset = uniforms.weight_idx * uniforms.N;
+#else
+    const b_bias_offset : u32 = 0;
+#endif
+#endif
+
 #if n_bits == 2
     // The workgroup size is 128, LoadDequantizationTable needs to be called twice.
     LoadDequantizationTable(local_idx);
@@ -73,7 +83,11 @@ $MAIN {
 #endif
 #if single_scale_weights
     let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
+#if has_weight_idx
+    let own_scale_b = scales_b.getByOffset(uniforms.weight_idx);
+#else
     let own_scale_b = scales_b.getByOffset(0);
+#endif
 #endif
 
     for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v += tile_size_k_vec)
@@ -95,10 +109,17 @@ $MAIN {
             let b_global = b_global_base + row_offset + local_row;
             if (b_global < uniforms.N && k_offset < uniforms.K32)
             {
+#if has_weight_idx
+                let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K32;
+                let b_offset = b_weight_offset + b_global * uniforms.K32 + k_offset;
+                let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
+                let own_scale_b = scales_b.getByOffset(b_scale_offset + b_global * uniforms.K / uniforms.block_size + block_idx);
+#else
                 let b_offset = b_global * uniforms.K32 + k_offset;
+                let own_scale_b = scales_b.getByOffset(b_global * uniforms.K / uniforms.block_size + block_idx);
+#endif
 #if !single_scale_weights
                 let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
-                let own_scale_b = scales_b.getByOffset(b_global * uniforms.K / uniforms.block_size + block_idx);
 #endif
 #if n_bits == 4
                 let b_value = b.getByOffset(b_offset);
@@ -134,7 +155,12 @@ $MAIN {
       let b_global =  b_global_base + local_idx;
       let output_idx = a_global * uniforms.N + b_global;
       if (b_global < uniforms.N) {
+#if has_bias
+        let bias_value = bias[b_global + b_bias_offset];
+        output.setByOffset(output_idx, output_value + bias_value);
+#else
         output.setByOffset(output_idx, output_value);
+#endif
       }
     }
 } // MAIN
