@@ -74,6 +74,15 @@ endif()
     )"""
         )
 
+    if is_emscripten:
+        # Uses ONNX_USE_LITE_PROTO=ON for WebAssembly build.
+        f.write(
+            r"""
+    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
+        "-DONNX_USE_LITE_PROTO=ON"
+    )"""
+        )
+
     f.write(r"""
 endif() # End ONNX-specific block
 """)

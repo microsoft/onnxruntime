@@ -945,6 +945,7 @@ WARN_LOGFILE           =
 
 INPUT                  = ../../include/onnxruntime/core/session/onnxruntime_c_api.h \
                          ../../include/onnxruntime/core/session/onnxruntime_cxx_api.h \
+                         ../../include/onnxruntime/core/session/onnxruntime_ep_c_api.h \
                          ../../orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h \
                          ../../orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h
 

@@ -551,7 +551,7 @@ class ArenaImpl {
   // un-assign chunks when StreamImpl::OnSessionRunEnd is called.
   std::unordered_map<const OrtSyncStreamImpl*, const OrtSyncStream*> impl_to_stream_;
 
-  AllocatorStats stats_;
+  AllocatorStats stats_{};
 
   const OrtApi& api_;
   const OrtEpApi& ep_api_;
@@ -563,7 +563,7 @@ class ArenaImpl {
   ArenaImpl& operator=(ArenaImpl&&) = delete;
 };
 
-struct ArenaAllocator : OrtAllocator {
+struct ArenaAllocator : BaseAllocator {
   static OrtStatus* CreateOrtArenaAllocator(AllocatorUniquePtr allocator,
                                             const OrtKeyValuePairs* options,
                                             const OrtApi& api,

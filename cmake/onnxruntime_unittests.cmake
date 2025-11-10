@@ -588,6 +588,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_runtime_path.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
@@ -1518,9 +1519,48 @@ endif()
     target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
     set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
+    # onnxruntime_runtime_path_test_shared_library
+    block()
+      set(onnxruntime_runtime_path_test_shared_library_src
+          "${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.h"
+          "${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.cc")
+
+      onnxruntime_add_shared_library(onnxruntime_runtime_path_test_shared_library
+                                     ${onnxruntime_runtime_path_test_shared_library_src})
+
+      target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                            onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
+      target_include_directories(onnxruntime_runtime_path_test_shared_library PRIVATE ${ONNXRUNTIME_ROOT})
+
+      if(UNIX)
+        if (APPLE)
+          set(onnxruntime_runtime_path_test_shared_library_link_flags "-Xlinker -dead_strip")
+        elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+          string(CONCAT onnxruntime_runtime_path_test_shared_library_link_flags
+                 "-Xlinker --version-script=${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.lds "
+                 "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+        endif()
+      else()
+        set(onnxruntime_runtime_path_test_shared_library_link_flags
+            "-DEF:${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.def")
+      endif()
+
+      set_property(TARGET onnxruntime_runtime_path_test_shared_library APPEND_STRING PROPERTY LINK_FLAGS
+                   ${onnxruntime_runtime_path_test_shared_library_link_flags})
+
+      set_target_properties(onnxruntime_runtime_path_test_shared_library PROPERTIES FOLDER "ONNXRuntimeTest")
+      source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_runtime_path_test_shared_library_src})
+    endblock()
+
     #################################################################
     # test inference using shared lib
-    set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+    set(onnxruntime_shared_lib_test_LIBS
+        onnxruntime_mocked_allocator
+        onnxruntime_test_utils
+        onnxruntime_common
+        onnx_proto
+        onnxruntime_runtime_path_test_shared_library)
+
     if(NOT WIN32)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
@@ -1574,6 +1614,10 @@ endif()
         "${TEST_SRC_DIR}/platform/android/cxa_demangle_test.cc"
       )
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+    endif()
+
+    if (CMAKE_SYSTEM_NAME MATCHES "AIX" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      set_target_properties(onnxruntime_shared_lib_test PROPERTIES ENABLE_EXPORTS 1)
     endif()
 
     if (IOS)
@@ -1978,8 +2022,7 @@ endif()
 
 # Build library that can be used with RegisterExecutionProviderLibrary and automatic EP selection
 # We need a shared lib build to use that as a dependency for the test library
-# Currently we only have device discovery on Windows so no point building the test app on other platforms.
-if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
+if (onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
 
@@ -1991,7 +2034,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
                                                 "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
+  target_link_libraries(example_plugin_ep PRIVATE onnxruntime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)
@@ -2024,7 +2067,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep_virt_gpu ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
   target_include_directories(example_plugin_ep_virt_gpu PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(example_plugin_ep_virt_gpu PRIVATE onnxruntime)
+  target_link_libraries(example_plugin_ep_virt_gpu PRIVATE onnxruntime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)
