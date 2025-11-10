@@ -12,10 +12,10 @@ used for testing and as reference examples.
 ## Directory Structure
 
 - `example_plugin_ep/`
-  Contains a basic example plugin execution provider.
+  Contains a basic compiling plugin execution provider.
 
 - `example_plugin_ep_virt_gpu/`
-  Contains an example plugin execution provider that registers its own virtual hardware device. Virtual devices can be
+  Contains a compiling plugin execution provider that registers its own virtual hardware device. Virtual devices can be
   used for cross compiling models for different targets.
 
 - `plugin_ep_utils.h`
