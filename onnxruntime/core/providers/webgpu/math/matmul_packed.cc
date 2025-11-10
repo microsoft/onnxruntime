@@ -72,11 +72,11 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
 
   let dim_a_outer = i32(uniforms.dim_a_outer);
   let dim_b_outer = i32(uniforms.dim_b_outer) / output_components;
-  let output_row = output_id / dim_b_outer;
-  if (output_row >= dim_a_outer) {
+  if (output_id >= dim_a_outer * dim_b_outer) {
     return;
   }
 
+  let output_row = output_id / dim_b_outer;
   let output_col = output_id % dim_b_outer;
   let output_batch = 0;
   let output_value = output_value_t();
