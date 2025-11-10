@@ -54,6 +54,27 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   return Status::OK();
 }
 
+Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
+  const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
+  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
+
+  const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
+  const auto& key = sh.AddOutput("key", ShaderUsage::UseUniform);
+  const auto& val = sh.AddOutput("val", ShaderUsage::UseUniform);
+
+  return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+                             WGSL_TEMPLATE_VARIABLE(key, key),
+                             WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
+                             WGSL_TEMPLATE_VARIABLE(query, query),
+                             WGSL_TEMPLATE_VARIABLE(seqlens, seqlens),
+                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
+                             WGSL_TEMPLATE_VARIABLE(val, val));
+}
+
 Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val) {
   SplitPackedQKVProgram program;
   auto input_size = packedQKV->Shape().Size();
