@@ -10,6 +10,8 @@
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
 
+#include <fstream>
+
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
@@ -123,7 +125,7 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
  private:
 };
 
-// #define GSDEBUG 1
+#define GSDEBUG DEBUG
 
 Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* hidden_state = context.Input<Tensor>(0);
@@ -154,13 +156,9 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
   // SwiGLU validation
   bool is_swiglu = (activation_type_ == MoEActivationType::SwiGLU);
-  if (is_swiglu && fc3_experts_weights_optional != nullptr) {
+  if (fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SwiGLU activation is not supported with fc3. Gate weights should be concatenated with FC1 weights.");
-  }
-  if (!is_swiglu && fc3_experts_weights_optional != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "FC3 gating is not yet implemented for non-SwiGLU activations on CPU.");
+                           "FC3 gating is not yet implemented for non-SwiGLU activations on WebGPU.");
   }
 
   const int max_tokens = 128;  // TODO: 64 for testing, target = 256
@@ -171,12 +169,13 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const auto dtype = is_fp16 ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   const auto dtype_uint32 = DataTypeImpl::GetType<uint32_t>();
 
-  const int64_t K_fc1 = moe_params.hidden_size;  // left_shape[left_num_dims - 1]
-  const int64_t N_fc1 = fc1_output_size;         // right_shape[right_num_dims - 1]
-  const int64_t K_fc2 = moe_params.inter_size;   // left_shape[left_num_dims - 1]
-  const int64_t N_fc2 = moe_params.inter_size;   // right_shape[right_num_dims - 1]
+  const int64_t K_fc1 = moe_params.hidden_size;
+  const int64_t N_fc1 = fc1_output_size;
+  const int64_t K_fc2 = moe_params.inter_size;
+  const int64_t N_fc2 = moe_params.hidden_size;
   const int64_t accuracy_level = 4;
-  const int64_t block_size = (block_size_ != 0) ? block_size_ : fc1_experts_weights->Shape()[2];
+  const int64_t block_size_fc1 = (block_size_ != 0) ? block_size_ : K_fc1;
+  const int64_t block_size_fc2 = (block_size_ != 0) ? block_size_ : K_fc2;
   Status status;
 
   Tensor* output_tensor = context.Output(0, input_shape);
@@ -229,15 +228,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 #ifdef GSDEBUG
-    DumpTensor<MLFloat16>(&router_values, "router_values", context);
+    // DumpTensor<MLFloat16>(&router_values, "router_values", context);
     NpyTensor<MLFloat16>(&router_values, "/tmp/router_values.npy", context);
     NpyTensor<uint32_t>(&gate_counts, "/tmp/gate_counts.npy", context);
     NpyTensor<uint32_t>(&gate_hidden, "/tmp/gate_hidden.npy", context);
+
+    int watch = 0;
 #endif
 
     Tensor gate_counts_cpu = context.CreateCPUTensor(dtype_uint32, gate_count_shape);
     ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(gate_counts, gate_counts_cpu));
-
     for (uint32_t expert_idx = 0; expert_idx < num_experts; expert_idx++) {
       uint32_t used_by = *(gate_counts_cpu.Data<uint32_t>() + expert_idx);
       if (used_by <= 0) {
@@ -268,7 +268,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       ORT_RETURN_IF_ERROR(context.RunProgram(gather));
 
 #ifdef GSDEBUG
-      if (expert_idx == 0) {
+      if (expert_idx == watch) {
         // DumpTensor<MLFloat16>(&expert_hidden, "expert_hidden", context);
         // DumpTensor<uint32_t>(&expert_tokens, "expert_tokens", context);
         NpyTensor<MLFloat16>(&expert_hidden, "/tmp/expert_hidden.npy", context);
@@ -280,19 +280,18 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
       TensorShape fc1_activated_shape({used_by, moe_params.inter_size});
       Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
-      TensorShape fc2_output_shape({used_by, moe_params.inter_size});
+      TensorShape fc2_output_shape({used_by, N_fc2});
       Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
 
       //
       // Step 3: matmul the hidden_state with fc1 (gate_up) of the selected experts
       //
       status = ApplyMatMulNBits(&expert_hidden, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
-                                K_fc1, N_fc1, block_size, accuracy_level, expert_weight_bits_, context,
+                                K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
                                 &fc1_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
-
 #ifdef GSDEBUG
-      if (expert_idx == 0) {
+      if (expert_idx == watch) {
         // DumpTensor<MLFloat16>(&fc1_outputs, "fc1_outputs", context);
         NpyTensor<MLFloat16>(&fc1_outputs, "/tmp/fc1_outputs.npy", context);
       }
@@ -318,7 +317,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
         ORT_THROW("only swiglu is supported for now.");
       }
 #ifdef GSDEBUG
-      if (expert_idx == 0) {
+      if (expert_idx == watch) {
         // DumpTensor<MLFloat16>(&fc1_activated, "fc1_activated", context);
         NpyTensor<MLFloat16>(&fc1_activated, "/tmp/fc1_activated.npy", context);
       }
@@ -328,11 +327,11 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       // Step 5: multiply fc1_activated with fc2 (gate_down) of the selected experts
       //
       status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
-                                K_fc2, N_fc2, block_size, accuracy_level, expert_weight_bits_, context,
+                                K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
                                 &fc2_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 #ifdef GSDEBUG
-      if (expert_idx == 0) {
+      if (expert_idx == watch) {
         // DumpTensor<MLFloat16>(&fc2_outputs, "fc2_outputs", context);
         NpyTensor<MLFloat16>(&fc2_outputs, "/tmp/fc2_outputs.npy", context);
       }

@@ -140,7 +140,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     return Status::OK();
   }
 
-  return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, 0);
+  return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, weight_index_);
 }
 
 /**
@@ -219,7 +219,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 #if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
-  if (M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
+  if (true && M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
       CanApplySubgroupMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, subgroup_matrix_config_index)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index);
   }

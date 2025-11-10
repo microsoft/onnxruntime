@@ -73,6 +73,7 @@ class MatMulNBits final : public WebGpuKernel {
     block_size_ = info.GetAttr<int64_t>("block_size");
     bits_ = info.GetAttr<int64_t>("bits");
     accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 4);
+    weight_index_ = info.GetAttrOrDefault<int64_t>("weight_index", 0);
     ORT_ENFORCE(bits_ == 4 || bits_ == 8 || bits_ == 2,
                 "Only 4b/8b/2b quantization is supported for MatMulNBits op, additional bits support is planned.");
   }
@@ -85,6 +86,7 @@ class MatMulNBits final : public WebGpuKernel {
   int64_t block_size_;
   int64_t accuracy_level_;
   int64_t bits_;
+  int64_t weight_index_;
 };
 
 Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,

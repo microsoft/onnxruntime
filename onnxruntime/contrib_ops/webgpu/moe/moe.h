@@ -57,7 +57,7 @@ class MoE : public WebGpuKernel {
 
   Status ComputeInternal(ComputeContext& context) const override;
 
-protected:
+ protected:
   int k_;
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
