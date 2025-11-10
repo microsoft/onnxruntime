@@ -160,12 +160,10 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
 
-  auto status = ort_api.Logger_LogMessage(&logger_,
-                                          OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                          ("ExampleEp has been created with name " + name_).c_str(),
-                                          ORT_FILE, __LINE__, __FUNCTION__);
-  // ignore status for now
-  (void)status;
+  IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
+                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                             ("ExampleEp has been created with name " + name_).c_str(),
+                                             ORT_FILE, __LINE__, __FUNCTION__));
 }
 
 ExampleEp::~ExampleEp() = default;
