@@ -535,7 +535,7 @@ typedef struct FenceInteropParams {
   union FencePtr {
     void* pFence;
     void* pVkFence;
-    void* pVkSemaphore;
+    void* VkSemaphore;
   } FencePtr;
   VulkanDeviceParams VulkanDeviceParams;
 } FenceInteropParams;

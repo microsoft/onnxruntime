@@ -144,7 +144,7 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
 #if _WIN32
       VkSemaphoreGetWin32HandleInfoKHR handleInfo = {};
       handleInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
-      handleInfo.semaphore = reinterpret_cast<VkSemaphore>(fenceInteropParams->FencePtr.pVkSemaphore);
+      handleInfo.semaphore = reinterpret_cast<VkSemaphore>(fenceInteropParams->FencePtr.VkSemaphore);
       handleInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
 
       HANDLE sharedFenceHandle = nullptr;

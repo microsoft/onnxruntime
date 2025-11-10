@@ -116,6 +116,7 @@ class IExecutionProvider {
     auto* interopWaitParams = interopWaitParamsSptr.get();
 
     ExternalSyncPrimitive extSyncPrimitive = interopWaitParams->extSyncPrimitive;
+    // to-do: The fallback logic needs more refinement to deal with multi threaded scenarios.
     if (extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence) {
 #if DX_FOR_INTEROP && _WIN32
       HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
