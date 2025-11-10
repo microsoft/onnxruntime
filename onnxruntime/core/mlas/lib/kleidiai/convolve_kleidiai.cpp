@@ -157,6 +157,7 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
          ComputeConvOutSize(Parameters->InputShape[1],
                             ComputeKernelSize(Parameters->DilationShape[1],Parameters->KernelShape[1]),
                             Parameters->Padding[1], Parameters->StrideShape[1]) == 0)) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on functional checks.");
         return false;
     }
 
@@ -179,6 +180,7 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     MLAS_UNREFERENCED_PARAMETER(n_step);
 
     if (N == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on optimization checks.");
         return false;
     }
     return true;
@@ -326,6 +328,10 @@ static void MultiThreadedLHSPackSme(MLAS_THREADPOOL* ThreadPool, const size_t ci
         auto m_idx = static_cast<size_t>(tid) * m_step;
         auto offset = kai_get_lhs_packed_offset_lhs_imatmul_pack_x32p2vlx1_x32p_sme(m_idx,kh*kw,ci);
 
+        KLEIDIAI_KERNEL_LOG("kai_run_lhs_imatmul_pack_x32p2vlx1_x32p_sme"
+                            << " M=" << (m < (m_idx + m_step) ? m - m_idx : m_step)
+                            << " k_chunk_count=" << (kh * kw)
+                            << " k_chunk_length=" << ci);
         kai_run_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
             m < (m_idx + m_step) ? m - m_idx : m_step, kh * kw, ci,
             lhs_ptrs + m_idx * kh * kw,
@@ -375,6 +381,8 @@ static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const
             bias_copy.resize(co, 0.0f);
         }
 
+        KLEIDIAI_KERNEL_LOG("kai_run_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme"
+                            << " N=" << co << " k_chunk_count=" << (d_kh*d_kw) << " k_chunk_length=" << ci << " rhs_stride_row=" << (co * sizeof(float)));
         kai_run_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme(
             co, d_kh*d_kw, ci, co * sizeof(float), &t_weights[0], bias_copy.data(), packed.get()
         );
@@ -599,6 +607,8 @@ static void ConvolveSme(const size_t co, //channels out
                 MIdx * m_step * co * sizeof(float) +
                 NIdx * n_step * sizeof(float)];
 
+            KLEIDIAI_KERNEL_LOG("kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa"
+                                << " M=" << TileSizeM << " N=" << TileSizeN << " k_chunk_count=" << (d_kh*d_kw) << " k_chunk_length=" << ci);
             kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa(
                 TileSizeM, TileSizeN, d_kh*d_kw, ci, ATile, BTile, CTile, co * sizeof(float),
                 -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()

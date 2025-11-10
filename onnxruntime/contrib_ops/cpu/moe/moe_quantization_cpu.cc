@@ -87,6 +87,7 @@ namespace contrib {
 template <typename TScale>
 void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              const TScale* scales,
+                             const uint8_t* zero_points,
                              int64_t block_size,
                              int64_t num_bits,
                              int64_t rows,
@@ -97,6 +98,7 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
 template <typename TScale>
 Status ConvertToMlasQ4Format(const uint8_t* quantized_data,
                              const TScale* scales,
+                             const uint8_t* zero_points,
                              int64_t block_size,
                              int64_t num_bits,
                              int64_t rows,
@@ -107,11 +109,14 @@ Status ConvertToMlasQ4Format(const uint8_t* quantized_data,
   if (num_bits != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only 4-bit quantization supported for MLAS Q4 format conversion");
   }
+  if (zero_points != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLAS Q4 format conversion only supports symmetric quantization (zero_points must be null)");
+  }
 
   auto temp_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(rows * cols));
   float* temp_float = temp_float_buffer.get();
 
-  DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, temp_float, nullptr);
+  DequantizeBlockWithMlas(quantized_data, scales, zero_points, block_size, num_bits, rows, cols, temp_float, nullptr);
 
   size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(cols), static_cast<size_t>(rows));
   if (packed_size == 0) {
@@ -149,6 +154,7 @@ Status DirectQ4Gemm(const float* A,
 template <typename TScale>
 void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              const TScale* scales,
+                             const uint8_t* zero_points,
                              int64_t block_size,
                              int64_t num_bits,
                              int64_t rows,
@@ -156,11 +162,15 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              float* dequantized_data,
                              MLAS_THREADPOOL* thread_pool) {
   ORT_UNUSED_PARAMETER(thread_pool);
-  const float zero_point = num_bits == 8 ? 128.0f : 8.0f;
-  const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+  const float default_zp_8bit = 128.0f;
+  const float default_zp_4bit = 8.0f;
+  const uint8_t default_zp_4bit_packed = 0x88;
+  const int64_t zp_pack_size = (num_bits == 4) ? 2 : 1;
 
-  if (CanUseMlasQ4Dequant(num_bits)) {
+  if (CanUseMlasQ4Dequant(num_bits) && zero_points == nullptr) {
+    // Use optimized symmetric 4-bit dequantization
     const int64_t packed_cols = (cols + 1) / 2;
+    const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
 
     if (block_size == 0) {
       for (int64_t r = 0; r < rows; ++r) {
@@ -175,14 +185,14 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
           const uint8_t packed_val2 = row_data[(c + 4) / 2];
           const uint8_t packed_val3 = row_data[(c + 6) / 2];
 
-          row_output[c + 0] = scale * (static_cast<float>(packed_val0 & 0x0F) - zero_point);
-          row_output[c + 1] = scale * (static_cast<float>(packed_val0 >> 4) - zero_point);
-          row_output[c + 2] = scale * (static_cast<float>(packed_val1 & 0x0F) - zero_point);
-          row_output[c + 3] = scale * (static_cast<float>(packed_val1 >> 4) - zero_point);
-          row_output[c + 4] = scale * (static_cast<float>(packed_val2 & 0x0F) - zero_point);
-          row_output[c + 5] = scale * (static_cast<float>(packed_val2 >> 4) - zero_point);
-          row_output[c + 6] = scale * (static_cast<float>(packed_val3 & 0x0F) - zero_point);
-          row_output[c + 7] = scale * (static_cast<float>(packed_val3 >> 4) - zero_point);
+          row_output[c + 0] = scale * (static_cast<float>(packed_val0 & 0x0F) - default_zp_4bit);
+          row_output[c + 1] = scale * (static_cast<float>(packed_val0 >> 4) - default_zp_4bit);
+          row_output[c + 2] = scale * (static_cast<float>(packed_val1 & 0x0F) - default_zp_4bit);
+          row_output[c + 3] = scale * (static_cast<float>(packed_val1 >> 4) - default_zp_4bit);
+          row_output[c + 4] = scale * (static_cast<float>(packed_val2 & 0x0F) - default_zp_4bit);
+          row_output[c + 5] = scale * (static_cast<float>(packed_val2 >> 4) - default_zp_4bit);
+          row_output[c + 6] = scale * (static_cast<float>(packed_val3 & 0x0F) - default_zp_4bit);
+          row_output[c + 7] = scale * (static_cast<float>(packed_val3 >> 4) - default_zp_4bit);
         }
 
         for (; c < cols; c += 2) {
@@ -190,9 +200,9 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
           const uint8_t val0 = packed_val & 0x0F;
           const uint8_t val1 = packed_val >> 4;
 
-          row_output[c] = scale * (static_cast<float>(val0) - zero_point);
+          row_output[c] = scale * (static_cast<float>(val0) - default_zp_4bit);
           if (c + 1 < cols) {
-            row_output[c + 1] = scale * (static_cast<float>(val1) - zero_point);
+            row_output[c + 1] = scale * (static_cast<float>(val1) - default_zp_4bit);
           }
         }
       }
@@ -213,10 +223,10 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
             const uint8_t packed_val0 = row_data[(c + 0) / 2];
             const uint8_t packed_val1 = row_data[(c + 2) / 2];
 
-            row_output[c + 0] = scale * (static_cast<float>(packed_val0 & 0x0F) - zero_point);
-            row_output[c + 1] = scale * (static_cast<float>(packed_val0 >> 4) - zero_point);
-            row_output[c + 2] = scale * (static_cast<float>(packed_val1 & 0x0F) - zero_point);
-            row_output[c + 3] = scale * (static_cast<float>(packed_val1 >> 4) - zero_point);
+            row_output[c + 0] = scale * (static_cast<float>(packed_val0 & 0x0F) - default_zp_4bit);
+            row_output[c + 1] = scale * (static_cast<float>(packed_val0 >> 4) - default_zp_4bit);
+            row_output[c + 2] = scale * (static_cast<float>(packed_val1 & 0x0F) - default_zp_4bit);
+            row_output[c + 3] = scale * (static_cast<float>(packed_val1 >> 4) - default_zp_4bit);
           }
 
           for (; c < block_end; c += 2) {
@@ -224,9 +234,9 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
             const uint8_t val0 = packed_val & 0x0F;
             const uint8_t val1 = packed_val >> 4;
 
-            row_output[c] = scale * (static_cast<float>(val0) - zero_point);
+            row_output[c] = scale * (static_cast<float>(val0) - default_zp_4bit);
             if (c + 1 < block_end) {
-              row_output[c + 1] = scale * (static_cast<float>(val1) - zero_point);
+              row_output[c + 1] = scale * (static_cast<float>(val1) - default_zp_4bit);
             }
           }
         }
@@ -235,94 +245,95 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
     }
   }
 
-  if (num_bits == 8 && block_size == 0) {
-    for (int64_t r = 0; r < rows; ++r) {
-      const float scale = static_cast<float>(scales[r]);
-      const uint8_t zero_pt = static_cast<uint8_t>(zero_point);
-
-      MlasDequantizeLinear(
-          quantized_data + r * cols,
-          dequantized_data + r * cols,
-          static_cast<size_t>(cols),
-          scale,
-          zero_pt);
-    }
-  } else {
-    if (num_bits == 8) {
+  // Generic dequantization logic for 8-bit (symmetric/asymmetric) and 4-bit (asymmetric)
+  if (num_bits == 8) {
+    const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+    if (block_size == 0) {
+      // 8-bit, row-wise
+      for (int64_t r = 0; r < rows; ++r) {
+        const float scale = static_cast<float>(scales[r]);
+        const uint8_t zero_pt = (zero_points == nullptr) ? static_cast<uint8_t>(default_zp_8bit) : zero_points[r];
+        MlasDequantizeLinear(
+            quantized_data + r * cols,
+            dequantized_data + r * cols,
+            static_cast<size_t>(cols),
+            scale,
+            zero_pt);
+      }
+    } else {
+      // 8-bit, block-wise
       for (int64_t r = 0; r < rows; ++r) {
         const uint8_t* row_data = quantized_data + r * cols;
         float* row_output = dequantized_data + r * cols;
+        const uint8_t* row_zp_data = (zero_points == nullptr) ? nullptr : zero_points + r * blocks_per_row;
 
         int64_t c = 0;
-        if (block_size > 0) {
-          for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
-            const int64_t block_end = std::min(block_start + block_size, cols);
-            const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
-            const int64_t scale_idx = r * blocks_per_row + block_idx;
-            const float scale = static_cast<float>(scales[scale_idx]);
+        for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
+          const int64_t block_end = std::min(block_start + block_size, cols);
+          const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
+          const int64_t scale_idx = r * blocks_per_row + block_idx;
+          const float scale = static_cast<float>(scales[scale_idx]);
+          const float zp = (row_zp_data == nullptr) ? default_zp_8bit : static_cast<float>(row_zp_data[block_idx]);
 
-            for (c = block_start; c + 4 <= block_end; c += 4) {
-              row_output[c] = scale * (static_cast<float>(row_data[c]) - zero_point);
-              row_output[c + 1] = scale * (static_cast<float>(row_data[c + 1]) - zero_point);
-              row_output[c + 2] = scale * (static_cast<float>(row_data[c + 2]) - zero_point);
-              row_output[c + 3] = scale * (static_cast<float>(row_data[c + 3]) - zero_point);
-            }
-            for (; c < block_end; ++c) {
-              row_output[c] = scale * (static_cast<float>(row_data[c]) - zero_point);
-            }
+          for (c = block_start; c + 4 <= block_end; c += 4) {
+            row_output[c] = scale * (static_cast<float>(row_data[c]) - zp);
+            row_output[c + 1] = scale * (static_cast<float>(row_data[c + 1]) - zp);
+            row_output[c + 2] = scale * (static_cast<float>(row_data[c + 2]) - zp);
+            row_output[c + 3] = scale * (static_cast<float>(row_data[c + 3]) - zp);
           }
-        } else {
-          const float scale = static_cast<float>(scales[r]);
-          for (; c + 8 <= cols; c += 8) {
-            row_output[c] = scale * (static_cast<float>(row_data[c]) - zero_point);
-            row_output[c + 1] = scale * (static_cast<float>(row_data[c + 1]) - zero_point);
-            row_output[c + 2] = scale * (static_cast<float>(row_data[c + 2]) - zero_point);
-            row_output[c + 3] = scale * (static_cast<float>(row_data[c + 3]) - zero_point);
-            row_output[c + 4] = scale * (static_cast<float>(row_data[c + 4]) - zero_point);
-            row_output[c + 5] = scale * (static_cast<float>(row_data[c + 5]) - zero_point);
-            row_output[c + 6] = scale * (static_cast<float>(row_data[c + 6]) - zero_point);
-            row_output[c + 7] = scale * (static_cast<float>(row_data[c + 7]) - zero_point);
-          }
-          for (; c < cols; ++c) {
-            row_output[c] = scale * (static_cast<float>(row_data[c]) - zero_point);
+          for (; c < block_end; ++c) {
+            row_output[c] = scale * (static_cast<float>(row_data[c]) - zp);
           }
         }
       }
-    } else if (num_bits == 4) {
-      const int64_t packed_cols = (cols + 1) / 2;
-      for (int64_t r = 0; r < rows; ++r) {
-        const uint8_t* row_data = quantized_data + r * packed_cols;
-        float* row_output = dequantized_data + r * cols;
+    }
+  } else if (num_bits == 4) {
+    // 4-bit, asymmetric (symmetric path is handled by CanUseMlasQ4Dequant above)
+    const int64_t packed_cols = (cols + 1) / 2;
+    const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+    const int64_t blocks_per_row_packed = (blocks_per_row + zp_pack_size - 1) / zp_pack_size;
 
-        if (block_size > 0) {
-          for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
-            const int64_t block_end = std::min(block_start + block_size, cols);
-            const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
-            const int64_t scale_idx = r * blocks_per_row + block_idx;
-            const float scale = static_cast<float>(scales[scale_idx]);
+    for (int64_t r = 0; r < rows; ++r) {
+      const uint8_t* row_data = quantized_data + r * packed_cols;
+      float* row_output = dequantized_data + r * cols;
 
-            for (int64_t c = block_start; c < block_end; c += 2) {
-              const uint8_t packed_val = row_data[c / 2];
-              const uint8_t val0 = packed_val & 0x0F;
-              const uint8_t val1 = packed_val >> 4;
+      if (block_size > 0) {
+        // 4-bit, block-wise, asymmetric
+        const uint8_t* row_zp_data = (zero_points == nullptr) ? nullptr : zero_points + r * blocks_per_row_packed;
+        for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
+          const int64_t block_end = std::min(block_start + block_size, cols);
+          const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
+          const int64_t scale_idx = r * blocks_per_row + block_idx;
+          const float scale = static_cast<float>(scales[scale_idx]);
 
-              row_output[c] = scale * (static_cast<float>(val0) - zero_point);
-              if (c + 1 < block_end) {
-                row_output[c + 1] = scale * (static_cast<float>(val1) - zero_point);
-              }
-            }
-          }
-        } else {
-          const float scale = static_cast<float>(scales[r]);
-          for (int64_t c = 0; c < cols; c += 2) {
+          const uint8_t packed_zp = (row_zp_data == nullptr) ? default_zp_4bit_packed : row_zp_data[block_idx / 2];
+          const float zp = (block_idx % 2 == 0) ? static_cast<float>(packed_zp & 0x0F) : static_cast<float>(packed_zp >> 4);
+
+          for (int64_t c = block_start; c < block_end; c += 2) {
             const uint8_t packed_val = row_data[c / 2];
             const uint8_t val0 = packed_val & 0x0F;
             const uint8_t val1 = packed_val >> 4;
 
-            row_output[c] = scale * (static_cast<float>(val0) - zero_point);
-            if (c + 1 < cols) {
-              row_output[c + 1] = scale * (static_cast<float>(val1) - zero_point);
+            row_output[c] = scale * (static_cast<float>(val0) - zp);
+            if (c + 1 < block_end) {
+              row_output[c + 1] = scale * (static_cast<float>(val1) - zp);
             }
+          }
+        }
+      } else {
+        // 4-bit, row-wise, asymmetric
+        const uint8_t packed_zp = (zero_points == nullptr) ? default_zp_4bit_packed : zero_points[r / 2];
+        const float zp = (r % 2 == 0) ? static_cast<float>(packed_zp & 0x0F) : static_cast<float>(packed_zp >> 4);
+        const float scale = static_cast<float>(scales[r]);
+
+        for (int64_t c = 0; c < cols; c += 2) {
+          const uint8_t packed_val = row_data[c / 2];
+          const uint8_t val0 = packed_val & 0x0F;
+          const uint8_t val1 = packed_val >> 4;
+
+          row_output[c] = scale * (static_cast<float>(val0) - zp);
+          if (c + 1 < cols) {
+            row_output[c + 1] = scale * (static_cast<float>(val1) - zp);
           }
         }
       }
@@ -333,13 +344,14 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
 template <typename TScale>
 void DequantizeBlock(const uint8_t* quantized_data,
                      const TScale* scales,
+                     const uint8_t* zero_points,
                      int64_t block_size,
                      int64_t num_bits,
                      int64_t rows,
                      int64_t cols,
                      float* dequantized_data,
                      MLAS_THREADPOOL* thread_pool = nullptr) {
-  DequantizeBlockWithMlas(quantized_data, scales, block_size, num_bits, rows, cols, dequantized_data, thread_pool);
+  DequantizeBlockWithMlas(quantized_data, scales, zero_points, block_size, num_bits, rows, cols, dequantized_data, thread_pool);
 }
 
 template <typename T>
@@ -370,18 +382,21 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const auto* fc3_experts_weights = context->Input<Tensor>(8);
   const auto* fc3_scales = context->Input<Tensor>(9);
   const auto* fc3_experts_bias = context->Input<Tensor>(10);
+  const auto* fc1_zero_points = context->Input<Tensor>(11);
+  const auto* fc2_zero_points = context->Input<Tensor>(12);
+  const auto* fc3_zero_points = context->Input<Tensor>(13);
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias, fc1_scales,
-      fc2_experts_weights, fc2_experts_bias, fc2_scales,
-      fc3_experts_weights, fc3_experts_bias, fc3_scales,
+      fc1_experts_weights, fc1_experts_bias, fc1_scales, fc1_zero_points,
+      fc2_experts_weights, fc2_experts_bias, fc2_scales, fc2_zero_points,
+      fc3_experts_weights, fc3_experts_bias, fc3_scales, fc3_zero_points,
       expert_weight_bits_ == 4 ? 2 : 1,
       true,
       block_size_));
 
-  if (fc3_experts_weights || fc3_experts_bias || fc3_scales) {
+  if (fc3_experts_weights || fc3_experts_bias || fc3_scales || fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
   }
 
@@ -550,12 +565,35 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const T* fc2_scales_data = fc2_scales->Data<T>();
   const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->Data<T>() : nullptr;
   const T* fc2_bias_data = fc2_experts_bias ? fc2_experts_bias->Data<T>() : nullptr;
+  const uint8_t* fc1_zp_data = fc1_zero_points ? fc1_zero_points->Data<uint8_t>() : nullptr;
+  const uint8_t* fc2_zp_data = fc2_zero_points ? fc2_zero_points->Data<uint8_t>() : nullptr;
 
   const int64_t pack_unit = (8 / expert_weight_bits_);
   const int64_t fc1_packed_cols = (hidden_size + pack_unit - 1) / pack_unit;
   const int64_t fc2_packed_cols = (inter_size + pack_unit - 1) / pack_unit;
   const bool has_fc1_bias = (fc1_bias_data != nullptr);
   const bool has_fc2_bias = (fc2_bias_data != nullptr);
+
+  // Calculate strides for zero-point tensors
+  const int64_t zp_pack_size = (expert_weight_bits_ == 4) ? 2 : 1;
+  int64_t fc1_zp_expert_stride = 0;
+  int64_t fc2_zp_expert_stride = 0;
+
+  if (is_fc1_block_wise) {
+    const int64_t fc1_blocks_per_row = (hidden_size + block_size_ - 1) / block_size_;
+    const int64_t fc1_zp_blocks_packed = (fc1_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
+    fc1_zp_expert_stride = fc1_out_features * fc1_zp_blocks_packed;
+  } else {
+    fc1_zp_expert_stride = (fc1_out_features + zp_pack_size - 1) / zp_pack_size;
+  }
+
+  if (is_fc2_block_wise) {
+    const int64_t fc2_blocks_per_row = (inter_size + block_size_ - 1) / block_size_;
+    const int64_t fc2_zp_blocks_packed = (fc2_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
+    fc2_zp_expert_stride = hidden_size * fc2_zp_blocks_packed;
+  } else {
+    fc2_zp_expert_stride = (hidden_size + zp_pack_size - 1) / zp_pack_size;
+  }
 
   std::vector<std::pair<int64_t, size_t>> expert_workload;
   size_t total_work = 0;
@@ -650,12 +688,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       const T* fc1_scales_ptr;
+      const uint8_t* fc1_zp_ptr;
 
       if (is_fc1_block_wise) {
         const int64_t fc1_blocks_per_row = fc1_scales_dims[2];
         fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features * fc1_blocks_per_row;
+        fc1_zp_ptr = (fc1_zp_data == nullptr) ? nullptr : fc1_zp_data + expert_idx * fc1_zp_expert_stride;
       } else {
         fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features;
+        fc1_zp_ptr = (fc1_zp_data == nullptr) ? nullptr : fc1_zp_data + expert_idx * fc1_zp_expert_stride;
       }
 
       const int64_t dequant_block_size = GetDequantBlockSize(fc1_out_features, num_expert_tokens);
@@ -665,8 +706,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t n = static_cast<size_t>(fc1_out_features);
       const size_t k = static_cast<size_t>(hidden_size);
 
-      MLAS_BLK_QUANT_TYPE q_type;
-      bool use_direct_q4_gemm = CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
+      MLAS_BLK_QUANT_TYPE q_type = BlkQ4Sym;  // Initialize to default
+      // Direct Q4 GEMM only supports symmetric quantization, so we disable it if zero_points are provided.
+      bool use_direct_q4_gemm = (fc1_zp_data == nullptr) &&
+                                CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
                                                  fc1_out_features, hidden_size, q_type);
       bool fc1_used_direct_q4 = false;
       bool fc1_bias_handled_by_q4_gemm = false;
@@ -676,6 +719,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         Status convert_status = ConvertToMlasQ4Format(
             fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
             fc1_scales_ptr,
+            fc1_zp_ptr,  // This will be nullptr
             is_fc1_block_wise ? block_size_ : 0,
             expert_weight_bits_,
             fc1_out_features,
@@ -719,14 +763,29 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           const int64_t start_row = block_idx * dequant_block_size;
           const int64_t end_row = std::min(start_row + dequant_block_size, fc1_out_features);
           const auto offset = expert_idx * fc1_out_features * fc1_packed_cols + start_row * fc1_packed_cols;
+
+          const T* current_scales_ptr = fc1_scales_ptr + (is_fc1_block_wise ? start_row * fc1_scales_dims[2] : start_row);
+          const uint8_t* current_zp_ptr = nullptr;
+          if (fc1_zp_ptr != nullptr) {
+            if (is_fc1_block_wise) {
+              const int64_t fc1_blocks_per_row = (hidden_size + block_size_ - 1) / block_size_;
+              const int64_t fc1_zp_blocks_packed = (fc1_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
+              current_zp_ptr = fc1_zp_ptr + start_row * fc1_zp_blocks_packed;
+            } else {
+              current_zp_ptr = fc1_zp_ptr + start_row / zp_pack_size;
+            }
+          }
+
           DequantizeBlock(fc1_weights_data + offset,
-                          fc1_scales_ptr + (is_fc1_block_wise ? start_row * fc1_scales_dims[2] : start_row),
+                          current_scales_ptr,
+                          current_zp_ptr,
                           is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
                           end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, tp);
         });
       } else {
         DequantizeBlock(fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
                         fc1_scales_ptr,
+                        fc1_zp_ptr,
                         is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
                         fc1_out_features, hidden_size, B1_dequant, tp);
       }
@@ -810,12 +869,15 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       }
 
       const T* fc2_scales_ptr;
+      const uint8_t* fc2_zp_ptr;
 
       if (is_fc2_block_wise) {
         const int64_t fc2_blocks_per_row = fc2_scales_dims[2];
         fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size * fc2_blocks_per_row;
+        fc2_zp_ptr = (fc2_zp_data == nullptr) ? nullptr : fc2_zp_data + expert_idx * fc2_zp_expert_stride;
       } else {
         fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size;
+        fc2_zp_ptr = (fc2_zp_data == nullptr) ? nullptr : fc2_zp_data + expert_idx * fc2_zp_expert_stride;
       }
 
       const int64_t fc2_dequant_block_size = GetDequantBlockSize(hidden_size, num_expert_tokens);
@@ -825,8 +887,9 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t n2 = static_cast<size_t>(hidden_size);
       const size_t k2 = static_cast<size_t>(inter_size);
 
-      MLAS_BLK_QUANT_TYPE q_type2;
-      bool use_direct_q4_gemm_fc2 = CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
+      MLAS_BLK_QUANT_TYPE q_type2 = BlkQ4Sym;  // Initialize to default
+      bool use_direct_q4_gemm_fc2 = (fc2_zp_data == nullptr) &&
+                                    CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                                                      hidden_size, inter_size, q_type2);
       bool fc2_used_direct_q4 = false;
 
@@ -835,6 +898,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         Status convert_status = ConvertToMlasQ4Format(
             fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
             fc2_scales_ptr,
+            fc2_zp_ptr,  // This will be nullptr
             is_fc2_block_wise ? block_size_ : 0,
             expert_weight_bits_,
             hidden_size,
@@ -879,14 +943,29 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           const int64_t start_row = block_idx * fc2_dequant_block_size;
           const int64_t end_row = std::min(start_row + fc2_dequant_block_size, hidden_size);
           const auto offset = expert_idx * hidden_size * fc2_packed_cols + start_row * fc2_packed_cols;
+
+          const T* current_scales_ptr = fc2_scales_ptr + (is_fc2_block_wise ? start_row * fc2_scales_dims[2] : start_row);
+          const uint8_t* current_zp_ptr = nullptr;
+          if (fc2_zp_ptr != nullptr) {
+            if (is_fc2_block_wise) {
+              const int64_t fc2_blocks_per_row = (inter_size + block_size_ - 1) / block_size_;
+              const int64_t fc2_zp_blocks_packed = (fc2_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
+              current_zp_ptr = fc2_zp_ptr + start_row * fc2_zp_blocks_packed;
+            } else {
+              current_zp_ptr = fc2_zp_ptr + start_row / zp_pack_size;
+            }
+          }
+
           DequantizeBlock(fc2_weights_data + offset,
-                          fc2_scales_ptr + (is_fc2_block_wise ? start_row * fc2_scales_dims[2] : start_row),
+                          current_scales_ptr,
+                          current_zp_ptr,
                           is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
                           end_row - start_row, inter_size, B2_dequant + start_row * inter_size, tp);
         });
       } else {
         DequantizeBlock(fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
                         fc2_scales_ptr,
+                        fc2_zp_ptr,
                         is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
                         hidden_size, inter_size, B2_dequant, tp);
       }

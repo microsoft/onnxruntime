@@ -48,9 +48,9 @@ Status MoE<T>::Compute(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias, nullptr,
-      fc2_experts_weights, fc2_experts_bias, nullptr,
-      fc3_experts_weights, fc3_experts_bias, nullptr,
+      fc1_experts_weights, fc1_experts_bias, nullptr, nullptr,
+      fc2_experts_weights, fc2_experts_bias, nullptr, nullptr,
+      fc3_experts_weights, fc3_experts_bias, nullptr, nullptr,
       1,
       activation_type_ == ActivationType::SwiGLU));
 

@@ -68,10 +68,9 @@ class ShaderHelper final {
  public:
   ShaderHelper(const ProgramBase& program,
                const ProgramMetadata& program_metadata,
+               const WebGpuContext& webgpu_context,
                const std::span<uint32_t> inputs_segments,
                const std::span<uint32_t> outputs_segments,
-               const wgpu::Device& device,
-               const wgpu::Limits& limits,
                uint32_t dispatch_group_size_x,
                uint32_t dispatch_group_size_y,
                uint32_t dispatch_group_size_z);
@@ -160,7 +159,7 @@ class ShaderHelper final {
   Status GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const;
   friend class ProgramManager;
 
-  const wgpu::Device& device_;
+  const WebGpuContext& webgpu_context_;
   const wgpu::Limits& limits_;
   const std::span<uint32_t> inputs_segments_;
   const std::span<uint32_t> outputs_segments_;

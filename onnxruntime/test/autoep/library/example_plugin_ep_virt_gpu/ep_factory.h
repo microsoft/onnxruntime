@@ -73,7 +73,6 @@ class EpFactoryVirtualGpu : public OrtEpFactory {
   const OrtEpApi& ep_api_;
   const OrtModelEditorApi& model_editor_api_;
   bool allow_virtual_devices_{false};
-  const OrtLogger& default_logger_;
   OrtHardwareDevice* virtual_hw_device_{};
   const std::string ep_name_{"EpVirtualGpu"};
   const std::string vendor_{"Contoso2"};   // EP vendor name

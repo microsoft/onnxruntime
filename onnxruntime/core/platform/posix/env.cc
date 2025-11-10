@@ -31,6 +31,7 @@ limitations under the License.
 #endif
 #include <unistd.h>
 
+#include <filesystem>
 #include <iostream>
 #include <optional>
 #include <thread>
@@ -552,6 +553,23 @@ class PosixEnv : public Env {
                             "Failed to unload library with error: " + std::string(error_str));
     }
     return common::Status::OK();
+  }
+
+  PathString GetRuntimePath() const override {
+    // Use dladdr() to look up the file that contains an address from this binary.
+    const void* const address_from_this_binary = reinterpret_cast<const void*>(Env::Default);
+
+    if (Dl_info dl_info{};
+        dladdr(address_from_this_binary, &dl_info) != 0 && dl_info.dli_fname != nullptr) {
+      LOGS_DEFAULT(VERBOSE) << "Getting runtime path as parent directory of binary: " << dl_info.dli_fname;
+
+      auto runtime_path = std::filesystem::path{dl_info.dli_fname};
+      runtime_path = std::filesystem::absolute(runtime_path);
+      runtime_path.remove_filename();
+      return runtime_path;
+    }
+
+    return PathString{};
   }
 
   common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {

@@ -5,6 +5,7 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
+
 # mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
 # use internal MLAS headers like mlasi.h.
 set(mlas_private_compile_definitions)
@@ -284,6 +285,15 @@ function(setup_kleidiai)
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
+
+  # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
+  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+  endif()
+  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+  endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets

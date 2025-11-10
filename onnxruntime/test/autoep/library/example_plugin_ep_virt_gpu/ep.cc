@@ -48,9 +48,9 @@ struct AddNodeComputeInfo : OrtNodeComputeInfo {
   EpVirtualGpu& ep;
 };
 
-EpVirtualGpu::EpVirtualGpu(EpFactoryVirtualGpu& factory, const EpVirtualGpu::Config& config, const OrtLogger& logger)
+EpVirtualGpu::EpVirtualGpu(EpFactoryVirtualGpu& factory, const EpVirtualGpu::Config& config,
+                           const OrtLogger& logger)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
-      factory_{factory},
       config_{config},
       ort_api_{factory.GetOrtApi()},
       ep_api_{factory.GetEpApi()},
@@ -204,7 +204,7 @@ OrtStatus* EpVirtualGpu::CreateEpContextNodes(gsl::span<const OrtNode*> fused_no
       std::vector<std::string> value_names;
       value_names.reserve(value_infos.size());
 
-      for (const auto vi : value_infos) {
+      for (const auto& vi : value_infos) {
         value_names.push_back(vi.GetName());
       }
 
@@ -274,7 +274,7 @@ void ORT_API_CALL EpVirtualGpu::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                             size_t num_node_compute_infos) noexcept {
   (void)this_ptr;
   for (size_t i = 0; i < num_node_compute_infos; i++) {
-    delete node_compute_infos[i];
+    delete static_cast<AddNodeComputeInfo*>(node_compute_infos[i]);
   }
 }
 

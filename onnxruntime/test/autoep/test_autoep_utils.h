@@ -15,7 +15,7 @@ using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::func
 
 struct Utils {
   struct ExamplePluginInfo {
-    ExamplePluginInfo(const ORTCHAR_T* lib_path, const char* reg_name, const char* ep_name);
+    ExamplePluginInfo(std::filesystem::path lib_path, const char* reg_name, const char* ep_name);
 
     std::filesystem::path library_path;
     std::string registration_name;

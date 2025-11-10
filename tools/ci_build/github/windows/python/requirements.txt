@@ -1,17 +1,19 @@
-numpy==2.2.6
+numpy==2.2.6; python_version < "3.14"
+numpy==2.3.2; python_version >= "3.14"
 mypy
 pytest
 setuptools>=68.2.2
 wheel
-onnx==1.19.1
-protobuf==4.25.1
+protobuf==4.25.1; python_version < "3.14"
+protobuf==6.33.0; python_version >= "3.14"
 sympy==1.14
 flatbuffers
 psutil
-onnxscript==0.5.3
-onnx-ir==0.1.10
+onnxscript==0.5.3; python_version < "3.14"
+onnx-ir==0.1.10; python_version < "3.14"
 jinja2
 markupsafe
 semver
 packaging
 coloredlogs
+onnx==1.19.1; python_version < "3.14"
