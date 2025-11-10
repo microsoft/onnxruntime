@@ -2853,8 +2853,8 @@ common::Status TensorrtExecutionProvider::GetInMemoryInitializers(const GraphVie
 
     // Initializer has external data
     if (utils::HasExternalData(*tp)) {
-
-      auto populate_tensorrt_weight_with_ort_value = [&](Ort::Value& ort_value, bool copy_data = false) -> void {
+      auto populate_tensorrt_weight_with_ort_value = [&](OrtValue& value, bool copy_data = false) -> void {
+        Ort::ConstValue ort_value(&value);
         size_t size = ort_value.GetTensorSizeInBytes();
         const void* ptr = ort_value.GetTensorRawData();
 
@@ -2871,11 +2871,11 @@ common::Status TensorrtExecutionProvider::GetInMemoryInitializers(const GraphVie
       };
 
       // Get the OrtValue for this initializer
-      Ort::Value ort_value;
+      OrtValue ort_value;
 
       // Check if this is in-memory external data (data stored in OrtValue)
       if (utils::HasExternalDataInMemory(*tp)) {
-        if (graph_body_viewer.GetOrtValueInitializer(tp->name(), *ort_value)) {
+        if (graph_body_viewer.GetOrtValueInitializer(tp->name(), ort_value)) {
           // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
           populate_tensorrt_weight_with_ort_value(ort_value, false);
         } else {
@@ -2889,7 +2889,7 @@ common::Status TensorrtExecutionProvider::GetInMemoryInitializers(const GraphVie
       // If external data is not in memory, meaning ORT hasn't converted it to a OrtValue yet at this moment,
       // then loads this initializer with data in an external file into an OrtValue.
       // Note: The OrtValue is not cached in the graph, so we need to copy data.
-      ORT_RETURN_IF_ERROR(graph_body_viewer.GetGraph().LoadExternalInitializerAsOrtValue(tp->name(), *ort_value));
+      ORT_RETURN_IF_ERROR(graph_body_viewer.GetGraph().LoadExternalInitializerAsOrtValue(tp->name(), ort_value));
       populate_tensorrt_weight_with_ort_value(ort_value, true);
 
     }
@@ -3014,7 +3014,6 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
       if (weight_is_refittable) {
         if (proto.has_data_location()) {
           if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
-
             if (refit_with_weights_in_memory) {
               auto it = in_memory_weights.find(proto_name);
               if (it != in_memory_weights.end()) {
