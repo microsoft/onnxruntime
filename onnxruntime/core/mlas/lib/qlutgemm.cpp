@@ -400,10 +400,10 @@ void MLASCALL MlasTmac(
                         qlut + qlut_offset,                             // LUT for this batch row
                         lut_scales + lut_scales_offset,                 // LUT scales
                         lut_biases + lut_scales_offset,                 // LUT biases
-                        reinterpret_cast<uint8_t*>(C) + dst_offset,     // Output location
+                        reinterpret_cast<float*>(C) + dst_offset,     // Output location
                         static_cast<int>(K),                            // K dimension
                         static_cast<int>(N),                            // K dimension
-                        static_cast<int>(M),
+                        static_cast<int>(1),
                         BlkLen                                          // Weight quantization group size
                     );
                 }
