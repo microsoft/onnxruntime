@@ -157,26 +157,39 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
-// Struct to hold user weights when ModelProtos are serialized with data.
+// Data structure to hold user weights when ModelProtos are serialized with external data
 class TensorrtUserWeights {
  public:
-  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name), data_(data) {};
+  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name),
+                                                                          data_cpy_(data) {
+                                                                          };
+
+  TensorrtUserWeights(const std::string& name, const void* data, size_t size) : name_(name), data_(data), size_(size) {
+                                                                                };
 
   const char* Name() const {
     return name_.c_str();
   };
 
   const void* Data() const {
-    return static_cast<void const*>(data_.data());
+    if (!data_cpy_.empty()) {
+      return data_cpy_.data();
+    }
+    return data_;
   }
 
   int64_t Size() const {
-    return static_cast<int64_t>(data_.size());
+    if (!data_cpy_.empty()) {
+      return static_cast<int64_t>(data_cpy_.size());
+    }
+    return static_cast<int64_t>(size_);
   }
 
  private:
   std::string name_{};
-  std::string data_{};
+  std::string data_cpy_{};
+  void const* data_;
+  size_t size_;
 };
 
 // Information to construct kernel function state.
@@ -304,6 +317,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
 
+  common::Status GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
+                                         std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const;
+
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
                                     std::string& weight_stripped_engine_cath_path,
@@ -312,6 +328,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                     size_t onnx_model_bytestream_size,
                                     const void* onnx_external_data_bytestream,
                                     size_t onnx_external_data_bytestream_size,
+                                    std::unordered_map<std::string, TensorrtUserWeights>& in_memory_weights,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
                                     bool detailed_build_log);
