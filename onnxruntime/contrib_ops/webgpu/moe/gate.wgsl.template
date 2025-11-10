@@ -30,7 +30,6 @@ $MAIN {
         return;
     }
     let cols = uniforms.cols;
-    let base = row * cols;
 
     var max_val: hidden_state_element_t = -MAX_FLOAT;
     var max_idx: u32 = 0u;
@@ -39,7 +38,7 @@ $MAIN {
         atomicStore(&tokencount_for_expert[global_idx], 0u);
     }
     if (local_idx < cols) {
-        max_val = hidden_state[base + local_idx + uniforms.token_offset];
+        max_val = hidden_state[(row + uniforms.token_offset) * cols + local_idx];
         max_idx = local_idx;
     }
     shared_vals[local_idx] = max_val;
