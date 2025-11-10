@@ -13,9 +13,10 @@
 #include <thread>
 #include <chrono>
 
-// #include <onnxruntime_cxx_api.h>
 #if DX_FOR_INTEROP && _WIN32
 #include <d3d12.h>
+#include <wrl/client.h>
+using Microsoft::WRL::ComPtr;
 #endif
 
 using namespace std;
@@ -56,8 +57,7 @@ void CreateD3D12Buffer(ID3D12Device* pDevice, const size_t size, ID3D12Resource*
 
     if (FAILED(hr))
     {
-        printf("\nFailed creating a resource\n");
-        exit(0);
+        GTEST_FAIL() << "Failed creating a D3D12 resource, HRESULT: 0x" << std::hex << hr;
     }
 }
 
@@ -90,6 +90,10 @@ void CreateUploadBuffer(ID3D12Device* pDevice, const size_t size, ID3D12Resource
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(ppResource));
+    if (FAILED(hr))
+    {
+        GTEST_FAIL() << "Failed creating a D3D12 upload resource, HRESULT: 0x" << std::hex << hr;
+    }
 }
 
 void CreateReadBackBuffer(ID3D12Device* pDevice, const size_t size, ID3D12Resource** ppResource)
@@ -121,6 +125,10 @@ void CreateReadBackBuffer(ID3D12Device* pDevice, const size_t size, ID3D12Resour
         D3D12_RESOURCE_STATE_COPY_DEST,
         nullptr,
         IID_PPV_ARGS(ppResource));
+    if (FAILED(hr))
+    {
+        GTEST_FAIL() << "Failed creating a D3D12 read back resource, HRESULT: 0x" << std::hex << hr;
+    }
 }
 
 
@@ -128,20 +136,21 @@ void FlushAndWait(ID3D12Device* pDevice, ID3D12CommandQueue* pQueue)
 {
     // Event and D3D12 Fence to manage CPU<->GPU sync (we want to keep 2 iterations in "flight")
     HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    ID3D12Fence* pFence = nullptr;
+    ComPtr<ID3D12Fence> pFence;
     pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence));
 
-    pQueue->Signal(pFence, 1);
+    pQueue->Signal(pFence.Get(), 1);
     pFence->SetEventOnCompletion(1, hEvent);
     DWORD retVal = WaitForSingleObject(hEvent, INFINITE);
 
-    pFence->Release();
     CloseHandle(hEvent);
+    // ComPtr automatically releases pFence
 }
 #endif
 namespace test {
 
 TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
+#if TRT_MAJOR_RTX > 1 || TRT_MINOR_RTX >= 3
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
   std::string graph_name = "test";
   constexpr int image_dim = 1080;
@@ -180,16 +189,16 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
 
 
   // set up d3d12
-  ID3D12Device* pDevice;
-  ID3D12CommandQueue* pCommandQueue;
-  ID3D12Resource* pInput;
-  ID3D12Resource* pOutput;
-  ID3D12Resource* pUploadRes;
-  ID3D12Resource* pUploadResCorrupt;
-  ID3D12Resource* pDownloadRes;
-  ID3D12GraphicsCommandList* pUploadCommandList;      // pUploadRes->pInput copy command
-  ID3D12GraphicsCommandList* pDownloadCommandList;    // pOutput->pDownloadRes copy command
-  ID3D12CommandAllocator* pAllocatorCopy;
+  ComPtr<ID3D12Device> pDevice;
+  ComPtr<ID3D12CommandQueue> pCommandQueue;
+  ComPtr<ID3D12Resource> pInput;
+  ComPtr<ID3D12Resource> pOutput;
+  ComPtr<ID3D12Resource> pUploadRes;
+  ComPtr<ID3D12Resource> pUploadResCorrupt;
+  ComPtr<ID3D12Resource> pDownloadRes;
+  ComPtr<ID3D12GraphicsCommandList> pUploadCommandList;
+  ComPtr<ID3D12GraphicsCommandList> pDownloadCommandList;
+  ComPtr<ID3D12CommandAllocator> pAllocatorCopy;
   
   uint64_t fenceValue = 0;
   GraphicsInteropParams graphicsInteropParams;
@@ -202,17 +211,22 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   fenceInteropParams.FencePtr.pFence = nullptr;
   OrtFence* ortFence = nullptr;
 
-  HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice));
+  HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice));
   if (FAILED(hr))
   {
-      std::cerr << "Failed to create D3D12 device" <<std::endl;
+    GTEST_SKIP() << "Failed to create D3D12 device, HRESULT: 0x" << std::hex << hr << " - D3D12 may not be available on this system";
   }
+  graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice = pDevice.Get();
 
   D3D12_COMMAND_QUEUE_DESC queueDesc = {};
   queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
   queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-  hr = reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice)->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&pCommandQueue));
-  graphicsInteropParams.DevicePtr.DXDeviceParams.pCommandQueue = pCommandQueue;
+  hr = pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&pCommandQueue));
+  if (FAILED(hr))
+  {
+    GTEST_SKIP() << "Failed to create D3D12 command queue, HRESULT: 0x" << std::hex << hr << " - Command queue may not be available on this system";
+  }
+  graphicsInteropParams.DevicePtr.DXDeviceParams.pCommandQueue = pCommandQueue.Get();
 
   // Use ORT APIs to load the model
   OrtApi const& ortApi = Ort::GetApi();
@@ -235,8 +249,10 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
 
   sessionOptions.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
 
-  reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice)->CreateFence(fenceValue, D3D12_FENCE_FLAG_SHARED, __uuidof(ID3D12Fence), reinterpret_cast<void**>(&fenceInteropParams.FencePtr.pFence));
-  reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice)->CreateSharedHandle(reinterpret_cast<ID3D12Fence*>(fenceInteropParams.FencePtr.pFence), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle);
+  ComPtr<ID3D12Fence> pFence;
+  pDevice->CreateFence(fenceValue, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&pFence));
+  fenceInteropParams.FencePtr.pFence = pFence.Get();
+  pDevice->CreateSharedHandle(pFence.Get(), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle);
 
   const OrtEpDevice* const* ep_devices = nullptr;
   size_t num_ep_devices;
@@ -288,24 +304,24 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   }
 
   // default resources
-  CreateD3D12Buffer(reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice), 3 * image_dim * image_dim * sizeof(uint16_t), &pInput, D3D12_RESOURCE_STATE_COPY_DEST);
-  CreateD3D12Buffer(reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice), 3 * image_dim * image_dim * sizeof(uint16_t), &pOutput, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  CreateD3D12Buffer(pDevice.Get(), 3 * image_dim * image_dim * sizeof(uint16_t), pInput.GetAddressOf(), D3D12_RESOURCE_STATE_COPY_DEST);
+  CreateD3D12Buffer(pDevice.Get(), 3 * image_dim * image_dim * sizeof(uint16_t), pOutput.GetAddressOf(), D3D12_RESOURCE_STATE_COPY_SOURCE);
 
   // upload and download resources
-  CreateUploadBuffer(reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice), 3 * image_dim * image_dim * sizeof(uint16_t), &pUploadRes);
-  CreateUploadBuffer(reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice), 3 * image_dim * image_dim * sizeof(uint16_t), &pUploadResCorrupt);  // Ankan - for test!
+  CreateUploadBuffer(pDevice.Get(), 3 * image_dim * image_dim * sizeof(uint16_t), pUploadRes.GetAddressOf());
+  CreateUploadBuffer(pDevice.Get(), 3 * image_dim * image_dim * sizeof(uint16_t), pUploadResCorrupt.GetAddressOf());
 
-  CreateReadBackBuffer(reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice), 3 * image_dim * image_dim * sizeof(uint16_t), &pDownloadRes);
+  CreateReadBackBuffer(pDevice.Get(), 3 * image_dim * image_dim * sizeof(uint16_t), pDownloadRes.GetAddressOf());
 
-  hr = reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice)->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(&pAllocatorCopy));
+  hr = pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(&pAllocatorCopy));
 
-  hr = reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice)->CreateCommandList(1, D3D12_COMMAND_LIST_TYPE_COMPUTE, pAllocatorCopy, NULL, IID_PPV_ARGS(&pUploadCommandList));
+  hr = pDevice->CreateCommandList(1, D3D12_COMMAND_LIST_TYPE_COMPUTE, pAllocatorCopy.Get(), NULL, IID_PPV_ARGS(&pUploadCommandList));
 
 
   // heavy GPU load for reproducing race condition
   for (int i = 0; i < 1000; i++)
   {
-      pUploadCommandList->CopyResource(pInput, pUploadResCorrupt);
+      pUploadCommandList->CopyResource(pInput.Get(), pUploadResCorrupt.Get());
 
       D3D12_RESOURCE_BARRIER barrier = {};
       barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -315,14 +331,14 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
       pUploadCommandList->ResourceBarrier(1, &barrier);
   }
 
-  pUploadCommandList->CopyResource(pInput, pUploadRes);
+  pUploadCommandList->CopyResource(pInput.Get(), pUploadRes.Get());
   pUploadCommandList->Close();
 
   std::cerr << "Test completed successfully1" <<std::endl;
 
   // record the commands in the download command list
-  hr = reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice)->CreateCommandList(1, D3D12_COMMAND_LIST_TYPE_COMPUTE, pAllocatorCopy, NULL, IID_PPV_ARGS(&pDownloadCommandList));
-  pDownloadCommandList->CopyResource(pDownloadRes, pOutput);
+  hr = pDevice->CreateCommandList(1, D3D12_COMMAND_LIST_TYPE_COMPUTE, pAllocatorCopy.Get(), NULL, IID_PPV_ARGS(&pDownloadCommandList));
+  pDownloadCommandList->CopyResource(pDownloadRes.Get(), pOutput.Get());
   pDownloadCommandList->Close();
 
   Ort::Session session = Ort::Session(*ort_env, L"nv_execution_provider_test.onnx", sessionOptions);
@@ -363,10 +379,11 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   {
       fenceValue++;
       // upload inputs (using DX)
-      pCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**)&pUploadCommandList);
+      ID3D12CommandList* pUploadCmdList = pUploadCommandList.Get();
+      pCommandQueue->ExecuteCommandLists(1, &pUploadCmdList);
 
       // make ORT wait for upload
-      pCommandQueue->Signal(reinterpret_cast<ID3D12Fence*>(fenceInteropParams.FencePtr.pFence), fenceValue);                         // signal the fence from D3D12 side
+      pCommandQueue->Signal(pFence.Get(), fenceValue);
       ortApi.InteropEpWait(session, ortFence, stream, fenceValue);    // make ORT wait on the fence (on CUDA side internally)
 
       // run the model
@@ -377,11 +394,12 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
       fenceValue++;
       // make DX wait for ORT
       ortApi.InteropEpSignal(session, ortFence, stream, fenceValue);  // signal from CUDA side (internally)
-      pCommandQueue->Wait(reinterpret_cast<ID3D12Fence*>(fenceInteropParams.FencePtr.pFence), fenceValue);                           // make D3D12 wait on the fence
+      pCommandQueue->Wait(pFence.Get(), fenceValue);
 
       // download the output to cpu memory (again using DX)
-      pCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**)&pDownloadCommandList);
-      FlushAndWait(reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice), pCommandQueue);
+      ID3D12CommandList* pDownloadCmdList = pDownloadCommandList.Get();
+      pCommandQueue->ExecuteCommandLists(1, &pDownloadCmdList);
+      FlushAndWait(pDevice.Get(), pCommandQueue.Get());
   }
 
 
@@ -391,38 +409,29 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   memcpy(cpuOutputHalf.data(), pOutputData, cpuOutputHalf.size() * sizeof(uint16_t));
   pDownloadRes->Unmap(0, nullptr);
 
-  std::cerr << "First 20 elements of cpuInputHalf:\n";
-  for (int i = 0; i < 20; i++) {
+  std::cerr << "First 50 elements of cpuInputHalf:\n";
+  for (int i = 0; i < 50; i++) {
     std::cerr << cpuInputHalf[i] << " ";
   }
   std::cerr << std::endl;
   
-  // Print first 20 elements of output
-  std::cerr << "First 20 elements of cpuOutputHalf:\n";
-  for (int i = 0; i < 20; i++) {
+  std::cerr << "First 50 elements of cpuOutputHalf:\n";
+  for (int i = 0; i < 50; i++) {
     std::cerr << cpuOutputHalf[i] << " ";
   }
   std::cerr << std::endl;
 
-
-  pInput->Release();
-  pOutput->Release();
-  pUploadRes->Release();
-  pUploadResCorrupt->Release();
-  pDownloadRes->Release();
-  pUploadCommandList->Release();
-  pDownloadCommandList->Release();
-  pAllocatorCopy->Release();
-  reinterpret_cast<ID3D12Fence*>(fenceInteropParams.FencePtr.pFence)->Release();
+  // ComPtr automatically handles cleanup via RAII
   CloseHandle(sharedFenceHandle);
-  pCommandQueue->Release();
-  reinterpret_cast<ID3D12Device*>(graphicsInteropParams.DevicePtr.DXDeviceParams.pDevice)->Release();
 
   std::cerr << "\nInference done. Check output image." <<std::endl;
 
-  }  // End scope - cpuInputHalf and cpuOutputHalf are freed here
+  }
 #endif
-std::cerr << "Test completed successfully" <<std::endl;
+    std::cerr << "Test completed successfully" <<std::endl;
+#else
+    std::cerr << "This test is supported only on TensorRT RTX 1.3.x.x and above. " << std::endl;
+#endif
 }
 
 }  // namespace test
