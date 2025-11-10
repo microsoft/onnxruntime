@@ -2921,7 +2921,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
   bool refit_with_external_data_bytestream = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
   bool refit_with_weights_in_memory = in_memory_weights.size() > 0;
-  bool refit_with_external_data = refit_with_weights_in_memory || refit_with_weights_in_memory;
+  bool refit_with_external_data = refit_with_weights_in_memory || refit_with_external_data_bytestream;
   bool refit_complete = false;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   if (refit_from_file) {
