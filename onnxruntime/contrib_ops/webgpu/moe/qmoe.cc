@@ -152,11 +152,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
   // SwiGLU validation
   bool is_swiglu = (activation_type_ == MoEActivationType::SwiGLU);
-  if (is_swiglu && fc3_experts_weights_optional != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SwiGLU activation is not supported with fc3. Gate weights should be concatenated with FC1 weights.");
-  }
-  if (!is_swiglu && fc3_experts_weights_optional != nullptr) {
+  if (fc3_experts_weights_optional != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "FC3 gating is not yet implemented for non-SwiGLU activations on WebGPU.");
   }
@@ -174,16 +170,17 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int64_t K_fc2 = moe_params.inter_size;   // left_shape[left_num_dims - 1]
   const int64_t N_fc2 = moe_params.inter_size;   // right_shape[right_num_dims - 1]
   const int64_t accuracy_level = 4;
-  const int64_t block_size = (block_size_ != 0) ? block_size_ : fc1_experts_weights->Shape()[2];
+  const int64_t block_size_fc1 = (block_size_ != 0) ? block_size_ : K_fc1;
+  const int64_t block_size_fc2 = (block_size_ != 0) ? block_size_ : K_fc2;
   Status status;
 
   Tensor* output_tensor = context.Output(0, input_shape);
-  const int total_output_size = static_cast<int>(input_shape.Size()) / 4;
+  const int total_output_size = (static_cast<int>(input_shape.Size()) + 3) / 4;
 
   // we are accumulating expert results into output_tensor, need to initialize to zero
   ZeroTensorProgram zero;
   zero
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, 4})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4})
       .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
   ORT_RETURN_IF_ERROR(context.RunProgram(zero));
@@ -259,14 +256,14 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
       TensorShape fc1_activated_shape({used_by, moe_params.inter_size});
       Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
-      TensorShape fc2_output_shape({used_by, moe_params.inter_size});
+      TensorShape fc2_output_shape({used_by, N_fc2});
       Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
 
       //
       // Step 3: matmul the hidden_state with fc1 (gate_up) of the selected experts
       //
       status = ApplyMatMulNBits(&expert_hidden, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
-                                K_fc1, N_fc1, block_size, accuracy_level, expert_weight_bits_, context,
+                                K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
                                 &fc1_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 
@@ -294,7 +291,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       // Step 5: multiply fc1_activated with fc2 (gate_down) of the selected experts
       //
       status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
-                                K_fc2, N_fc2, block_size, accuracy_level, expert_weight_bits_, context,
+                                K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
                                 &fc2_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 

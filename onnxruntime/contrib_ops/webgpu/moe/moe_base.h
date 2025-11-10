@@ -28,13 +28,6 @@ enum class MoEQuantType {
   UINT8 = 2,
 };
 
-enum class MoEParallelType {
-  None = 0,
-  EP = 1,
-  TP = 2,
-  EPAndTP = 3,
-};
-
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
