@@ -38,6 +38,14 @@ class GraphOptimizerRegistry;
 #include "core/framework/tuning_context.h"
 #include "core/session/onnxruntime_c_api.h"
 
+#if DX_FOR_INTEROP && _WIN32
+#include <d3d12.h>
+#endif
+
+#if VULKAN_FOR_INTEROP
+#include <vulkan/vulkan.h>
+#endif
+
 struct OrtEpDevice;
 struct OrtRunOptions;
 
@@ -111,7 +119,7 @@ class IExecutionProvider {
     if (extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence) {
 #if DX_FOR_INTEROP && _WIN32
       HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-      interopWaitParams->FencePtr.pFence->SetEventOnCompletion(fenceValue, hEvent);
+      reinterpret_cast<ID3D12Fence*>(interopWaitParams->FencePtr.pFence)->SetEventOnCompletion(fenceValue, hEvent);
       WaitForSingleObject(hEvent, INFINITE);
       CloseHandle(hEvent);
       return Status::OK();
@@ -120,22 +128,24 @@ class IExecutionProvider {
     else if(extSyncPrimitive == ExternalSyncPrimitive_VulkanSemaphore)
     {
 #if VULKAN_FOR_INTEROP
-      PFN_vkWaitOnFences pfnVkWaitOnFences = (PFN_vkWaitOnFences)interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr(
-          interopWaitParams->VulkanDeviceParams.pVkDevice, "vkWaitOnFences");
+      PFN_vkWaitForFences pfnVkWaitForFences = reinterpret_cast<PFN_vkWaitForFences>(
+          reinterpret_cast<PFN_vkGetDeviceProcAddr>(interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr)(
+              reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), "vkWaitForFences"));
 
-      if (!pfnVkWaitOnFences) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get function pointer for vkWaitOnFences");
+      if (!pfnVkWaitForFences) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get function pointer for vkWaitForFences");
       }
-      VkResult result = pfnVkWaitOnFences(interopWaitParams->VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence, 1, UINT64_MAX);
+      VkResult result = pfnVkWaitForFences(reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), 1, reinterpret_cast<const VkFence*>(&interopWaitParams->FencePtr.pVkFence), VK_TRUE, UINT64_MAX);
 
-      if (result != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "vkWaitOnFences failed with Vulkan error code: " + std::to_string(result));
+      if (result != VK_SUCCESS) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "vkWaitForFences failed with Vulkan error code: " + std::to_string(result));
       }
 
-      PFN_vkResetFences pfnVkResetFences = (PFN_vkResetFences)interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr(
-          interopWaitParams->VulkanDeviceParams.pVkDevice, "vkResetFences");
+      PFN_vkResetFences pfnVkResetFences = reinterpret_cast<PFN_vkResetFences>(
+          reinterpret_cast<PFN_vkGetDeviceProcAddr>(interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr)(
+              reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), "vkResetFences"));
       if (pfnVkResetFences) {
-        pfnVkResetFences(interopWaitParams->VulkanDeviceParams.pVkDevice, 1, &interopWaitParams->FencePtr.pVkFence);
+        pfnVkResetFences(reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), 1, reinterpret_cast<const VkFence*>(&interopWaitParams->FencePtr.pVkFence));
       }
 
       return Status::OK();

@@ -103,14 +103,16 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
 
   assert(graphicsInteropParams->extSyncPrimitive == fenceInteropParams->extSyncPrimitive && 
     "ExternalSyncPrimitive mismatch between graphicsInteropParams and fenceInteropParams");
-  (void)graphicsInteropParams;  // Suppress unused parameter warning in release builds where assert is compiled out
+  (void)graphicsInteropParams;
+  
   ExternalSyncPrimitive extSyncPrimitive = fenceInteropParams->extSyncPrimitive;
 
   if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
   {
 #if DX_FOR_INTEROP && _WIN32
+      fenceInteropParams->FencePtr.pFence = reinterpret_cast<ID3D12Fence*>(fenceInteropParams->FencePtr.pFence);
       HANDLE sharedFenceHandle = nullptr;
-      if(graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice->CreateSharedHandle(fenceInteropParams->FencePtr.pFence, nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
+      if(reinterpret_cast<ID3D12Device*>(graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice)->CreateSharedHandle(reinterpret_cast<ID3D12Fence*>(fenceInteropParams->FencePtr.pFence), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create shared handle for D3D12 fence");
       }
       semHandleDesc.type = cudaExternalSemaphoreHandleTypeD3D12Fence;
@@ -123,17 +125,18 @@ Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* 
 #if _WIN32
       VkSemaphoreGetWin32HandleInfoKHR handleInfo = {};
       handleInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
-      handleInfo.semaphore = fenceInteropParams->FencePtr.pVkSemaphore;
+      handleInfo.semaphore = reinterpret_cast<VkSemaphore>(fenceInteropParams->FencePtr.pVkSemaphore);
       handleInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
 
       HANDLE sharedFenceHandle = nullptr;
 
       // Get the function pointer for vkGetSemaphoreWin32HandleKHR
-      PFN_vkGetSemaphoreWin32HandleKHR pfnVkGetSemaphoreWin32HandleKHR = (PFN_vkGetSemaphoreWin32HandleKHR)graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkGetDeviceProcAddr(
-        graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkDevice, "vkGetSemaphoreWin32HandleKHR");
+      PFN_vkGetSemaphoreWin32HandleKHR pfnVkGetSemaphoreWin32HandleKHR = reinterpret_cast<PFN_vkGetSemaphoreWin32HandleKHR>(
+          reinterpret_cast<PFN_vkGetDeviceProcAddr>(graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkGetDeviceProcAddr)(
+              reinterpret_cast<VkDevice>(graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkDevice), "vkGetSemaphoreWin32HandleKHR"));
 
       if (pfnVkGetSemaphoreWin32HandleKHR &&
-        pfnVkGetSemaphoreWin32HandleKHR(graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkDevice, &handleInfo, &sharedFenceHandle) == 0)
+        pfnVkGetSemaphoreWin32HandleKHR(reinterpret_cast<VkDevice>(graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkDevice), &handleInfo, &sharedFenceHandle) == VK_SUCCESS)
       {
         semHandleDesc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
         semHandleDesc.handle.win32.handle = sharedFenceHandle;
