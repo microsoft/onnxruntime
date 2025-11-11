@@ -20,6 +20,25 @@ ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeli
       compute_pipeline{compute_pipeline},
       shape_uniform_ranks{shape_uniform_ranks} {}
 
+Status ProgramManager::CustomizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
+  ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
+
+  // This temporary workaround addresses a significant performance bottleneck
+  // that 3D dispatch dimensions is better performance due to an issue with Intel's
+  // GPU drivers. We manually normalize the dispatch group size to restore
+  // performance.
+  //
+  // TODO: Revert this change once the driver issue is fixed.
+  if (webgpu_context_.AdapterInfo().vendor == std::string_view{"intel"} &&
+      x > webgpu_context_.DeviceLimits().maxComputeWorkgroupsPerDimension && y == 1 && z == 1) {
+    uint32_t size = x * y * z;
+    x = 4;
+    y = 8;
+    z = (size + (x * y) - 1) / (x * y);
+  }
+  return Status::OK();
+}
+
 Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
   ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
 
