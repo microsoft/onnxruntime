@@ -17,7 +17,7 @@ using onnxruntime::webgpu::ComputeContext;
 Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
   const auto& x_shape = shader.AddIndices("input_shape", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  const auto& indices = shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseIndicesToOffset);
+  const auto& indices = shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseIndicesToOffset | ShaderUsage::UseValueTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
@@ -41,7 +41,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
 
   shader.MainFunctionBody()
       << "var index = " << indices.GetByIndices("indices_indices") << ";\n"
-      << "if (index < 0) { index += " << x_shape_[gather_axis_] << ";}\n"
+      << "if (index < 0) { index += indices_value_t(" << x_shape.IndicesGet("uniforms.input_shape_shape", gather_axis_) << ");}\n"
       << "var data_indices = input_shape_indices_t(0);\n";
 
   for (int i = 0, j = 0; i < x_shape.Rank(); i++) {
