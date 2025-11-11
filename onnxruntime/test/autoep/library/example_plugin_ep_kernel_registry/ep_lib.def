@@ -1,4 +1,4 @@
-LIBRARY "example_kernel_plugin_ep.dll"
+LIBRARY "example_plugin_ep_kernel_registry.dll"
 EXPORTS
  CreateEpFactories @1
  ReleaseEpFactory @2
