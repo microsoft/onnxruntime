@@ -317,9 +317,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
 
-  common::Status GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
-                                         std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const;
-
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
                                     std::string& weight_stripped_engine_cath_path,
@@ -646,6 +643,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  /**
+   * This function fetches the initializers data that are external data or raw data via ORT graph API,
+   * and stores them in the 'TensorrtUserWeights' data structure that later will be used by TRT parser
+   * for later use, e.g. refit weightless engine.
+   */
+  Status GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
+                                         std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const;
 
   /**
    *  This is the helper function for ConstantFoldingDQ graph transformer.
