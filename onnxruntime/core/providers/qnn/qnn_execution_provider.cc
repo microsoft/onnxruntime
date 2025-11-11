@@ -566,6 +566,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  // Option to skip QNN API interface version check to use other QNN library other than default.
+  static const std::string SKIP_QNN_VERSION_CHECK = "skip_qnn_version_check";
+  auto skip_qnn_version_check = ParseBoolOption(SKIP_QNN_VERSION_CHECK, false, provider_options_map);
+
   // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
   // So that all graphs from later sessions will be compiled into the same QNN context
   if (((context_cache_enabled_ && share_ep_contexts_) || enable_vtcm_backup_buffer_sharing_) && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
@@ -585,7 +589,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                      device_id_,
                                      htp_arch,
                                      soc_model,
-                                     op_packages});
+                                     op_packages,
+                                     skip_qnn_version_check});
     if (enable_vtcm_backup_buffer_sharing_) {
       SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_);
     }

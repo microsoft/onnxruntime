@@ -12,7 +12,12 @@
 #include "ep_stream_support.h"
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
-    : OrtEpFactory{}, ApiPtrs(apis), default_logger_{default_logger}, ep_name_{ep_name} {
+    : OrtEpFactory{},
+      ApiPtrs(apis),
+      default_logger_{default_logger},
+      ep_name_{ep_name},
+      default_memory_info_{nullptr},
+      readonly_memory_info_{nullptr} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
@@ -34,43 +39,35 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
-  OrtMemoryInfo* mem_info = nullptr;
-  auto* status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU", OrtMemoryInfoDeviceType_GPU,
-                                             /*vendor*/ 0xBE57, /* device_id */ 0,
-                                             OrtDeviceMemoryType_DEFAULT,
-                                             /*alignment*/ 0,
-                                             // it is invalid to use OrtArenaAllocator as that is reserved for the
-                                             // internal ORT Arena implementation
-                                             OrtAllocatorType::OrtDeviceAllocator,
-                                             &mem_info);
-  assert(status == nullptr);  // should never fail.
-  default_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+  default_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU",
+                                         OrtMemoryInfoDeviceType_GPU,
+                                         /*vendor*/ 0xBE57, /* device_id */ 0,
+                                         OrtDeviceMemoryType_DEFAULT,
+                                         /*alignment*/ 0,
+                                         // it is invalid to use OrtArenaAllocator as that is reserved for the internal
+                                         // ORT Arena implementation
+                                         OrtAllocatorType::OrtDeviceAllocator};
 
   // create data transfer for the device
-  const OrtMemoryDevice* device = ep_api.MemoryInfo_GetMemoryDevice(default_memory_info_.get());
+  const OrtMemoryDevice* device = ep_api.MemoryInfo_GetMemoryDevice(default_memory_info_);
   data_transfer_impl_ = std::make_unique<ExampleDataTransfer>(apis, device);
 
   // create read-only allocator for use with initializers. same info as DEFAULT memory apart from the allocator type.
-  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU readonly", OrtMemoryInfoDeviceType_GPU,
-                                       /*vendor*/ 0xBE57, /* device_id */ 0,
-                                       OrtDeviceMemoryType_DEFAULT,
-                                       /*alignment*/ 0,
-                                       OrtAllocatorType::OrtReadOnlyAllocator,
-                                       &mem_info);
-  assert(status == nullptr);  // should never fail.
-
-  readonly_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+  readonly_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU readonly",
+                                          OrtMemoryInfoDeviceType_GPU,
+                                          /*vendor*/ 0xBE57, /* device_id */ 0,
+                                          OrtDeviceMemoryType_DEFAULT,
+                                          /*alignment*/ 0,
+                                          OrtAllocatorType::OrtReadOnlyAllocator};
 
   // HOST_ACCESSIBLE memory example. use the non-CPU device type so it's clear which device the memory is also
   // accessible from. we infer from the type of HOST_ACCESSIBLE that it's CPU accessible.
-  mem_info = nullptr;
-  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU pinned", OrtMemoryInfoDeviceType_GPU,
-                                       /*vendor*/ 0xBE57, /* device_id */ 0,
-                                       OrtDeviceMemoryType_HOST_ACCESSIBLE,
-                                       /*alignment*/ 0,
-                                       OrtAllocatorType::OrtDeviceAllocator,
-                                       &mem_info);
-  ort_api.ReleaseMemoryInfo(mem_info);
+  auto host_accessible_memory_info = Ort::MemoryInfo{"ExampleEP GPU pinned",
+                                                     OrtMemoryInfoDeviceType_GPU,
+                                                     /*vendor*/ 0xBE57, /* device_id */ 0,
+                                                     OrtDeviceMemoryType_HOST_ACCESSIBLE,
+                                                     /*alignment*/ 0,
+                                                     OrtAllocatorType::OrtDeviceAllocator};
 }
 
 /*static*/
@@ -136,8 +133,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       // register the allocator info required by the EP.
       // registering OrtMemoryInfo for host accessible memory would be done in an additional call.
       // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers is optional.
-      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_.get()));
-      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_.get()));
+      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_));
+      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_));
 
       ep_devices[num_ep_devices++] = ep_device;
     }
@@ -215,8 +212,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *allocator = nullptr;
 
-  bool is_default_allocator = memory_info == factory.default_memory_info_.get();
-  bool is_readonly_allocator = memory_info == factory.readonly_memory_info_.get();
+  bool is_default_allocator = memory_info == factory.default_memory_info_;
+  bool is_readonly_allocator = memory_info == factory.readonly_memory_info_;
 
   if (!is_default_allocator && !is_readonly_allocator) {
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
@@ -244,7 +241,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   std::lock_guard<std::mutex> lock{factory.mutex_};
 
   if (!factory.arena_allocator_) {
-    std::unique_ptr<OrtAllocator> ep_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+    AllocatorUniquePtr ep_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
 
     // initial shared allocator in environment does not have allocator options.
     // if the user calls CreateSharedAllocator they can provide options to configure the arena differently.

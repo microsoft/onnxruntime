@@ -54,7 +54,7 @@ if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
-is_cuda_version_12 = False
+cuda_major_version = None
 rocm_version = None
 is_migraphx = False
 is_openvino = False
@@ -62,10 +62,9 @@ is_qnn = False
 qnn_version = None
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
-    # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
     if cuda_version:
-        is_cuda_version_12 = cuda_version.startswith("12.")
+        cuda_major_version = cuda_version.split(".")[0]
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
     package_name = "onnxruntime-migraphx"
@@ -222,20 +221,27 @@ try:
                     "libcuda.so.1",
                     "libcublas.so.11",
                     "libcublas.so.12",
+                    "libcublas.so.13",
                     "libcublasLt.so.11",
                     "libcublasLt.so.12",
+                    "libcublasLt.so.13",
                     "libcudart.so.11.0",
                     "libcudart.so.12",
+                    "libcudart.so.13",
                     "libcudnn.so.8",
                     "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
+                    "libcufft.so.12",
                     "libcurand.so.10",
                     "libnvJitLink.so.12",
+                    "libnvJitLink.so.13",
                     "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
                     "libnvrtc.so.12",
+                    "libnvrtc.so.13",
                     "libnvrtc-builtins.so.11",
                     "libnvrtc-builtins.so.12",
+                    "libnvrtc-builtins.so.13",
                 ]
 
                 rocm_dependencies = [
@@ -598,10 +604,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 if enable_training or enable_training_apis:
@@ -783,8 +789,8 @@ with open(requirements_path) as f:
 
 # Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
 if package_name == "onnxruntime-trt-rtx":
-    install_requires.append("nvidia-cuda-runtime-cu12~=12.0")
-    cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
+    major = cuda_major_version or "12"  # Default to CUDA 12
+    install_requires.append(f"nvidia-cuda-runtime-cu{major}~={major}.0")
 
 
 def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
@@ -823,16 +829,18 @@ def save_build_and_package_info(package_name, version_number, cuda_version, rocm
 save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version)
 
 extras_require = {}
-if package_name == "onnxruntime-gpu" and is_cuda_version_12:
+if package_name == "onnxruntime-gpu" and cuda_major_version:
+    # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11
+    cufft_version = "12.0" if cuda_major_version == "13" else "11.0"
     extras_require = {
         "cuda": [
-            "nvidia-cuda-nvrtc-cu12~=12.0",
-            "nvidia-cuda-runtime-cu12~=12.0",
-            "nvidia-cufft-cu12~=11.0",
-            "nvidia-curand-cu12~=10.0",
+            f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
+            f"nvidia-cuda-runtime-cu{cuda_major_version}~={cuda_major_version}.0",
+            f"nvidia-cufft-cu{cuda_major_version}~={cufft_version}",
+            f"nvidia-curand-cu{cuda_major_version}~=10.0",
         ],
         "cudnn": [
-            "nvidia-cudnn-cu12~=9.0",
+            f"nvidia-cudnn-cu{cuda_major_version}~=9.0",
         ],
     }
 

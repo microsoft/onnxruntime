@@ -12,19 +12,23 @@
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/string_utils.h"
 #include "core/providers/webgpu/string_macros.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 ShaderHelper::ShaderHelper(const ProgramBase& program,
                            const ProgramMetadata& program_metadata,
-                           const wgpu::Device& device,
-                           const wgpu::Limits& limits,
+                           const WebGpuContext& webgpu_context,
+                           const std::span<uint32_t> inputs_segments,
+                           const std::span<uint32_t> outputs_segments,
                            uint32_t dispatch_group_size_x,
                            uint32_t dispatch_group_size_y,
                            uint32_t dispatch_group_size_z)
-    : device_{device},
-      limits_{limits},
+    : webgpu_context_{webgpu_context},
+      limits_{webgpu_context.DeviceLimits()},
+      inputs_segments_{inputs_segments},
+      outputs_segments_{outputs_segments},
       dispatch_group_size_x_{dispatch_group_size_x},
       dispatch_group_size_y_{dispatch_group_size_y},
       dispatch_group_size_z_{dispatch_group_size_z},
@@ -64,7 +68,7 @@ Status ShaderHelper::Init() {
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
-  if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
@@ -95,13 +99,6 @@ Status ShaderHelper::Init() {
   return Status::OK();
 }
 
-void ShaderHelper::FinalizeInputs() {
-  // Automatically add indirect buffer as the last shader input when using indirect dispatch.
-  if (program_.IndirectDispatchTensor() != nullptr) {
-    AddInput("indirect_buffer", ShaderUsage::None);
-  }
-}
-
 const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, ShaderUsage usage) {
   const size_t input_index = input_vars_.size();
   ORT_ENFORCE(input_index < program_.Inputs().size(),
@@ -109,7 +106,7 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims, program_.Inputs()[input_index].segments);
+  return AddVariableImpl(true, name, usage, dims, inputs_segments_[input_index]);
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -119,7 +116,7 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(false, name, usage, dims, program_.Outputs()[output_index].segments);
+  return AddVariableImpl(false, name, usage, dims, outputs_segments_[output_index]);
 }
 
 const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
@@ -398,14 +395,14 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
                   [](const ProgramOutput& output) {
                     return output.tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
                   })) {
-    ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
+    ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
   }
-  if (device_.HasFeature(wgpu::FeatureName::Subgroups)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
 #if !defined(__wasm__)
-  if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+  if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
 
     // Dawn enforces the subgroup matrix builtin arguments to be uniform in change https://dawn-review.googlesource.com/c/dawn/+/236054

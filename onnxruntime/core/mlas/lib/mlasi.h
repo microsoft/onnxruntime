@@ -883,7 +883,7 @@ typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
     size_t N,
     size_t K);
 
-typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+typedef void (MLASCALL MLAS_GEMM_PACK_B)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -892,7 +892,7 @@ typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
     size_t ldb,
     void* PackedB);
 
-typedef bool (MLASCALL MLAS_GEMM_PACK_B_KERNEL_OVERRIDE)(
+typedef bool (MLASCALL MLAS_GEMM_PACK_B_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -1329,7 +1329,7 @@ struct MLAS_PLATFORM {
     // Mlas overrides initialisation
     MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
     MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
-    MLAS_GEMM_PACK_B_KERNEL_OVERRIDE* MlasGemmPackBOverride = nullptr;
+    MLAS_GEMM_PACK_B_OVERRIDE* MlasGemmPackBOverride = nullptr;
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 

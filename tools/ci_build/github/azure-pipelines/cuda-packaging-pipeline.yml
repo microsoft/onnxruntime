@@ -58,15 +58,21 @@ variables:
 - name: ReleaseVersionSuffix
   value: ''
 - name: win_trt_home
-  ${{ if eq(parameters.CudaVersion, '13.0') }}:
-    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
     value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
-- name: win_cuda_home
   ${{ if eq(parameters.CudaVersion, '13.0') }}:
-    value: $(Agent.TempDirectory)\v13.0
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
+- name: win_cuda_home
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
     value: $(Agent.TempDirectory)\v12.8
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\v13.0
+# CMAKE_CUDA_ARCHITECTURES for Windows nuget packaging
+- name: CudaArchs
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: '75-real;86-real;89-real;90-virtual'
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
 
 resources:
   repositories:
@@ -126,6 +132,7 @@ extends:
         BuildId: ${{ parameters.BuildId }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        CudaArchs: ${{ variables.CudaArchs }}
 
     - template: stages/download-java-tools-stage.yml
 

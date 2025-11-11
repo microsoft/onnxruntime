@@ -14,6 +14,9 @@ parameters:
 - name: CudaVersion
   type: string
   default: '13.0'
+  values:
+   - 12.8
+   - 13.0
 
 - name: win_cuda_home
   type: string
@@ -47,6 +50,9 @@ parameters:
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
 
+- name: CudaArchs
+  type: string
+
 stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
@@ -60,7 +66,7 @@ stages:
     msbuildPlatform: x64
     packageName: x64-cuda
     CudaVersion: ${{ parameters.CudaVersion }}
-    buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;86-real;89-real;90-virtual"
+    buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
@@ -80,7 +86,7 @@ stages:
     msbuildPlatform: x64
     CudaVersion: ${{ parameters.CudaVersion }}
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }}  --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;86-real;89-real;90-virtual"
+    buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu

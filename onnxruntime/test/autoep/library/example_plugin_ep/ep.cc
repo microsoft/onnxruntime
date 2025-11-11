@@ -160,12 +160,10 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
 
-  auto status = ort_api.Logger_LogMessage(&logger_,
-                                          OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                          ("ExampleEp has been created with name " + name_).c_str(),
-                                          ORT_FILE, __LINE__, __FUNCTION__);
-  // ignore status for now
-  (void)status;
+  IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
+                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                             ("ExampleEp has been created with name " + name_).c_str(),
+                                             ORT_FILE, __LINE__, __FUNCTION__));
 }
 
 ExampleEp::~ExampleEp() = default;
@@ -381,7 +379,7 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                          size_t num_node_compute_infos) noexcept {
   (void)this_ptr;
   for (size_t i = 0; i < num_node_compute_infos; i++) {
-    delete node_compute_infos[i];
+    delete static_cast<ExampleNodeComputeInfo*>(node_compute_infos[i]);
   }
 }
 
@@ -399,7 +397,7 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
       std::vector<std::string> value_names;
       value_names.reserve(value_infos.size());
 
-      for (const auto vi : value_infos) {
+      for (const auto& vi : value_infos) {
         value_names.push_back(vi.GetName());
       }
 

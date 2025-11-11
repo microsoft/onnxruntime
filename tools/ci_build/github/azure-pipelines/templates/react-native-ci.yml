@@ -68,13 +68,13 @@ stages:
       runCodesignValidationInjection: false
     steps:
     - template: use-xcode-version.yml
+      parameters:
+        xcodeVersion: 16.4
 
-    - task: UsePythonVersion@0
-      displayName: Use python 3.12
-      inputs:
-        versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
+        python_version: '3.12'
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
@@ -112,6 +112,8 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/ios_pod'
 
     - template: use-xcode-version.yml
+      parameters:
+        xcodeVersion: 16.4
 
     - task: NodeTool@0
       inputs:

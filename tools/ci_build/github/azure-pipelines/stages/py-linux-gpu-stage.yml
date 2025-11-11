@@ -33,7 +33,7 @@ stages:
   dependsOn: []
   jobs:
   - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
-    timeoutInMinutes: 240
+    timeoutInMinutes: 360
     workspace:
       clean: all
     pool:
@@ -50,7 +50,7 @@ stages:
     variables:
       - name: extra_build_args
         ${{ if ne(parameters.extra_build_arg, '') }}:
-          value: -x ${{ parameters.extra_build_arg }}
+          value: '-x "${{ parameters.extra_build_arg }}"'
         ${{ if eq(parameters.extra_build_arg, '') }}:
           value: ''
       - template: ../templates/common-variables.yml
@@ -80,6 +80,8 @@ stages:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
           arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+        env:
+          CUDA_VERSION: ${{ parameters.cuda_version }}
 
       - script: |
           set -e -x

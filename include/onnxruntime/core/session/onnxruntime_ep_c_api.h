@@ -3,6 +3,13 @@
 
 // Do not include this file directly. Please include "onnxruntime_c_api.h" instead.
 
+#if defined(__DOXYGEN__)
+// When running a Doxygen build, include onnxruntime_c_api.h. Doxygen expects header files to be self-contained.
+#include "onnxruntime_c_api.h"
+#else
+// In normal usage, do not include onnxruntime_c_api.h. This file is explicitly included in onnxruntime_c_api.h.
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -17,7 +24,10 @@ ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
-// struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
+/** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
+ *
+ * \since Version 1.23.
+ */
 struct OrtDataTransferImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
@@ -96,7 +106,7 @@ struct OrtSyncNotificationImpl {
   /** \brief Wait for a device to device operation to complete.
    *
    * \param[in] this_ptr Pointer to the OrtSyncNotificationImpl instance.
-   * \param[in] stream The OrtSyncStream instance that will wait on this notification to be activated.
+   * \param[in] consumer_stream The OrtSyncStream instance that will wait on this notification to be activated.
    *
    * \since Version 1.23.
    */
@@ -264,6 +274,11 @@ struct OrtNodeComputeInfo {
   void(ORT_API_CALL* ReleaseState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
 };
 
+/**
+ * \brief The OrtEpApi struct provides functions that are relevant to the implementation of an execution provider.
+ *
+ * \since Version 1.22.
+ */
 struct OrtEpApi {
   /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
    * \param[in] ep_factory Execution provider factory that is creating the instance.

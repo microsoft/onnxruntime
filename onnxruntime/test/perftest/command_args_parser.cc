@@ -49,6 +49,9 @@ ABSL_FLAG(size_t, c, DefaultPerformanceTestConfig().run_config.concurrent_sessio
 ABSL_FLAG(int, d, DefaultPerformanceTestConfig().run_config.cudnn_conv_algo, "Specifies CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default).");
 ABSL_FLAG(int, o, DefaultPerformanceTestConfig().run_config.optimization_level, "Specifies graph optimization level. Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).");
 ABSL_FLAG(std::string, u, "", "Specifies the optimized model path for saving.");
+ABSL_FLAG(std::string, opt_data, "", "Specifies the data file path (relative to the opt model) for saving weights when -u is in effect");
+ABSL_FLAG(int64_t, opt_weight_min_size, -1, "Min initializer size to save to --opt_data  when --opt_data is in effect");
+ABSL_FLAG(bool, opt_save_prepacks, false, "Saves pre-packs to the file specified by --opt_data along with weights");
 ABSL_FLAG(std::string, i, "",
           "Specifies EP specific runtime options as key-value pairs.\n Different runtime options available are: \n"
           "  [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n"
@@ -399,7 +402,23 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   // -u
   {
     const auto& optimized_model_path = absl::GetFlag(FLAGS_u);
-    if (!optimized_model_path.empty()) test_config.run_config.optimized_model_path = ToPathString(optimized_model_path);
+    if (!optimized_model_path.empty()) {
+      test_config.run_config.optimized_model_path = ToPathString(optimized_model_path);
+      // --opt_data
+      const auto& opt_data_path = absl::GetFlag(FLAGS_opt_data);
+      if (!opt_data_path.empty()) {
+        test_config.run_config.optimized_model_data_path = opt_data_path;
+        // --opt_weight_min_size
+        if (absl::GetFlag(FLAGS_opt_weight_min_size) >= 0) {
+          test_config.run_config.optimized_model_weight_min_size =
+              std::to_string(absl::GetFlag(FLAGS_opt_weight_min_size));
+        }
+        // --opt_save_prepacks
+        if (absl::GetFlag(FLAGS_opt_save_prepacks)) {
+          test_config.run_config.optimized_save_optimized_prepacks = true;
+        }
+      }
+    }
   }
 
   // -I

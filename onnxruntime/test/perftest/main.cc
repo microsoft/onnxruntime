@@ -143,6 +143,27 @@ Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::Performan
   std::unordered_map<std::string, std::string> provider_options;
   session_options.AppendExecutionProvider(provider_name, provider_options);
 
+  // free dim override
+  if (!test_config.run_config.free_dim_name_overrides.empty()) {
+    for (auto const& dim_override : test_config.run_config.free_dim_name_overrides) {
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToUTF8String(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
+      }
+    }
+  }
+
+  if (!test_config.run_config.free_dim_denotation_overrides.empty()) {
+    for (auto const& dim_override : test_config.run_config.free_dim_denotation_overrides) {
+      if (g_ort->AddFreeDimensionOverride(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToUTF8String(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
+      }
+    }
+  }
+
   Ort::ModelCompilationOptions model_compile_options(env, session_options);
   model_compile_options.SetEpContextEmbedMode(test_config.run_config.compile_binary_embed);
   model_compile_options.SetInputModelPath(test_config.model_info.model_file_path.c_str());

@@ -62,7 +62,8 @@ parameters:
   type: string
   default: '12.8'
   values:
-    - 12.8
+  - 12.8
+  - 13.0
 
 resources:
   repositories:
@@ -78,9 +79,21 @@ resources:
 variables:
 - template: templates/common-variables.yml
 - name: win_trt_home
-  value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
 - name: win_cuda_home
-  value: $(Agent.TempDirectory)\v12.8
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: $(Agent.TempDirectory)\v12.8
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\v13.0
+- name: CudaArchs
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: '75-real;86-real;89-real;90-virtual'
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
+
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.
@@ -157,6 +170,7 @@ extends:
         BuildId: ${{ parameters.BuildId }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        CudaArchs: ${{ variables.CudaArchs }}
 
     - template: stages/nodejs-win-packaging-stage.yml
       parameters:
