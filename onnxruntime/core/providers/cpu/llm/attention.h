@@ -5,7 +5,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/llm/attention_helper.h"
+#include "core/providers/cpu/llm/attention_parameters.h"
 
 namespace onnxruntime {
 
