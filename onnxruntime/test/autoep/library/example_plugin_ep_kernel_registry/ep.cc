@@ -53,17 +53,44 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetCapabilityImpl(OrtEp* this_ptr, cons
     ExampleKernelEp* ep = static_cast<ExampleKernelEp*>(this_ptr);
 
     Ort::ConstGraph graph{ort_graph};
-    std::vector<Ort::ConstNode> nodes = graph.GetNodes();
+    std::vector<Ort::ConstNode> all_nodes = graph.GetNodes();
 
-    if (nodes.empty()) {
+    if (all_nodes.empty()) {
       return nullptr;  // No nodes to process
     }
 
-    for (const auto& node : nodes) {
+    // Collect candidate nodes that this EP may support.
+    std::vector<Ort::ConstNode> candidate_nodes;
+
+    for (const auto& node : all_nodes) {
+      std::string op_type = node.GetOperatorType();
+
+      if (op_type == "Relu" || op_type == "Squeeze") {
+        candidate_nodes.push_back(node);
+      } else if (op_type == "Mul") {
+        std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
+        assert(inputs.size() == 2);
+
+        std::optional<std::vector<int64_t>> input_0_shape = GetTensorShape(inputs[0]);
+        std::optional<std::vector<int64_t>> input_1_shape = GetTensorShape(inputs[1]);
+
+        if (!input_0_shape.has_value() || !input_1_shape.has_value()) {
+          continue;  // Unable to get input shapes (non-tensor).
+        }
+
+        if (!AreShapesStaticAndEqual(*input_0_shape, *input_1_shape)) {
+          continue;  // Don't support broadcasting and dynamic dimensions.
+        }
+
+        candidate_nodes.push_back(node);
+      }
+    }
+
+    // Mark candidate nodes as supported if we have a registered kernel.
+    for (const auto& node : candidate_nodes) {
       const OrtKernelDef* kernel_def = nullptr;
       RETURN_IF_ERROR(ep->ep_api_.EpGraphSupportInfo_LookUpKernel(graph_support_info, node, &kernel_def));
 
-      // Claim nodes for which we have a registered kernel
       if (kernel_def != nullptr) {
         RETURN_IF_ERROR(ep->ep_api_.EpGraphSupportInfo_AddSingleNode(graph_support_info, node));
       }

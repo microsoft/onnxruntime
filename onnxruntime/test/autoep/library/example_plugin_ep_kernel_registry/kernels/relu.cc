@@ -56,8 +56,8 @@ void ORT_API_CALL Relu::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 
 OrtStatus* Relu::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
   Ort::KernelContext kernel_context(kernel_ctx);
-  (void)this->state_;  // NOTE: Unused in this example.
-  (void)this->info_;   // NOTE: Unused in this example.
+  static_cast<void>(this->state_);  // NOTE: Unused in this example.
+  static_cast<void>(this->info_);   // NOTE: Unused in this example.
 
   try {
     gsl::span<const float> input0;

@@ -267,8 +267,10 @@ ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_reg
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtKernelCreateFunc");
   }
 
-  KernelCreateInfo kernel_create_info = MakePluginEpKernelCreateInfo(static_cast<const KernelDef*>(kernel_def),
-                                                                     kernel_create_func, kernel_create_func_state);
+  auto internal_kernel_def = reinterpret_cast<const onnxruntime::KernelDef*>(kernel_def);
+  onnxruntime::KernelCreateInfo kernel_create_info = MakePluginEpKernelCreateInfo(internal_kernel_def,
+                                                                                  kernel_create_func,
+                                                                                  kernel_create_func_state);
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(kernel_registry->registry->Register(std::move(kernel_create_info)));
   return nullptr;
@@ -278,19 +280,20 @@ ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_reg
 ORT_API_STATUS_IMPL(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out) {
   API_IMPL_BEGIN
   auto builder = onnxruntime::KernelDefBuilder::Create();
-  *kernel_def_builder_out = static_cast<OrtKernelDefBuilder*>(builder.release());
+  *kernel_def_builder_out = reinterpret_cast<OrtKernelDefBuilder*>(builder.release());
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API(void, ReleaseKernelDefBuilder, _Frees_ptr_opt_ OrtKernelDefBuilder* kernel_def_builder) {
-  delete kernel_def_builder;
+  delete reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
 }
 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ const char* op_type) {
   API_IMPL_BEGIN
-  kernel_def_builder->SetName(op_type);
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  builder->SetName(op_type);
   return nullptr;
   API_IMPL_END
 }
@@ -298,7 +301,8 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ const char* domain) {
   API_IMPL_BEGIN
-  kernel_def_builder->SetDomain(domain);
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  builder->SetDomain(domain);
   return nullptr;
   API_IMPL_END
 }
@@ -306,7 +310,8 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ int since_version_start, _In_ int since_version_end) {
   API_IMPL_BEGIN
-  kernel_def_builder->SinceVersion(since_version_start, since_version_end);
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  builder->SinceVersion(since_version_start, since_version_end);
   return nullptr;
   API_IMPL_END
 }
@@ -314,7 +319,8 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ const char* ep_name) {
   API_IMPL_BEGIN
-  kernel_def_builder->Provider(ep_name);
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  builder->Provider(ep_name);
   return nullptr;
   API_IMPL_END
 }
@@ -322,7 +328,8 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuil
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ size_t input_index, _In_ OrtMemType mem_type) {
   API_IMPL_BEGIN
-  kernel_def_builder->InputMemoryType(mem_type, static_cast<int>(input_index));
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  builder->InputMemoryType(mem_type, static_cast<int>(input_index));
   return nullptr;
   API_IMPL_END
 }
@@ -330,7 +337,8 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ size_t output_index, _In_ OrtMemType mem_type) {
   API_IMPL_BEGIN
-  kernel_def_builder->OutputMemoryType(mem_type, static_cast<int>(output_index));
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  builder->OutputMemoryType(mem_type, static_cast<int>(output_index));
   return nullptr;
   API_IMPL_END
 }
@@ -356,10 +364,11 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder
   ml_types.reserve(num_types);
 
   for (size_t i = 0; i < num_types; i++) {
-    ml_types.push_back(static_cast<const onnxruntime::DataTypeImpl*>(types[i]));
+    ml_types.push_back(reinterpret_cast<const onnxruntime::DataTypeImpl*>(types[i]));
   }
 
-  kernel_def_builder->TypeConstraint(arg_name, std::move(ml_types));
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  builder->TypeConstraint(arg_name, std::move(ml_types));
   return nullptr;
   API_IMPL_END
 }
@@ -381,8 +390,10 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputAliases, _In_ OrtKernelDefBui
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of output indices to alias");
   }
 
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+
   if (num_io_indices == 1) {
-    kernel_def_builder->Alias(input_indices[0], output_indices[0]);
+    builder->Alias(input_indices[0], output_indices[0]);
   } else {
     std::vector<std::pair<int, int>> pairs;
     pairs.reserve(num_io_indices);
@@ -391,7 +402,7 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputAliases, _In_ OrtKernelDefBui
       pairs.push_back({input_indices[i], output_indices[i]});
     }
 
-    kernel_def_builder->Alias(pairs);
+    builder->Alias(pairs);
   }
 
   return nullptr;
@@ -417,8 +428,10 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputMutableAliases, _In_ OrtKerne
                                  "Must specify a valid array of output indices to alias (mutable)");
   }
 
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+
   if (num_io_indices == 1) {
-    kernel_def_builder->MayInplace(input_indices[0], output_indices[0]);
+    builder->MayInplace(input_indices[0], output_indices[0]);
   } else {
     std::vector<std::pair<int, int>> pairs;
     pairs.reserve(num_io_indices);
@@ -427,7 +440,7 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputMutableAliases, _In_ OrtKerne
       pairs.push_back({input_indices[i], output_indices[i]});
     }
 
-    kernel_def_builder->MayInplace(pairs);
+    builder->MayInplace(pairs);
   }
 
   return nullptr;
@@ -437,21 +450,22 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputMutableAliases, _In_ OrtKerne
 ORT_API_STATUS_IMPL(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _Outptr_ OrtKernelDef** kernel_def_out) {
   API_IMPL_BEGIN
-  *kernel_def_out = static_cast<OrtKernelDef*>(kernel_def_builder->Build().release());
+  auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+  *kernel_def_out = reinterpret_cast<OrtKernelDef*>(builder->Build().release());
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API(void, ReleaseKernelDef, _Frees_ptr_opt_ OrtKernelDef* kernel_def) {
-  delete kernel_def;
+  delete reinterpret_cast<onnxruntime::KernelDef*>(kernel_def);
 }
 
 ORT_API(const char*, KernelDef_GetOperatorType, _In_ const OrtKernelDef* kernel_def) {
-  return static_cast<const onnxruntime::KernelDef*>(kernel_def)->OpName().c_str();
+  return reinterpret_cast<const onnxruntime::KernelDef*>(kernel_def)->OpName().c_str();
 }
 
 ORT_API(const char*, KernelDef_GetDomain, _In_ const OrtKernelDef* kernel_def) {
-  return static_cast<const onnxruntime::KernelDef*>(kernel_def)->Domain().c_str();
+  return reinterpret_cast<const onnxruntime::KernelDef*>(kernel_def)->Domain().c_str();
 }
 
 ORT_API_STATUS_IMPL(KernelDef_GetSinceVersion, _In_ const OrtKernelDef* kernel_def,
@@ -469,7 +483,7 @@ ORT_API_STATUS_IMPL(KernelDef_GetSinceVersion, _In_ const OrtKernelDef* kernel_d
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null `end_version` output parameter");
   }
 
-  auto internal_kernel_def = static_cast<const onnxruntime::KernelDef*>(kernel_def);
+  auto internal_kernel_def = reinterpret_cast<const onnxruntime::KernelDef*>(kernel_def);
   internal_kernel_def->SinceVersion(start_version, end_version);
 
   return nullptr;
@@ -477,7 +491,7 @@ ORT_API_STATUS_IMPL(KernelDef_GetSinceVersion, _In_ const OrtKernelDef* kernel_d
 }
 
 ORT_API(const char*, KernelDef_GetExecutionProvider, _In_ const OrtKernelDef* kernel_def) {
-  return static_cast<const onnxruntime::KernelDef*>(kernel_def)->Provider().c_str();
+  return reinterpret_cast<const onnxruntime::KernelDef*>(kernel_def)->Provider().c_str();
 }
 
 ORT_API_STATUS_IMPL(KernelDef_GetInputMemType, _In_ const OrtKernelDef* kernel_def,
@@ -491,7 +505,7 @@ ORT_API_STATUS_IMPL(KernelDef_GetInputMemType, _In_ const OrtKernelDef* kernel_d
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null `mem_type` output parameter");
   }
 
-  auto internal_kernel_def = static_cast<const onnxruntime::KernelDef*>(kernel_def);
+  auto internal_kernel_def = reinterpret_cast<const onnxruntime::KernelDef*>(kernel_def);
   *mem_type = internal_kernel_def->InputMemoryType(input_index);
 
   return nullptr;
@@ -509,7 +523,7 @@ ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null `mem_type` output parameter");
   }
 
-  auto internal_kernel_def = static_cast<const onnxruntime::KernelDef*>(kernel_def);
+  auto internal_kernel_def = reinterpret_cast<const onnxruntime::KernelDef*>(kernel_def);
   *mem_type = internal_kernel_def->OutputMemoryType(output_index);
 
   return nullptr;
@@ -520,7 +534,7 @@ ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_typ
                     _Outptr_ const OrtMLDataType** out) {
   API_IMPL_BEGIN
   const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type);
-  *out = static_cast<const OrtMLDataType*>(ml_type);
+  *out = reinterpret_cast<const OrtMLDataType*>(ml_type);
   return nullptr;
   API_IMPL_END
 }
@@ -573,7 +587,8 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo*
   const onnxruntime::KernelCreateInfo* create_info =
       graph_support_info->kernel_lookup.LookUpKernel(ep_node->GetInternalNode());
 
-  *out_kernel_def = create_info != nullptr ? static_cast<const OrtKernelDef*>(create_info->kernel_def.get()) : nullptr;
+  *out_kernel_def = create_info != nullptr ? reinterpret_cast<const OrtKernelDef*>(create_info->kernel_def.get())
+                                           : nullptr;
   return nullptr;
   API_IMPL_END
 }

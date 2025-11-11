@@ -64,7 +64,6 @@ Status PluginEpOpKernel::Create(FuncManager& fn_manager, const OpKernelInfo& inf
 /// </summary>
 class PluginEpKernelCreateFunctor {
  public:
-  PluginEpKernelCreateFunctor() : kernel_create_func_(nullptr), kernel_create_func_state_(nullptr) {}
   PluginEpKernelCreateFunctor(OrtKernelCreateFunc create_func, void* state)
       : kernel_create_func_{create_func}, kernel_create_func_state_{state} {}
 
@@ -83,8 +82,8 @@ class PluginEpKernelCreateFunctor {
   }
 
  private:
-  OrtKernelCreateFunc kernel_create_func_;
-  void* kernel_create_func_state_;
+  OrtKernelCreateFunc kernel_create_func_ = nullptr;
+  void* kernel_create_func_state_ = nullptr;
 };
 
 // Make a KernelCreateInfo for a plugin EP's kernel

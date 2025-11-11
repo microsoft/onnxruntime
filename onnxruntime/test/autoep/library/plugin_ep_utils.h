@@ -4,6 +4,7 @@
 #pragma once
 
 #include <gsl/span>
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <string>
@@ -13,12 +14,12 @@
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
-#define RETURN_IF_ERROR(fn)    \
-  do {                         \
-    OrtStatus* _status = (fn); \
-    if (_status != nullptr) {  \
-      return _status;          \
-    }                          \
+#define RETURN_IF_ERROR(fn)     \
+  do {                          \
+    Ort::Status _status{(fn)};  \
+    if (!_status.IsOK()) {      \
+      return _status.release(); \
+    }                           \
   } while (0)
 
 #define RETURN_IF(cond, ort_api, msg)                    \
@@ -129,6 +130,19 @@ inline std::optional<std::vector<int64_t>> GetTensorShape(Ort::ConstValueInfo va
 
   const auto type_shape = type_info.GetTensorTypeAndShapeInfo();
   return type_shape.GetShape();
+}
+
+// Check if two shapes are static (no dynamic dimensions) and equal.
+inline bool AreShapesStaticAndEqual(gsl::span<const int64_t> shape0, gsl::span<const int64_t> shape1) {
+  const auto is_static_shape = [](gsl::span<const int64_t> shape) -> bool {
+    return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim >= 0; });
+  };
+
+  if (!is_static_shape(shape0) || !is_static_shape(shape1)) {
+    return false;  // a shape has dynamic dimensions
+  }
+
+  return shape0 == shape1;
 }
 
 template <typename T>

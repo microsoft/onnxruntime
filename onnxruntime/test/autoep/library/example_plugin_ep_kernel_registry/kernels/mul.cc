@@ -40,8 +40,8 @@ void ORT_API_CALL Mul::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 
 OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
   Ort::KernelContext kernel_context(kernel_ctx);
-  (void)this->state_;  // NOTE: Unused in this example.
-  (void)this->info_;   // NOTE: Unused in this example.
+  static_cast<void>(this->state_);  // NOTE: Unused in this example.
+  static_cast<void>(this->info_);   // NOTE: Unused in this example.
 
   try {
     gsl::span<const float> input0;
@@ -51,11 +51,7 @@ OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
 
     RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 0, input0, shape0));
     RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 1, input1, shape1));
-
-    if (shape0 != shape1) {
-      Ort::Status status("Mul kernel does not support broadcasting", ORT_EP_FAIL);
-      return status.release();
-    }
+    RETURN_IF(shape0 != shape1, Ort::GetApi(), "Mul kernel doesn't support broadcasting.");  // Checked by GetCapability
 
     Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
     float* output_data = output.GetTensorMutableData<float>();
