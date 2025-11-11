@@ -108,6 +108,12 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
+      - name: nvidia-smi
+        shell: powershell
+        run: |
+          nvidia-smi.exe
+          nvidia-smi.exe --query-gpu=memory.total,memory.used,memory.free --format=csv
+
       - name: Build and Clean Binaries
         working-directory: ${{ runner.temp }}
         run: |
@@ -236,6 +242,7 @@ jobs:
         shell: powershell
         run: |
           nvidia-smi.exe
+          nvidia-smi.exe --query-gpu=memory.total,memory.used,memory.free --format=csv
 
       - name: Run Tests
         working-directory: ${{ runner.temp }}
@@ -255,6 +262,17 @@ jobs:
             exit $lastExitCode
           }
         shell: pwsh
+
+      - name: Check GPU memory usage and fail if >90%
+        shell: powershell
+        run: |
+          $csv = nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader
+          $parts = $csv -split ','
+          $used = [int]($parts[0] -replace ' MiB','')
+          $total = [int]($parts[1] -replace ' MiB','')
+          $percent = ($used / $total) * 100
+          Write-Host "GPU memory used: $used MiB / $total MiB ($percent %)"
+          if ($percent -gt 90) { throw "GPU memory usage exceeded threshold ($percent%)" }
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
