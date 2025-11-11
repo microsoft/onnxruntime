@@ -22,5 +22,5 @@ struct Squeeze : public OrtKernelImpl {
 
  private:
   const OrtKernelInfo* info_;
-  void* state_{nullptr};  // Custom state passed from OrtEp
+  void* state_;  // Custom state passed from OrtEp
 };
