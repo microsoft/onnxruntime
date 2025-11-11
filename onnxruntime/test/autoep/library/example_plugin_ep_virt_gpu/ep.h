@@ -51,7 +51,6 @@ class EpVirtualGpu : public OrtEp {
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
-  EpFactoryVirtualGpu& factory_;
   Config config_{};
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;

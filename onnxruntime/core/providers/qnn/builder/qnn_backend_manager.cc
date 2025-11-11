@@ -231,6 +231,12 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
   ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
                 "Failed to get QNN providers.");
 
+  if (skip_qnn_version_check_) {
+    // When skipping version check, use the first available provider.
+    *interface_provider = interface_providers[0];
+    return Status::OK();
+  }
+
   bool found_valid_interface{false};
   for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
     Qnn_Version_t interface_version = GetQnnInterfaceApiVersion(interface_providers[pIdx]);
@@ -1383,6 +1389,7 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   // choose performance mode
   switch (htp_performance_mode) {
     case HtpPerformanceMode::kHtpBurst:
+    case HtpPerformanceMode::kHtpSustainedHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMinLatency;
       dcvs_v3.dcvsEnable = kDcvsDisable;
@@ -1395,7 +1402,6 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       break;
-    case HtpPerformanceMode::kHtpSustainedHighPerformance:
     case HtpPerformanceMode::kHtpHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepLowLatency;

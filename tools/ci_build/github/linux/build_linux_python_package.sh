@@ -12,9 +12,12 @@ ENABLE_CACHE=false
 PYTHON_EXES=(
   "/opt/python/cp311-cp311/bin/python3.11"
   "/opt/python/cp313-cp313/bin/python3.13"
-  "/opt/python/cp313-cp313t/bin/python3.13t"
-    "/opt/python/cp312-cp312/bin/python3.12"
+  "/opt/python/cp313-cp313t/bin/python3.13"
+  "/opt/python/cp314-cp314/bin/python3.14"
+  "/opt/python/cp314-cp314t/bin/python3.14"
+  "/opt/python/cp312-cp312/bin/python3.12"
   )
+
 while getopts "d:p:x:c:e" parameter_Option
 do case "${parameter_Option}"
 in
@@ -37,8 +40,6 @@ e) ENABLE_CACHE=true;;
 esac
 done
 
-
-
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
@@ -58,7 +59,9 @@ echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
 
 if [ "$EXTRA_ARG" != "" ]; then
-    BUILD_ARGS+=("$EXTRA_ARG")
+    # SC2206: This is intentionally unquoted to allow multiple arguments.
+    # shellcheck disable=SC2206
+    BUILD_ARGS+=($EXTRA_ARG)
 fi
 
 if [ "$ARCH" == "x86_64" ]; then
@@ -67,9 +70,18 @@ if [ "$ARCH" == "x86_64" ]; then
 fi
 
 if [ "$BUILD_DEVICE" == "GPU" ]; then
-    SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
+    if [ "$CUDA_VERSION" == "12.8" ]; then
+        CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;90a-real;90-virtual"
+    elif [ "$CUDA_VERSION" == "13.0" ]; then
+        CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual"
+    else
+        echo "Error: Unrecognized CUDA_VERSION: $CUDA_VERSION"
+        exit 1
+    fi
+
+    SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=60-real;70-real;75-real;80-real;86-real;90a-real;90-virtual" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
 fi
 if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
     BUILD_ARGS+=("--use_webgpu")
@@ -85,10 +97,20 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
+  # Check if the Python executable or its directory exists
+  if [ ! -f "$PYTHON_EXE" ]; then
+    echo "WARNING: Python executable not found at $PYTHON_EXE. Skipping this version."
+    continue
+  fi
+
+  # Recompile the entire onnxruntime from scratch for every single Python version.
+  # TODO: It might be possible to reuse some intermediate files between different Python versions to speed up the build.
   rm -rf /build/"$BUILD_CONFIG"
+
   # that's a workaround for the issue that there's no python3 in the docker image
   # like xnnpack's cmakefile, it uses pythone3 to run a external command
   python3_dir=$(dirname "$PYTHON_EXE")
+  ls "$python3_dir"
   ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
   PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist

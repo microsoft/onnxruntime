@@ -1,14 +1,16 @@
 cerberus
-numpy==2.2.6
+numpy==2.2.6; python_version < "3.14"
+numpy==2.3.2; python_version >= "3.14"
 mypy
 pytest
 setuptools==78.1.1
 wheel==0.45.1
-onnx==1.19.1
 argparse
 sympy==1.14
 flatbuffers
-protobuf==4.25.1
+protobuf==4.25.1; python_version < "3.14"
+protobuf==6.33.0; python_version >= "3.14"
 packaging
-onnxscript==0.5.3
-onnx-ir==0.1.10
+onnxscript==0.5.3; python_version < "3.14"
+onnx-ir==0.1.10; python_version < "3.14"
+onnx==1.19.1; python_version < "3.14"

@@ -147,6 +147,8 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           transB = trans_b_iter->second.i();
         }
         expected_axis = transB == 0 ? 1 : 0;
+      } else if (node.OpType() == "ConvTranspose") {
+        expected_axis = 1;
       }
 
       if (axis != expected_axis) {

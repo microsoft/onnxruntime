@@ -1597,19 +1597,30 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         else:
             run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
-        # run shared_lib_test if necessary
+        # run shared library tests if applicable
         if args.build_shared_lib:
-            adb_push("libonnxruntime.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
-            adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
-            adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-            run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
-            run_adb_shell(
-                f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
-            )
+            shared_library_test_program_names = [
+                "onnxruntime_autoep_test",
+                "onnxruntime_customopregistration_test",
+                "onnxruntime_shared_lib_test",
+            ]
+
+            shared_libraries = [
+                "libcustom_op_get_const_input_test_library.so",
+                "libcustom_op_library.so",
+                "libexample_plugin_ep_virt_gpu.so",
+                "libexample_plugin_ep.so",
+                "libonnxruntime_runtime_path_test_shared_library.so",
+                "libonnxruntime.so",
+            ]
+
+            for file_to_copy in shared_library_test_program_names + shared_libraries:
+                adb_push(file_to_copy, device_dir, cwd=cwd)
+
+            # run test programs
+            for test_program_name in shared_library_test_program_names:
+                adb_shell(f"chmod +x {device_dir}/{test_program_name}")
+                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/{test_program_name}")
 
         all_android_tests_passed = True
 
@@ -1832,7 +1843,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess(
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
-                    if args.enable_transformers_tool_test:
+
+                    # onnx package does not support python 3.14 yet so skip the transformers tests for python 3.14.
+                    # we can remove this check when onnx package supports python 3.14.
+                    if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
+                        3,
+                        14,
+                    ):
                         import google.protobuf  # noqa: PLC0415
                         import numpy  # noqa: PLC0415
 
