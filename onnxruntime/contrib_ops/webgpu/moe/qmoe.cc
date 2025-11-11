@@ -118,7 +118,8 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
       {"used_by", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
       {"num_experts", ProgramUniformVariableDataType::Uint32},
-      {"expert_idx", ProgramUniformVariableDataType::Uint32});
+      {"expert_idx", ProgramUniformVariableDataType::Uint32},
+      {"token_offset", ProgramUniformVariableDataType::Uint32});
 
  private:
 };
@@ -157,7 +158,9 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                            "FC3 gating is not yet implemented for non-SwiGLU activations on WebGPU.");
   }
 
-  const int max_tokens = 256;  // TODO: maybe 512 ?
+  // process tokens in chunks of max_tokens to put some cap on memory usage
+  const int max_tokens = 512;
+
   const uint32_t num_experts = static_cast<uint32_t>(moe_params.num_experts);
   const uint32_t hidden_size = static_cast<uint32_t>(moe_params.hidden_size);
   const int64_t fc1_output_size = is_swiglu && swiglu_fusion_ > 0 ? 2 * moe_params.inter_size : moe_params.inter_size;
@@ -165,10 +168,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const auto dtype = is_fp16 ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   const auto dtype_uint32 = DataTypeImpl::GetType<uint32_t>();
 
-  const int64_t K_fc1 = moe_params.hidden_size;  // left_shape[left_num_dims - 1]
-  const int64_t N_fc1 = fc1_output_size;         // right_shape[right_num_dims - 1]
-  const int64_t K_fc2 = moe_params.inter_size;   // left_shape[left_num_dims - 1]
-  const int64_t N_fc2 = moe_params.inter_size;   // right_shape[right_num_dims - 1]
+  const int64_t K_fc1 = moe_params.hidden_size;
+  const int64_t N_fc1 = fc1_output_size;
+  const int64_t K_fc2 = moe_params.inter_size;
+  const int64_t N_fc2 = moe_params.inter_size;
   const int64_t accuracy_level = 4;
   const int64_t block_size_fc1 = (block_size_ != 0) ? block_size_ : K_fc1;
   const int64_t block_size_fc2 = (block_size_ != 0) ? block_size_ : K_fc2;
@@ -180,7 +183,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   // we are accumulating expert results into output_tensor, need to initialize to zero
   ZeroTensorProgram zero;
   zero
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, 4})
       .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
   ORT_RETURN_IF_ERROR(context.RunProgram(zero));
@@ -203,6 +206,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     // gate_counts: number of tokens assigned to each expert
     Tensor gate_counts = context.CreateGPUTensor(dtype_uint32, gate_count_shape);
     // gate_hidden: token_idx assigned to each expert
+    //  token_idx is the global index into hidden_state
     Tensor gate_hidden = context.CreateGPUTensor(dtype_uint32, gate_hidden_shape);
 
     GateProgram gate{k_, is_fp16};
@@ -308,7 +312,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
           .AddUniformVariables({used_by,
                                 hidden_size,
                                 num_experts,
-                                expert_idx});
+                                expert_idx,
+                                static_cast<uint32_t>(token_offset)});
 
       ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
     }
