@@ -8,6 +8,8 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
 
+import contextlib
+
 __version__ = "1.24.0"
 __author__ = "Microsoft"
 
@@ -133,14 +135,43 @@ def _get_package_root(package_name: str, directory_name: str | None = None):
     return None
 
 
+def _extract_cuda_major_version(version_str: str) -> str:
+    """Extract CUDA major version from version string (e.g., '12.1' -> '12').
+
+    Args:
+        version_str: CUDA version string to parse
+
+    Returns:
+        Major version as string, or "12" if parsing fails
+    """
+    return version_str.split(".")[0] if version_str else "12"
+
+
+def _get_cufft_version(cuda_major: str) -> str:
+    """Get cufft library version based on CUDA major version.
+
+    Args:
+        cuda_major: CUDA major version as string (e.g., "12", "13")
+
+    Returns:
+        cufft version as string
+    """
+    # cufft versions: CUDA 12.x -> 11, CUDA 13.x -> 12
+    return "12" if cuda_major == "13" else "11"
+
+
 def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = True):
+    # Dynamically determine CUDA major version from build info
+    cuda_major_version = _extract_cuda_major_version(cuda_version)
+    cufft_version = _get_cufft_version(cuda_major_version)
+
     if is_windows:
         # Path is relative to site-packages directory.
         cuda_dll_paths = [
-            ("nvidia", "cublas", "bin", "cublasLt64_12.dll"),
-            ("nvidia", "cublas", "bin", "cublas64_12.dll"),
-            ("nvidia", "cufft", "bin", "cufft64_11.dll"),
-            ("nvidia", "cuda_runtime", "bin", "cudart64_12.dll"),
+            ("nvidia", "cublas", "bin", f"cublasLt64_{cuda_major_version}.dll"),
+            ("nvidia", "cublas", "bin", f"cublas64_{cuda_major_version}.dll"),
+            ("nvidia", "cufft", "bin", f"cufft64_{cufft_version}.dll"),
+            ("nvidia", "cuda_runtime", "bin", f"cudart64_{cuda_major_version}.dll"),
         ]
         cudnn_dll_paths = [
             ("nvidia", "cudnn", "bin", "cudnn_engines_runtime_compiled64_9.dll"),
@@ -154,12 +185,12 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
     else:  # Linux
         # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first.
         cuda_dll_paths = [
-            ("nvidia", "cublas", "lib", "libcublasLt.so.12"),
-            ("nvidia", "cublas", "lib", "libcublas.so.12"),
-            ("nvidia", "cuda_nvrtc", "lib", "libnvrtc.so.12"),
+            ("nvidia", "cublas", "lib", f"libcublasLt.so.{cuda_major_version}"),
+            ("nvidia", "cublas", "lib", f"libcublas.so.{cuda_major_version}"),
+            ("nvidia", "cuda_nvrtc", "lib", f"libnvrtc.so.{cuda_major_version}"),
             ("nvidia", "curand", "lib", "libcurand.so.10"),
-            ("nvidia", "cufft", "lib", "libcufft.so.11"),
-            ("nvidia", "cuda_runtime", "lib", "libcudart.so.12"),
+            ("nvidia", "cufft", "lib", f"libcufft.so.{cufft_version}"),
+            ("nvidia", "cuda_runtime", "lib", f"libcudart.so.{cuda_major_version}"),
         ]
 
         # Do not load cudnn sub DLLs (they will be dynamically loaded later) to be consistent with PyTorch in Linux.
@@ -201,15 +232,17 @@ def print_debug_info():
 
     if cuda_version:
         # Print version of installed packages that is related to CUDA or cuDNN DLLs.
+        cuda_major = _extract_cuda_major_version(cuda_version)
+
         packages = [
             "torch",
-            "nvidia-cuda-runtime-cu12",
-            "nvidia-cudnn-cu12",
-            "nvidia-cublas-cu12",
-            "nvidia-cufft-cu12",
-            "nvidia-curand-cu12",
-            "nvidia-cuda-nvrtc-cu12",
-            "nvidia-nvjitlink-cu12",
+            f"nvidia-cuda-runtime-cu{cuda_major}",
+            f"nvidia-cudnn-cu{cuda_major}",
+            f"nvidia-cublas-cu{cuda_major}",
+            f"nvidia-cufft-cu{cuda_major}",
+            f"nvidia-curand-cu{cuda_major}",
+            f"nvidia-cuda-nvrtc-cu{cuda_major}",
+            f"nvidia-nvjitlink-cu{cuda_major}",
         ]
         for package in packages:
             directory_name = "nvidia" if package.startswith("nvidia-") else None
@@ -254,7 +287,7 @@ def print_debug_info():
 
 
 def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, directory=None):
-    """Preload CUDA 12.x and cuDNN 9.x DLLs in Windows or Linux, and MSVC runtime DLLs in Windows.
+    """Preload CUDA 12.x+ and cuDNN 9.x DLLs in Windows or Linux, and MSVC runtime DLLs in Windows.
 
        When the installed PyTorch is compatible (using same major version of CUDA and cuDNN),
        there is no need to call this function if `import torch` is done before `import onnxruntime`.
@@ -289,30 +322,53 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
             print("Microsoft Visual C++ Redistributable is not installed, this may lead to the DLL load failure.")
             print("It can be downloaded at https://aka.ms/vs/17/release/vc_redist.x64.exe.")
 
-    if not (cuda_version and cuda_version.startswith("12.")) and (cuda or cudnn):
-        print(
-            f"\033[33mWARNING: {package_name} is not built with CUDA 12.x support. "
-            "Please install a version that supports CUDA 12.x, or call preload_dlls with cuda=False and cudnn=False.\033[0m"
-        )
-        return
-
-    if not (cuda_version and cuda_version.startswith("12.") and (cuda or cudnn)):
+    # Check if CUDA version is supported (12.x or 13.x+)
+    ort_cuda_major = None
+    if cuda_version:
+        try:
+            ort_cuda_major = int(cuda_version.split(".")[0])
+            if ort_cuda_major < 12 and (cuda or cudnn):
+                print(
+                    f"\033[33mWARNING: {package_name} is built with CUDA {cuda_version}, which is not supported for preloading. "
+                    f"CUDA 12.x or newer is required. Call preload_dlls with cuda=False and cudnn=False.\033[0m"
+                )
+                return
+        except ValueError:
+            print(
+                f"\033[33mWARNING: Unable to parse CUDA version '{cuda_version}'. "
+                "Skipping DLL preloading. Call preload_dlls with cuda=False and cudnn=False.\033[0m"
+            )
+            return
+    elif cuda or cudnn:
+        # No CUDA version info available but CUDA/cuDNN preloading requested
         return
 
     is_cuda_cudnn_imported_by_torch = False
 
     if is_windows:
         torch_version = _get_package_version("torch")
-        is_torch_for_cuda_12 = torch_version and "+cu12" in torch_version
+        # Check if torch CUDA version matches onnxruntime CUDA version
+        torch_cuda_major = None
+        if torch_version and "+cu" in torch_version:
+            with contextlib.suppress(ValueError):
+                # Extract CUDA version from torch (e.g., "2.0.0+cu121" -> 12)
+                cu_part = torch_version.split("+cu")[1]
+                torch_cuda_major = int(cu_part[:2])  # First 2 digits are major version
+
+        is_torch_cuda_compatible = (
+            torch_cuda_major == ort_cuda_major if (torch_cuda_major and ort_cuda_major) else False
+        )
+
         if "torch" in sys.modules:
-            is_cuda_cudnn_imported_by_torch = is_torch_for_cuda_12
-            if (torch_version and "+cu" in torch_version) and not is_torch_for_cuda_12:
+            is_cuda_cudnn_imported_by_torch = is_torch_cuda_compatible
+            if torch_cuda_major and ort_cuda_major and torch_cuda_major != ort_cuda_major:
                 print(
-                    f"\033[33mWARNING: The installed PyTorch {torch_version} does not support CUDA 12.x. "
-                    f"Please install PyTorch for CUDA 12.x to be compatible with {package_name}.\033[0m"
+                    f"\033[33mWARNING: The installed PyTorch {torch_version} uses CUDA {torch_cuda_major}.x, "
+                    f"but {package_name} is built with CUDA {ort_cuda_major}.x. "
+                    f"Please install PyTorch for CUDA {ort_cuda_major}.x to be compatible.\033[0m"
                 )
 
-        if is_torch_for_cuda_12 and directory is None:
+        if is_torch_cuda_compatible and directory is None:
             torch_root = _get_package_root("torch", "torch")
             if torch_root:
                 directory = os.path.join(torch_root, "lib")
