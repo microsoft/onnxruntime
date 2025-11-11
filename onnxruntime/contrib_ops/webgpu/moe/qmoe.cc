@@ -125,7 +125,7 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
  private:
 };
 
-#define GSDEBUG DEBUG
+// #define GSDEBUG
 
 Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* hidden_state = context.Input<Tensor>(0);
@@ -146,9 +146,9 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, hidden_state, router_logits,
-      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales,
-      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
-      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
+      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales, nullptr,
+      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, nullptr,
+      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, nullptr,
       expert_weight_bits_ == 4 ? 2 : 1,
       activation_type_ == MoEActivationType::SwiGLU, block_size_));
 
