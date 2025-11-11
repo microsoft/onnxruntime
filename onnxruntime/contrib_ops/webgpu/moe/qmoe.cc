@@ -138,14 +138,23 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* fc3_experts_weights_optional = context.Input<Tensor>(8);
   const Tensor* fc3_scales_optional = context.Input<Tensor>(9);
   const Tensor* fc3_experts_bias_optional = context.Input<Tensor>(10);
+  // zero points, not supported yet
+  const Tensor* fc1_zero_points = context.Input<Tensor>(11);
+  const Tensor* fc2_zero_points = context.Input<Tensor>(12);
+  const Tensor* fc3_zero_points = context.Input<Tensor>(13);
 
   MoEParameters moe_params;
 
+  if (fc1_zero_points || fc2_zero_points || fc3_zero_points) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "zero_points for QMoE are not yet supported on WebGPU.");
+  }
+
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, hidden_state, router_logits,
-      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales,
-      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
-      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
+      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales, fc1_zero_points,
+      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zero_points,
+      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, fc3_zero_points,
       expert_weight_bits_ == 4 ? 2 : 1,
       activation_type_ == MoEActivationType::SwiGLU, block_size_));
 
@@ -153,7 +162,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
   // SwiGLU validation
   bool is_swiglu = (activation_type_ == MoEActivationType::SwiGLU);
-  if (fc3_experts_weights_optional != nullptr) {
+  if (fc3_experts_weights_optional) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "FC3 gating is not yet implemented for non-SwiGLU activations on WebGPU.");
   }
