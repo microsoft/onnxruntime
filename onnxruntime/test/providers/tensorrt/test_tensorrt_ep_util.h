@@ -21,31 +21,13 @@
 #include "core/framework/ort_value.h"
 #include "test/util/include/api_asserts.h"
 
+//
+// Note: This header file is copied from test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h
+//       Some function declarations are removed as not needed.
+//
+
 namespace onnxruntime {
 namespace test {
-
-using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::function<void(const OrtEpDevice*)>>;
-
-struct Utils {
-  struct NvTensorRtRtxEpInfo {
-    const std::filesystem::path library_path =
-#ifdef _WIN32
-        "onnxruntime_providers_nv_tensorrt_rtx.dll";
-#else
-        "libonnxruntime_providers_nv_tensorrt_rtx.so";
-#endif
-    const std::string registration_name = kNvTensorRTRTXExecutionProvider;
-  };
-
-  static NvTensorRtRtxEpInfo nv_tensorrt_rtx_ep_info;
-
-  // get the OrtEpDevice for the NV TensorRT RTX EP from the environment
-  static void GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device);
-
-  // Register the NV TensorRT RTX EP library, get the OrtEpDevice for it, and return a unique pointer that will
-  // automatically unregister the EP library.
-  static void RegisterAndGetNvTensorRtRtxEp(Ort::Env& env, RegisteredEpDeviceUniquePtr& nv_tensorrt_rtx_ep);
-};
 
 [[maybe_unused]] static std::string PathToUTF8(const PathString& path) {
 #ifdef _WIN32
@@ -110,7 +92,10 @@ void CreateBaseModel(const PathString& model_name,
                      std::vector<int> dims,
                      bool add_non_zero_node = false);
 
-void CreateLargeLLMModel(const PathString& model_path, const PathString& external_data_path, int num_layers = 32);
+void CreateLargeLLMModel(const PathString& model_path,
+                         const PathString& external_data_path,
+                         int num_layers = 32,
+                         int hidden_dim = 2048);
 
 Ort::IoBinding generate_io_binding(
     Ort::Session& session,

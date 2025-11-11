@@ -523,7 +523,11 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   RunSession(session_object9, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 
   /*
-   * Test case 8:
+   * Test case 8: Refit weightless engine with external weights.
+   *
+   * Note: The external weights should be loaded either by ORT as OrtValues stored in memory or by EP's call to
+   *       LoadExternalInitializerAsOrtValu() at EP's Compile().
+   *       Those weights should be in memory and TRT's refitter API can fetch them from there.
    */
 
   PathString large_model_name = path_utils::MakePathString("tensorrt_ep_llm.onnx");
@@ -531,8 +535,10 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
 
   // This accelerates test iterations if the large model was already generated
   if (!std::filesystem::exists(large_model_name) || !std::filesystem::exists(external_data_name)) {
+    // CI has limited VRAM, so we create only one layer of LLM with hidden dim 512.
     int num_layers = 1;
-    CreateLargeLLMModel(large_model_name, external_data_name, num_layers);
+    int hidden_dim = 2048;
+    CreateLargeLLMModel(large_model_name, external_data_name, num_layers, hidden_dim);
   }
 
   {
@@ -546,7 +552,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
     auto status = session_object.Load(model_bytes.data(), static_cast<int>(model_bytes.size()));
     ASSERT_TRUE(status.IsOK());
-    status = session_object.Initialize();
+    status = session_object.Initialize();  // If TRT's refitter fails to get the weights in memory, it will fail.
     ASSERT_TRUE(status.IsOK());
   }
 }

@@ -4493,62 +4493,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
-  /*
-  std::unordered_map<std::string, TensorrtUserWeights> user_weights;
-  if (weight_stripped_engine_enable_) {
-    const InitializedTensorSet& all_initializers = graph_body_viewer.GetAllInitializedTensors();
-    user_weights.reserve(all_initializers.size());
-
-    for (auto& entry : all_initializers) {
-      auto* tp = entry.second;
-
-      // Initializer has external data
-      if (utils::HasExternalData(*tp)) {
-        // Try to get the OrtValue for this initializer
-        Ort::Value ort_value;
-
-        auto populate_tensorrt_user_weight_with_ort_value = [&](Ort::Value& ort_value, bool copy_data = false) -> void {
-          size_t size = ort_value.GetTensorSizeInBytes();
-          const void* ptr = ort_value.GetTensorRawData();
-
-          if (copy_data) {
-            std::string raw_data(static_cast<const char*>(ptr), size);
-            user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), std::move(raw_data))));
-          } else {
-            user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), ptr, size)));
-          }
-        };
-
-        // Check if this is in-memory external data (data stored in OrtValue)
-        if (utils::HasExternalDataInMemory(*tp)) {
-          if (graph_body_viewer.GetOrtValueInitializer(tp->name(), *ort_value)) {
-            // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-            populate_tensorrt_user_weight_with_ort_value(ort_value, false);
-          } else {
-            // If we can't get the OrtValue, it is a bug
-            ORT_THROW("Initializer ", tp->name(),
-                      " has in-memory external data but cannot get OrtValue.");
-          }
-          continue;
-        }
-
-        // If external data is not in memory, meaning ORT hasn't converted it to a OrtValue yet at this moment.
-        // Use Initializer class to construct the TensorProto and get the raw data.
-        // Note: TensorrtUserWeights should copy and take ownership of the data
-        ORT_RETURN_IF_ERROR(graph_body_viewer.GetGraph().LoadExternalInitializerAsOrtValue(tp->name(), *ort_value));
-        populate_tensorrt_user_weight_with_ort_value(ort_value, true);
-
-      }
-      // Initializer has raw data
-      else if (utils::HasRawData(*tp)) {
-        user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size())));
-      } else {
-        // If none of the above conditions are met, we might need to get external data from TensorProto on our own here.
-      }
-    }
-  }
-  */
-
   std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
   if (weight_stripped_engine_enable_) {
     ORT_RETURN_IF_ERROR(GetInMemoryInitializers(graph_body_viewer, in_memory_weights));
