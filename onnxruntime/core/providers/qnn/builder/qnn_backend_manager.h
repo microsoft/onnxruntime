@@ -149,6 +149,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
+  Status SaveContextToBinary(const logging::Logger& logger);
+
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
                                         std::string node_name,
                                         std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
@@ -159,6 +161,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
                       bool need_load_system_lib, bool share_ep_contexts,
                       bool enable_vtcm_backup_buffer_sharing,
+                      bool enable_ssr_handling,
                       std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
@@ -221,6 +224,49 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   QnnSerializerConfig* GetQnnSerializerConfig();
 
+  /**
+   * @brief Executes an operation with SubSystem Restart (SSR) handling.
+   *
+   * This function provides a unified approach for handling SSR events
+   * that may occur during QNN operations. SSR events happen when the DSP/NPU hardware enters
+   * a bad state and needs to be reset. When an SSR event is detected, this function:
+   * 1. Attempts the operation
+   * 2. If an SSR event occurs, executes recovery logic
+   * 3. Retries the operation once after recovery
+   *
+   * @param operation The function to execute that may trigger an SSR event
+   * @param ssr_recover The recovery function to execute if an SSR event occurs
+   * @param operation_name Name of the operation for logging purposes
+   * @param logger Logger instance for diagnostic messages
+   *
+   * Note: We explicitly pass 'logger' instead of using the member 'logger_' since 'logger_' is
+   * assigned in SetupBackend and can be nullptr. This ensures logging is always valid.
+   *
+   * @return Status The status of the operation (success or error)
+   */
+  Status InvokeWithSSRHandle(
+      const std::function<Status()>& operation,
+      const std::function<Status()>& ssr_recover,
+      const std::string& operation_name,
+      const logging::Logger& logger) const;
+
+  /**
+   * @brief Performs cleanup operations on invalid objects after an SubSystem Restart (SSR) event.
+   *
+   * This function handles the recovery process after a DSP/NPU subsystem restart by:
+   * 1. Releasing the current QNN context
+   * 2. Recreating the context from saved binary buffer (if available)
+   * 3. Restoring QNN models and their associated graphs
+   *
+   * @param logger Logger instance for diagnostic messages
+   *
+   * Note: We explicitly pass 'logger' instead of using the member 'logger_' since 'logger_' is
+   * assigned in SetupBackend and can be nullptr. This ensures logging is always valid.
+   *
+   * @return Status indicating success or failure of the cleanup operation
+   */
+  Status SSRCleanUp(const logging::Logger& logger);
+
   // Handler to be called upon successful context creation via contextCreateFromBinaryListAsync()
   // This handler is expected to be called in the callback ContextCreateAsyncCallback() in the .cc file
   // Takes in the context and the notifyParam objects received by the callback function
@@ -236,6 +282,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   bool ProfilingEnabled() { return profiling_enabled_; }
 #endif
+
+  // QNN Models management
+  std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& GetQnnModels() { return qnn_models_; }
 
  private:
   Status LoadBackend();
@@ -420,6 +469,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
 
+  // QNN models managed by this backend
+  std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
+
   // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
   // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
   // Note: Using shared_ptr<QnnContextHandleRecord> so that we can refer to it with a weak_ptr from a
@@ -432,6 +484,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
   std::vector<Qnn_ContextHandle_t> contexts_;
+
+  // Binary buffer of Qnn Context to handle SSR
+  std::unique_ptr<unsigned char[]> qnn_save_buffer_;
+  uint64_t qnn_save_buffer_size_ = 0;
 
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
@@ -448,6 +504,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   bool vtcm_backup_buffer_sharing_enabled_ = false;
+  bool enable_ssr_handling_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;

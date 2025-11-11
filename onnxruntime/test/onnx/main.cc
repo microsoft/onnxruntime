@@ -86,6 +86,8 @@ void usage() {
       "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
       "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
+      "\t    [QNN only] [enable_ssr_handling]: Enable Subsystem Restart (SSR) handling so that ORT executes recovery routines during an SSR event. \n"
+      "\t    Default to '0'. (Error out on SSR events) \n"
       "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
       "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
@@ -615,7 +617,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_arch. select from: " + str);
           }
-        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization") {
+        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" || key == "enable_ssr_handling") {
           std::unordered_set<std::string> supported_options = {"0", "1"};
           if (supported_options.find(value) == supported_options.end()) {
             std::ostringstream str_stream;
@@ -629,7 +631,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
               "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', "
               "'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode', "
               "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'op_packages', 'qnn_context_priority', "
-              "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization']");
+              "'soc_model', 'htp_arch', 'device_id', 'enable_ssr_handling', 'enable_htp_fp16_precision', "
+              "'offload_graph_io_quantization']");
         }
 
         qnn_options[key] = value;

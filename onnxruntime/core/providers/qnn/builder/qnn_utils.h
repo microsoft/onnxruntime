@@ -354,6 +354,9 @@ std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
 std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                       Qnn_ErrorHandle_t qnn_error_handle);
 
+// Check if the status returned representing SSR detected
+bool IsSSRCapture(Status status);
+
 // NCHW shape to channel last
 template <typename T>
 Status NchwShapeToNhwc(gsl::span<const T> nchw_shape, gsl::span<T> nhwc_shape) {

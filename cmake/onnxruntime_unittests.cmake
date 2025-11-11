@@ -767,6 +767,12 @@ if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_RED
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/qnn_node_group/*)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/optimizer/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
+  onnxruntime_add_shared_library_module(QnnMockSSR
+    ${TEST_SRC_DIR}/providers/qnn/ssr/qnn_mock_ssr.cc
+    ${TEST_SRC_DIR}/providers/qnn/ssr/qnn_mock_ssr.def
+  )
+  target_link_libraries(QnnMockSSR PRIVATE onnxruntime_common)
+  target_include_directories(QnnMockSSR PRIVATE ${onnxruntime_QNN_HOME}/include/QNN)
   if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
     list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
   endif()
