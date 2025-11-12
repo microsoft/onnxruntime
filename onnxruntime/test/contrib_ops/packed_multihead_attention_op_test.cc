@@ -15,7 +15,7 @@ namespace onnxruntime {
 using contrib::AttentionMaskType;
 namespace test {
 
-#define InvokePackedMultiHeadAttentionTest(use_float16, use_scale) \
+#define InvokePackedMultiHeadAttentionTest(use_float16, use_bfloat16, use_scale) \
   RunPackedMultiHeadAttentionTest(                                 \
       query_data,                                                  \
       key_data,                                                    \
@@ -31,6 +31,7 @@ namespace test {
       number_of_heads,                                             \
       token_count,                                                 \
       use_float16,                                                 \
+      use_bfloat16,                                                \
       use_scale,                                                   \
       attention_bias_data,                                         \
       broadcast_attention_bias);
@@ -51,6 +52,7 @@ static void RunPackedMultiHeadAttentionTest(
     int number_of_heads,
     int token_count,
     bool use_float16,
+    bool use_bfloat16,
     bool use_scale,
     const std::vector<float>& attention_bias_data,
     bool broadcast_attention_bias) {
@@ -107,6 +109,33 @@ static void RunPackedMultiHeadAttentionTest(
       }
 
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+      tester.SetOutputTolerance(0.005f);
+    } else if (use_bfloat16) {
+      if (is_packed_qkv) {
+        tester.AddInput<BFloat16>("query", packed_qkv_dims, ToBFloat16(query_data));
+        tester.AddOptionalInputEdge<BFloat16>();
+        tester.AddOptionalInputEdge<BFloat16>();
+      } else {
+        tester.AddInput<BFloat16>("query", query_dims, ToBFloat16(query_data));
+        tester.AddInput<BFloat16>("key", key_dims, ToBFloat16(key_data));
+        tester.AddInput<BFloat16>("value", value_dims, ToBFloat16(value_data));
+      }
+
+      if (bias_data.size() > 0) {
+        tester.AddInput<BFloat16>("bias", bias_dims, ToBFloat16(bias_data));
+      } else {
+        tester.AddOptionalInputEdge<BFloat16>();
+      }
+
+      tester.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
+      tester.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cumulative_sequence_length);
+      if (attention_bias_data.size() > 0) {
+        tester.AddInput<BFloat16>("attention_bias",
+                                   rel_pos_bias_dims,
+                                   ToBFloat16(attention_bias_data));
+      }
+
+      tester.AddOutput<BFloat16>("output", output_dims, ToBFloat16(output_data));
       tester.SetOutputTolerance(0.005f);
     } else {
       if (is_packed_qkv) {
@@ -167,8 +196,10 @@ static void RunPackedMultiHeadAttentionTest(
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
-    InvokePackedMultiHeadAttentionTest(true, true);
-    InvokePackedMultiHeadAttentionTest(true, false);
+    InvokePackedMultiHeadAttentionTest(true, false, true);
+    InvokePackedMultiHeadAttentionTest(true, false, false);
+    InvokePackedMultiHeadAttentionTest(false, true, true);
+    InvokePackedMultiHeadAttentionTest(false, true, false);
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -180,8 +211,10 @@ static void RunPackedMultiHeadAttentionTest(
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
-    InvokePackedMultiHeadAttentionTest(true, true);
-    InvokePackedMultiHeadAttentionTest(true, false);
+    InvokePackedMultiHeadAttentionTest(true, false, true);
+    InvokePackedMultiHeadAttentionTest(true, false, false);
+    InvokePackedMultiHeadAttentionTest(false, true, true);
+    InvokePackedMultiHeadAttentionTest(false, true, false);
     // Cutlass FMHA need sequence length >= 256 to trigger, so we only test fp16 here.
   }
 #endif
@@ -192,7 +225,8 @@ static void RunPackedMultiHeadAttentionTest(
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
             {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "0"}}};
-    InvokePackedMultiHeadAttentionTest(true, true);
+    InvokePackedMultiHeadAttentionTest(true, false, true);
+    InvokePackedMultiHeadAttentionTest(false, true, true);
   }
 #endif
 
@@ -204,13 +238,15 @@ static void RunPackedMultiHeadAttentionTest(
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
-    InvokePackedMultiHeadAttentionTest(true, true);
-    InvokePackedMultiHeadAttentionTest(false, false);
+    InvokePackedMultiHeadAttentionTest(true, false, true);
+    InvokePackedMultiHeadAttentionTest(false, true, true);
+    InvokePackedMultiHeadAttentionTest(false, false, false);
   }
 
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
-    InvokePackedMultiHeadAttentionTest(true, false);
-    InvokePackedMultiHeadAttentionTest(false, true);
+    InvokePackedMultiHeadAttentionTest(true, false, false);
+    InvokePackedMultiHeadAttentionTest(false, true, false);
+    InvokePackedMultiHeadAttentionTest(false, false, true);
   }
 }
 
