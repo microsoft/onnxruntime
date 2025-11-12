@@ -967,6 +967,7 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
