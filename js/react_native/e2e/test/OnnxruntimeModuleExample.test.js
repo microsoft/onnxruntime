@@ -3,7 +3,7 @@
 
 /* Initial Simple Detox Test Setup. Can potentially add more unit tests. */
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('OnnxruntimeModuleExample', () => {
   beforeAll(async () => {
