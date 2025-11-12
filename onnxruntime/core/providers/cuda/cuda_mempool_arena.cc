@@ -177,41 +177,6 @@ void CudaMempoolArena::Free(void* p) {
   CUDA_CALL_THROW(cudaFreeAsync(p, s));
 }
 
-void CudaMempoolArena::ReleaseStreamBuffers(Stream* stream) {
-  const cudaStream_t s = ResolveCudaStream(stream);
-
-  // Gather pointers to free while holding the lock for map updates.
-  InlinedVector<void*> to_free;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto sit = stream_map_.find(s);
-    if (sit == stream_map_.end()) {
-      return;
-    }
-
-    to_free.reserve(sit->second.size());
-    for (void* p : sit->second) {
-      // Remove from alloc_map_ and adjust stats.
-      auto ait = alloc_map_.find(p);
-      if (ait != alloc_map_.end()) {
-        const size_t sz = ait->second.bytes;
-        in_use_bytes_ = (sz <= in_use_bytes_) ? (in_use_bytes_ - sz) : 0;
-        to_free.push_back(p);
-        alloc_map_.erase(ait);
-      }
-    }
-    stream_map_.erase(sit);
-  }
-
-  LOGS(*logger_, VERBOSE) << "CudaMempoolArena::ReleaseStreamBuffers: freeing "
-                          << to_free.size() << " allocations on stream "
-                          << reinterpret_cast<uintptr_t>(s) << ".";
-
-  for (void* p : to_free) {
-    CUDA_CALL_THROW(cudaFreeAsync(p, s));
-  }
-}
-
 Status CudaMempoolArena::Shrink() {
   // Trim the pool; live allocations are not affected.
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemPoolTrimTo(pool_, bytes_to_keep_on_shrink_)));

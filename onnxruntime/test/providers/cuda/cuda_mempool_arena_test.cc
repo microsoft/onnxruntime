@@ -182,38 +182,6 @@ TEST_F(CudaMempoolArenaTest, AllocOnTwoStreams_OrderedFree) {
   ASSERT_EQ(::cudaSuccess, ::cudaGetLastError());
 }
 
-TEST_F(CudaMempoolArenaTest, ReleaseStreamBuffers_SchedulesFrees) {
-  const size_t kBytes = 1 << 20;
-
-  ::cudaStream_t s = NewCudaStream();
-  {
-    TestCudaStream ort_s(s, mem_info_.device);
-
-    InlinedVector<void*> ptrs;
-    for (size_t i = 0; i < ptrs.capacity(); ++i) {
-      void* p = arena_->AllocOnStream(kBytes, &ort_s);
-      ASSERT_NE(p, nullptr);
-      TouchDevice(p, kBytes, s);
-      ptrs.push_back(p);
-    }
-
-    // Bulk release; frees are enqueued on stream ort_s's.
-    auto* arena_cast = IArena::SafeArenaCast(arena_.get());
-    arena_cast->ReleaseStreamBuffers(&ort_s);
-    ASSERT_EQ(::cudaSuccess, ::cudaStreamSynchronize(s));
-
-    // Re-allocate on the same stream to verify pool is healthy.
-    for (int i = 0; i < 8; ++i) {
-      void* p = arena_->AllocOnStream(kBytes, &ort_s);
-      ASSERT_NE(p, nullptr);
-      arena_->Free(p);
-    }
-
-    // Destroy stream here
-  }
-  ASSERT_EQ(::cudaSuccess, ::cudaGetLastError());
-}
-
 TEST_F(CudaMempoolArenaTest, Shrink_TrimsPool_And_AllowsFurtherUse) {
   const size_t kBytes = 2 << 20;
 

@@ -112,9 +112,14 @@ class CudaMempoolArena final : public IArena {
 
   /**
    * @brief Enqueue `cudaFreeAsync()` for all allocations made on @p stream.
-   * This method does not synchronize; it only schedules device frees on that stream.
+   * we intentionally do not implement this method. The call to this method
+   * will yank memory from under live OrtValues such as allocated for output
+   * bound and the resulting output OrtValue will not be valid.
+   * Then when the OrtValues attempt to release memory those entries are not found
+   * in the map: CudaMempoolArena::Free: pointer 0000000203800400 not found in allocation map; ignoring
+   * The reason this works with BFCArena is because it does not really release memory.
    */
-  void ReleaseStreamBuffers(Stream* stream) override;
+  // void ReleaseStreamBuffers(Stream* stream) override;
 
   /**
    * @brief Trim the pool to `bytes_to_keep` (configured at construction) using `cudaMemPoolTrimTo()`.
