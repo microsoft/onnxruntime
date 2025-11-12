@@ -3644,20 +3644,15 @@ inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_nam
   return *this;
 }
 
-inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAlias(InOutAliasPair alias) {
-  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputAliases(p_, &alias.input_index, &alias.output_index, 1));
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAlias(int input_index, int output_index) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputAliases(p_, &input_index, &output_index, 1));
   return *this;
 }
 
-inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAliases(const std::vector<InOutAliasPair>& aliases) {
-  std::vector<int> input_indices;
-  std::vector<int> output_indices;
-
-  input_indices.reserve(aliases.size());
-  output_indices.reserve(aliases.size());
-  for (const InOutAliasPair& alias : aliases) {
-    input_indices.push_back(alias.input_index);
-    output_indices.push_back(alias.output_index);
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAliases(const std::vector<int>& input_indices,
+                                                                 const std::vector<int>& output_indices) {
+  if (input_indices.size() != output_indices.size()) {
+    ORT_CXX_API_THROW("Expecting input and output indices to have the same element count", ORT_INVALID_ARGUMENT);
   }
 
   ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputAliases(p_, input_indices.data(), output_indices.data(),
@@ -3665,21 +3660,15 @@ inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAliases(const std::vect
   return *this;
 }
 
-inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAlias(InOutAliasPair alias) {
-  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputMutableAliases(p_, &alias.input_index,
-                                                                        &alias.output_index, 1));
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAlias(int input_index, int output_index) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputMutableAliases(p_, &input_index, &output_index, 1));
   return *this;
 }
 
-inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAliases(const std::vector<InOutAliasPair>& aliases) {
-  std::vector<int> input_indices;
-  std::vector<int> output_indices;
-
-  input_indices.reserve(aliases.size());
-  output_indices.reserve(aliases.size());
-  for (const InOutAliasPair& alias : aliases) {
-    input_indices.push_back(alias.input_index);
-    output_indices.push_back(alias.output_index);
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAliases(const std::vector<int>& input_indices,
+                                                                        const std::vector<int>& output_indices) {
+  if (input_indices.size() != output_indices.size()) {
+    ORT_CXX_API_THROW("Expecting input and output indices to have the same element count", ORT_INVALID_ARGUMENT);
   }
 
   ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputMutableAliases(p_, input_indices.data(), output_indices.data(),
