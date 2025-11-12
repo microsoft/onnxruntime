@@ -2208,65 +2208,6 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
 common::Status NvExecutionProvider::GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
                                                             std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const {
   const InitializedTensorSet& all_initializers = graph_body_viewer.GetAllInitializedTensors();
-  user_weights.reserve(all_initializers.size());
-
-  for (auto& entry : all_initializers) {
-    auto* tp = entry.second;
-
-    // Initializer has external data
-    if (utils::HasExternalData(*tp)) {
-      auto populate_tensorrt_weight_with_ort_value = [&](OrtValue& value, bool copy_data = false) -> void {
-        Ort::ConstValue ort_value(&value);
-        size_t size = ort_value.GetTensorSizeInBytes();
-        const void* ptr = ort_value.GetTensorRawData();
-
-        if (size == 0) {
-          return;
-        }
-
-        if (copy_data) {
-          std::string raw_data(static_cast<const char*>(ptr), size);
-          user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), std::move(raw_data))));
-        } else {
-          user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), ptr, size)));
-        }
-      };
-
-      // Get the OrtValue for this initializer
-      OrtValue ort_value;
-
-      // Check if this is in-memory external data (data stored in OrtValue)
-      if (utils::HasExternalDataInMemory(*tp)) {
-        if (graph_body_viewer.GetOrtValueInitializer(tp->name(), ort_value)) {
-          // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-          populate_tensorrt_weight_with_ort_value(ort_value, false);
-        } else {
-          // If we can't get the OrtValue, it is a bug
-          ORT_THROW("Initializer ", tp->name(),
-                    " has in-memory external data but cannot get OrtValue.");
-        }
-        continue;
-      }
-
-      // If external data is not in memory, meaning ORT hasn't converted it to a OrtValue yet at this moment,
-      // then loads this initializer with data in an external file into an OrtValue.
-      // Note: The OrtValue is not cached in the graph, so we need to copy data.
-      ORT_RETURN_IF_ERROR(graph_body_viewer.GetGraph().LoadExternalInitializerAsOrtValue(tp->name(), ort_value));
-      populate_tensorrt_weight_with_ort_value(ort_value, true);
-
-    }
-    // Initializer has raw data
-    else if (utils::HasRawData(*tp)) {
-      user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size())));
-    }
-  }
-
-  return Status::OK();
-}
-
-common::Status NvExecutionProvider::GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
-                                                            std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const {
-  const InitializedTensorSet& all_initializers = graph_body_viewer.GetAllInitializedTensors();
 
   auto populate_tensorrt_weight_with_ort_value = [&](const std::string& name, OrtValue& value) -> void {
     Ort::ConstValue ort_value(&value);
