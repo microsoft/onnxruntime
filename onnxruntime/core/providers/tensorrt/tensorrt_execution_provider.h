@@ -229,7 +229,6 @@ struct TensorrtFuncState {
   std::string cache_suffix;
   bool engine_hw_compatible = false;
   std::vector<nvinfer1::PreviewFeature> preview_features;
-  std::unique_ptr<std::vector<TensorrtUserWeights>>* userWeights = nullptr;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path

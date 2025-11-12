@@ -2335,12 +2335,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // the model proto that has different node ordering compared to original onnx model.
         // Save Initializer Data.
 
-        std::vector<TensorrtUserWeights> userWeights;
-        std::unordered_map<std::string, TensorrtUserWeights> user_weights;
+        std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
 
         // Keep inits in memory instead of writing to ModelProto.
         if (load_user_initializer_) {
-          auto status = GetInMemoryInitializers(*graph_viewer, user_weights);
+          auto status = GetInMemoryInitializers(*graph_viewer, in_memory_weights);
           if (status != Status::OK()) {
             ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                                "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
@@ -2378,7 +2377,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
         if (load_user_initializer_) {
           trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-          for (auto const& iter : user_weights) {
+          for (auto const& iter : in_memory_weights) {
             trt_parser->loadInitializer(iter.first.c_str(), iter.second.Data(), iter.second.Size());
           }
           is_model_supported = trt_parser->parseModelProto();
@@ -3167,11 +3166,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
 
-  auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
-  std::unordered_map<std::string, TensorrtUserWeights> user_weights;
+  std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
 
   if (load_user_initializer_) {
-    auto status = GetInMemoryInitializers(graph_body_viewer, user_weights);
+    auto status = GetInMemoryInitializers(graph_body_viewer, in_memory_weights);
     if (status != Status::OK()) {
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                          "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
@@ -3208,7 +3206,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
   if (load_user_initializer_) {
     trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-    for (auto const& iter : user_weights) {
+    for (auto const& iter : in_memory_weights) {
       trt_parser->loadInitializer(iter.first.c_str(), iter.second.Data(), iter.second.Size());
     }
     trt_parser->parseModelProto();
@@ -3814,7 +3812,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   engines_.emplace(fused_node.Name(), std::move(trt_engine));
   contexts_.emplace(fused_node.Name(), std::move(trt_context));
   networks_.emplace(fused_node.Name(), std::move(trt_network));
-  weights_.emplace(fused_node.Name(), std::move(userWeights));
   input_info_[fused_node.Name()].push_back(input_indexes);
   output_info_[fused_node.Name()].push_back(output_indexes);
   output_info_[fused_node.Name()].push_back(output_types);
@@ -3867,7 +3864,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
           auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
-          preview_features_, &weights_[context->node_name]};
+          preview_features_};
     *state = p.release();
     return 0;
   };
