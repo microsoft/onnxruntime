@@ -63,7 +63,7 @@ jobs:
       - name: Use .NET 8.x
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '8.x'
+          dotnet-version: '8.0.416'
         env:
           PROCESSOR_ARCHITECTURE: x86 # x86 .NET
 
