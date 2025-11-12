@@ -38,7 +38,6 @@ class ProgramManager {
  public:
   ProgramManager(WebGpuContext& webgpu_context) : webgpu_context_(webgpu_context) {}
 
-  Status CustomizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
   Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 

@@ -156,7 +156,24 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
                                  static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)));
   } else {
     program.SetWorkgroupSize(WORKGROUP_SIZE);
-    program.SetDispatchGroupSize(ceil_div(output_size, WORKGROUP_SIZE), 1, 1);
+
+    uint32_t dispatch_x = ceil_div(output_size, WORKGROUP_SIZE);
+    uint32_t dispatch_y = 1;
+    uint32_t dispatch_z = 1;
+
+    // This temporary workaround addresses a significant performance bottleneck
+    // (~12x slower) for the input shape (1280, 2560, 3, 3) due to an issue with Intel's
+    // GPU drivers. We manually normalize the dispatch group size to restore
+    // performance.
+    //
+    // TODO: Revert this change once the driver issue is fixed.
+    if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+      uint32_t dispatch_size = dispatch_x;
+      dispatch_x = 4;
+      dispatch_y = 8;
+      dispatch_z = ceil_div(dispatch_size, dispatch_x * dispatch_y);
+    }
+    program.SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z);
   }
   return context.RunProgram(program);
 }

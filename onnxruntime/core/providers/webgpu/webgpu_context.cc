@@ -277,7 +277,6 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   // Skip normalization for indirect dispatch since dimensions are determined by the indirect buffer
   if (program.IndirectDispatchTensor() == nullptr) {
-    ORT_RETURN_IF_ERROR(program_mgr_->CustomizeDispatchGroupSize(x, y, z));
     ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
   } else {
     ORT_ENFORCE(x == 0 && y == 0 && z == 0,
