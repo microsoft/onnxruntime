@@ -860,13 +860,13 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
       return st;
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
     // For WebGPU EP, also register with environment's data transfer manager
     // so that CopyTensors C API can work (it only checks environment's DTM)
     if (provider_type == kWebGpuExecutionProvider) {
       auto p_data_xfr_env = p_exec_provider->GetDataTransfer();
       if (p_data_xfr_env) {
-        auto& env_data_transfer_mgr = environment_.GetDataTransferManager();
-        auto st_env = const_cast<DataTransferManager&>(env_data_transfer_mgr).RegisterDataTransfer(std::move(p_data_xfr_env));
+        auto st_env = const_cast<Environment&>(environment_).RegisterDataTransferForEP(std::move(p_data_xfr_env));
         if (!st_env.IsOK()) {
           LOGS(*session_logger_, WARNING) << "Failed to register WebGPU data transfer with environment: " << st_env.ErrorMessage();
         } else {
@@ -874,6 +874,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
         }
       }
     }
+#endif
   }
 
   auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();

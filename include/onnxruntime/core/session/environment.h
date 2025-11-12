@@ -154,6 +154,12 @@ class Environment {
   const DataTransferManager& GetDataTransferManager() const {
     return data_transfer_mgr_;
   }
+
+  // Register a data transfer for an execution provider with the environment's data transfer manager
+  // This is needed for EPs like WebGPU where CopyTensors C API needs access to the data transfer
+  Status RegisterDataTransferForEP(std::unique_ptr<IDataTransfer> data_transfer) {
+    return data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer));
+  }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
