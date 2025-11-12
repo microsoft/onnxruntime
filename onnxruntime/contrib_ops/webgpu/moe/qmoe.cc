@@ -192,7 +192,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   // we are accumulating expert results into output_tensor, need to initialize to zero
   ZeroTensorProgram zero;
   zero
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
       .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
   ORT_RETURN_IF_ERROR(context.RunProgram(zero));
