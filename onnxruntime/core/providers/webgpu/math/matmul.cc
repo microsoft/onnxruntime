@@ -57,10 +57,14 @@ SplitKConfig SplitKConfig::GetSplitKConfig(const ComputeContext& context) {
         adapter_info.architecture == std::string_view{"gen-12hp"}) {
       config.enable_split_k_ = true;
 
-      // Below thresholds are only verified on the above Intel GPUs.
+      // Below thresholds are only verified on the above Intel GPUs without any regressions. The
+      // proper value of `max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_` may be
+      // reduced when we support a larger `dim_inner` because larger `dim_inner` will bring more
+      // atomic calls for each output value.
       config.split_dim_inner_ = 256;
       config.min_dim_inner_with_split_k_ = config.split_dim_inner_ * 2;
-      config.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 54.0f;
+      config.max_dim_inner_with_split_k_ = config.split_dim_inner_ * 9;
+      config.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 35.0f;
     }
   }
   return config;
@@ -85,9 +89,10 @@ bool SplitKConfig::UseSplitK(
   use_split_k &= is_channels_last;
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
-  // `dim_b_outer`. Currently we use `(dim_a_outer * dim_b_outer * 1.0f / dim_inner)` as the
-  // metric to decide whether to use Split-K or not.
+  // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer)` and
+  // `dim_inner)` as the metric to decide whether to use Split-K or not.
   use_split_k &= (dim_inner >= min_dim_inner_with_split_k_);
+  use_split_k &= (dim_inner <= max_dim_inner_with_split_k_);
   use_split_k &= ((dim_a_outer * dim_b_outer * 1.0f / dim_inner) <= max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_);
 
   return use_split_k;
