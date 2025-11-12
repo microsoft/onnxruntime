@@ -133,6 +133,22 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 
     custom_op_domain->domain_ = "trt.plugins";
     domain_list.push_back(custom_op_domain.get());
+
+    static std::vector<std::unique_ptr<TensorRTCustomOp>> native_custom_op_list;
+    static std::unique_ptr<OrtCustomOpDomain> native_custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+
+    const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
+    int num_native_custom_ops = sizeof(native_custom_ops_names) / sizeof(native_custom_ops_names[0]);
+
+    for (int i = 0; i < num_native_custom_ops; i++) {
+      native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
+      native_custom_op_list.back().get()->SetName(native_custom_ops_names[i]);
+      native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
+    }
+
+    native_custom_op_domain->domain_ = "trt";
+    domain_list.push_back(native_custom_op_domain.get());
+
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
   }
