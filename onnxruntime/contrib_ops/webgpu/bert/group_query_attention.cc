@@ -321,7 +321,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, attention_bias, past_key, past_value, output, present_key,
-                          present_value, parameters, context, head_sink, seqlen_k, local_window_size_);
+                          present_value, nullptr, parameters, context, head_sink, seqlen_k, local_window_size_);
   }
 
   TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
@@ -338,7 +338,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
                                         parameters.v_head_size_, value, nullptr, 0, &V));
   return ApplyAttention(&Q, &K, &V, attention_bias, past_key, past_value, output, present_key,
-                        present_value, parameters, context, head_sink, seqlen_k, local_window_size_);
+                        present_value, nullptr, parameters, context, head_sink, seqlen_k, local_window_size_);
 }
 
 KernelCreateInfo CreateGroupQueryAttentionKernelInfo(bool enable_graph_capture) {
