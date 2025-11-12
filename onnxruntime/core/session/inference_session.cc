@@ -869,8 +869,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
         auto st_env = const_cast<Environment&>(environment_).RegisterDataTransferForEP(std::move(p_data_xfr_env));
         if (!st_env.IsOK()) {
           LOGS(*session_logger_, WARNING) << "Failed to register WebGPU data transfer with environment: " << st_env.ErrorMessage();
-        } else {
-          VLOGS(*session_logger_, 1) << "Registered WebGPU data transfer with environment for CopyTensors API support";
         }
       }
     }
