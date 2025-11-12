@@ -25,7 +25,18 @@ class BufferManager;
 
 class ComputeContext {
  public:
-  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep);
+  // Nested accessor class to provide controlled access to BufferManager
+  class BufferManagerAccessor {
+    // access to BufferManager is limited to class WebGpuContext.
+    // This ensures no access to BufferManager from other classes, avoiding
+    // potential misuse.
+    friend class WebGpuContext;
+
+   private:
+    static const webgpu::BufferManager& Get(const ComputeContext& context);
+  };
+
+  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep, WebGpuContext& webgpu_context);
 
   virtual ~ComputeContext() = default;
 
@@ -120,31 +131,13 @@ class ComputeContext {
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
+
   //
   // Run a compute shader program.
   //
   inline Status RunProgram(const ProgramBase& program) {
     return webgpu_context_.Run(*this, program);
   }
-
-  //
-  // Get the buffer manager from the GPU allocator.
-  //
-  const webgpu::BufferManager& BufferManager() const;
-
-  //
-  // Push error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  void PushErrorScope();
-
-  //
-  // Pop error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  Status PopErrorScope();
 
  protected:
   WebGpuContext& webgpu_context_;
