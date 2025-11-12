@@ -23,7 +23,7 @@ namespace webgpu {
 class WebGpuContext;
 class BufferManager;
 
-class ComputeContext {
+class ComputeContext final {
  public:
   // Nested accessor class to provide controlled access to BufferManager
   class BufferManagerAccessor {
@@ -38,7 +38,7 @@ class ComputeContext {
 
   ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep, WebGpuContext& webgpu_context);
 
-  virtual ~ComputeContext() = default;
+  ~ComputeContext() = default;
 
   //
   // Get various information from the context.
@@ -139,7 +139,7 @@ class ComputeContext {
     return webgpu_context_.Run(*this, program);
   }
 
- protected:
+ private:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
   const WebGpuExecutionProvider& ep_;
