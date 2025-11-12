@@ -2624,7 +2624,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // exclude weights if external
   std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
   if (use_external_data_initializer_) {
-    auto status = GetInMemoryInitializers(*graph_viewer, in_memory_weights);
+    auto status = GetInMemoryInitializers(graph_body_viewer, in_memory_weights);
     if (status != Status::OK()) {
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                          "[NvTensorRTRTX EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));

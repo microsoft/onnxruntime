@@ -2337,6 +2337,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
 
+#if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
         // Keep inits in memory instead of writing to ModelProto.
         if (load_user_initializer_) {
           auto status = GetInMemoryInitializers(*graph_viewer, in_memory_weights);
@@ -2345,6 +2346,13 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
                                                "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
           }
         }
+#else
+        if (load_user_initializer_) {
+          LOGS_DEFAULT(VERBOSE) << "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto. 
+                                   "Initializer data will be included in model proto.;
+              load_user_initializer_ = false;
+        }
+#endif
 
         graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !load_user_initializer_ /*include_initializer_data*/);
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -3168,6 +3176,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
 
+#if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
   if (load_user_initializer_) {
     auto status = GetInMemoryInitializers(graph_body_viewer, in_memory_weights);
     if (status != Status::OK()) {
@@ -3175,6 +3184,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                          "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
     }
   }
+#else
+  if (load_user_initializer_) {
+    LOGS_DEFAULT(VERBOSE) << "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto. 
+                             "Initializer data will be included in model proto.;
+        load_user_initializer_ = false;
+  }
+#endif
 
   // ORT's default topological sort is using reversed DFS.
   // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
