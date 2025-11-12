@@ -2336,20 +2336,14 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Save Initializer Data.
 
         std::vector<TensorrtUserWeights> userWeights;
+        std::unordered_map<std::string, TensorrtUserWeights> user_weights;
 
         // Keep inits in memory instead of writing to ModelProto.
         if (load_user_initializer_) {
-          auto allInitializers = graph_viewer->GetAllInitializedTensors();
-
-          for (auto& entry : allInitializers) {
-            auto* tp = entry.second;
-            if (tp->has_raw_data()) {
-              userWeights.emplace_back(tp->name(), tp->raw_data());
-            } else if (utils::HasExternalDataInMemory(*tp)) {
-              std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-              ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-              userWeights.emplace_back(full_init->name(), full_init->raw_data());
-            }
+          auto status = GetInMemoryInitializers(*graph_viewer, user_weights);
+          if (status != Status::OK()) {
+            ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                               "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
           }
         }
 
@@ -2384,8 +2378,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
         if (load_user_initializer_) {
           trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-          for (auto const& userWeight : userWeights) {
-            trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+          for (auto const& iter : user_weights) {
+            trt_parser->loadInitializer(iter.first.c_str(), iter.second.Data(), iter.second.Size());
           }
           is_model_supported = trt_parser->parseModelProto();
         } else {
@@ -2846,52 +2840,51 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 common::Status TensorrtExecutionProvider::GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
                                                                   std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const {
   const InitializedTensorSet& all_initializers = graph_body_viewer.GetAllInitializedTensors();
-  user_weights.reserve(all_initializers.size());
+
+  auto populate_tensorrt_weight_with_ort_value = [&](const std::string& name, OrtValue& value) -> void {
+    Ort::ConstValue ort_value(&value);
+    size_t size = ort_value.GetTensorSizeInBytes();
+    const void* ptr = ort_value.GetTensorRawData();
+
+    if (size > 0) {
+      user_weights.insert(std::make_pair(name, TensorrtUserWeights(name, ptr, size)));
+    }
+  };
 
   for (auto& entry : all_initializers) {
-    auto* tp = entry.second;
+    const auto* tp = entry.second;
+
+    // Check the initializer data in the cache
+    if (auto iter = initializer_values_.find(tp->name());
+        iter != initializer_values_.end()) {
+      populate_tensorrt_weight_with_ort_value(tp->name(), *iter->second);
+      continue;
+    }
+
+    // If the initializer data is not in the cache, then try to fetch it and cache it.
 
     // Initializer has external data
     if (utils::HasExternalData(*tp)) {
-      auto populate_tensorrt_weight_with_ort_value = [&](OrtValue& value, bool copy_data = false) -> void {
-        Ort::ConstValue ort_value(&value);
-        size_t size = ort_value.GetTensorSizeInBytes();
-        const void* ptr = ort_value.GetTensorRawData();
-
-        if (size == 0) {
-          return;
-        }
-
-        if (copy_data) {
-          std::string raw_data(static_cast<const char*>(ptr), size);
-          user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), std::move(raw_data))));
-        } else {
-          user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), ptr, size)));
-        }
-      };
-
       // Get the OrtValue for this initializer
-      OrtValue ort_value;
+      std::unique_ptr<OrtValue> ort_value = std::make_unique<OrtValue>();
 
-      // Check if this is in-memory external data (data stored in OrtValue)
+      // Check if this is in-memory external data (data stored in OrtValue).
       if (utils::HasExternalDataInMemory(*tp)) {
-        if (graph_body_viewer.GetOrtValueInitializer(tp->name(), ort_value)) {
-          // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-          populate_tensorrt_weight_with_ort_value(ort_value, false);
-        } else {
-          // If we can't get the OrtValue, it is a bug
+        // If we can't get the OrtValue, it is a bug
+        if (!graph_body_viewer.GetOrtValueInitializer(tp->name(), *ort_value)) {
           ORT_THROW("Initializer ", tp->name(),
                     " has in-memory external data but cannot get OrtValue.");
         }
-        continue;
       }
-
       // If external data is not in memory, meaning ORT hasn't converted it to a OrtValue yet at this moment,
       // then loads this initializer with data in an external file into an OrtValue.
       // Note: The OrtValue is not cached in the graph, so we need to copy data.
-      ORT_RETURN_IF_ERROR(graph_body_viewer.GetGraph().LoadExternalInitializerAsOrtValue(tp->name(), ort_value));
-      populate_tensorrt_weight_with_ort_value(ort_value, true);
+      else {
+        ORT_RETURN_IF_ERROR(graph_body_viewer.GetGraph().LoadExternalInitializerAsOrtValue(tp->name(), *ort_value));
+      }
 
+      populate_tensorrt_weight_with_ort_value(tp->name(), *ort_value);
+      initializer_values_.emplace(tp->name(), std::move(ort_value));
     }
     // Initializer has raw data
     else if (utils::HasRawData(*tp)) {
@@ -3175,22 +3168,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto model_proto = model->ToProto();
 
   auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
+  std::unordered_map<std::string, TensorrtUserWeights> user_weights;
 
   if (load_user_initializer_) {
-    auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
-
-    for (auto& entry : allInitializers) {
-      auto name = entry.first;
-      auto* tp = entry.second;
-      if (tp->has_raw_data()) {
-        userWeights->emplace_back(
-            TensorrtUserWeights(tp->name(), tp->raw_data()));
-      } else if (utils::HasExternalDataInMemory(*tp)) {
-        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-        userWeights->emplace_back(
-            TensorrtUserWeights(full_init->name(), full_init->raw_data()));
-      }
+    auto status = GetInMemoryInitializers(graph_body_viewer, user_weights);
+    if (status != Status::OK()) {
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                         "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
     }
   }
 
@@ -3224,8 +3208,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
   if (load_user_initializer_) {
     trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-    for (auto const& userWeight : *userWeights) {
-      trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+    for (auto const& iter : user_weights) {
+      trt_parser->loadInitializer(iter.first.c_str(), iter.second.Data(), iter.second.Size());
     }
     trt_parser->parseModelProto();
   } else {

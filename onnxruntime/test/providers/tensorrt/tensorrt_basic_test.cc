@@ -546,6 +546,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
     InferenceSession session_object{so, GetEnvironment()};
     OrtTensorRTProviderOptionsV2 params;
     params.trt_weight_stripped_engine_enable = 1;
+    params.trt_load_user_initializer = 1;
     params.trt_onnx_bytestream = model_bytes.data();
     params.trt_onnx_bytestream_size = model_bytes.size();
     auto execution_provider = TensorrtExecutionProviderWithOptions(&params);

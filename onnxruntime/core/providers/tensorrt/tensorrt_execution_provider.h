@@ -160,10 +160,6 @@ using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t
 // Data structure to hold user weights when ModelProtos are serialized with external data
 class TensorrtUserWeights {
  public:
-  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name),
-                                                                          data_cpy_(data) {
-                                                                          };
-
   TensorrtUserWeights(const std::string& name, const void* data, size_t size) : name_(name), data_(data), size_(size) {
                                                                                 };
 
@@ -172,22 +168,15 @@ class TensorrtUserWeights {
   };
 
   const void* Data() const {
-    if (!data_cpy_.empty()) {
-      return data_cpy_.data();
-    }
     return data_;
   }
 
   int64_t Size() const {
-    if (!data_cpy_.empty()) {
-      return static_cast<int64_t>(data_cpy_.size());
-    }
     return static_cast<int64_t>(size_);
   }
 
  private:
-  std::string name_{};
-  std::string data_cpy_{};
+  const std::string& name_;
   void const* data_;
   size_t size_;
 };
@@ -382,6 +371,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string op_types_to_exclude_;
   std::vector<nvinfer1::PreviewFeature> preview_features_;
   bool load_user_initializer_ = false;
+
+  // Cache initializer's external data as an OrtValue
+  mutable std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -645,12 +637,13 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
 
   /**
-   * This function fetches the initializers data that are external data or raw data via ORT graph API,
-   * and stores them in the 'TensorrtUserWeights' data structure that later will be used by TRT parser
+   * This function fetches the initializers data that are external data and caches them,
+   * and populate the 'TensorrtUserWeights' data structure with the OrtValue or raw data.
+   * 'TensorrtUserWeights' data structure later will be used by TRT parser.
    * for later use, e.g. refit weightless engine.
    */
   Status GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
-                                         std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const;
+                                 std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const;
 
   /**
    *  This is the helper function for ConstantFoldingDQ graph transformer.
