@@ -44,6 +44,34 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
   const bool interleaved_;
 };
 
+class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram> {
+ public:
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, bool use_seqlen_k, bool prepare_indirect_dispatch)
+      : Program{"SplitPackedQKVWithRotaryEmbeddingAndCopyKV"},
+        interleaved_(interleaved),
+        use_seqlen_k_(use_seqlen_k),
+        prepare_indirect_dispatch_(prepare_indirect_dispatch) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"tile_size", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const bool interleaved_;
+  const bool use_seqlen_k_;
+  const bool prepare_indirect_dispatch_;
+};
+
 class GroupQueryAttention final : public WebGpuKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
