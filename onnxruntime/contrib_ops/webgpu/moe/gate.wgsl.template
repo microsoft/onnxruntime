@@ -44,6 +44,7 @@ $MAIN {
     }
     shared_vals[local_idx] = max_val;
     shared_idxs[local_idx] = max_idx;
+    topk_values[output_base + local_idx] = topk_values_value_t(0);
     workgroupBarrier();
 
     // K is small, use a simple bubble sort
@@ -70,8 +71,6 @@ $MAIN {
         let target_idx = atomicAdd(&tokencount_for_expert[expert_idx], 1u);
         hiddenstate_for_expert[expert_base + target_idx] = row + uniforms.token_offset;
     }
-    topk_values[output_base + local_idx] = topk_values_value_t(0);
-    workgroupBarrier();
     if (local_idx == 0u) {
         // softmax
         var sum : f32 = 0.0;

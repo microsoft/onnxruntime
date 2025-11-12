@@ -164,7 +164,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   bool is_swiglu = (activation_type_ == MoEActivationType::SwiGLU);
   if (fc3_experts_weights_optional) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "FC3 gating is not yet implemented for non-SwiGLU activations on WebGPU.");
+                           "FC3 gating is not yet implemented on WebGPU.");
   }
 
   // process tokens in chunks of max_tokens to put some cap on memory usage
@@ -180,7 +180,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int64_t K_fc1 = moe_params.hidden_size;
   const int64_t N_fc1 = fc1_output_size;
   const int64_t K_fc2 = moe_params.inter_size;
-  const int64_t N_fc2 = moe_params.inter_size;
+  const int64_t N_fc2 = moe_params.hidden_size;
   const int64_t accuracy_level = 4;
   const int64_t block_size_fc1 = (block_size_ != 0) ? block_size_ : K_fc1;
   const int64_t block_size_fc2 = (block_size_ != 0) ? block_size_ : K_fc2;
@@ -192,7 +192,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   // we are accumulating expert results into output_tensor, need to initialize to zero
   ZeroTensorProgram zero;
   zero
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::None, 4})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4})
       .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
   ORT_RETURN_IF_ERROR(context.RunProgram(zero));
@@ -297,7 +297,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                   swiglu_limit_});
         ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
       } else {
-        ORT_THROW("only swiglu is supported for now.");
+        ORT_THROW("only swiglu is supported for WebGPU.");
       }
 
       //
