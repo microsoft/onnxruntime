@@ -19,6 +19,7 @@
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/run_options.h"
+#include "core/providers/webgpu/weight_layout_transformer.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
@@ -29,6 +30,7 @@
 #include "core/providers/webgpu/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/tensor/cast.h"
+#include "core/providers/webgpu/nn/conv.h"
 
 namespace onnxruntime {
 
@@ -945,6 +947,28 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
   }
 
   return std::nullopt;
+}
+
+Status WebGpuExecutionProvider::GetPreferredInitializerFormat(const Node& node, int input_index,
+                                                              std::string& format_descriptor) const {
+  // Delegate to operator-specific functions based on operator type
+  if (node.OpType() == "Conv") {
+    return ConvGetPreferredKernelFormat(node, input_index, format_descriptor);
+  }
+
+  // Add more operators here as needed:
+  // - ConvTranspose: similar to Conv
+  // - Gemm/MatMul: may use different blocking schemes based on input/output shapes
+  // etc.
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No format transformation needed");
+}
+
+Status WebGpuExecutionProvider::TransformInitializerFormat(const Tensor& original_tensor,
+                                                           const std::string& format_descriptor,
+                                                           std::unique_ptr<Tensor>& transformed_tensor) const {
+  // Delegate to WeightLayoutTransformer
+  return WeightLayoutTransformer::TransformLayout(original_tensor, format_descriptor, transformed_tensor);
 }
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {

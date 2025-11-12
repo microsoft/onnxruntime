@@ -227,6 +227,11 @@ common::Status CopyTensorFromCPUToDevice(
     }
     return copy_status;
   } else {
+    // Preserve format descriptor when copying from CPU to device
+    const std::string& format = deserialized_tensor.GetFormatDescriptor();
+    if (!format.empty()) {
+      tensor.SetFormatDescriptor(format);
+    }
     Tensor::InitOrtValue(std::move(tensor), ort_value);
     return common::Status::OK();
   }

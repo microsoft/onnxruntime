@@ -28,6 +28,10 @@ class Conv : public WebGpuKernel {
   Activation activation_;
 };
 
+// Get the preferred kernel format for Conv operator
+// Returns format descriptor string (e.g., "hwio", "ABcd16a4b"), or empty string if no transformation needed
+Status ConvGetPreferredKernelFormat(const Node& node, int input_index, std::string& format_descriptor);
+
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);
 
 }  // namespace webgpu
