@@ -1,0 +1,280 @@
+{
+  "models": {
+    "psf": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psf_accuracy_collaterals_v2.0",
+        "package_version": "2.0.45"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "qptf-Onnx-all-Onnx-1.17-int-encrypted",
+        "package_version": "1.0.235-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psi": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psi_accuracy_collaterals_v3.0",
+        "package_version": "3.0.2"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "embimg_c-onnx-all-onnx-1.17-int-encrypted",
+        "package_version": "1.0.273-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psj": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psj_accuracy_collaterals_v2.0",
+        "package_version": "2.0.0"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "embtxt_transformer_c-onnx-all-onnx-1.17-int-encrypted",
+        "package_version": "1.0.273-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psa": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psa_accuracy_collaterals_v2.3",
+        "package_version": "2.3.4"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "srd_large-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.292-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "pss": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pss_accuracy_collaterals_v2.0",
+        "package_version": "2.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "vae_decoder_sd-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.299-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psv": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psv_accuracy_collaterals_v2.0",
+        "package_version": "2.0.2"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "sr_npu-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.210-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "pst": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pst_accuracy_collaterals_v2.0",
+        "package_version": "2.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "vae_encoder_sd-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.299-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psh": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psh_accuracy_collaterals_v2.1",
+        "package_version": "2.1.0"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "semtf-Onnx-all-Onnx-1.17-int-encrypted",
+        "package_version": "1.0.210-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psr": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psr_accuracy_collaterals_v2.0",
+        "package_version": "2.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "unet_sd-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.299-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psl": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psl_accuracy_collaterals_v1.0",
+        "package_version": "1.0.0"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "nertf-Onnx-all-Onnx-1.17-int-encrypted",
+        "package_version": "1.0.210-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psw": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psw_accuracy_collaterals_v2.0",
+        "package_version": "2.0.2"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "tcm_tf-onnx-all-onnx-1.17-int-encrypted",
+        "package_version": "1.0.210-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psd5_1": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psd5_1_accuracy_collaterals_v1.0",
+        "package_version": "1.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "unet-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.316-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psd1": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psd1_accuracy_collaterals_1.0.0",
+        "package_version": "1.0.0"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "text_encoder_1-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.317-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psd6": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psd6_accuracy_collaterals_1.0.0",
+        "package_version": "1.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "vae_encoder-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.317-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psd2": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psd2_accuracy_collaterals_1.0.0",
+        "package_version": "1.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "text_encoder_2-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.317-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psd3": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psd3_accuracy_collaterals_1.0.0",
+        "package_version": "1.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "controlnet_scribble-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.317-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psd4": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psd4_accuracy_collaterals_1.0.0",
+        "package_version": "1.0.2"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "controlnet_inpainting-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.317-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "psd7": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_psd7_accuracy_collaterals_1.0.0",
+        "package_version": "1.0.1"
+      },
+      "quantized_model": {
+        "nuget_feed": "ps-packaging",
+        "package_name": "vae_decoder-onnx-all-onnx-1.17-default-int-encrypted",
+        "package_version": "1.0.317-main",
+        "encryption_key": "long_key"
+      }
+    },
+    "pso0": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pso0_accuracy_collaterals",
+        "package_version": "1.0.0"
+      }
+    },
+    "pso1": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pso1_accuracy_collaterals",
+        "package_version": "1.0.0"
+      }
+    },
+    "pso2_80": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pso2_80_accuracy_collaterals",
+        "package_version": "1.0.0"
+      }
+    },
+    "pso2_160": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pso2_160_accuracy_collaterals",
+        "package_version": "1.0.0"
+      }
+    },
+    "pso2_320": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pso2_320_accuracy_collaterals",
+        "package_version": "1.0.0"
+      }
+    },
+    "pso2_640": {
+      "dataset_package": {
+        "nuget_feed": "ModelCollaterals",
+        "package_name": "model_pso2_640_accuracy_collaterals",
+        "package_version": "1.0.0"
+      }
+    }
+  }
+}
