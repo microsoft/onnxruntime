@@ -944,6 +944,10 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
     return false;
   }
 
+  if (node_domain == kOnnxDomain && node_op_type == "InstanceNormalization") {
+    return false;
+  }
+
   return std::nullopt;
 }
 
