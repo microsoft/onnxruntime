@@ -70,6 +70,79 @@ void print_raw(const Shape& shape, const char* name, const VEC_TYPE& src) {
     std::cout << "]\n";
 }
 
+static void ConvertNchwToNhwc(const float* src,
+                              float* dst,
+                              size_t batches,
+                              size_t channels,
+                              size_t height,
+                              size_t width) {
+    const size_t src_stride_n = channels * height * width;
+    const size_t src_stride_c = height * width;
+    const size_t src_stride_h = width;
+    const size_t dst_stride_n = height * width * channels;
+    const size_t dst_stride_h = width * channels;
+    const size_t dst_stride_w = channels;
+
+    for (size_t n = 0; n < batches; ++n) {
+        for (size_t h = 0; h < height; ++h) {
+            for (size_t w = 0; w < width; ++w) {
+                for (size_t c = 0; c < channels; ++c) {
+                    const size_t src_index =
+                        n * src_stride_n + c * src_stride_c + h * src_stride_h + w;
+                    const size_t dst_index =
+                        n * dst_stride_n + h * dst_stride_h + w * dst_stride_w + c;
+                    dst[dst_index] = src[src_index];
+                }
+            }
+        }
+    }
+}
+
+static void ConvertNhwcToNchw(const float* src,
+                              float* dst,
+                              size_t batches,
+                              size_t channels,
+                              size_t height,
+                              size_t width) {
+    const size_t dst_stride_n = channels * height * width;
+    const size_t dst_stride_c = height * width;
+    const size_t dst_stride_h = width;
+    const size_t src_stride_n = height * width * channels;
+    const size_t src_stride_h = width * channels;
+    const size_t src_stride_w = channels;
+
+    for (size_t n = 0; n < batches; ++n) {
+        for (size_t c = 0; c < channels; ++c) {
+            for (size_t h = 0; h < height; ++h) {
+                for (size_t w = 0; w < width; ++w) {
+                    const size_t src_index =
+                        n * src_stride_n + h * src_stride_h + w * src_stride_w + c;
+                    const size_t dst_index =
+                        n * dst_stride_n + c * dst_stride_c + h * dst_stride_h + w;
+                    dst[dst_index] = src[src_index];
+                }
+            }
+        }
+    }
+}
+
+static void ConvertDepthwiseWeightsToHwcn(const float* src,
+                                          float* dst,
+                                          size_t channels,
+                                          size_t filter_height,
+                                          size_t filter_width) {
+    const size_t kernel_size = filter_height * filter_width;
+    for (size_t c = 0; c < channels; ++c) {
+        const float* channel_weights = src + c * kernel_size;
+        for (size_t kh = 0; kh < filter_height; ++kh) {
+            for (size_t kw = 0; kw < filter_width; ++kw) {
+                const size_t dst_index = ((kh * filter_width) + kw) * channels + c;
+                dst[dst_index] = channel_weights[kh * filter_width + kw];
+            }
+        }
+    }
+}
+
 /// Depthwise Convolution - Expects NHWC dataformat. Padding value is 0.
 ///
 /// @tparam T Data type.
@@ -154,6 +227,10 @@ bool DepthwiseConvKleidiAISupported(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
+    if (Parameters->Beta != 0.0f) {
+        return false;
+    }
+
     // Depthwise conv with multiplier 1 => one input channel per group and one filter per group.
     if (Parameters->InputChannels != 1 || Parameters->FilterCount != 1) {
         return false;
@@ -201,6 +278,14 @@ bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const s
         return false;
     }
 
+    const size_t input_size = batches * in_height * in_width * channels;
+    std::vector<float> feature_map_nhwc(input_size);
+    ConvertNchwToNhwc(feature_map, feature_map_nhwc.data(), batches, channels, in_height, in_width);
+
+    const size_t weights_size = filter_height * filter_width * channels;
+    std::vector<float> weights_hwcn(weights_size);
+    ConvertDepthwiseWeightsToHwcn(weights, weights_hwcn.data(), channels, filter_height, filter_width);
+
     if (out_h <= 4 || out_w <= 4) {
         return false;
     }
@@ -237,12 +322,13 @@ bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const s
     std::vector<uint8_t> weights_packed(packed_size_bytes);
     kai_run_rhs_dwconv_pack_x32p1vlx1b_x32_x32_sme(
         filter_height, filter_width, filter_height, filter_width, channels,
-        static_cast<const void*>(weights), static_cast<const void*>(bias_data), weights_packed.data());
+        static_cast<const void*>(weights_hwcn.data()), static_cast<const void*>(bias_data), weights_packed.data());
 
     // -------------------------------------------------
     // 4. Kernel takes in 6 rows of input and generates
     //    rows of output across all channels at a time.
     // -------------------------------------------------
+    std::vector<float> nhwc_out_buffer(out_shape.size(), 0.0f);
     constexpr size_t rows_handled = 4;  // no of rows kernel handles each time.
     for (size_t out_row = 0; out_row < out_shape.h; out_row += rows_handled) {
         // Variables below used to calculate start of input pointer.
@@ -264,8 +350,8 @@ bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const s
         }
 
         // Increment output/input pointers according to tile being calculated.
-        const auto inptr = feature_map + (in_row * in_row_stride_elements);
-        auto outptr = out + (out_row * out_row_stride_elements);
+        const auto inptr = feature_map_nhwc.data() + (in_row * in_row_stride_elements);
+        auto outptr = nhwc_out_buffer.data() + (out_row * out_row_stride_elements);
 
         // NOTE: Kernel expects strides to be passed as bytes.
         // f32_f32_f32p1vl -> f32 output, f32 LHS, packed F32 rhs as 1VL blocks.
@@ -288,5 +374,8 @@ bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const s
             clamp_min,
             clamp_max);
     }
+
+    // Convert kernel NHWC output back to MLAS expected NCHW layout.
+    ConvertNhwcToNchw(nhwc_out_buffer.data(), out, out_shape.n, out_shape.c, out_shape.h, out_shape.w);
     return true;
 }

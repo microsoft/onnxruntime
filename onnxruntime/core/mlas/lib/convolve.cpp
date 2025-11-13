@@ -17,6 +17,7 @@ Abstract:
 #include "mlasi.h"
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
+#include <limits>
 #endif
 
 //
@@ -972,8 +973,14 @@ Return Value:
                               Filter,
                               Bias,
                               Output,
-                              0.0f,
-                              6.0f)) {
+                              -std::numeric_limits<float>::max(),
+                              std::numeric_limits<float>::max())) {
+        MlasActivation(Parameters->Activation,
+                       Output,
+                       nullptr,
+                       Parameters->GroupCount * Parameters->FilterCount,
+                       Parameters->OutputSize,
+                       Parameters->OutputSize);
         return;
     }
 #endif
