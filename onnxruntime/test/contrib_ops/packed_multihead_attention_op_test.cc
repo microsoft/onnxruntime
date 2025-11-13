@@ -188,8 +188,7 @@ static void RunPackedMultiHeadAttentionTest(
     AttentionKernelType kernel_type,
     const std::vector<float>& attention_bias_data = {},
     bool broadcast_attention_bias = false,
-    bool bfloat16 = false
-  ) {
+    bool bfloat16 = false) {
   if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
