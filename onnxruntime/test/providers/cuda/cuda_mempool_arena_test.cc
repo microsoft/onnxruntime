@@ -15,6 +15,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
