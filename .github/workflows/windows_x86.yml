@@ -67,6 +67,18 @@ jobs:
         env:
           PROCESSOR_ARCHITECTURE: x86 # x86 .NET
 
+      # Install VC++ Redistributable x86 2015-2019 (required for dotnet 10.x/x86)
+      - name: Install VC++ Redistributable x86 2015-2019
+        shell: pwsh
+        run: |
+          winget install --id=Microsoft.VCRedist.2015+.x86 -e
+
+      - name: verify dotnet installation
+        shell: cmd
+        run: |
+          where.exe dotnet
+          dotnet --version
+
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@v2
         with:
