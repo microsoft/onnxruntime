@@ -319,13 +319,6 @@ void UpdateNPUConfig(ov::AnyMap& config, const KVAxesPosition& kv_pos, const KVD
   RenameKey(config, "PREFILL_HINT", "NPUW_LLM_PREFILL_HINT");
   RenameKey(config, "GENERATE_CONFIG", "NPUW_LLM_GENERATE_CONFIG");
   RenameKey(config, "GENERATE_HINT", "NPUW_LLM_GENERATE_HINT");
-
-  const size_t npuw_context_len_threshold = 2048;
-  if ((kv_desc.max_prompt_len + kv_desc.min_response_len) >= npuw_context_len_threshold) {
-    // This improves accuracy for generation sequences that exceed 2k tokens.
-    config["++NPUW_LLM_PREFILL_CONFIG"] = ov::AnyMap{{"NPUW_DEVICES", "NPU,CPU"}, {"NPUW_ONLINE_AVOID", "P:SinCos/NPU"}};
-    config["++NPUW_LLM_GENERATE_CONFIG"] = ov::AnyMap{{"NPUW_DEVICES", "NPU,CPU"}, {"NPUW_ONLINE_AVOID", "P:SinCos/NPU"}};
-  }
 }
 
 std::optional<ov::Any> PopOptionNew(ov::AnyMap& config, const std::string& option_name) {
