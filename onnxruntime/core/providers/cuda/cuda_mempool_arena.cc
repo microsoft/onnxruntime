@@ -92,6 +92,9 @@ void* CudaMempoolArena::Alloc(size_t size) {
   LOGS(*logger_, VERBOSE) << "CudaMempoolArena::Alloc: allocated "
                           << size << " bytes at " << p << " on default stream.";
 
+  // In case the default stream is busy.
+  ::cudaStreamSynchronize(kDefaultStream);
+
   {
     std::lock_guard<std::mutex> lock(mutex_);
     AllocationRecord rec{size, kDefaultStream};
