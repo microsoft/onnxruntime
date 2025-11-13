@@ -138,20 +138,13 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
-  auto metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
-    initializer = [&metadata](OVInferRequestPtr ir_ptr) {
-      const auto input_count = ir_ptr->GetNumInputs();
-      for (auto i = 0u; i < input_count; i++) {
-        using Key = SharedContext::SharedWeights::Metadata::Key;
-        const auto tensor_key = Key{ir_ptr->GetInputTensorName(i)};
-        if (metadata.contains(tensor_key)) {
-          auto& value = metadata.at(tensor_key);
-          ir_ptr->SetTensor(tensor_key.name, value.tensor);
-        }
-      }
+    auto model_dir = session_context_.GetModelPath().parent_path();
+    initializer = [this, model_dir = std::move(model_dir)](OVInferRequestPtr ir_ptr) {
+      shared_context_.SetSharedWeightsOnInferRequest(ir_ptr->GetInfReq(), model_dir);
     };
   }
+
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
 }

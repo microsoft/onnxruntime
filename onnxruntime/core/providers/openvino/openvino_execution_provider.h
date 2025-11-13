@@ -15,6 +15,9 @@
 
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/contexts.h"
+#include "ov_shared_context.h"
+#include "ov_bin_manager.h"
+#include "ov_interface.h"
 
 #ifdef _WIN32
 #include "core/providers/openvino/ov_tracing.h"
@@ -50,7 +53,7 @@ static std::vector<std::string> split(const std::string& s, char delim) {
 // Logical device representation.
 class OpenVINOExecutionProvider : public IExecutionProvider {
  public:
-  explicit OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context);
+  explicit OpenVINOExecutionProvider(const ProviderInfo& info);
   ~OpenVINOExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -76,7 +79,9 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 #endif
  private:
   SessionContext session_context_;
-  std::shared_ptr<SharedContext> shared_context_;
+  std::shared_ptr<OVCore> ov_core_;
+  std::shared_ptr<SharedContextManager> shared_context_manager_;
+
   std::list<BackendManager> backend_managers_;  // EP session owns the backend objects
   EPCtxHandler ep_ctx_handle_;
 

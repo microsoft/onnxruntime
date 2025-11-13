@@ -16,6 +16,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 #include "core/providers/openvino/openvino_parser_utils.h"
+#include "ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -381,14 +382,14 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 }
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<SharedContext> shared_context)
-      : provider_info_(std::move(provider_info)), shared_context_(std::move(shared_context)) {}
+  OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<OVCore> ov_core)
+      : provider_info_(std::move(provider_info)), ov_core_(ov_core) {}
 
   ~OpenVINOProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     ParseConfigOptions(provider_info_);
-    return std::make_unique<OpenVINOExecutionProvider>(provider_info_, shared_context_);
+    return std::make_unique<OpenVINOExecutionProvider>(provider_info_);
   }
 
   // Called by InferenceSession when registering EPs. Allows creation of an EP instance that is initialized with
@@ -421,7 +422,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     ParseProviderInfo(provider_options, &config_options, provider_info);
     ParseConfigOptions(provider_info);
 
-    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
+    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info);
     ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
     return ov_ep;
   }
@@ -432,14 +433,14 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider_V2(const OrtSessionOptions& /*session_options*/,
                                                         const OrtLogger& session_logger) {
     ProviderInfo provider_info = provider_info_;
-    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info, shared_context_);
+    auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info);
     ov_ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
     return ov_ep;
   }
 
  private:
   ProviderInfo provider_info_;
-  std::shared_ptr<SharedContext> shared_context_;
+  std::shared_ptr<OVCore> ov_core_;
 };
 
 struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
@@ -464,7 +465,7 @@ struct OpenVINO_Provider : Provider {
     ProviderInfo pi;
     ParseProviderInfo(provider_options, config_options, pi);
 
-    return std::make_shared<OpenVINOProviderFactory>(pi, SharedContext::Get());
+    return std::make_shared<OpenVINOProviderFactory>(pi, OVCore::Get());
   }
 
   Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
@@ -571,7 +572,7 @@ struct OpenVINO_Provider : Provider {
     ParseConfigOptions(pi);
 
     // Create and return the execution provider
-    auto factory = std::make_unique<OpenVINOProviderFactory>(pi, SharedContext::Get());
+    auto factory = std::make_unique<OpenVINOProviderFactory>(pi, OVCore::Get());
     ep = factory->CreateProvider_V2(session_options, logger);
     return Status::OK();
   }

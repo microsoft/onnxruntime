@@ -199,8 +199,8 @@ OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
   return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
 #if (OPENVINO_VERSION_MAJOR > 2025 || (OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR >= 3))
-    if (!model_blob.maybe_native_blob_path_.empty()) {
-      obj = core.import_model(ov::read_tensor_data(model_blob.maybe_native_blob_path_), hw_target, device_config);
+    if (model_blob.tensor_) {
+      obj = core.import_model(model_blob.tensor_, hw_target, device_config);
     } else {
       obj = core.import_model(*model_blob.stream_, hw_target, device_config);
     }

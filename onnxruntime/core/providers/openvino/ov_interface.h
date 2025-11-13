@@ -18,6 +18,7 @@
 #include "openvino/frontend/manager.hpp"
 #include "openvino/core/dimension.hpp"
 #include "openvino/core/partial_shape.hpp"
+#include "weak_singleton.h"
 
 #include <string>
 
@@ -47,31 +48,6 @@ typedef std::shared_ptr<OVTensor> OVTensorPtr;
 
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
-template <typename T>
-class WeakSingleton {
- public:
-  static std::shared_ptr<T> Get() {
-    static std::weak_ptr<T> instance;
-    static std::mutex mutex;
-
-    auto ptr = instance.lock();
-    if (!ptr) {
-      std::lock_guard<std::mutex> lock(mutex);
-      // ensure another thread didn't create an instance while this thread was waiting
-      ptr = instance.lock();
-      if (!ptr) {
-        ptr = std::make_shared<T>();
-        instance = ptr;
-      }
-    }
-    return ptr;
-  }
-
- protected:
-  WeakSingleton() = default;
-  virtual ~WeakSingleton() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WeakSingleton);
-};
 
 struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
@@ -153,7 +129,7 @@ class OVInferRequest {
   virtual void Infer();
   explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
   OVInferRequest() : ovInfReq(ov::InferRequest()) {}
-  ov::InferRequest& GetNewObj() {
+  ov::InferRequest& GetInfReq() {
     return ovInfReq;
   }
   virtual void RewindKVCache([[maybe_unused]] size_t index) {}
