@@ -284,7 +284,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_head_sink_) {
     // Handle head sink
-    shader.MainFunctionBody() << "let sink_value: f32 = head_sink[head_idx];\n"
+    shader.MainFunctionBody() << "let sink_value: f32 = f32(head_sink[head_idx]);\n"
                               << "var max_value = sink_value;\n";
   } else if (use_smooth_softmax_) {
     shader.MainFunctionBody() << "var max_value: f32 = 0.0;\n";
