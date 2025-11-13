@@ -562,38 +562,6 @@ void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOpti
 }
 #endif
 
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-void RegisterNvTensorRTRtxPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
-  if (auto* nv_tensorrt_rtx_provider_info = TryGetProviderInfo_Nv()) {
-    auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
-      for (auto ptr : domains) {
-        if (domain_name == ptr->domain_) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    std::string extra_plugin_lib_paths = "";
-    const auto it = options.find("extra_plugin_lib_paths");
-    if (it != options.end()) {
-      extra_plugin_lib_paths = it->second;
-    }
-    std::vector<OrtCustomOpDomain*> custom_op_domains;
-    nv_tensorrt_rtx_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
-    for (auto ptr : custom_op_domains) {
-      if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
-        so.custom_op_domains_.push_back(ptr);
-      } else {
-        LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
-      }
-    }
-  } else {
-    ORT_THROW("Please install TensorRT libraries as mentioned in the GPU requirements page, make sure they're in the PATH or LD_LIBRARY_PATH, and that your GPU is supported.");
-  }
-}
-#endif
-
 /**
  * Creates an IExecutionProviderFactory instance of the specified type.
  * @param session_options The session options.
@@ -1681,12 +1649,6 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "register_tensorrt_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterTensorRTPluginsAsCustomOps(so, options); },
       "Register TensorRT plugins as custom ops.");
-#endif
-
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-  m.def(
-      "register_nv_tensorrt_rtx_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterNvTensorRTRtxPluginsAsCustomOps(so, options); },
-      "Register NV TensorRT RTX plugins as custom ops.");
 #endif
 
 #ifdef ENABLE_ATEN

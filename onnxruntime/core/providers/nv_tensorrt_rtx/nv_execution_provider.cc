@@ -15,7 +15,6 @@
 #include "core/framework/ort_value.h"
 #include "nv_execution_provider.h"
 #include "nv_execution_provider_utils.h"
-#include "nv_execution_provider_custom_ops.h"
 #include "nv_allocator.h"
 #include "nv_data_transfer.h"
 #include "onnx_ctx_model_helper.h"
@@ -772,29 +771,6 @@ NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId devi
   }
 }
 
-NvExecutionProvider::PerThreadContext::~PerThreadContext() {
-  trt_context_map_.clear();
-}
-
-void NvExecutionProvider::PerThreadContext::ResetTensorRTContext(std::string fused_node) {
-  auto it = trt_context_map_.find(fused_node);
-  if (it != trt_context_map_.end()) {
-    trt_context_map_[fused_node].reset();
-  }
-}
-
-bool NvExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fused_node, tensorrt_ptr::unique_pointer_exec_ctx context) {
-  if (!context) {
-    context = tensorrt_ptr::unique_pointer_exec_ctx();
-  }
-  trt_context_map_[fused_node] = std::move(context);
-
-  if (trt_context_map_[fused_node]) {
-    return true;
-  }
-  return false;
-}
-
 void NvExecutionProvider::PerThreadContext::DeleteCapturedGraph(CudaGraphAnnotation_t cuda_graph_annotation_id) {
   graph_id_to_run_count_.erase(cuda_graph_annotation_id);
   cuda_graph_.Reset();
@@ -873,24 +849,6 @@ Status NvExecutionProvider::PerThreadContext::ReplayGraph(CudaGraphAnnotation_t 
 
 void NvExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id) {
   graph_id_to_run_count_[cuda_graph_annotation_id]++;
-}
-
-bool NvExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::string fused_node) {
-  auto it = trt_context_map_.find(fused_node);
-  if (it != trt_context_map_.end()) {
-    return true;
-  }
-  return false;
-}
-
-nvinfer1::IExecutionContext& NvExecutionProvider::PerThreadContext::GetTensorRTContext(std::string fused_node) {
-  auto it = trt_context_map_.find(fused_node);
-  if (it != trt_context_map_.end()) {
-    return *(it->second.get());  // dereference shared pointer
-  }
-  auto context = tensorrt_ptr::unique_pointer_exec_ctx();
-  trt_context_map_[fused_node] = std::move(context);
-  return *(trt_context_map_[fused_node].get());  // dereference shared pointer
 }
 
 void NvExecutionProvider::ReleasePerThreadContext() const {
@@ -1036,13 +994,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   ep_context_file_path_ = info.ep_context_file_path;
   ep_context_embed_mode_ = info.ep_context_embed_mode;
   enable_engine_cache_for_ep_context_model();
-  cache_prefix_ = info.engine_cache_prefix;
-  // use a more global cache if given
-  engine_decryption_enable_ = info.engine_decryption_enable;
-  if (engine_decryption_enable_) {
-    engine_decryption_lib_path_ = info.engine_decryption_lib_path;
-  }
-  force_sequential_engine_build_ = info.force_sequential_engine_build;
   sparsity_enable_ = info.sparsity_enable;
   auxiliary_streams_ = info.auxiliary_streams;
   profile_min_shapes = info.profile_min_shapes;
@@ -1140,20 +1091,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
   }
 
-  if (engine_decryption_enable_) {
-    LIBTYPE handle = OPENLIB(engine_decryption_lib_path_.c_str());
-    if (handle == nullptr) {
-      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "NvTensorRTRTX EP could not open shared library from " + engine_decryption_lib_path_));
-    }
-    engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
-    engine_encryption_ = (int (*)(const char*, char*, size_t))LIBFUNC(handle, "encrypt");
-    if (engine_decryption_ == nullptr) {
-      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                         "NvTensorRTRTX EP could not find decryption function in shared library from " + engine_decryption_lib_path_));
-    }
-  }
-
   // cuda graph:
   // cudaStreamSynchronize() is not allowed in cuda graph capture.
   //
@@ -1183,16 +1120,12 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
                         << ", nv_dump_subgraphs: " << dump_subgraphs_
                         << ", nv_weight_stripped_engine_enable: " << weight_stripped_engine_enable_
                         << ", nv_onnx_model_folder_path: " << onnx_model_folder_path_
-                        << ", nv_engine_decryption_enable: " << engine_decryption_enable_
-                        << ", nv_engine_decryption_lib_path: " << engine_decryption_lib_path_
-                        << ", nv_force_sequential_engine_build: " << force_sequential_engine_build_
                         << ", nv_sparsity_enable: " << sparsity_enable_
                         << ", nv_auxiliary_streams: " << auxiliary_streams_
                         << ", enable_cuda_graph: " << cuda_graph_enable_
                         << ", nv_dump_ep_context_model: " << dump_ep_context_model_
                         << ", nv_ep_context_file_path: " << ep_context_file_path_
                         << ", nv_ep_context_embed_mode: " << ep_context_embed_mode_
-                        << ", nv_cache_prefix: " << cache_prefix_
                         << ", nv_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
                         << ", nv_onnx_external_bytestream_size_: " << onnx_external_data_bytestream_size_
                         << ", nv_use_external_data_initializer_: " << use_external_data_initializer_
@@ -1219,7 +1152,6 @@ NvExecutionProvider::~NvExecutionProvider() {
   if (!external_stream_ && stream_ != nullptr) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
-  ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 
   if (alloc_ != nullptr) {
     // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
@@ -1344,13 +1276,6 @@ nvinfer1::IBuilder* NvExecutionProvider::GetBuilder(TensorrtLogger& trt_logger) 
     }
   }
   return builder_.get();
-}
-
-void NvExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
-  auto status = CreateTensorRTCustomOpDomainList(custom_op_domain_list, info_.extra_plugin_lib_paths);
-  if (status != Status::OK()) {
-    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to get TRT plugins from TRT plugin registration.";
-  }
 }
 
 // Check the graph is the subgraph of control flow op
@@ -2869,16 +2794,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     if (dump_ep_context_model_) {
       // "ep_cache_context" node attribute should be a relative path to context model directory
 
-      std::string cache_path = "";
-      // Customize cache prefix if assigned
-      if (!cache_prefix_.empty()) {
-        // Generate cache suffix in case user would like to customize cache prefix
-        cache_path = GetCachePath(cache_path_, cache_prefix_) + fused_node.Name() + ".engine";
-        ;
-      } else {
-        cache_path = GetCachePath(cache_path_, fused_node.Name()) + ".engine";
-        ;
-      }
+      std::string cache_path = GetCachePath(cache_path_, fused_node.Name()) + ".engine";
       // NV TRT EP per default generates hardware compatible engines for any RTX device with compute capability > 80
       std::string compute_capability_hw_compat = "80+";
       if (!ep_context_model_) {
@@ -2973,9 +2889,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
           input_shape_ranges_[context->node_name], &tensorrt_mu_,
           engine_cache_enable_, cache_path_,
           runtime_.get(), profiles_[context->node_name],
-          engine_decryption_enable_, engine_decryption_, engine_encryption_,
           detailed_build_log_, sparsity_enable_,
-          auxiliary_streams_, cuda_graph_enable_, is_dynamic_shape_context, cache_prefix_};
+          auxiliary_streams_, cuda_graph_enable_, is_dynamic_shape_context};
     *state = p.release();
     return 0;
   };
@@ -3525,8 +3440,8 @@ void NvExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& s
                             true /* release_cpu_buffer_on_cuda_stream */,
                             stream_,
                             external_stream_ /* use_existing_stream */,
-                            external_cudnn_handle_,
-                            external_cublas_handle_,
+                            nullptr,
+                            nullptr,
                             {});
 }
 
