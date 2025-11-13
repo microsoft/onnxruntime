@@ -210,9 +210,9 @@ MlasDynamicQGemmBatch (
     MLAS_THREADPOOL* ThreadPool
 ) {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //No fallback and putting in guards
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
-    ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+    //No fallback and putting in guards. This implementation is SME2 specific.
+    if(ArmKleidiAI::UseSME2){
+        ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
     }
 #endif
 
