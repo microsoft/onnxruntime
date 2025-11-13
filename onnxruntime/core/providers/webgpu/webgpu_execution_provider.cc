@@ -945,6 +945,7 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
   }
 
   if (node_domain == kOnnxDomain && node_op_type == "InstanceNormalization") {
+    // WebGPU backend already support not nhwc format, it's not necessary to add convert layout.
     return false;
   }
 
