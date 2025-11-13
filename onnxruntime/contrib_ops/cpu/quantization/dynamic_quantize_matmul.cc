@@ -222,8 +222,14 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();
-      // TO DO: handle b_shape_.NumDimensions() > 2 and all dimension values but the last two being 1.
-      if (!(b_shape_.NumDimensions() == 2 || (b_shape_.NumDimensions() == 3 && b_shape_[0] == 1))) {
+      if (b_shape_.NumDimensions() >= 2) {
+        for (size_t i = 0; i < (b_shape_.NumDimensions() - 2); ++i) {
+          if (b_shape_[i] != 1) {
+            can_use_dynamic_quant_mlas_ = false;
+            break;
+          }
+        }
+      } else {
         can_use_dynamic_quant_mlas_ = false;
       }
 
@@ -302,8 +308,10 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   int GetBIdx() const override { return IN_B; }
 
  private:
+  // Indicates when MlasDynamicQGemmBatch() can be used
   bool can_use_dynamic_quant_mlas_{false};
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+  // Indicates that the biases are a constant input and thus already quantized / packed
   bool dynamic_quant_mlas_bias_data_was_packed_{false};
 #endif
 };

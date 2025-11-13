@@ -38,6 +38,7 @@ class QMoE final : public CudaKernel, public MoEBase {
                           const cudaDeviceProp& device_prop) const;
 
   int64_t expert_weight_bits_;
+  int64_t block_size_;
 };
 
 }  // namespace cuda
