@@ -71,7 +71,11 @@ jobs:
       - name: Install VC++ Redistributable x86 2015-2019
         shell: pwsh
         run: |
-          winget install --id=Microsoft.VCRedist.2015+.x86 -e
+          $vcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x86.exe"
+          $vcRedistPath = "$env:TEMP\vc_redist.x86.exe"
+          Invoke-WebRequest -Uri $vcRedistUrl -OutFile $vcRedistPath
+          Start-Process -FilePath $vcRedistPath -ArgumentList '/install', '/quiet', '/norestart' -Wait
+          Remove-Item $vcRedistPath
 
       - name: verify dotnet installation
         shell: cmd
