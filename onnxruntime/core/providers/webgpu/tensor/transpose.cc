@@ -167,7 +167,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
     // performance.
     //
     // TODO: Revert this change once the driver issue is fixed.
-    if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+    if (context.AdapterInfo().vendor == std::string_view{"intel"} && rank == 4) {
       uint32_t dispatch_size = dispatch_x;
       dispatch_x = 4;
       dispatch_y = 8;
