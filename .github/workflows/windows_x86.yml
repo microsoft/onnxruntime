@@ -67,6 +67,20 @@ jobs:
         env:
           PROCESSOR_ARCHITECTURE: x86 # x86 .NET
 
+      # Create global.json to pin .NET SDK version and ensure consistency with setup-dotnet
+      # This prevents issues with different SDK versions being picked up during build
+      - name: Create global.json
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          $globalJson = @{
+            sdk = @{
+              version = "8.0.100"
+              rollForward = "latestMinor"
+            }
+          } | ConvertTo-Json
+          $globalJson | Out-File -FilePath "global.json" -Encoding utf8
+
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@v2
         with:
@@ -76,6 +90,18 @@ jobs:
         shell: cmd
         run: |
           nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\RelWithDebInfo -ConfigFile ${{ github.workspace }}\NuGet.config
+
+      - name: Create global.json
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          $globalJson = @{
+            sdk = @{
+              version = "8.0.100"
+              rollForward = "latestMinor"
+            }
+          } | ConvertTo-Json
+          $globalJson | Out-File -FilePath "global.json" -Encoding utf8
 
       - name: Build and Test
         shell: pwsh

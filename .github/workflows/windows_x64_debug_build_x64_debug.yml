@@ -82,6 +82,18 @@ jobs:
           path: ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
+      - name: Create global.json
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          $globalJson = @{
+            sdk = @{
+              version = "8.0.100"
+              rollForward = "latestMinor"
+            }
+          } | ConvertTo-Json
+          $globalJson | Out-File -FilePath "global.json" -Encoding utf8
+
       - name: Build and Test
         shell: pwsh
         run: |
