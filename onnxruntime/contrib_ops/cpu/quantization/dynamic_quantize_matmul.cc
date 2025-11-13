@@ -213,7 +213,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         }
       }
 
-      // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
+      // Currently, MlasDynamicQGemmBatch() and associated functions require SME2 or else they are no-ops.
       // We check that here too before attempting to use them.
       if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME2()) {
         can_use_dynamic_quant_mlas_ = false;
