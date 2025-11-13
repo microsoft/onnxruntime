@@ -2348,9 +2348,10 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         }
 #else
         if (load_user_initializer_) {
-          LOGS_DEFAULT(VERBOSE) << "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto. 
-                                   "Initializer data will be included in model proto.;
-              load_user_initializer_ = false;
+          std::string warning_msg = "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto."
+                                    "Initializer data will be included in model proto.";
+          LOGS_DEFAULT(WARNING) << warning_msg;
+          load_user_initializer_ = false;
         }
 #endif
 
@@ -3159,9 +3160,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       status = CreateNodeComputeInfoFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     }
     if (status != Status::OK()) {
+      initializer_values_.clear();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
     }
   }
+
+  // Release the OrtValues that are cached in TRT EP
+  initializer_values_.clear();
+
   return Status::OK();
 }
 
@@ -3186,9 +3192,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 #else
   if (load_user_initializer_) {
-    LOGS_DEFAULT(VERBOSE) << "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto. 
-                             "Initializer data will be included in model proto.;
-        load_user_initializer_ = false;
+    std::string warning_msg =
+        "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto."
+        "Initializer data will be included in model proto.";
+    LOGS_DEFAULT(WARNING) << warning_msg;
+    load_user_initializer_ = false;
   }
 #endif
 

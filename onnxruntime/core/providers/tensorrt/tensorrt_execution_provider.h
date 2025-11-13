@@ -369,7 +369,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
   std::vector<nvinfer1::PreviewFeature> preview_features_;
-  bool load_user_initializer_ = false;
+  mutable bool load_user_initializer_ = false;
 
   // Cache initializer's external data as an OrtValue
   mutable std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;

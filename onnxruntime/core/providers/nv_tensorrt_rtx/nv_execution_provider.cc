@@ -2506,9 +2506,14 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
       status = CreateNodeComputeInfoFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     }
     if (status != Status::OK()) {
+      initializer_values_.clear();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
     }
   }
+
+  // Release the OrtValues that are cached in TRT EP
+  initializer_values_.clear();
+
   return Status::OK();
 }
 
