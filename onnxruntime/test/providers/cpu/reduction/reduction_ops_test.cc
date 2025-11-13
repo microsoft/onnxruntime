@@ -4127,14 +4127,9 @@ TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer_opset_18) {
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {0}, {}, true);
   test.AddOutput<float>("reduced", {1, 2, 2}, {1.0f, 4.0f, 9.0f, 16.0f});
-
-  test.Run(
-      OpTester::ExpectResult::kExpectSuccess,
-      "",
-      {kTensorrtExecutionProvider,
-       kOpenVINOExecutionProvider,
-       kDnnlExecutionProvider,
-       kDmlExecutionProvider});
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_empty_axes_input_initializer_opset_18) {
