@@ -7,7 +7,6 @@
  * - `kDeviceId`: Specifies the GPU device ID to use.
  * - `kHasUserComputeStream`: Indicates whether a user-provided compute stream is used.
  * - `kUserComputeStream`: Specifies the user-provided compute stream.
- * - `kHasUserAuxStreamArray`: Indicates whether a user-provided aux stream is used.
  * - `kUserAuxStreamArray`: Specifies the user-provided aux stream.
  * - `kMaxWorkspaceSize`: Sets the maximum workspace size for GPU memory allocation.
  * - 'kMaxSharedMemSize': Sets the maximum amount of shared memory that TensorRT kernels are allowed to use
@@ -27,7 +26,6 @@ namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
 constexpr const char* kUserComputeStream = "user_compute_stream";
-constexpr const char* kHasUserAuxStreamArray = "has_user_aux_stream_array";
 constexpr const char* kUserAuxStreamArray = "user_aux_stream_array";
 constexpr const char* kMaxWorkspaceSize = "nv_max_workspace_size";
 constexpr const char* kMaxSharedMemSize = "nv_max_shared_mem_size";
