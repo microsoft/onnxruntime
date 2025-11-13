@@ -6,7 +6,10 @@
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('OnnxruntimeModuleExample', () => {
+  let platform;
+
   beforeAll(async () => {
+    platform = device.getPlatform();
     await device.launchApp();
   });
 
@@ -16,27 +19,39 @@ describe('OnnxruntimeModuleExample', () => {
 
   it('MNIST test inference result should be correct', async () => {
     // Tap MNIST test button
-    await element(by.text('MNIST Test')).tap();
+    if (platform === 'android') {
+      await element(by.label('mnist-test-button')).tap();
+    } else {
+      await element(by.text('MNIST Test')).tap();
+    }
 
     await delay(500);
 
     // Check the inference result
-    if (device.getPlatform() === 'ios') {
+    if (platform === 'ios') {
       await expect(element(by.label('output')).atIndex(1)).toHaveText('Result: 3');
     }
-    if (device.getPlatform() === 'android') {
+    if (platform === 'android') {
       await expect(element(by.label('output'))).toHaveText('Result: 3');
     }
   });
 
   it('Basic Types test should run successfully', async () => {
     // Tap Basic Types test button
-    await element(by.text('Basic Types Test')).tap();
+    if (platform === 'android') {
+      await element(by.label('basic-types-test-button')).tap();
+    } else {
+      await element(by.text('Basic Types Test')).tap();
+    }
 
     await delay(500);
 
     // Run the tests
-    await element(by.text('Run All Tests')).tap();
+    if (platform === 'android') {
+      await element(by.label('run-tests-button')).tap();
+    } else {
+      await element(by.text('Run All Tests')).tap();
+    }
     await delay(500);
 
     // Check have no error
