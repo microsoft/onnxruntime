@@ -935,17 +935,15 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
                                                                           std::string_view node_op_type,
                                                                           DataLayout target_data_layout) const {
-  if (target_data_layout != DataLayout::NHWC) {
-    return std::nullopt;
-  }
-
   // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
   if (node_domain == kOnnxDomain && node_op_type == "Resize") {
-    return false;
+    if (target_data_layout != DataLayout::NHWC) {
+      return false;
+    }
   }
 
+  // Both NHWC and NCHW are supported for InstanceNormalization, so it don't need to convert layout for it.
   if (node_domain == kOnnxDomain && node_op_type == "InstanceNormalization") {
-    // WebGPU backend already support not nhwc format, it's not necessary to add convert layout.
     return false;
   }
 
