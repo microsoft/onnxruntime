@@ -67,6 +67,12 @@ jobs:
         env:
           PROCESSOR_ARCHITECTURE: x86 # x86 .NET
 
+      - name: verify dotnet sdk
+        shell: pwsh
+        run: |
+          # list all files and folders under C:\Program Files\dotnet\
+          Get-ChildItem -Path "C:\Program Files\dotnet\" -Recurse
+
       # Create global.json to pin .NET SDK version and ensure consistency with setup-dotnet
       # This prevents issues with different SDK versions being picked up during build
       - name: Create global.json
