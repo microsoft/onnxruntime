@@ -478,9 +478,9 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
 
     d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
     d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
-    d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
+    //d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
 
-    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+    //d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512;
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum512;

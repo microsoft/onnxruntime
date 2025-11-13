@@ -15,7 +15,7 @@ module includes kernel functions for generating LUT for T-MAC GEMM optimization 
 /** T-MAC GEMM kernel Config */
 static std::unordered_map<std::string, struct MlasTMACKernelParams> tmac_kernel_configs;
 
-const MlasTMACKernelParams& GetTMACKernelParams(size_t M, size_t N, size_t nbits) {
+const MlasTMACKernelParams& MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits) {
     std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits);
     if (tmac_kernel_configs.count(key)) {
         return tmac_kernel_configs[key];
@@ -24,7 +24,7 @@ const MlasTMACKernelParams& GetTMACKernelParams(size_t M, size_t N, size_t nbits
     }
 }
 
-void InitTMACKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zp_point) {
+void MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zp_point) {
     std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits);
     if (tmac_kernel_configs.count(key)) {
         return;
@@ -100,10 +100,176 @@ void InitTMACKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, b
     return;
 }
 
-void MlasTMACPackScalesAndZeroPoints(
+
+size_t MlasLUTGemmPackQuantBDataSize(
     size_t N,
     size_t K,
-    size_t BitWidth,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(ComputeType);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth);
+    const size_t PackedQuantBDataSize = (N * BlkBitWidth) * (K / tmac_params.g / tmac_params.ngroups_per_elem);
+    return PackedQuantBDataSize;
+}
+
+
+void
+MlasLUTGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    // decompose W into w1,... w_bits create temp buffer buf2 of size N * bits * (K/g)
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth);
+    const size_t bits = tmac_params.bits;
+    const size_t g = tmac_params.g;
+    const size_t ngroups_per_elem = tmac_params.ngroups_per_elem;
+    const size_t simd_n_in = tmac_params.simd_n_in;
+    const size_t simd_n_out = tmac_params.simd_n_out;
+    const size_t bm = tmac_params.bm;
+    const size_t kfactor = tmac_params.kfactor;
+
+    assert(BlkLen % g == 0);
+    assert((BlkLen / g) % kfactor == 0);
+
+    const int mgroup = ngroups_per_elem * simd_n_in;  // 32
+    assert(bm % mgroup == 0);
+    assert(bm % bits == 0);
+
+    uint8_t* buf = new uint8_t[N * bits * (K / g)];
+    memset(buf, 0, N * bits * (K / g));
+
+    const size_t Iterations = N;  // we parallelize over N, TODO:: tune if needed
+
+    MlasTrySimpleParallel(
+        ThreadPool, Iterations,
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
+            for (size_t ik = 0; ik < K; ++ik) {
+                size_t idx = (im * K + ik);
+                size_t num_elem_per_byte = 8 / bits;
+                size_t elem_idx = idx % num_elem_per_byte;
+
+                uint8_t v = ((const uint8_t*)QuantBDataBegin)[idx / num_elem_per_byte] >> (elem_idx * bits);
+
+                for (size_t ib = 0; ib < bits; ++ib) {
+                    size_t new_ik = ik / g;
+                    size_t shft_left = ik % g;
+                    buf[im * bits * K / g + ib * K / g + new_ik] += ((v >> ib) & 1) << shft_left;
+                }
+            }
+        }
+    );
+
+    // Now buf contains the bit planes grouped by g along K
+    // Next, we need to do a multi-reshape/transpose into the final layout
+
+    const size_t c0_fac2 = K / g;
+    const size_t c0_fac1 = simd_n_out * c0_fac2;
+    const size_t c0_fac0 = bits * c0_fac1;
+
+    const size_t c1_nb2 = K / g;
+    const size_t c1_nb1 = simd_n_in * c1_nb2;
+    const size_t c1_nb0 = ngroups_per_elem * c1_nb1;
+    const size_t c1_fac2 = K / g;
+    const size_t c1_fac1 = ngroups_per_elem * c1_fac2;
+    const size_t c1_fac0 = simd_n_in * c1_fac1;
+
+    const size_t c2_nb4 = kfactor;
+    const size_t c2_nb3 = K / g / kfactor * c2_nb4;
+    const size_t c2_nb2 = ngroups_per_elem * c2_nb3;
+    const size_t c2_nb1 = simd_n_in * c2_nb2;
+    const size_t c2_nb0 = bm / mgroup * c2_nb1;
+    const size_t c2_fac3 = simd_n_in * ngroups_per_elem;
+    const size_t c2_fac2 = kfactor * c2_fac3;
+    const size_t c2_fac1 = bm / mgroup * c2_fac2;
+    const size_t c2_fac0 = K / g / kfactor * c2_fac1;
+
+    const size_t PackedQuantBDataSize = (N * bits) * (K / g / ngroups_per_elem);
+    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);  // TODO: is this needed?
+
+    MlasTrySimpleParallel(
+        ThreadPool, Iterations,
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
+            for (size_t ib = 0; ib < bits; ib++) {
+                for (size_t ik = 0; ik < K / g; ik++) {
+                    // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
+                    size_t new_im = im / simd_n_out;
+                    size_t new_isno = im % simd_n_out;
+                    size_t new_ib = ib;
+                    size_t new_ik = ik;
+                    size_t new_idx = new_im * c0_fac0 + new_ib * c0_fac1 + new_isno * c0_fac2 + new_ik;
+
+                    // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
+                    new_im = new_idx / c1_nb0;
+                    size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
+                    size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
+                    new_ik = (new_idx % c1_nb2);
+                    new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
+
+                    // #             0        1             2             3                 4                  5
+                    // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
+                    new_im = new_idx / c2_nb0;
+                    size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
+                    new_isni = (new_idx % c2_nb1) / c2_nb2;
+                    new_ing = (new_idx % c2_nb2) / c2_nb3;
+                    new_ik = (new_idx % c2_nb3) / c2_nb4;
+                    size_t new_ikf = (new_idx % c2_nb4);
+                    new_idx = new_im * c2_fac0 +
+                              new_ik * c2_fac1 +
+                              new_ibm * c2_fac2 +
+                              new_ikf * c2_fac3 +
+                              new_isni * ngroups_per_elem +
+                              new_ing;
+                    new_idx = new_idx / ngroups_per_elem;
+                    size_t buf_idx = im * bits * K / g + ib * K / g + ik;
+                    uint8_t buf_val = buf[buf_idx];
+
+                    // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
+                    PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
+                        static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
+                        (buf_val << (new_ing * g))
+                    );
+                }
+            }
+        }
+    );
+    delete[] buf;
+
+}
+
+
+size_t MLASCALL
+MlasLUTPackScalesAndZeroPointsSize(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    bool HasZeroPoint
+)
+{
+    // TODO(vraspar): support one scale case
+    if (HasZeroPoint) {
+        return N * K / BlkLen * 2;
+    } else {
+        return N * K / BlkLen;
+    }
+}
+
+
+void MlasLUTPackScalesAndZeroPoints(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
     float* PackedQuantBZPBegin,
@@ -111,7 +277,7 @@ void MlasTMACPackScalesAndZeroPoints(
     const uint8_t* QuantBZeroPoint
 )
 {
-    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(N, K, BitWidth);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth);
     const size_t bits = tmac_params.bits;
     const size_t simd_n_out = tmac_params.simd_n_out;
     const size_t bm = tmac_params.bm;
@@ -170,7 +336,7 @@ void MlasTMACPackScalesAndZeroPoints(
 }
 
 
-bool MLASCALL MlasIsTMACAvailable(
+bool MLASCALL MlasIsLUTGemmAvailable(
     size_t /*BlkBitWidth*/,
     size_t /*BlkLen*/
 ) // TODO(Vraspar): fix the below to use smthg besides the gen kernel, add ComputeGemm
@@ -180,20 +346,6 @@ bool MLASCALL MlasIsTMACAvailable(
     // return Dispatch != nullptr && BlkLen == 4; // only support group sizes of 4 for now
 }
 
-size_t MLASCALL MlasTMACPackQuantScalesAndZeroPointsSize(
-    size_t N,
-    size_t K,
-    size_t BlkLen,
-    bool HasZeroPoint
-)
-{
-    // TODO(vraspar): support one scale case
-    if (HasZeroPoint) {
-        return N * K / BlkLen * 2;
-    } else {
-        return N * K / BlkLen;
-    }
-}
 
 size_t
 CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params) {
@@ -210,7 +362,7 @@ CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams&
     return wsize;
 }
 
-void MLASCALL MlasTmac(
+void MLASCALL MlasLUTGemm(
     const void* A,
     size_t BlkLen,
     const void* QuantBData,     // Quantized weights (B matrix)
@@ -250,7 +402,7 @@ void MLASCALL MlasTmac(
     // n_tiles_num = m * bits / bm;
 
     // TODO(vraspar): support other bitwidths
-    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(N, K, 2);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, 2);
     const size_t lut_scales_size = K / tmac_params.act_group_size;
     size_t lut_buffer_size = CalculateLUTBufferSize(N, K, M, tmac_params);
 
@@ -334,7 +486,7 @@ void MLASCALL MlasTmac(
     // - otherwise: number of quantization groups = (M * K / BlkLen)
     //   and if zero-points are present each group stores (scale, zero_point) -> *2
     const size_t groups_total = static_cast<size_t>(M) * static_cast<size_t>(K) / BlkLen;
-    const size_t scales_size_total = MlasTMACPackQuantScalesAndZeroPointsSize(
+    const size_t scales_size_total = MlasLUTPackScalesAndZeroPointsSize(
         static_cast<size_t>(N),
         static_cast<size_t>(K),
         BlkLen,

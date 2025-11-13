@@ -88,9 +88,6 @@ MlasIsQNBitGemmAvailable(
         return false;
     }
 
-    if (ComputeType == TMAC) {
-        return MlasIsTMACAvailable(BlkBitWidth, BlkLen);
-    }
 
     const auto Variant = GetQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
 
@@ -238,6 +235,7 @@ MlasQNBitGemmPackQuantBDataSize(
         );
     }
 
+    // This would be for non LUT based 2-bit gemm kernel
     if (BlkBitWidth == 2 && Dispatch->Q2BitGemmPackQuantBDataSize != nullptr) {
         return Dispatch->Q2BitGemmPackQuantBDataSize(
             N, K, BlkLen, ComputeType

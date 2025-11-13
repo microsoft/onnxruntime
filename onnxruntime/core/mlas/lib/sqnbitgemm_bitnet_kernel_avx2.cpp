@@ -203,7 +203,7 @@ void SQ2BitGemmPackQuantBData(
 
     // T-MAC like configuration (approved):
     // bits=2, g=4, ngroups_per_elem=8/g=2, simd_n_in=16, simd_n_out=8, bm=256, kfactor=16
-    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(N, K, 2);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, 2);
     const size_t bits = 2;
     const size_t g = tmac_params.g;
     const size_t ngroups_per_elem = tmac_params.ngroups_per_elem;
@@ -332,6 +332,7 @@ Q2BitGemmPerGemmWorkspaceSize(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
+    // TODO(vraspar): Wht was this function needed?
     MLAS_UNREFERENCED_PARAMETER(N);
 
     switch (ComputeType) {
@@ -665,7 +666,7 @@ void TMACComputeGemm_avx2(
     }
 
     // get kernel config
-    const MlasTMACKernelParams& tmac_params = GetTMACKernelParams(M, K, 2);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(M, K, 2);
 
 
 

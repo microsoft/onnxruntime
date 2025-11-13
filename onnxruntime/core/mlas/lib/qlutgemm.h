@@ -33,7 +33,7 @@ struct MlasTMACKernelParams {
 
 };
 
-const MlasTMACKernelParams& GetTMACKernelParams(size_t M, size_t N, size_t nbits);
+const MlasTMACKernelParams& MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits);
 
 typedef
 void(MLAS_QNBIT_GEMM_LUT_GEN)(

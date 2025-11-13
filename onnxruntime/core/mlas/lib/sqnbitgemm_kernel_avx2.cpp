@@ -1446,8 +1446,8 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
 
     d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
     d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
-    d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
-    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+    //d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
+    //d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
 
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
@@ -1475,8 +1475,8 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
 
-    d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
-    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+    //d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
+    //d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData; 
 
     d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
     d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;

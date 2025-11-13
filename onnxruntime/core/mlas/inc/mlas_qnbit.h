@@ -223,12 +223,35 @@ MlasQNBitGemmScalesPacked(
     bool HasZeroPoint
 );
 
+size_t MLASCALL
+MlasLUTGemmPackQuantBDataSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
+
+void MLASCALL
+MlasLUTGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+
 /**
  * @brief Gets the size in float of the packed quantized B scales and zero points.
  */
 
 size_t MLASCALL
-MlasTMACPackQuantScalesAndZeroPointsSize(
+MlasLUTPackScalesAndZeroPointsSize(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -239,10 +262,10 @@ MlasTMACPackQuantScalesAndZeroPointsSize(
  * @brief Packs the scales and zero points into a format that the TMAC kernel expects.
  */
 void MLASCALL
-MlasTMACPackScalesAndZeroPoints(
+MlasLUTPackScalesAndZeroPoints(
     size_t N,
     size_t K,
-    size_t BitWidth,
+    size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
     float* PackedQuantBZPBegin,
@@ -259,13 +282,13 @@ MlasTMACPackScalesAndZeroPoints(
  * MlasIsQNBitGemmAvailable by querying availability of the LUT-based strategy.
  */
 bool MLASCALL
-MlasIsTMACAvailable(
+MlasIsLUTGemmAvailable(
     size_t BlkBitWidth,
     size_t BlkLen
 );
 
 void MLASCALL
-InitTMACKernelConfig(
+MlasInitLUTGemmKernelConfig(
     size_t M,
     size_t N,
     size_t nbits,
@@ -279,7 +302,7 @@ InitTMACKernelConfig(
  * Results will be stored in C.
  */
 void MLASCALL
-MlasTmac(
+MlasLUTGemm(
     const void* A,
     size_t BlkLen,
     const void* QuantBData,
