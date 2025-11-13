@@ -3337,7 +3337,7 @@ struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
 
   KernelDefBuilder& SetOperatorType(const char* op_type);
   KernelDefBuilder& SetDomain(const char* domain);
-  KernelDefBuilder& SetSinceVersion(int since_version_start, int since_version_end = -1);
+  KernelDefBuilder& SetSinceVersion(int since_version_start, int since_version_end);
   KernelDefBuilder& SetExecutionProvider(const char* ep_name);
   KernelDefBuilder& SetInputMemType(size_t input_index, OrtMemType mem_type);
   KernelDefBuilder& SetOutputMemType(size_t output_index, OrtMemType mem_type);

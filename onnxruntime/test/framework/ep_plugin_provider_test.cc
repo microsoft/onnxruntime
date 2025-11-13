@@ -4,6 +4,7 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <filesystem>
+#include <limits>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
@@ -685,7 +686,18 @@ TEST(PluginExecutionProviderTest, KernelDefCxxApis) {
   auto check_kernel_def = [&](const KernelDef& expected, Ort::ConstKernelDef actual) -> void {
     EXPECT_EQ(expected.OpName(), actual.GetOperatorType());
     EXPECT_EQ(expected.Domain(), actual.GetDomain());
-    EXPECT_EQ(expected.SinceVersion(), actual.GetSinceVersion());
+
+    auto [expected_start, expected_end] = expected.SinceVersion();
+    auto [actual_start, actual_end] = actual.GetSinceVersion();
+
+    EXPECT_EQ(expected_start, actual_start);
+
+    if (expected_end != actual_end) {
+      // Instead of using INT_MAX, the public API just sets the start version equal to the end version.
+      EXPECT_EQ(actual_start, actual_end);
+      EXPECT_EQ(expected_end, std::numeric_limits<int>::max());
+    }
+
     EXPECT_EQ(expected.Provider(), actual.GetExecutionProvider());
     EXPECT_EQ(expected.InputMemoryType(0), actual.GetInputMemType(0));
     EXPECT_EQ(expected.InputMemoryType(1), actual.GetInputMemType(1));
@@ -704,21 +716,35 @@ TEST(PluginExecutionProviderTest, KernelDefCxxApis) {
                                                   .OutputMemoryType(OrtMemTypeCPUOutput, 1)
                                                   .Build();
 
-    Ort::ConstKernelDef actual_def(reinterpret_cast<const OrtKernelDef*>(expected_def.get()));
-    EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def));
+    Ort::KernelDefBuilder api_builder;
+    Ort::KernelDef actual_def = api_builder.SetOperatorType("Mul")
+                                    .SetDomain("TestDomain")
+                                    .SetSinceVersion(3, 13)
+                                    .SetExecutionProvider("TestOrtEp")
+                                    .SetInputMemType(0, OrtMemTypeCPUInput)
+                                    .SetInputMemType(1, OrtMemTypeCPUInput)
+                                    .SetOutputMemType(1, OrtMemTypeCPUOutput)
+                                    .Build();
+
+    EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def.GetConst()));
   }
 
-  // SinceVersion with no explicit end (defaults to -1)
+  // SinceVersion with no explicit end (defaults to start version)
   {
     KernelDefBuilder builder;
     std::unique_ptr<KernelDef> expected_def = builder.SetName("Mul")
                                                   .SetDomain("TestDomain")
                                                   .Provider("TestOrtEp")
-                                                  .SinceVersion(3)  // end should default to -1
+                                                  .SinceVersion(3)  // end should default to INT_MAX (means not set)
                                                   .Build();
 
-    Ort::ConstKernelDef actual_def(reinterpret_cast<const OrtKernelDef*>(expected_def.get()));
-    EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def));
+    Ort::KernelDefBuilder api_builder;
+    Ort::KernelDef actual_def = api_builder.SetOperatorType("Mul")
+                                    .SetDomain("TestDomain")
+                                    .SetExecutionProvider("TestOrtEp")
+                                    .SetSinceVersion(3, 3)  // start == end (only one version supported)
+                                    .Build();
+    EXPECT_NO_FATAL_FAILURE(check_kernel_def(*expected_def, actual_def.GetConst()));
   }
 }
 

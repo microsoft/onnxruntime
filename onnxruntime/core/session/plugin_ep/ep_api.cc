@@ -311,6 +311,17 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* 
                     _In_ int since_version_start, _In_ int since_version_end) {
   API_IMPL_BEGIN
   auto builder = reinterpret_cast<onnxruntime::KernelDefBuilder*>(kernel_def_builder);
+
+  // start version must be >= 1
+  if (since_version_start < 1) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Start version must be >= 1");
+  }
+
+  // end version must >= start version
+  if (since_version_end < since_version_start) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "End version must be >= to the start version");
+  }
+
   builder->SinceVersion(since_version_start, since_version_end);
   return nullptr;
   API_IMPL_END

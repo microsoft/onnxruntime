@@ -636,7 +636,8 @@ struct OrtEpApi {
    * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
    * \param[in] since_version_start The starting opset version that is supported.
    * \param[in] since_version_end The ending opset version (inclusive) that is supported.
-   *                              Set to -1 to indicate that end_version equals the start_version.
+   *                              Can be set equal to the starting version to indicate that only one
+   *                              version is supported.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -775,7 +776,6 @@ struct OrtEpApi {
    * \param[in] kernel_def The OrtKernelDef instance.
    * \param[out] version_start Output parameter set to the starting opset version that is supported.
    * \param[out] version_end Output parameter set to the ending opset version (inclusive) that is supported.
-   *                         Is set to -1 to indicate that end_version equals the start_version.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
