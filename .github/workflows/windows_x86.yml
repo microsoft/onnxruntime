@@ -91,21 +91,11 @@ jobs:
         run: |
           nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\RelWithDebInfo -ConfigFile ${{ github.workspace }}\NuGet.config
 
-      - name: Create global.json
-        shell: pwsh
-        working-directory: ${{ github.workspace }}
-        run: |
-          $globalJson = @{
-            sdk = @{
-              version = "8.0.100"
-              rollForward = "latestMinor"
-            }
-          } | ConvertTo-Json
-          $globalJson | Out-File -FilePath "global.json" -Encoding utf8
-
       - name: Build and Test
         shell: pwsh
         run: |
+          where.exe dotnet
+          dotnet --version
           python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --compile_no_warning_as_error --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE

@@ -92,7 +92,7 @@ jobs:
       # This prevents issues with different SDK versions being picked up during build
       - name: Create global.json
         shell: pwsh
-        working-directory: ${{ runner.temp }}
+        working-directory: ${{ github.workspace }}
         run: |
           $globalJson = @{
             sdk = @{
