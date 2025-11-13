@@ -313,14 +313,6 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
       use_override_shape{true},
       override_shape{override_shape} {}
 
-ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component, ProgramOutput::AtomicTag)
-    : tensor{tensor},
-      dependency{dependency},
-      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
-      is_atomic{true},
-      use_override_shape{true},
-      override_shape{override_shape} {}
-
 ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
     : name_{name},
       metadata_{metadata},

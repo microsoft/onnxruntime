@@ -16,8 +16,6 @@ namespace webgpu {
 
 class SplitKConfig {
  public:
-  SplitKConfig() = default;
-
   static SplitKConfig GetSplitKConfig(const ComputeContext& context);
 
   bool UseSplitK(
@@ -36,15 +34,13 @@ class SplitKConfig {
 };
 
 Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
-                     SplitKConfig split_k_config = SplitKConfig(),
                      const TensorShape& input_a_reshape = TensorShape(),
                      const TensorShape& input_b_reshape = TensorShape());
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
-    const TensorShape& input_a_shape,
-    const TensorShape& input_b_shape);
+    const TensorShape& output_shape_vec4);
 
 class MatMul final : public WebGpuKernel {
  public:

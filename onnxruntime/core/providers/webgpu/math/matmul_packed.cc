@@ -68,7 +68,7 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
 
   shader.MainFunctionBody() << R"(
   let output_components = 4;
-  let output_id = i32(global_id.x);
+  let output_id = i32(global_idx);
 
   let dim_a_outer = i32(uniforms.dim_a_outer);
   let dim_b_outer = i32(uniforms.dim_b_outer) / output_components;
