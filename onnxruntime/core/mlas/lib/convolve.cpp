@@ -15,6 +15,9 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 
 //
 // Define the number of working buffer elements required per thread.
@@ -956,6 +959,25 @@ Return Value:
 
     const MLAS_CONV_ALGORITHM Algorithm = Parameters->Algorithm;
 
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (Algorithm == MlasConvAlgorithmExpandThenGemmSegmented &&
+        DepthwiseConvKleidiAISupported(Parameters) &&
+        DepthwiseConvKleidiAI(BatchCount,
+                              Parameters->InputShape[0],
+                              Parameters->InputShape[1],
+                              Parameters->GroupCount * Parameters->InputChannels,
+                              Parameters->KernelShape[0],
+                              Parameters->KernelShape[1],
+                              Input,
+                              Filter,
+                              Bias,
+                              Output,
+                              0.0f,
+                              6.0f)) {
+        return;
+    }
+#endif
+
     //
     // Schedule batches of GEMMs across multiple threads.
     //
@@ -1411,8 +1433,8 @@ Return Value:
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
-            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K, 
-                                                          Parameters->FilterCount * Parameters->OutputSize, 
+            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K,
+                                                          Parameters->FilterCount * Parameters->OutputSize,
                                                           static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
             TargetThreadCount = MaximumThreadCount;
             if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
