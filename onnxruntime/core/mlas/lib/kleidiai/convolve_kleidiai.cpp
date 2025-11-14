@@ -488,7 +488,7 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     auto nhwc = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
 
-    // Cache of computed lhs ptr offsets.  thread_local to prevent interference from parallel sessions.
+    // Cache of computed lhs ptr offsets. thread_local to prevent interference from parallel sessions.
     thread_local std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
 
     std::shared_ptr<const void*[]> lhs_ptrs;
