@@ -57,20 +57,13 @@ OrtStatus* WebGpuEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* co
   return nullptr;
 }
 
-/* TODO: Implement CreateAllocator and CreateDataTransfer to support shared allocators and data transfer outside of
-         an InferenceSession.
-OrtStatus* WebGpuEpFactory::CreateAllocator(const OrtMemoryInfo* memory_info,
-                           const OrtKeyValuePairs* allocator_options,
-                           OrtAllocator** allocator) noexcept override {
-  *allocator = device_allocators[memory_info->device.Id()].get();
-}
-
-OrtStatus* WebGpuEpFactory::CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) override {
-  // TODO: Wrap the IDataTransfer implementation so we can copy to device using OrtApi CopyTensors.
-  *data_transfer = nullptr;
+OrtStatus* WebGpuEpFactory::CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) noexcept {
+  // Call the WebGPU provider's C API to create the data transfer
+  // This is implemented in the WebGPU provider backend which has access to WebGPU headers
+  *data_transfer = OrtWebGpuCreateDataTransfer(0);  // Use default context (context_id=0)
   return nullptr;
 }
-*/
+
 }  // namespace onnxruntime
 
 #endif  // USE_WEBGPU
