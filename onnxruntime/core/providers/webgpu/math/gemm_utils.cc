@@ -13,7 +13,7 @@ namespace webgpu {
 // which are used in the MatMulWriteFnSource function.
 namespace {
 
-void HanldeMaybeHaveBiasForGEMM(ShaderHelper& shader,
+void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 bool has_bias,
                                 int c_components,
@@ -210,7 +210,7 @@ void MatMulWriteFnSource(ShaderHelper& shader,
     ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled.");
     HandleMatMulWithSplitK(shader, output_variable_type);
   } else if (is_gemm) {
-    HanldeMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);
+    HandleMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);
   } else {
     HandleMaybeBiasForMatMul(shader, output, has_bias, activation_snippet, is_channels_last);
   }
