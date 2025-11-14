@@ -57,7 +57,7 @@ static std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtMemoryInfo& mem_i
     return data_transfer;
   }
 
-  if (mem_info.device.Type() == OrtDevice::GPU && mem_info.device.Vendor() == OrtDevice::NVIDIA) {
+  if (mem_info.device.Type() == OrtDevice::GPU && mem_info.device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     auto* cuda_provider_info = TryGetProviderInfo_CUDA();
     if (cuda_provider_info != nullptr) {
