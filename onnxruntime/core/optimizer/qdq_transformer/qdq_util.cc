@@ -207,12 +207,12 @@ bool IsQOrDQScalePositiveConstantScalar(
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 bool MatchQNode(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13, 19, 21, 23, 24}) ||
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13, 19, 21, 23, 24, 25}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {1}, kMSDomain);
 }
 
 bool MatchDQNode(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13, 19, 21, 23, 24}) ||
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13, 19, 21, 23, 24, 25}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {1}, kMSDomain);
 }
 

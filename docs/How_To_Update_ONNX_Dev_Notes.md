@@ -34,6 +34,7 @@ git add onnx
 
 1. Modify [cmake/vcpkg-ports/onnx/binskim.patch](/cmake/vcpkg-ports/onnx/binskim.patch) to be the same as [cmake/patches/onnx/onnx.patch](/cmake/patches/onnx/onnx.patch).
 2. The other patches are required/created by vcpkg repository to build ONNX. We just need to re-run diff to makes sure the patches can be applied in the updated ONNX version.
+   a. VCPKG relies these patches to build ONNX.
 3. Update [cmake/vcpkg-ports/onnx/portfile.cmake](/cmake/vcpkg-ports/onnx/portfile.cmake) with the correct commit id and SHA512. (alternatively, build it with the wrong SHA and ORT should tell you the expected one.)
 4. Upload your package: [Follow the instructions](https://microsoft.sharepoint.com/:o:/r/teams/ONNX2/_layouts/15/Doc.aspx?sourcedoc=%7B170774BE-E1C6-4F8B-A3AE-984F211FE410%7D&wd=target(Development.one%7C63D3AB47-51D1-4A62-9965-66882234BD44%2FUpdate%20a%20VCPKG%20package%7CB6AE6A97-94FC-4436-8FC6-08C21AE895DA%2F)&wdpartid=%7BB5CF19CC-40FE-0EC7-32B6-8119B427B32A%7D%7B1%7D&wdsectionfileid=%7B9DD25660-A195-48EA-B9E0-DF8B902AFDD7%7D&ovuser=72f988bf-86f1-41af-91ab-2d7cd011db47%2Ctitaiwang%40microsoft.com&clickparams=eyJBcHBOYW1lIjoiVGVhbXMtRGVza3RvcCIsIkFwcFZlcnNpb24iOiI0OS8yNTA5MTExNjAxNiIsIkhhc0ZlZGVyYXRlZFVzZXIiOmZhbHNlfQ%3D%3D&CID=fb9dcaa1-c0b5-1000-5597-c19e3adf468c&cidOR=SPO)one%7C63d3ab47-51d1-4a62-9965-66882234bd44%2FAdd%20or%20Update%20a%20C%2B%2B%20dependency%7Cb6ae6a97-94fc-4436-8fc6-08c21ae895da%2F%29&wdorigin=NavigationUrl
 
