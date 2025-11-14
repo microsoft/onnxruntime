@@ -37,11 +37,10 @@ If attributes.activation is set the NhwcFusedConv contrib op is used.
 If you are adding support for a new EP to the test and the EP does not support NhwcFusedConv
 please add the EP to the excluded_providers list.
 */
-template <typename T>
 void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     const vector<vector<MLFloat16>>& inputs,
                     const vector<vector<int64_t>>& input_shapes,
-                    const T& expected_output,
+                    const vector<MLFloat16>& expected_output,
                     const vector<int64_t>& expected_output_shape,
                     bool weight_is_initializer = false,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
@@ -1150,7 +1149,7 @@ TEST(ConvFp16Test, ConvDimWithZero) {
   vector<int64_t> W_shape = {2, 2, 1, 1};
   vector<int64_t> out_shape = {0, 2, 4, 4};
 
-  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, vector<MLFloat16>(), out_shape);
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape);
 }
 
 TEST(ConvFp16Test, Conv1D_asymmetric_padding) {

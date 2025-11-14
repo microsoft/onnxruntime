@@ -21,11 +21,10 @@ struct ConvOpAndTestAttributes {
   std::unordered_set<std::string> excluded_providers;
 };
 
-template <typename T>
 void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const vector<vector<float>>& inputs,
                 const vector<vector<int64_t>>& input_shapes,
-                const T& expected_output,
+                const vector<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
                 bool weight_is_initializer = false,
                 optional<float> epsilon = optional<float>(),
@@ -1136,7 +1135,7 @@ TEST(ConvTest, ConvDimWithZero) {
   // not handled by ACL
   attrs.excluded_providers.insert(kAclExecutionProvider);
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, vector<float>(), out_shape, false, optional<float>(),
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, optional<float>(),
              OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
 
