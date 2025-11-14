@@ -5,7 +5,6 @@
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
-#include <optional>
 #include <utility>
 
 #include "core/framework/execution_provider.h"
