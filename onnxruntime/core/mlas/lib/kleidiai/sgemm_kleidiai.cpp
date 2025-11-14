@@ -180,7 +180,7 @@ ArmKleidiAI::MlasFp32Gemv(
                     g_kai_tls.rhs_packed.data());
                 rhs_packed_ptr = g_kai_tls.rhs_packed.data();
             }
-            // We have to handle the case where we transpose the data to the correct format as we used a traspose packing kernel
+            // We have to handle the case where we transpose the data to the correct format as we used a transpose packing kernel
             if (N == 1 && TransB == CblasNoTrans)
             {
                 g_kai_tls.gemv_lhs_row_tmp.resize(K);
