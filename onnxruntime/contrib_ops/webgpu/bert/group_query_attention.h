@@ -46,10 +46,9 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
 
 class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, bool use_seqlen_k, bool prepare_indirect_dispatch)
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, bool prepare_indirect_dispatch)
       : Program{"SplitPackedQKVWithRotaryEmbeddingAndCopyKV"},
         interleaved_(interleaved),
-        use_seqlen_k_(use_seqlen_k),
         prepare_indirect_dispatch_(prepare_indirect_dispatch) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -68,7 +67,6 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
 
  private:
   const bool interleaved_;
-  const bool use_seqlen_k_;
   const bool prepare_indirect_dispatch_;
 };
 

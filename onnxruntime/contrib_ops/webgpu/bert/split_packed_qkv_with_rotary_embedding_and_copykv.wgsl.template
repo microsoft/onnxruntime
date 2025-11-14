@@ -1,5 +1,4 @@
 #param interleaved
-#param use_seqlen_k
 #param prepare_indirect_dispatch
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
@@ -28,11 +27,8 @@ $MAIN {
   // Calculate position_id (needed for rotary embedding)
   let seqlen_i = seqlens.getByOffset(batch_idx);
   let seqlen = u32(seqlen_i);
-#if use_seqlen_k
-  let total_seqlen = u32(seqlens_k[0u]) + 1u;
-#else
   let total_seqlen = seqlen + 1u;
-#endif
+
   let past_seqlen = total_seqlen - uniforms.sequence_length;
   // `position_id` is used to get cos/sin cache and also as the time step index in present_key/present_value
   let position_id = past_seqlen + seq_idx;
@@ -54,7 +50,7 @@ $MAIN {
 
     // Calculate actual indices in the head for i and j
 #if interleaved
-    let idx_i = in_head_idx;
+    let idx_i = in_head_idx + in_head_idx;
     let idx_j = in_head_idx + 1u;
 #else
     let idx_i = in_head_idx;

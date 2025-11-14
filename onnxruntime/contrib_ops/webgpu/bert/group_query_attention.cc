@@ -69,10 +69,6 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
   const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
 
-  if (use_seqlen_k_) {
-    sh.AddInput("seqlens_k", ShaderUsage::None);
-  }
-
   const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
   const auto& present_key = sh.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = sh.AddOutput("present_value", ShaderUsage::UseUniform);
@@ -98,8 +94,8 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
   SplitPackedQKVProgram program;
   auto input_size = packedQKV->Shape().Size();
   program
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank})
-      .AddOutputs({{query, ProgramTensorMetadataDependency::Rank}, {key, ProgramTensorMetadataDependency::Rank}, {val, ProgramTensorMetadataDependency::Rank}})
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddOutputs({{query, ProgramTensorMetadataDependency::TypeAndRank}, {key, ProgramTensorMetadataDependency::TypeAndRank}, {val, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddUniformVariables({
           {static_cast<uint32_t>(params.hidden_size_)},
           {static_cast<uint32_t>(params.kv_hidden_size_)},
@@ -144,15 +140,15 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
   SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_);
   program
       .CacheHint(params.rotary_interleaved_)
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank, components})
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
-          {seqlen_k, ProgramTensorMetadataDependency::Rank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank, components},
-          {sin_cache, ProgramTensorMetadataDependency::Rank, components},
+          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
+          {sin_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
       })
-      .AddOutputs({{query, ProgramTensorMetadataDependency::Rank, components},
-                   {key, ProgramTensorMetadataDependency::Rank, components},
-                   {val, ProgramTensorMetadataDependency::Rank, components}})
+      .AddOutputs({{query, ProgramTensorMetadataDependency::TypeAndRank, components},
+                   {key, ProgramTensorMetadataDependency::TypeAndRank, components},
+                   {val, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .AddUniformVariables({
           {static_cast<uint32_t>(params.sequence_length_)},
           {static_cast<uint32_t>(params.hidden_size_ / components)},
@@ -203,29 +199,22 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
   // Extract present_sequence_length from present_key tensor shape
   const uint32_t present_sequence_length = gsl::narrow_cast<uint32_t>(present_key->Shape()[2]);
 
-  // Determine if we should use graph capture features
-  const bool use_seqlen_k = (seqlen_k != nullptr && context.IsGraphCaptureEnabled());
   const bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
 
   constexpr uint32_t tile_size = 64;
 
-  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, use_seqlen_k, prepare_indirect_dispatch);
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, prepare_indirect_dispatch);
   program
-      .CacheHint(params.rotary_interleaved_, use_seqlen_k, prepare_indirect_dispatch)
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank, components})
+      .CacheHint(params.rotary_interleaved_, prepare_indirect_dispatch)
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
-          {seqlen_k, ProgramTensorMetadataDependency::Rank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank, components},
-          {sin_cache, ProgramTensorMetadataDependency::Rank, components},
+          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
+          {sin_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
       });
-
-  if (use_seqlen_k) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
-  }
-
-  program.AddOutputs({{query, ProgramTensorMetadataDependency::Rank, components},
-                      {present_key, ProgramTensorMetadataDependency::Rank, components},
-                      {present_value, ProgramTensorMetadataDependency::Rank, components}});
+  program.AddOutputs({{query, ProgramTensorMetadataDependency::TypeAndRank, components},
+                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, components},
+                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
 
   if (prepare_indirect_dispatch) {
     program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
@@ -303,15 +292,15 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   program
       .CacheHint(params.rotary_interleaved_)
       .AddInputs({
-          {query_in, ProgramTensorMetadataDependency::Rank},
-          {key_in, ProgramTensorMetadataDependency::Rank},
-          {seqlen_k, ProgramTensorMetadataDependency::Rank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank},
-          {sin_cache, ProgramTensorMetadataDependency::Rank},
+          {query_in, ProgramTensorMetadataDependency::TypeAndRank},
+          {key_in, ProgramTensorMetadataDependency::TypeAndRank},
+          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
+          {sin_cache, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .AddOutputs({
-          {query_out, ProgramTensorMetadataDependency::Rank},
-          {key_out, ProgramTensorMetadataDependency::Rank},
+          {query_out, ProgramTensorMetadataDependency::TypeAndRank},
+          {key_out, ProgramTensorMetadataDependency::TypeAndRank},
       })
       .SetDispatchGroupSize((q_domain_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
@@ -406,7 +395,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor* indirect_buffer_ptr = nullptr;
   Tensor indirect_buffer;
 
-  if (parameters.is_packed_qkv_ && do_rotary_ && !parameters.rotary_interleaved_) {
+  if (parameters.is_packed_qkv_ && do_rotary_) {
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
 
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.

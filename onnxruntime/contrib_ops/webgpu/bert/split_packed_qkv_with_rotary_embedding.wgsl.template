@@ -36,7 +36,7 @@ $MAIN {
 
     // Calculate actual indices in the head for i and j
 #if interleaved
-    let idx_i = in_head_idx;
+    let idx_i = in_head_idx + in_head_idx;
     let idx_j = in_head_idx + 1u;
 #else
     let idx_i = in_head_idx;
