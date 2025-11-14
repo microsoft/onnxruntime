@@ -164,7 +164,7 @@ ArmKleidiAI::MlasFp32Gemv(
             }
             // Prepare packed RHS if needed
             const void* rhs_packed_ptr = nullptr;
-            if (Data[b].BIsPacked ) {
+            if (Data[b].BIsPacked) {
                 rhs_packed_ptr = Data[b].B;
             } else {
                 const size_t rhs_size = ArmKleidiAI::MlasGemmPackBSize(TransA, tb, rhs_shape, K);
