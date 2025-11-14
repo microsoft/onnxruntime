@@ -146,7 +146,7 @@ class ComputeContext final {
   //
   const SplitKConfig& GetSplitKConfig();
 
- protected:
+ private:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
   const WebGpuExecutionProvider& ep_;
