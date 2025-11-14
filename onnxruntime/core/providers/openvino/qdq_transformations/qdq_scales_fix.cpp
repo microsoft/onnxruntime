@@ -472,7 +472,7 @@ struct CustomGraph {
           ORT_ENFORCE(type_str != nullptr, "Type string is null in QDQ scales fix.");
           auto type_cast = type_str->find("tensor(float)") != std::string::npos ? onnx::TensorProto_DataType_FLOAT : onnx::TensorProto_DataType_FLOAT16;
           ORT_ENFORCE((type_cast == onnx::TensorProto_DataType_FLOAT) || (type_str->find("tensor(float16)") != std::string::npos),
-              "QDQ type misalignment, expected float32 or float16 output");
+                      "QDQ type misalignment, expected float32 or float16 output");
           cast_node.AddAttribute("to", static_cast<int64_t>(type_cast));
           original_graph.AddEdge(prev.node_ptr->Index(),
                                  cast_node.Index(),

@@ -48,7 +48,6 @@ typedef std::shared_ptr<OVTensor> OVTensorPtr;
 
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
-
 struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
 

@@ -2810,8 +2810,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
 #endif
       })
-      .def(
-          "set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) {
+      .def("set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) {
             std::vector<const char*> keys;
             std::vector<const char*> values;
             std::vector<std::string> key_strings;
@@ -2841,9 +2840,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
             if (!status.IsOK()) {
               ORT_THROW("Failed to set EP dynamic options: " + status.ErrorMessage());
-            }
-          },
-          R"pbdoc(Set dynamic options for execution providers.
+            } },
+           R"pbdoc(Set dynamic options for execution providers.
 
           Args:
               options (dict): Dictionary of key-value pairs where both keys and values are strings.

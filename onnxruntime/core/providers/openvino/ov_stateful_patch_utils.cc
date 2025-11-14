@@ -60,7 +60,7 @@ bool ModelHasInputOutputNames(std::shared_ptr<ov::Model> model, const std::strin
 }
 
 std::string GetInputOutputName(std::shared_ptr<ov::Model> ov_model,
-                            const std::vector<std::string>& candidate_names) {
+                               const std::vector<std::string>& candidate_names) {
   for (const auto& name : candidate_names) {
     if (ModelHasInputOutputNames(ov_model, name)) {
       return name;
@@ -78,12 +78,12 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     throw std::runtime_error("Model already has fused cache");
   }
 
-    // Define input name candidates in priority order
+  // Define input name candidates in priority order
   const std::vector<std::string> input_name_candidates = {
-    "inputs_embeds",                           // Default fallback
-    "input_ids",                               // Most common
-    "input_hidden_states",                     // Alternative
-    "/model/embed_tokens/Gather_output_0"      // Specific model type
+      "inputs_embeds",                       // Default fallback
+      "input_ids",                           // Most common
+      "input_hidden_states",                 // Alternative
+      "/model/embed_tokens/Gather_output_0"  // Specific model type
   };
 
   std::string main_input_name = GetInputOutputName(ov_model, input_name_candidates);
