@@ -20,9 +20,9 @@ class MlasDynamicQgemmTest {
 
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
-    // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
+    // Currently, MlasDynamicQGemmBatch() and associated functions require SME2 or else they are no-ops.
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME2 but it was not detected. Skipping test.";
     }
 
     // Setup buffers for holding various data

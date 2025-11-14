@@ -23,11 +23,22 @@ namespace webgpu {
 class WebGpuContext;
 class BufferManager;
 
-class ComputeContext {
+class ComputeContext final {
  public:
-  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep);
+  // Nested accessor class to provide controlled access to BufferManager
+  class BufferManagerAccessor {
+    // access to BufferManager is limited to class WebGpuContext.
+    // This ensures no access to BufferManager from other classes, avoiding
+    // potential misuse.
+    friend class WebGpuContext;
 
-  virtual ~ComputeContext() = default;
+   private:
+    static const webgpu::BufferManager& Get(const ComputeContext& context);
+  };
+
+  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep, WebGpuContext& webgpu_context);
+
+  ~ComputeContext() = default;
 
   //
   // Get various information from the context.
@@ -120,6 +131,7 @@ class ComputeContext {
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
+
   //
   // Run a compute shader program.
   //
