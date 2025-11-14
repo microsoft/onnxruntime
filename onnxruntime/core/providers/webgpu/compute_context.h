@@ -140,25 +140,6 @@ class ComputeContext final {
   }
 
   //
-  // Get the buffer manager from the GPU allocator.
-  //
-  const webgpu::BufferManager& BufferManager() const;
-
-  //
-  // Push error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  void PushErrorScope();
-
-  //
-  // Pop error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  Status PopErrorScope();
-
-  //
   // Get Split-K configuration.
   //
   // `split_k_config_` won't be initialized until the first call to this method.
