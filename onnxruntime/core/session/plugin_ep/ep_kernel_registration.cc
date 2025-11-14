@@ -42,7 +42,7 @@ class PluginEpOpKernel final : public OpKernel {
 };
 
 /*static*/
-Status PluginEpOpKernel::Create(FuncManager& fn_manager, const OpKernelInfo& info,
+Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo& info,
                                 OrtKernelCreateFunc kernel_create_func, void* kernel_create_func_state,
                                 /*out*/ std::unique_ptr<PluginEpOpKernel>& op_kernel) {
   // OpKernel's constructor *copies* the OpKernelInfo.
@@ -50,11 +50,10 @@ Status PluginEpOpKernel::Create(FuncManager& fn_manager, const OpKernelInfo& inf
   // to the plugin EP's kernel creation function.
   op_kernel = std::make_unique<PluginEpOpKernel>(info, PrivateTag{});
 
-  OrtKernelCreateContext* create_ctx = reinterpret_cast<OrtKernelCreateContext*>(&fn_manager);
   const OrtKernelInfo* kernel_info = reinterpret_cast<const OrtKernelInfo*>(&op_kernel->Info());
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-      kernel_create_func(create_ctx, kernel_create_func_state, kernel_info, &op_kernel->kernel_impl_)));
+      kernel_create_func(kernel_create_func_state, kernel_info, &op_kernel->kernel_impl_)));
 
   return Status::OK();
 }

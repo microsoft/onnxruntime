@@ -313,7 +313,6 @@ struct OrtKernelImpl {
 
 /** \brief Type definition for a function that creates an OrtKernelImpl instance for an operator kernel.
  *
- * \param[in] ctx Unused/reserved for future use.
  * \param[in] kernel_create_func_state Opaque state initially provided by the EP that registered the kernel.
  *                                     Refer to OrtEpApi::KernelRegistry_AddKernel(). May be null.
  * \param[in] info The OrtKernelInfo instance that provides access to the kernel's input and output characteristics.
@@ -323,8 +322,7 @@ struct OrtKernelImpl {
  *
  * \since Version 1.24.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ OrtKernelCreateContext* ctx,  // unused/reserved as of 1.24
-                                                      _In_ void* kernel_create_func_state,
+typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ void* kernel_create_func_state,
                                                       _In_ const OrtKernelInfo* info,
                                                       _Outptr_result_maybenull_ OrtKernelImpl** kernel_out);
 
