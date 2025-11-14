@@ -154,8 +154,14 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
     return CreateAllocator(default_memory_info);
   } else {
-    const bool use_cuda_mempool =
+    const bool cuda_mempool_requested =
         default_memory_arena_cfg != nullptr && default_memory_arena_cfg->use_cuda_mempool == 1;
+
+    const bool use_cuda_mempool = cuda_mempool_requested && cuda::CudaMempoolArena::IsCudaVersionSupported();
+
+    if (cuda_mempool_requested && !use_cuda_mempool) {
+      LOGS_DEFAULT(WARNING) << "CUDA memory pool requested but not supported on this device/driver. Falling back to default BFCArena with CUDA allocator.";
+    }
 
     if (use_cuda_mempool) {
       auto device = OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, device_id);

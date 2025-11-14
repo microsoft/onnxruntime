@@ -37,7 +37,7 @@ class DeviceStreamCollectionImpl {
       if (it.second->Info().device == stream->GetDevice() &&
           it.second->Info().alloc_type == OrtArenaAllocator) {
         if (it.second->IsStreamAware()) {
-          // Previously we only had one StreamAwareArena. We need to guard
+          // Previously we only had one StreamAwareBFCArena. We need to guard
           // against multiple allocators now.
           auto* arena_alloc = IArena::SafeArenaCast(it.second.get());
           if (arena_alloc) {

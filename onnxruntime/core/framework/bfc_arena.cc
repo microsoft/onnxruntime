@@ -826,13 +826,13 @@ void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_fla
   }
 }
 
-StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
-                                   size_t total_memory,
-                                   ArenaExtendStrategy arena_extend_strategy,
-                                   int initial_chunk_size_bytes,
-                                   int max_dead_bytes_per_chunk,
-                                   int initial_growth_chunk_size_bytes,
-                                   int64_t max_power_of_two_extend_bytes)
+StreamAwareBFCArena::StreamAwareBFCArena(std::unique_ptr<IAllocator> resource_allocator,
+                                         size_t total_memory,
+                                         ArenaExtendStrategy arena_extend_strategy,
+                                         int initial_chunk_size_bytes,
+                                         int max_dead_bytes_per_chunk,
+                                         int initial_growth_chunk_size_bytes,
+                                         int64_t max_power_of_two_extend_bytes)
     : BFCArena(std::move(resource_allocator),
                total_memory,
                arena_extend_strategy,
@@ -842,11 +842,11 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
                max_power_of_two_extend_bytes) {
 }
 
-void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream) {
+void* StreamAwareBFCArena::AllocOnStream(size_t size, Stream* current_stream) {
   return AllocateRawInternal(size, false, current_stream);
 }
 
-void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
+void StreamAwareBFCArena::ReleaseStreamBuffers(Stream* stream) {
   // since chunks on target stream will be reset to nullptr, trigger coalesce to see whether we can get bigger chunk.
   ResetChunkOnTargetStream(stream, true);
 }

@@ -43,7 +43,7 @@ namespace onnxruntime {
 #endif
 #endif
 
-class StreamAwareArena;
+class StreamAwareBFCArena;
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
 // malloc (dlmalloc).
@@ -502,15 +502,15 @@ class BFCArena : public IArena {
 };
 
 #ifdef ORT_ENABLE_STREAM
-class StreamAwareArena : public BFCArena {
+class StreamAwareBFCArena : public BFCArena {
  public:
-  StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
-                   size_t total_memory,
-                   ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
-                   int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
-                   int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
-                   int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES,
-                   int64_t max_power_of_two_extend_bytes = DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES);
+  StreamAwareBFCArena(std::unique_ptr<IAllocator> resource_allocator,
+                      size_t total_memory,
+                      ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
+                      int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
+                      int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
+                      int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES,
+                      int64_t max_power_of_two_extend_bytes = DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES);
 
   bool IsStreamAware() const override { return true; }
 

@@ -25,26 +25,33 @@ namespace test {
 static bool IsCudaMemPoolSupported() {
   int ort_cuda_rt_version = 0;
   cudaError_t cuda_status = cudaRuntimeGetVersion(&ort_cuda_rt_version);
-  bool version_supported = (cuda_status == cudaSuccess && ort_cuda_rt_version >= 11020);
-  if (!version_supported) {
+  if (cuda_status != cudaSuccess) {
     return false;
   }
-  // Creating a cuda mempool in some pipelines fails with
-  // CUDA failure 801: operation not supported ; GPU=0 ; hostname=af14bbb1c000000 ;
-  // Even though CUDA version may be 12.8 possibly due to the driver.
-  cudaMemPoolProps props{};
-  // Pinned is not the same as pinned allocator, cudaMemLocationTypeDevice actually does not exist
-  // even though is present in some internet docs.
-  props.allocType = cudaMemAllocationTypePinned;
-  props.handleTypes = cudaMemHandleTypeNone;        // local to process
-  props.location.type = cudaMemLocationTypeDevice;  // Device memory
-  props.location.id = 0;                            // test device 0
-  cudaMemPool_t pool;
-  auto cuda_error = cudaMemPoolCreate(&pool, &props);
-  if (cuda_error != cudaSuccess) {
+
+  if (ort_cuda_rt_version < 11020) {
     return false;
   }
-  cuda_error = cudaMemPoolDestroy(pool);
+
+  int ort_cuda_driver_version = 0;
+  cuda_status = cudaDriverGetVersion(&ort_cuda_driver_version);
+  if (cuda_status != cudaSuccess) {
+    return false;
+  }
+
+  if (ort_cuda_driver_version < 11020) {
+    return false;
+  }
+
+  // Check if the driver version supports the runtime version
+  if (ort_cuda_rt_version >= 12000 && ort_cuda_driver_version < 12000) {
+    return false;
+  }
+
+  if (ort_cuda_rt_version >= 13000 && ort_cuda_driver_version < 13000) {
+    return false;
+  }
+
   return true;
 }
 

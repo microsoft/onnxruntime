@@ -57,23 +57,23 @@ CudaMempoolArena::~CudaMempoolArena() {
   for (auto& kv : alloc_map_) {
     void* p = kv.first;
     const cudaStream_t s = kv.second.stream;
-    (void)cudaFreeAsync(p, s);  // ignore errors in destructor
+    ORT_IGNORE_RETURN_VALUE(cudaFreeAsync(p, s));  // ignore errors in destructor
   }
+
+  // 2) Synchronize all streams we know about (those that ever held allocations).
+  SyncAllKnownStreams_NoThrow();
 
   // Now it is safe to drop our bookkeeping.
   alloc_map_.clear();
   stream_map_.clear();
 
-  // 2) Synchronize all streams we know about (those that ever held allocations).
-  SyncAllKnownStreams_NoThrow();
-
   // 3) Safety barrier: ensure any frees enqueued on destroyed/unknown streams are completed.
-  (void)cudaDeviceSynchronize();  // ignore errors in destructor
+  ORT_IGNORE_RETURN_VALUE(cudaDeviceSynchronize());  // ignore errors in destructor
 
   // 4) Trim to zero and destroy the pool.
   if (pool_) {
-    (void)cudaMemPoolTrimTo(pool_, 0);  // best-effort
-    (void)cudaMemPoolDestroy(pool_);
+    ORT_IGNORE_RETURN_VALUE(cudaMemPoolTrimTo(pool_, 0));  // best-effort
+    ORT_IGNORE_RETURN_VALUE(cudaMemPoolDestroy(pool_));
     pool_ = nullptr;
   }
 }
@@ -93,7 +93,7 @@ void* CudaMempoolArena::Alloc(size_t size) {
                           << size << " bytes at " << p << " on default stream.";
 
   // In case the default stream is busy.
-  ::cudaStreamSynchronize(kDefaultStream);
+  ORT_IGNORE_RETURN_VALUE(cudaStreamSynchronize(kDefaultStream));
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -231,8 +231,41 @@ void CudaMempoolArena::MaybeRehashLocked() {
 void CudaMempoolArena::SyncAllKnownStreams_NoThrow() {
   for (const auto& kv : stream_map_) {
     const cudaStream_t s = kv.first;
-    (void)cudaStreamSynchronize(s);  // ignore errors; device-wide sync follows
+    ORT_IGNORE_RETURN_VALUE(cudaStreamSynchronize(s));  // ignore errors; device-wide sync follows
   }
+}
+
+bool CudaMempoolArena::IsCudaVersionSupported() noexcept {
+  int ort_cuda_rt_version = 0;
+  cudaError_t cuda_status = cudaRuntimeGetVersion(&ort_cuda_rt_version);
+  if (cuda_status != cudaSuccess) {
+    return false;
+  }
+
+  if (ort_cuda_rt_version < 11020) {
+    return false;
+  }
+
+  int ort_cuda_driver_version = 0;
+  cuda_status = cudaDriverGetVersion(&ort_cuda_driver_version);
+  if (cuda_status != cudaSuccess) {
+    return false;
+  }
+
+  if (ort_cuda_driver_version < 11020) {
+    return false;
+  }
+
+  // Check if the driver version supports the runtime version
+  if (ort_cuda_rt_version >= 12000 && ort_cuda_driver_version < 12000) {
+    return false;
+  }
+
+  if (ort_cuda_rt_version >= 13000 && ort_cuda_driver_version < 13000) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace cuda

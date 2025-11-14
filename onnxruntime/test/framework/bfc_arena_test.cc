@@ -339,7 +339,7 @@ struct StreamMock : public Stream {
 
 #ifdef ORT_ENABLE_STREAM
 TEST(StreamAwareArenaTest, TwoStreamAllocation) {
-  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
+  StreamAwareBFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   CheckStats(&a, 0, 0, 0, 0);
 
   OrtDevice tmp;

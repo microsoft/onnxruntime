@@ -29,15 +29,18 @@ namespace cuda {
  * - Creates a **process-local** CUDA mempool for a specific device (from `OrtMemoryInfo`).
  * - All allocations use **`cudaMallocFromPoolAsync()`** on either the legacy default stream (0) or a
  *   caller-provided stream. The allocation stream is recorded for ordered free.
- * - `Free()` and `ReleaseStreamBuffers()` enqueue **`cudaFreeAsync()`** on the recorded stream to
+ * - `Free()` enqueue **`cudaFreeAsync()`** on the recorded stream to
  *   respect CUDA's stream-ordered semantics.
  * - `Shrink()` trims the pool with **`cudaMemPoolTrimTo(bytes_to_keep)`** and right-sizes the book-keeping maps
  *   under lock.
  *
  * ### Tuning
- * - `pool_release_threshold`: if non-zero, sets `cudaMemPoolAttrReleaseThreshold`. **Recommended: 1 MB.**
- * - `initial_pool_size_bytes`: if > 0, pre‑reserve pool capacity by setting
+ * - `pool_release_threshold`: if non-zero, sets `cudaMemPoolAttrReleaseThreshold`. **Recommended: 1 MB.**, but
+ *    must be experimentally determined based on workload for optimal memory consumption vs performance.
  *   `cudaMemPoolAttrReservedMemCurrent`. **Recommended: 10 MB.**
+ * - `bytes_to_keep_on_shrink`: target size for `cudaMemPoolTrimTo()` on `Shrink()`. This is only relevant
+ *    if Shrink() is enabled. It usually costs performance, and strictly speaking is not necessary for cuda mempools
+ *    since they release memory on at synchronous points according to `pool_release_threshold`.
  *
  * ### Thread-safety
  * - All updates to internal maps and statistics are guarded by an internal `std::mutex`.
@@ -122,10 +125,15 @@ class CudaMempoolArena final : public IArena {
   // void ReleaseStreamBuffers(Stream* stream) override;
 
   /**
-   * @brief Trim the pool to `bytes_to_keep` (configured at construction) using `cudaMemPoolTrimTo()`.
+   * @brief Trim the pool to `bytes_to_keep_on_shrink_` (configured at construction) using `cudaMemPoolTrimTo()`.
+   * Memory still allocated is not affected. Shrink() may affect your performance and contrary to BFCArena
+   * This allocator does not need Shrink. Cuda mempool is capable of releasing memory automatically
+   * according to pool_release_threshold_ set at construction.
    * Also rehashes internal maps under lock to keep them reasonably sized.
    */
   Status Shrink() override;
+
+  static bool IsCudaVersionSupported() noexcept;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaMempoolArena);
 
