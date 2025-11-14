@@ -154,7 +154,6 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
     return CreateAllocator(default_memory_info);
   } else {
-    // Check if we are running against older version of CUDA runtime
     const bool use_cuda_mempool =
         default_memory_arena_cfg != nullptr && default_memory_arena_cfg->use_cuda_mempool == 1;
 
