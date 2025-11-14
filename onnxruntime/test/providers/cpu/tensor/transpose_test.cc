@@ -689,6 +689,28 @@ TEST(TransposeOpTest, NDim) {
   TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals2);
 }
 
+TEST(TransposeOpTest, 4Dim_perm2310) {
+  std::vector<int64_t> input_shape({2, 2, 2, 2});
+  std::vector<float> input_vals = {1.0f, 2.0f, 3.0f, 4.0f,
+                                   5.0f, 6.0f, 7.0f, 8.0f,
+                                   9.0f, 10.0f, 11.0f, 12.0f,
+                                   13.0f, 14.0f, 15.0f, 16.0f};
+
+  std::vector<int64_t> perm = {0, 2, 3, 1};
+  std::vector<float> expected_vals = {1.0f, 5.0f, 2.0f, 6.0f,
+                                      3.0f, 7.0f, 4.0f, 8.0f,
+                                      9.0f, 13.0f, 10.0f, 14.0f,
+                                      11.0f, 15.0f, 12.0f, 16.0f};
+  TransposeTest(input_shape, input_vals, &perm, input_shape, expected_vals);
+
+  perm = {1, 2, 3, 0};
+  std::vector<float> expected_vals2 = {1.0f, 9.0f, 5.0f, 13.0f,
+                                       2.0f, 10.0f, 6.0f, 14.0f,
+                                       3.0f, 11.0f, 7.0f, 15.0f,
+                                       4.0f, 12.0f, 8.0f, 16.0f};
+  TransposeTest(input_shape, expected_vals, &perm, input_shape, expected_vals2);
+}
+
 TEST(TransposeOpTest, DoTransposeImpl) {
   std::vector<int64_t> input_shape({5, 2, 1, 3});
   std::vector<float> input_vals(30);

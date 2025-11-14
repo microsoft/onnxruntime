@@ -74,20 +74,35 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
   if (use_shared_) {
+    std::string input_str = std::string("a_indices_t(") + (map_first_channels_first_ ? "batch, " : "") + "input_row, input_col)";
+    std::string output_str = std::string("output_indices_t(") + (map_first_channels_first_ ? "batch, " : "") + "output_row, output_col)";
+    std::string input_cond_str = map_first_channels_first_ ? "input_row < uniforms.a_shape[1] && input_col < uniforms.a_shape[2]"
+                                                          : "input_row < uniforms.a_shape[0] && input_col < uniforms.a_shape[1]";
+    std::string output_cond_str = map_first_channels_first_ ? "output_row < uniforms.output_shape[1] && output_col < uniforms.output_shape[2]"
+                                                           : "output_row < uniforms.output_shape[0] && output_col < uniforms.output_shape[1]";
     shader.AdditionalImplementation() << "var<workgroup> tile : array<array<output_value_t, tile_size + 1>, tile_size>;\n";
-    shader.MainFunctionBody() << "  let stride = (uniforms.output_shape[1] - 1) / tile_size + 1;\n"
+    if (map_first_channels_first_) {
+      shader.MainFunctionBody() << "  let batch = workgroup_id.z;\n"
+                                   "  let stride_x = (uniforms.output_shape[2] - 1) / tile_size + 1;\n"
+                                   "  let stride_y = (uniforms.output_shape[1] - 1) / tile_size + 1;\n"
+                                   "  let workgroup_id_xy = workgroup_idx % (stride_x * stride_y);\n"
+                                   "  let workgroup_id_x = workgroup_id_xy % stride_x;\n"
+                                   "  let workgroup_id_y = workgroup_id_xy / stride_x;\n";
+    } else {
+      shader.MainFunctionBody() << "  let stride = (uniforms.output_shape[1] - 1) / tile_size + 1;\n"
                                  "  let workgroup_id_x = workgroup_idx % stride;\n"
-                                 "  let workgroup_id_y = workgroup_idx / stride;\n"
-                                 "  let input_col = workgroup_id_y * tile_size + local_id.x;\n"
+                                 "  let workgroup_id_y = workgroup_idx / stride;\n";
+    }
+    shader.MainFunctionBody() << "  let input_col = workgroup_id_y * tile_size + local_id.x;\n"
                                  "  let input_row = workgroup_id_x * tile_size + local_id.y;\n"
-                                 "  if (input_row < uniforms.a_shape[0] && input_col < uniforms.a_shape[1]) {\n"
-                              << "    tile[local_id.y][local_id.x] = " << input.GetByIndices("a_indices_t(input_row, input_col)") << ";\n"
+                              << "  if (" << input_cond_str << ") {\n"
+                              << "    tile[local_id.y][local_id.x] = " << input.GetByIndices(input_str) << ";\n"
                               << "  }\n"
                                  "  workgroupBarrier();\n"
                                  "  let output_col = workgroup_id_x * tile_size + local_id.x;\n"
                                  "  let output_row = workgroup_id_y * tile_size + local_id.y;\n"
-                                 "  if (output_row < uniforms.output_shape[0] && output_col < uniforms.output_shape[1]) {\n"
-                              << "    " << output.SetByIndices("output_indices_t(output_row, output_col)", "tile[local_id.x][local_id.y]") << "\n"
+                              << "  if (" << output_cond_str << ") {\n"
+                              << "    " << output.SetByIndices(output_str, "tile[local_id.x][local_id.y]") << "\n"
                               << "  }";
   } else {
     shader.AdditionalImplementation() << "fn perm(i: output_indices_t)->a_indices_t {\n"
@@ -126,24 +141,25 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
   SqueezeShape(input_shape.GetDims(), permutations, new_shape, new_perm);
   const bool channels_last = new_perm == TensorShapeVector({2, 3, 1});
   const bool channels_first = new_perm == TensorShapeVector({3, 1, 2});
-  const bool use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first;
+  const bool map_first_channels_first = new_perm == TensorShapeVector({0, 2, 3, 1});
+  const bool map_last = new_perm == TensorShapeVector({1, 2, 3, 0});
+  const bool use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first || map_first_channels_first || map_last;
   auto new_input_shape = input_shape;
   TensorShape new_output_shape(output_dims);
 
   if (use_shared) {
-    new_input_shape = channels_last
-                          ? TensorShape({new_shape[0], new_shape[1] * new_shape[2]})
-                      : channels_first
-                          ? TensorShape({new_shape[0] * new_shape[1], new_shape[2]})
-                          : new_shape;
-    new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
+    new_input_shape = channels_last ? TensorShape({new_shape[0], new_shape[1] * new_shape[2]})
+                                    : channels_first ? TensorShape({new_shape[0] * new_shape[1], new_shape[2]})
+                                       : (map_first_channels_first ? TensorShape({new_shape[0], new_shape[1], new_shape[2] * new_shape[3]})
+                                                                  : (map_last ? TensorShape({new_shape[0], new_shape[1] * new_shape[2] * new_shape[3]}) : new_shape));
+    new_output_shape = map_first_channels_first ? TensorShape({new_input_shape[0], new_input_shape[2], new_input_shape[1]}) : TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
   uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
-  TransposeProgram program{permutations, use_shared};
+  TransposeProgram program{permutations, use_shared, map_first_channels_first};
 
   program
-      .CacheHint(absl::StrJoin(permutations, "-"))
+      .CacheHint(use_shared, map_first_channels_first, absl::StrJoin(permutations, "-"))
       .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
       .AddOutputs({{&output, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
       .AddUniformVariables({
@@ -152,8 +168,9 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
 
   if (use_shared) {
     program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
-    program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
-                                 static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)));
+    program.SetDispatchGroupSize(static_cast<uint32_t>(((map_first_channels_first ? new_output_shape[2] : new_output_shape[1]) + TILE_SIZE - 1) / TILE_SIZE),
+                                 static_cast<uint32_t>(((map_first_channels_first ? new_output_shape[1] : new_output_shape[0]) + TILE_SIZE - 1) / TILE_SIZE),
+                                 map_first_channels_first ? static_cast<uint32_t>(new_output_shape[0]) : 1);
   } else {
     program.SetWorkgroupSize(WORKGROUP_SIZE);
 
