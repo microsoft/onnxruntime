@@ -299,7 +299,8 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t dim_a_outer = narrow<uint32_t>(output_shape_vec4[output_shape_vec4.NumDimensions() - 2]);
   const uint32_t dim_b_outer_vec4 = narrow<uint32_t>(output_shape_vec4[output_shape_vec4.NumDimensions() - 1]);
 
-  // Fill one value (currently only vec4) per invocation.
+  // Fill one value (currently only vec4) per invocation. Now we use default workgroup size (64) for
+  // this program.
   const uint32_t total_outputs_vec4 = dim_a_outer * dim_b_outer_vec4;
   const uint32_t dispatch_x = (total_outputs_vec4 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
@@ -309,8 +310,7 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   program.CacheHint(has_bias)
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape_vec4, static_cast<int32_t>(bias_components)})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}})
-      .SetDispatchGroupSize(dispatch_x)
-      .SetWorkgroupSize(WORKGROUP_SIZE);
+      .SetDispatchGroupSize(dispatch_x);
 
   if (has_bias) {
     const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
