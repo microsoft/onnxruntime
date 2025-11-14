@@ -24,6 +24,26 @@ class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
                                           {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
 };
 
+class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
+ public:
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const bool interleaved_;
+};
+
 class GroupQueryAttention final : public WebGpuKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info) : WebGpuKernel(info) {

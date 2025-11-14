@@ -1,0 +1,85 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+//
+// MOE gate shader
+//
+// called with expert as local_idx and token_idx as workgroup_idx
+// in: router_values [num_tokens, num_experts], per expert float we multiply final results with
+// out: gate_counts [num_experts], number of tokens assigned to each expert
+// out: gate_hidden [num_experts, num_tokens], token_idx assigned to each expert
+// uniform: rows(num_tokens), cols(num_experts), token_offset
+//
+
+#param is_fp16
+#param k
+
+const K: u32 = k;
+#if is_fp16
+const MAX_FLOAT: f16 = 65504.0;
+#else
+const MAX_FLOAT: f32 = 3.402823466e+38;
+#endif
+
+var<workgroup> shared_vals: array<hidden_state_element_t, workgroup_size_x>;
+var<workgroup> shared_idxs: array<u32, workgroup_size_x>;
+
+$MAIN {
+    let row = workgroup_idx;
+    if (row >= uniforms.rows) {
+        return;
+    }
+    let cols = uniforms.cols;
+    let output_base = row * cols;
+
+    var max_val: hidden_state_element_t = -MAX_FLOAT;
+    var max_idx: u32 = 0u;
+
+    if (global_idx < cols) {
+        atomicStore(&tokencount_for_expert[global_idx], 0u);
+    }
+    if (local_idx < cols) {
+        max_val = hidden_state[(row + uniforms.token_offset) * cols + local_idx];
+        max_idx = local_idx;
+    }
+    shared_vals[local_idx] = max_val;
+    shared_idxs[local_idx] = max_idx;
+    topk_values[output_base + local_idx] = topk_values_value_t(0);
+    workgroupBarrier();
+
+    // K is small, use a simple bubble sort
+    for (var i = 0u; i < workgroup_size_x - 1u; i++) {
+        for (var j = 0u; j < workgroup_size_x - 1u - i; j++) {
+            if (local_idx == j && local_idx < cols && (local_idx + 1u) < cols) {
+                // Compare adjacent elements and swap if needed (descending order)
+                if (shared_vals[local_idx] < shared_vals[local_idx + 1u]) {
+                    let temp_val = shared_vals[local_idx];
+                    let temp_idx = shared_idxs[local_idx];
+                    shared_vals[local_idx] = shared_vals[local_idx + 1u];
+                    shared_idxs[local_idx] = shared_idxs[local_idx + 1u];
+                    shared_vals[local_idx + 1u] = temp_val;
+                    shared_idxs[local_idx + 1u] = temp_idx;
+                }
+            }
+            workgroupBarrier();
+        }
+    }
+    if (local_idx < K) {
+        // found the top K experts for token, write to output
+        let expert_idx = shared_idxs[local_idx];
+        let expert_base = expert_idx * uniforms.rows;
+        let target_idx = atomicAdd(&tokencount_for_expert[expert_idx], 1u);
+        hiddenstate_for_expert[expert_base + target_idx] = row + uniforms.token_offset;
+    }
+    if (local_idx == 0u) {
+        // softmax
+        var sum : f32 = 0.0;
+        for (var i = 0u; i < K; i++) {
+            sum += exp(f32(shared_vals[i]));
+        }
+        for (var i = 0u; i < K; i++) {
+            let expert_idx = shared_idxs[i];
+            topk_values[output_base + expert_idx] = topk_values_value_t(exp(f32(shared_vals[i])) / sum);
+        }
+    }
+} // MAIN
