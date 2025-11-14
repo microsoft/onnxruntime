@@ -38,8 +38,8 @@ module.exports = {
     simulator: {
       type: 'ios.simulator',
       device: {
-        type: 'iPhone 15',
-        os: 'iOS 17.4',
+        type: 'iPhone 16',
+        os: 'iOS 18.6',
       },
     },
     attached: {
