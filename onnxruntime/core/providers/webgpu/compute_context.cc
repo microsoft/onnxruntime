@@ -34,5 +34,9 @@ const webgpu::BufferManager& ComputeContext::BufferManager() const {
   return ep_.BufferManager();
 }
 
+const SplitKConfig& ComputeContext::GetSplitKConfig() {
+  return webgpu_context_.GetSplitKConfig();
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime

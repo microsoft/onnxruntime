@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
+#include <optional>
 #include <utility>
 
 #include "core/framework/execution_provider.h"
@@ -145,6 +146,13 @@ class ComputeContext {
   // This is useful only when "skip_validation" is not set.
   //
   Status PopErrorScope();
+
+  //
+  // Get Split-K configuration.
+  //
+  // `split_k_config_` won't be initialized until the first call to this method.
+  //
+  const SplitKConfig& GetSplitKConfig();
 
  protected:
   WebGpuContext& webgpu_context_;

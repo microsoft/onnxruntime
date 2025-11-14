@@ -53,8 +53,6 @@ class MatMulFillBiasOrZeroBeforeSplitKProgram final : public Program<MatMulFillB
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32});
 
-  constexpr static uint32_t WORKGROUP_SIZE_X = 64;
-
  private:
   bool has_bias_ = false;
 };
