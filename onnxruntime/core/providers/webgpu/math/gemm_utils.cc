@@ -81,8 +81,8 @@ void HandleMatMulWithSplitK(
             let old_output_f32 = bitcast<f32>(old_output_i32);
             let new_output_f32 = old_output_f32 + value[i];
             let new_output_i32 = bitcast<i32>(new_output_f32);
-            let output_compexchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
-            if (output_compexchange.old_value ==  old_output_i32) {
+            let output_compare_exchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
+            if (output_compare_exchange.old_value == old_output_i32) {
                 break;
             }
         }
@@ -97,14 +97,14 @@ void HandleMatMulWithSplitK(
     vec2h_values[0] = value.xy;
     vec2h_values[1] = value.zw;
     for (var i = 0u; i < 2u; i++) {
-        let offset= offset0 + i;
-        while(true) {
+        let offset = offset0 + i;
+        while (true) {
             let old_output_i32 = atomicLoad(&output[offset]);
             let old_output_vec2h = bitcast<vec2h>(old_output_i32);
             let new_output_vec2h = old_output_vec2h + vec2h_values[i];
             let new_output_i32 = bitcast<i32>(new_output_vec2h);
-            let output_compexchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
-            if (output_compexchange.old_value == old_output_i32) {
+            let output_compare_exchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
+            if (output_compare_exchange.old_value == old_output_i32) {
                 break;
             }
         }
@@ -202,11 +202,11 @@ void MatMulWriteFnSource(ShaderHelper& shader,
 
   if (use_split_k) {
     // Set output when MatMul is performed with Split-K.
-    // When split-k is used in MatMul, the bias will be handled in `MatMulFillBiasBeforeSplitKProgram`
+    // When Split-K is used in MatMul, the bias will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
     // instead of here, so `has_bias` and `is_channels_last` is not used for Split-K. Note that we
     // still need to handle `has_bias` (and `is_channels_last` in the future) in
-    // `MatMulFillBiasBeforeSplitKProgram`.
-    assert(!has_bias);
+    // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
+    ORT_ENFORCE(!has_bias, "Bias is not supported in MatMulProgram when Split-K is enabled.");
     HandleMatMulWithSplitK(shader, output_variable_type);
   } else if (is_gemm) {
     HanldeMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);
@@ -289,7 +289,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     // `kSplitK * i32(global_id.z)`.
     //
     //  For example: considering computing Y = (X * W + B) in one workgroup.
-    //  Let kSplitk = 2, B = [d1, d2]
+    //  Let kSplitK = 2, B = [d1, d2]
     //  Let X = [[a1 a1 b1 b1 c1 c1]  = [ A1 B1 C1 ], W = [[a2 a2]  = [ A2
     //           [a1 a1 b1 b1 c1 c1]]                      [a2 a2]      B2
     //                                                     [b2 b2]      C2 ]
@@ -298,8 +298,8 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     //                                                     [c2 c2]]
     //
     //  With Split-K:
-    //  1. Initialize output Y with B in `MatMulFillBiasBeforeSplitKProgram`:  Y = [[d1, d2]
-    //                                                                              [d1, d2]]
+    //  1. Initialize output Y with B in `MatMulFillBiasOrZeroBeforeSplitKProgram`:  Y = [[d1, d2]
+    //                                                                                   [d1, d2]]
     //  2. Split the original 1 workgroup into 3 workgroups (now `dispatch_z = 3` in API side)
     //     Workgroup1: compute (A1 * A2)  Workgroup2: compute (B1 * B2)
     //     Workgroup3: compute (C1 * C2)
@@ -310,7 +310,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     shader.MainFunctionBody()
         << "const kSplitK = " << split_dim_inner << ";\n"
         << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n"
-        << "  var kStart = kSplitK *  i32(global_id.z);\n"
+        << "  var kStart = kSplitK * i32(global_id.z);\n"
 
         // When Split-K is used, `batch` should always be 0 and `global_id.z` is used to indicate
         // the index of split-k instead of batch.

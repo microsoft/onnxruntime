@@ -298,10 +298,9 @@ Status ComputeMatMul(ComputeContext* context,
   const SplitKConfig& split_k_config = SplitKConfig::GetSplitKConfig(*context);
   const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
   if (need_split_k) {
-    // Currently we only support `batch_size==1`, bias in vec4 and channels-last format for Split-K MatMul.
-    assert(batch_size == 1);
-    assert(is_vec4);
-    assert(is_channels_last);
+    ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
+    ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
+    ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
 
     // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
     const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, output_shape_temp);
