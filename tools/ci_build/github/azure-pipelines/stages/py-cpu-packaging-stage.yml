@@ -94,6 +94,8 @@ stages:
             PythonVersion: '3.12'
           Python313_x64:
             PythonVersion: '3.13'
+          Python314_x64:
+            PythonVersion: '3.14'
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         ExtraParam: ${{ parameters.build_py_parameters }}
@@ -138,7 +140,7 @@ stages:
           parameters:
             ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
               symbolExpiryTime: 60
-            includePublicSymbolServer: true            
+            includePublicSymbolServer: true
             symbolsArtifactName: onnxruntime_cpu_win_x64_$(PythonVersion)
             symbolsVersion: $(Build.BuildId)
             symbolProject: 'ONNX Runtime'
@@ -175,15 +177,18 @@ stages:
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'unzip the package'
 
+
       - powershell: |
-         python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
-         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-         Remove-Item -Recurse -Force onnxruntime
-         if ("$(ExtraParam)" -contains "--use_azure") {
-           $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
-           python onnxruntime_test_python_azure.py
-         }
-         python onnx_backend_test_series.py
+          if ("$(PythonVersion)" -notcontains "3.14") {
+            python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+            Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+            Remove-Item -Recurse -Force onnxruntime
+            if ("$(ExtraParam)" -contains "--use_azure") {
+              $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
+              python onnxruntime_test_python_azure.py
+            }
+            python onnx_backend_test_series.py
+          }
         workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
 
@@ -204,13 +209,20 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.12'
-          
+
       - template: ../templates/py-macos.yml
         parameters:
           arch: 'arm64'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           python_version: '3.13'
+
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.14'
 
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM
@@ -260,6 +272,13 @@ stages:
         QNN_SDK: ${{ parameters.qnn_sdk_version }}
         BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
         PYTHON_VERSION: '3.13'
+
+    - template: ../templates/py-win-arm64-qnn.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
+        QNN_SDK: ${{ parameters.qnn_sdk_version }}
+        BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+        PYTHON_VERSION: '3.14'
 
 - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
   - stage: Python_Packaging_Windows_arm64ec_QNN

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/cpuid_info.h"  // for CPUIDInfo::GetCPUIDInfo().HasArm_SME()
+#include "core/common/cpuid_info.h"  // for CPUIDInfo::GetCPUIDInfo().HasArm_SME2()
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
@@ -213,17 +213,23 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         }
       }
 
-      // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
+      // Currently, MlasDynamicQGemmBatch() and associated functions require SME2 or else they are no-ops.
       // We check that here too before attempting to use them.
-      if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {
+      if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME2()) {
         can_use_dynamic_quant_mlas_ = false;
       }
 
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();
-      // TO DO: handle b_shape_.NumDimensions() > 2 and all dimension values but the last two being 1.
-      if (!(b_shape_.NumDimensions() == 2 || (b_shape_.NumDimensions() == 3 && b_shape_[0] == 1))) {
+      if (b_shape_.NumDimensions() >= 2) {
+        for (size_t i = 0; i < (b_shape_.NumDimensions() - 2); ++i) {
+          if (b_shape_[i] != 1) {
+            can_use_dynamic_quant_mlas_ = false;
+            break;
+          }
+        }
+      } else {
         can_use_dynamic_quant_mlas_ = false;
       }
 
@@ -302,8 +308,10 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   int GetBIdx() const override { return IN_B; }
 
  private:
+  // Indicates when MlasDynamicQGemmBatch() can be used
   bool can_use_dynamic_quant_mlas_{false};
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+  // Indicates that the biases are a constant input and thus already quantized / packed
   bool dynamic_quant_mlas_bias_data_was_packed_{false};
 #endif
 };

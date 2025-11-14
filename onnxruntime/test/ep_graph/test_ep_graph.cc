@@ -209,7 +209,7 @@ TEST(EpGraphTest, SerializeToProto_InputModelHasExternalIni) {
     std::string ext_ini_file_path = "conv_qdq_ext_ini_serialized.bin";
     std::filesystem::remove(ext_ini_file_path);
     std::ofstream ext_ini_ofs(ext_ini_file_path, std::ios::binary);
-    auto handle_initializer_data = [&ext_ini_ofs, &ext_ini_file_path](const OrtValueInfo* /* value_info */,
+    auto handle_initializer_data = [&ext_ini_ofs, &ext_ini_file_path](const OrtValueInfo* value_info,
                                                                       const void* data, size_t bytes,
                                                                       bool& is_external, std::string& location,
                                                                       int64_t& offset) -> Ort::Status {
@@ -218,9 +218,19 @@ TEST(EpGraphTest, SerializeToProto_InputModelHasExternalIni) {
         return Ort::Status{nullptr};
       }
 
-      offset = ext_ini_ofs.tellp();
+      // For BE system, Before writing to file, we need to do data coversion.
+      if constexpr (endian::native != endian::little) {
+        auto data_buf = std::make_unique<char[]>(bytes);
+        std::memcpy(data_buf.get(), data, bytes);
+        OrtEpUtils::ConvertExternalData(value_info, data_buf.get(), bytes);
+        offset = ext_ini_ofs.tellp();
+        ext_ini_ofs.write(static_cast<const char*>(data_buf.get()), bytes);
+      } else {
+        offset = ext_ini_ofs.tellp();
+        ext_ini_ofs.write(static_cast<const char*>(data), bytes);
+      }
+
       location = ext_ini_file_path;
-      ext_ini_ofs.write(static_cast<const char*>(data), bytes);
       ext_ini_ofs.flush();
       is_external = true;  // True if is external initializer.
 
@@ -337,15 +347,24 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
       // OrtValueInfo* could be used to query initializer's name, type, shape,
       // node consumers, etc.
       (void)value_info;
-
       if (bytes <= 127) {
         is_external = false;  // Keep small initializers stored inside the TensorProto.
         return Ort::Status{nullptr};
       }
 
-      offset = ext_ini_ofs.tellp();
+      // For BE system, Before writing to file, we need to do data coversion.
+      if constexpr (endian::native != endian::little) {
+        auto data_buf = std::make_unique<char[]>(bytes);
+        std::memcpy(data_buf.get(), data, bytes);
+        OrtEpUtils::ConvertExternalData(value_info, data_buf.get(), bytes);
+        offset = ext_ini_ofs.tellp();
+        ext_ini_ofs.write(static_cast<const char*>(data_buf.get()), bytes);
+      } else {
+        offset = ext_ini_ofs.tellp();
+        ext_ini_ofs.write(static_cast<const char*>(data), bytes);
+      }
+
       location = ext_ini_file_path;
-      ext_ini_ofs.write(static_cast<const char*>(data), bytes);
       ext_ini_ofs.flush();
       is_external = true;  // True if is external initializer.
 

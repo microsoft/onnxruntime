@@ -210,9 +210,9 @@ MlasDynamicQGemmBatch (
     MLAS_THREADPOOL* ThreadPool
 ) {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //No fallback and putting in guards
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
-    ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+    //No fallback and putting in guards. This implementation is SME2 specific.
+    if(ArmKleidiAI::UseSME2){
+        ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
     }
 #endif
 
@@ -405,8 +405,10 @@ Return Value:
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
         ~(BufferAlignment - 1);
-    //If this gemm B argument is used in a dynamically quantization gemm operation we can optimize for
-    //this use case. Concat both packed representations for later decision.
+    // If this gemm B argument is used in a dynamically quantization gemm operation we can optimize for
+    // this use case. Concat both packed representations for later decision. This allows for cases later
+    // where we still have the prepack at the cost of some memory otherwise we can use the qgemm quantization 
+    // for better performance
     return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K);
 }
 
