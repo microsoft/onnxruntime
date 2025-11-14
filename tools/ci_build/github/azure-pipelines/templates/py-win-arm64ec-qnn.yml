@@ -35,6 +35,8 @@ jobs:
         PythonVersion: '3.12'
       Python313_x64:
         PythonVersion: '3.13'
+      Python314_x64:
+        PythonVersion: '3.14'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -113,5 +115,3 @@ jobs:
     inputs:
       artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
       targetPath: '$(Build.ArtifactStagingDirectory)'
-
-

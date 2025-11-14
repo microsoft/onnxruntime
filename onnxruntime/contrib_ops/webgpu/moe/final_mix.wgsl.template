@@ -1,0 +1,24 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// in: fc2_outputs [used_by, inter_size]
+// in: router_values [num_tokens, num_experts]
+// in: expert_tokens [used_by], mapping token idx to original token index
+// out: output
+// uniform: used_by, hidden_size, num_experts, expert_idx
+
+$MAIN {
+    let token_idx = expert_tokens[workgroup_idx];
+    let step = uniforms.hidden_size / workgroup_size_x;
+    let wg_offset = local_idx * step;
+    // token_idx is the offset into hidden state while fc2_outputs is for the chunk and
+    // we need to substract uniforms.token_offset
+    let router_value_offset = (token_idx - uniforms.token_offset) * uniforms.num_experts + uniforms.expert_idx;
+    let router_value = router_values[router_value_offset];
+    let fc2_outputs_offset = workgroup_idx * uniforms.hidden_size + wg_offset;
+    let output_offset = token_idx * uniforms.hidden_size + wg_offset;
+    for (var i = 0u; i < step; i++) {
+        let weight = fc2_outputs[fc2_outputs_offset + i];
+        output[output_offset + i] += router_value * weight;
+    }
+}

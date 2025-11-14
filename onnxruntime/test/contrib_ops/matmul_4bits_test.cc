@@ -556,7 +556,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
 #endif
 #ifdef USE_WEBGPU
     ConfigOptions config_options{};
-    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kSmallStorageBufferBindingSizeForTesting, "1").IsOK());
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728").IsOK());
     execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
 #endif
     RunTest<float>(opts, std::move(execution_providers));
