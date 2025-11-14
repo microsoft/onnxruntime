@@ -207,6 +207,7 @@ void MatMulWriteFnSource(ShaderHelper& shader,
     // still need to handle `has_bias` (and `is_channels_last` in the future) in
     // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
     ORT_ENFORCE(!has_bias, "Bias is not supported in MatMulProgram when Split-K is enabled.");
+    ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled.");
     HandleMatMulWithSplitK(shader, output_variable_type);
   } else if (is_gemm) {
     HanldeMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);

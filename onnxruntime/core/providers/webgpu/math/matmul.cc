@@ -85,7 +85,7 @@ bool SplitKConfig::UseSplitK(
   use_split_k &= is_vec4;
   use_split_k &= batch_size == 1;
   // Now `is_channels_last` is only supported because we only generate vec4 shaders in
-  // `MatMulFillBiasBeforeSplitKProgram`.
+  // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
   use_split_k &= is_channels_last;
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
