@@ -37,7 +37,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
-#include "data_propagation/data_propagation_factory.h"
+#include "data_propagation/custom_data_propagation.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
