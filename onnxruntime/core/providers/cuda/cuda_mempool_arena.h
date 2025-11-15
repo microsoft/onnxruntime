@@ -23,7 +23,7 @@ namespace cuda {
  *        a single process is hosting more than one cuda session. This arena hosts cuda memory pool
  *        which has some tunable parameters to control its memory usage and de-allocates memory back to
  *        the device according to the specified params. This is opposite to the BFCArena which only
- *        attempts to free memory on Shrink() at the end of the run.
+ *        attempts to free memory on Shrink() if configured at the end of the run.
  *
  * ### Behavior
  * - Creates a **process-local** CUDA mempool for a specific device (from `OrtMemoryInfo`).
