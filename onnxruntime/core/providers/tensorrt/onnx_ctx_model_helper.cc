@@ -300,6 +300,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            onnx_model_bytestream_size_,
                                                            onnx_external_data_bytestream_,
                                                            onnx_external_data_bytestream_size_,
+                                                           in_memory_weights_,
                                                            (*trt_engine_).get(),
                                                            false /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
@@ -371,6 +372,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            onnx_model_bytestream_size_,
                                                            onnx_external_data_bytestream_,
                                                            onnx_external_data_bytestream_size_,
+                                                           in_memory_weights_,
                                                            (*trt_engine_).get(),
                                                            true /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
