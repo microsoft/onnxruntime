@@ -13,7 +13,7 @@ namespace webgpu {
 // which are used in the MatMulWriteFnSource function.
 namespace {
 
-void HanldeMaybeHaveBiasForGEMM(ShaderHelper& shader,
+void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 bool has_bias,
                                 int c_components,
@@ -51,6 +51,70 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
                                     << output.SetByIndices("coords", "value") << "\n";
+}
+
+void HandleMatMulWithSplitK(
+    ShaderHelper& shader,
+    ProgramVariableDataType output_variable_type) {
+  shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
+
+  // With Split-K, the final output will be the sum of the sub-outputs from multiple workgroups,
+  // so we must add them with atomic built-in functions. Because currently WebGPU doesn't support
+  // atomic built-in functions on `f32` or `f16`, we implement the `atomicAdd` on `f32` and `f16`
+  // with `atomicLoad` and `atomicCompareExchangeWeak`:
+  // 1. Get `old_output_i32` from `output[offset]` with `atomicLoad`.
+  // 2. Convert `old_output_i32` into `f32` (`old_output_f32`) or `vec2h` (`old_output_vec2h`).
+  // 3. Add incoming `value` into `old_output_f32` or `old_output_vec2h`.
+  // 4. Convert the result of step 3 into `i32` values.
+  // 5. Try assigning the result of step 4 into `output[offset]` with `atomicCompareExchangeWeak`
+  //    and `old_output_i32`. The assignment will fail if at this time `output[offset]` is not
+  //    equal to `old_output_i32` (it is updated in another invocation). If the assignment fails
+  //    we have to go to step 1 and repeat all the above steps.
+  switch (output_variable_type) {
+    case ProgramVariableDataType::Float32x4: {
+      shader.AdditionalImplementation() << R"(
+    let offset0 = i2o_output(coords) * 4u;
+    for (var i = 0u; i < 4u; i++) {
+        let offset = offset0 + i;
+        while (true) {
+            let old_output_i32 = atomicLoad(&output[offset]);
+            let old_output_f32 = bitcast<f32>(old_output_i32);
+            let new_output_f32 = old_output_f32 + value[i];
+            let new_output_i32 = bitcast<i32>(new_output_f32);
+            let output_compare_exchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
+            if (output_compare_exchange.old_value == old_output_i32) {
+                break;
+            }
+        }
+    }
+)";
+      break;
+    }
+    case ProgramVariableDataType::Float16x4: {
+      shader.AdditionalImplementation() << R"(
+    let offset0 = i2o_output(coords) * 2u;
+    var vec2h_values : array<vec2h, 2>;
+    vec2h_values[0] = value.xy;
+    vec2h_values[1] = value.zw;
+    for (var i = 0u; i < 2u; i++) {
+        let offset = offset0 + i;
+        while (true) {
+            let old_output_i32 = atomicLoad(&output[offset]);
+            let old_output_vec2h = bitcast<vec2h>(old_output_i32);
+            let new_output_vec2h = old_output_vec2h + vec2h_values[i];
+            let new_output_i32 = bitcast<i32>(new_output_vec2h);
+            let output_compare_exchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
+            if (output_compare_exchange.old_value == old_output_i32) {
+                break;
+            }
+        }
+    }
+)";
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 }  // namespace
@@ -125,7 +189,9 @@ void MatMulWriteFnSource(ShaderHelper& shader,
                          int output_components,
                          bool c_is_scalar,
                          std::string activation_snippet,
-                         bool is_channels_last) {
+                         bool is_channels_last,
+                         bool use_split_k,
+                         ProgramVariableDataType output_variable_type) {
   shader.AdditionalImplementation()
       << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) { \n";
 
@@ -134,8 +200,17 @@ void MatMulWriteFnSource(ShaderHelper& shader,
   shader.AdditionalImplementation() << "if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) { \n"
                                     << "    var value = valueIn; \n";
 
-  if (is_gemm) {
-    HanldeMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);
+  if (use_split_k) {
+    // Set output when MatMul is performed with Split-K.
+    // When Split-K is used in MatMul, the bias will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
+    // instead of here, so `has_bias` and `is_channels_last` is not used for Split-K. Note that we
+    // still need to handle `has_bias` (and `is_channels_last` in the future) in
+    // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
+    ORT_ENFORCE(!has_bias, "Bias is not supported in MatMulProgram when Split-K is enabled.");
+    ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled.");
+    HandleMatMulWithSplitK(shader, output_variable_type);
+  } else if (is_gemm) {
+    HandleMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);
   } else {
     HandleMaybeBiasForMatMul(shader, output, has_bias, activation_snippet, is_channels_last);
   }
@@ -159,9 +234,6 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   uint32_t tile_inner,
                                   bool split_k,
                                   uint32_t split_dim_inner) {
-  ORT_UNUSED_PARAMETER(split_k);
-  ORT_UNUSED_PARAMETER(split_dim_inner);
-
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
   std::string write_data_to_sub_a_vec4_snippet =
@@ -208,13 +280,50 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "  let tileCol = i32(local_id.x);\n"
       << "  let globalRow = i32(global_id.y) * rowPerThread;\n"
       << "  let globalCol = i32(global_id.x);\n"
-      << "  let batch = i32(global_id.z);\n"
-      << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
       << "  let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
       << "  let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
-      << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
-      << "  var kStart = 0;\n"
       << "  var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
+
+  if (split_k) {
+    // With Split-K, the original "workgroup" (with dispatch_z == 1 in API side) is split into
+    // multiple ones, and in the current workgroup we only compute `kSplitK` elements starting from
+    // `kSplitK * i32(global_id.z)`.
+    //
+    //  For example: considering computing Y = (X * W + B) in one workgroup.
+    //  Let kSplitK = 2, B = [d1, d2]
+    //  Let X = [[a1 a1 b1 b1 c1 c1]  = [ A1 B1 C1 ], W = [[a2 a2]  = [ A2
+    //           [a1 a1 b1 b1 c1 c1]]                      [a2 a2]      B2
+    //                                                     [b2 b2]      C2 ]
+    //                                                     [b2 b2]
+    //                                                     [c2 c2]
+    //                                                     [c2 c2]]
+    //
+    //  With Split-K:
+    //  1. Initialize output Y with B in `MatMulFillBiasOrZeroBeforeSplitKProgram`:  Y = [[d1, d2]
+    //                                                                                   [d1, d2]]
+    //  2. Split the original 1 workgroup into 3 workgroups (now `dispatch_z = 3` in API side)
+    //     Workgroup1: compute (A1 * A2)  Workgroup2: compute (B1 * B2)
+    //     Workgroup3: compute (C1 * C2)
+    //     In each workgroup:
+    //     - `num_tiles` is computed with `kSplitK`, and `kStart` is computed with `global_id.z`
+    //     - When the computation in each workgroup is completed, add the result to Y with several
+    //       atomic built-in functions in `HandleMatMulWithSplitK()`.
+    shader.MainFunctionBody()
+        << "const kSplitK = " << split_dim_inner << ";\n"
+        << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n"
+        << "  var kStart = kSplitK * i32(global_id.z);\n"
+
+        // When Split-K is used, `batch` should always be 0 and `global_id.z` is used to indicate
+        // the index of split-k instead of batch.
+        << "  let batch = 0;\n"
+        << "  let batchIndices = 0u;\n";
+  } else {
+    shader.MainFunctionBody()
+        << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
+        << "  var kStart = 0;\n"
+        << "  let batch = i32(global_id.z);\n"
+        << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "");
+  }
 
   // Loop over shared dimension.
   shader.MainFunctionBody() << "  let tileRowB = localRow * " << row_per_thread_b << ";\n";

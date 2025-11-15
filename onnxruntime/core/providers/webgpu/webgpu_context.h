@@ -5,12 +5,14 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -171,6 +173,13 @@ class WebGpuContext final {
   Status Run(ComputeContext& context, const ProgramBase& program);
   void OnRunEnd();
 
+  //
+  // Get Split-K configuration.
+  //
+  // `split_k_config_` won't be initialized until the first call to this method.
+  //
+  const SplitKConfig& GetSplitKConfig();
+
  private:
   enum class TimestampQueryType {
     None = 0,
@@ -267,6 +276,8 @@ class WebGpuContext final {
 
   uint32_t num_pending_dispatches_ = 0;
   const uint32_t max_num_pending_dispatches_ = 16;
+
+  std::optional<SplitKConfig> split_k_config_;
 
   // profiling
   TimestampQueryType query_type_;

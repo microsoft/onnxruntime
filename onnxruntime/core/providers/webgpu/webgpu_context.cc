@@ -910,6 +910,13 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInf
   }
 }
 
+const SplitKConfig& WebGpuContext::GetSplitKConfig() {
+  if (!split_k_config_) {
+    split_k_config_ = SplitKConfig::GetSplitKConfig(adapter_info_);
+  }
+  return *split_k_config_;
+}
+
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
