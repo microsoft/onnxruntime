@@ -520,8 +520,8 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* head_sink,
-                      const Tensor* seqlen_k, int local_window_size) {
+                      Tensor* output_qk, WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context,
+                      const Tensor* head_sink, const Tensor* seqlen_k, int local_window_size) {
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
   const int total_sequence_length =
@@ -533,6 +533,11 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   Tensor probs = context.CreateGPUTensor(Q->DataType(), probs_shape);
   ORT_RETURN_IF_ERROR(ComputeAttentionProbs(context, output_count, Q, K, past_key, attention_bias, &probs, present_key,
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
+
+  if (output_qk != nullptr) {
+    // Copy the attention scores (scaled Q*K^T) to output_qk
+    ORT_RETURN_IF_ERROR(context.CopyTensor(probs, *output_qk));
+  }
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
                                             parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.use_smooth_softmax_, head_sink, local_window_size));
@@ -730,7 +735,7 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
 
   // Apply the actual attention computation
   return ApplyAttention(&Q, &K, &V, attention_bias, nullptr, nullptr, output, /* present_key */ nullptr,
-                        /* present_value */ nullptr, parameters, context, nullptr, nullptr, -1);
+                        /* present_value */ nullptr, /* output_qk */ nullptr, parameters, context, nullptr, nullptr, -1);
 }
 
 }  // namespace webgpu

@@ -6,9 +6,13 @@
 
 namespace onnxruntime {
 namespace webgpu {
-ComputeContext::ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep, WebGpuContext& webgpu_context)
+ComputeContext::ComputeContext(OpKernelContext& kernel_context,
+                               const OpKernel& op_kernel,
+                               const WebGpuExecutionProvider& ep,
+                               WebGpuContext& webgpu_context)
     : webgpu_context_{webgpu_context},
       kernel_context_{kernel_context},
+      op_kernel_{op_kernel},
       ep_{ep} {
 }
 

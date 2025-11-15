@@ -94,7 +94,17 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   Tensor* present_key = context.Output(1, present_shape);
   Tensor* present_value = context.Output(2, present_shape);
 
-  if (CanApplyFlashAttention(bias, present_key, present_value, parameters, context)) {
+  std::vector<int64_t> output_qk_dims{
+      parameters.batch_size_,
+      parameters.num_heads_,
+      parameters.sequence_length_,
+      parameters.total_sequence_length_,
+  };
+  TensorShape output_qk_shape(output_qk_dims);
+  Tensor* output_qk = context.Output(3, output_qk_shape);
+
+  if (output_qk == nullptr &&  // Flash attention does not output QK scores
+      CanApplyFlashAttention(bias, present_key, present_value, parameters, context)) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context);
   }
@@ -108,7 +118,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
     return ApplyAttention(&Q, key, value, attention_bias, past_key, past_value, output, present_key,
-                          present_value, parameters, context);
+                          present_value, output_qk, parameters, context);
   }
 
   TensorShapeVector k_new_dims({parameters.batch_size_, parameters.num_heads_,
@@ -127,7 +137,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(&Q, &K, &V, attention_bias, past_key, past_value, output, present_key,
-                        present_value, parameters, context);
+                        present_value, output_qk, parameters, context);
 }
 
 }  // namespace webgpu
