@@ -153,6 +153,13 @@ class CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(1, 16, MLFloat16_float_MLFloat16, 
 class CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(1, 16, float_float_MLFloat16, LayerNormalization);
 class CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(1, 16, MLFloat16_float_float, LayerNormalization);
 class CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(1, 16, BFloat16_float_BFloat16, LayerNormalization);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float_float, SimplifiedLayerNormalization);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, double_double_double, SimplifiedLayerNormalization);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float_MLFloat16, SimplifiedLayerNormalization);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float_MLFloat16, SimplifiedLayerNormalization);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float_float, SimplifiedLayerNormalization);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization);
+// For backward compatibility: SimplifiedLayerNormalization was previously incorrectly registered to the ONNX domain
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float_float_float, SimplifiedLayerNormalization);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double_double_double, SimplifiedLayerNormalization);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16_float_MLFloat16, SimplifiedLayerNormalization);
@@ -394,6 +401,13 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(1, 16, float_float_MLFloat16, LayerNormalization)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(1, 16, MLFloat16_float_float, LayerNormalization)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_VERSIONED_TYPED_CLASS_NAME(1, 16, BFloat16_float_BFloat16, LayerNormalization)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float_float, SimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double_double_double, SimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float_MLFloat16, SimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_float_MLFloat16, SimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_float_float, SimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization)>,
+      // For backward compatibility: SimplifiedLayerNormalization was previously incorrectly registered to the ONNX domain
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float_float_float, SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double_double_double, SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16_float_MLFloat16, SimplifiedLayerNormalization)>,
