@@ -574,7 +574,9 @@ class GraphInfo {
   const std::vector<QnnTensorWrapper>& InputTensors() const { return input_tensors_; }
   const std::vector<QnnTensorWrapper>& OutputTensors() const { return output_tensors_; }
   Qnn_GraphHandle_t Graph() const { return graph_; }
+  void SetGraph(Qnn_GraphHandle_t graph) { graph_ = graph; }
   Qnn_ContextHandle_t GraphContext() const { return graph_context_; }
+  void SetGraphContext(Qnn_ContextHandle_t graph_context) { graph_context_ = graph_context; }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphInfo);
 
  private:

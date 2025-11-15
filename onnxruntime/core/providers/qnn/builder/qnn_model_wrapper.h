@@ -59,9 +59,9 @@ class QnnModelWrapper {
 
   const ModelSettings& GetModelSettings() const { return model_settings_; }
 
-  bool CreateQnnGraph(const Qnn_ContextHandle_t& context,
-                      const std::string& graph_name,
-                      const QnnGraph_Config_t** graph_configs = nullptr);
+  Status CreateQnnGraph(const Qnn_ContextHandle_t& context,
+                        const std::string& graph_name,
+                        const QnnGraph_Config_t** graph_configs = nullptr);
 
   // Make a QnnTensorWrapper from an onnx input or output.
   Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
@@ -93,7 +93,7 @@ class QnnModelWrapper {
                      std::vector<std::string>&& param_tensor_names,
                      bool do_op_validation = false);
 
-  bool ComposeQnnGraph(bool build_json_qnn_graph = false);
+  Status ComposeQnnGraph(bool build_json_qnn_graph = false);
 
   Qnn_GraphHandle_t GetQnnGraph() const { return graph_; }
 
@@ -293,17 +293,17 @@ class QnnModelWrapper {
                                /*out*/ int64_t& axis) const;
 
  private:
-  bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
-                                   const std::vector<std::string>& names,
-                                   std::vector<Qnn_Tensor_t>& tensor_wrappers,
-                                   bool do_op_validation = false);
+  Status CreateQnnInputOutputTensors(const std::string& qnn_node_name,
+                                     const std::vector<std::string>& names,
+                                     std::vector<Qnn_Tensor_t>& tensor_wrappers,
+                                     bool do_op_validation = false);
 
   bool QnnParamExists(const std::string& param_tensor_name) const;
 
-  bool CreateQnnParamTensors(const std::string& qnn_node_name,
-                             const std::vector<std::string>& param_tensor_names,
-                             std::vector<Qnn_Param_t>& qnn_params,
-                             bool do_op_validation = false);
+  Status CreateQnnParamTensors(const std::string& qnn_node_name,
+                               const std::vector<std::string>& param_tensor_names,
+                               std::vector<Qnn_Param_t>& qnn_params,
+                               bool do_op_validation = false);
 
   bool IsQDQNode(const Node& node) const {
     if (node.OpType() == "QuantizeLinear" || node.OpType() == "DequantizeLinear") {
