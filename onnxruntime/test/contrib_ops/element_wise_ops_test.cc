@@ -109,7 +109,7 @@ TEST(BiasGeluTest, Float) {
   RunBiasGeluTestFloat({2, 2333}, {2333});
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
 static void RunBiasGeluTestHalf(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims) {
   RandomValueGenerator random{2333};
   std::vector<float> input_data = random.Uniform<float>(input_dims, -1.0f, 1.0f);
