@@ -232,11 +232,15 @@ void CPUIDInfo::VendorInfoInit() {
   }();
 
   const auto* vendor_info = FindCpuVendorInfo(vendor);
+// Do below logging only if CPUINFO_SUPPORTED by the OS and still vendor_info is not available.
+#if defined(CPUINFO_SUPPORTED)
   if (vendor_info == nullptr) {
     LogEarlyWarning(MakeString("Unknown CPU vendor. cpuinfo_vendor value: ", static_cast<int>(vendor)));
     vendor_info = &kUnknownCpuVendorInfo;
   }
-
+#else
+  vendor_info = &kUnknownCpuVendorInfo;
+#endif
   vendor_ = vendor_info->name;
   vendor_id_ = vendor_info->id;
 }
