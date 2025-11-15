@@ -145,7 +145,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr);
+                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr, bool skip_copy_kv = false, Tensor* indirect_buffer = nullptr);
 
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);

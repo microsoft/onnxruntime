@@ -351,7 +351,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k) {
+                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k, bool skip_copy_kv, Tensor* indirect_buffer) {
   // Extract present_sequence_length directly from present_key tensor shape:
   // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
   const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
@@ -361,7 +361,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   if (parameters.sequence_length_ > 1) {
     const uint32_t tile_size = 64;
     // For encode path, use the original CopyKVCache without indirect dispatch preparation
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, nullptr));
+    if (!skip_copy_kv) {
+      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, nullptr));
+    }
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
@@ -415,18 +417,22 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                      seqlen_k != nullptr &&
                                      context.IsGraphCaptureEnabled();
 
-  // Create indirect dispatch buffer if using indirect dispatch
-  Tensor* indirect_buffer_ptr = nullptr;
-  Tensor indirect_buffer;
-  if (use_indirect_dispatch) {
-    const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
-    indirect_buffer = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
-    indirect_buffer_ptr = &indirect_buffer;
-    // Use the fused CopyKVCache that also prepares the indirect dispatch buffer
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, seqlen_k, indirect_buffer_ptr));
-  } else {
-    // Use the original CopyKVCache without indirect dispatch preparation
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, seqlen_k, nullptr));
+  Tensor* indirect_buffer_ptr = indirect_buffer;
+  Tensor indirect_buffer_obj;
+
+  if (!skip_copy_kv) {
+    if (use_indirect_dispatch) {
+      if (indirect_buffer == nullptr) {
+        const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
+        indirect_buffer_obj = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
+        indirect_buffer_ptr = &indirect_buffer_obj;
+      }
+      // Use the fused CopyKVCache that also prepares the indirect dispatch buffer
+      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, seqlen_k, indirect_buffer_ptr));
+    } else {
+      // Use the original CopyKVCache without indirect dispatch preparation
+      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, nullptr, nullptr));
+    }
   }
 
   // The metadata is used to store the max and sum of each tile.
