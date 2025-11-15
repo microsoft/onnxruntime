@@ -74,6 +74,12 @@ struct ForwardToFactoryImpl {
     return static_cast<const TFactory*>(this_ptr)->IsStreamAware();
   }
 
+  static OrtStatus* ORT_API_CALL SetupCigContext(_In_ OrtEpFactory* this_ptr,
+                                                 _In_ const OrtMemoryDevice* memory_device,
+                                                 _In_ const struct GraphicsInteropParams* graphicsInteropParams) noexcept {
+    return static_cast<TFactory*>(this_ptr)->SetupCigContext(memory_device, graphicsInteropParams);
+  }
+
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDevice(_In_ OrtEpFactory* this_ptr,
                                                            _In_ const OrtMemoryDevice* memory_device,
                                                            _In_opt_ const OrtKeyValuePairs* stream_options,

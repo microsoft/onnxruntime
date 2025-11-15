@@ -38,6 +38,14 @@ class GraphOptimizerRegistry;
 #include "core/framework/tuning_context.h"
 #include "core/session/onnxruntime_c_api.h"
 
+#if DX_FOR_INTEROP && _WIN32
+#include <d3d12.h>
+#endif
+
+#if VULKAN_FOR_INTEROP
+#include <vulkan/vulkan.h>
+#endif
+
 struct OrtEpDevice;
 struct OrtRunOptions;
 
@@ -91,6 +99,86 @@ class IExecutionProvider {
 
  public:
   virtual ~IExecutionProvider() = default;
+
+  virtual Status GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, struct FenceInteropParams* fenceInteropParams, void** extSemFence) {
+    auto interop_params_sptr = std::make_shared<FenceInteropParams>(*fenceInteropParams);
+    *extSemFence = new std::shared_ptr<FenceInteropParams>(interop_params_sptr);
+    ORT_UNUSED_PARAMETER(graphicsInteropParams);
+    return Status::OK();
+  }
+
+  virtual Status SetupInteropEpWait(void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue) {
+    ORT_UNUSED_PARAMETER(stream);
+    auto* sptr_ptr = static_cast<std::shared_ptr<FenceInteropParams>*>(extSemFence);
+    std::shared_ptr<FenceInteropParams> interopWaitParamsSptr = *sptr_ptr;
+    delete sptr_ptr;
+
+    auto* interopWaitParams = interopWaitParamsSptr.get();
+
+    ExternalSyncPrimitive extSyncPrimitive = interopWaitParams->extSyncPrimitive;
+    // to-do: The fallback logic needs more refinement to deal with multi threaded scenarios.
+    if (extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence) {
+#if DX_FOR_INTEROP && _WIN32
+      HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+      reinterpret_cast<ID3D12Fence*>(interopWaitParams->FencePtr.pFence)->SetEventOnCompletion(fenceValue, hEvent);
+      WaitForSingleObject(hEvent, INFINITE);
+      CloseHandle(hEvent);
+      return Status::OK();
+#endif
+    }
+    else if(extSyncPrimitive == ExternalSyncPrimitive_VulkanSemaphore)
+    {
+#if VULKAN_FOR_INTEROP
+      PFN_vkWaitForFences pfnVkWaitForFences = reinterpret_cast<PFN_vkWaitForFences>(
+          reinterpret_cast<PFN_vkGetDeviceProcAddr>(interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr)(
+              reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), "vkWaitForFences"));
+
+      if (!pfnVkWaitForFences) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get function pointer for vkWaitForFences");
+      }
+      VkResult result = pfnVkWaitForFences(reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), 1, reinterpret_cast<const VkFence*>(&interopWaitParams->FencePtr.pVkFence), VK_TRUE, UINT64_MAX);
+
+      if (result != VK_SUCCESS) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "vkWaitForFences failed with Vulkan error code: " + std::to_string(result));
+      }
+
+      PFN_vkResetFences pfnVkResetFences = reinterpret_cast<PFN_vkResetFences>(
+          reinterpret_cast<PFN_vkGetDeviceProcAddr>(interopWaitParams->VulkanDeviceParams.pVkGetDeviceProcAddr)(
+              reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), "vkResetFences"));
+      if (pfnVkResetFences) {
+        pfnVkResetFences(reinterpret_cast<VkDevice>(interopWaitParams->VulkanDeviceParams.pVkDevice), 1, reinterpret_cast<const VkFence*>(&interopWaitParams->FencePtr.pVkFence));
+      }
+
+      return Status::OK();
+#endif
+    }
+    ORT_UNUSED_PARAMETER(fenceValue);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported External Sync primitive");
+  }
+  virtual Status SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue) {
+    ORT_UNUSED_PARAMETER(extSemFence);
+    ORT_UNUSED_PARAMETER(fenceValue);
+
+    const OrtSyncStreamImpl* streamImpl;
+    OrtSyncNotificationImpl* streamNotification;
+    streamImpl = ortEpApi->SyncStream_GetImpl(static_cast<OrtSyncStream*>(stream));
+
+    OrtStatus* status = nullptr;
+    status = streamImpl->CreateNotification(const_cast<OrtSyncStreamImpl*>(streamImpl), &streamNotification);
+    if(status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create notification");
+    }
+
+    status = streamNotification->Activate(streamNotification);
+    if(status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to activate notification");
+    }
+    status = streamNotification->WaitOnHost(streamNotification);
+    if(status != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait on host");
+    }
+    return Status::OK();
+  }
 
   /**
    * Returns a data transfer object that implements methods to copy to and
