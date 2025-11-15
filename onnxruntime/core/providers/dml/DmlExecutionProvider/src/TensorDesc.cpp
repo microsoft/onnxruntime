@@ -357,17 +357,18 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
 
         m_sizes[targetDimensionIndex] = std::accumulate(sizeFoldBegin, sizeFoldEnd, 1u, std::multiplies<uint32_t>());
 
-        // Update strides too.
+        // Update strides too (right alignment has no extra work).
         if (alignment == TensorAxis::LeftAligned)
         {
             m_strides[targetDimensionIndex] = m_strides[oldDimensionCount - 1]; // Migrate the last stride to its new position.
         }
         // Ensure the target stride is at least 1, not 0, in case a dimension of size 1 was folded that had a stride
-        // of 0 (which might happen because a stride of 0 for dimension of size 1 is ignorable).
+        // of 0 (which might happen because a stride of 0 for dimension of size 1 is ignorable), and other dimensions
+        // were folded into the target too.
         m_strides[targetDimensionIndex] = std::max(m_strides[targetDimensionIndex], 1u);
     }
 
-    // alignment == TensorAxis::LeftAligned is the easy case (just truncate the end).
+    // Left alignment is the easy case (just truncate the end).
     // Right alignment needs more work, shifting values over.
     if (alignment == TensorAxis::RightAligned)
     {
@@ -376,6 +377,7 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
         memmove(&m_sizes[fillCount], &m_sizes[oldDimensionCount - moveCount], sizeof(m_sizes[0]) * moveCount);
         memmove(&m_strides[fillCount], &m_strides[oldDimensionCount - moveCount], sizeof(m_strides[0]) * moveCount);
     }
+
     // For any new dimensions, insert leading/trailing 1's for sizes and 0's for strides.
     if (fillCount > 0)
     {
