@@ -290,11 +290,20 @@ void TensorDesc::ForceUnsignedDataType()
 }
 
 // Add additional padding 1's to ensure the count is at least that large.
-void TensorDesc::EnsureDimensionCount(uint32_t newDimensionCount, TensorAxis alignment)
+void TensorDesc::EnsureMinimumDimensionCount(uint32_t minimumDimensionCount, TensorAxis alignment)
 {
-    if (m_bufferTensorDesc.DimensionCount < newDimensionCount)
+    if (m_bufferTensorDesc.DimensionCount < minimumDimensionCount)
     {
-        SetDimensionCount(newDimensionCount, alignment);
+        SetDimensionCount(minimumDimensionCount, alignment);
+    }
+}
+
+// Ensure the dimension count is less than or equal to the limit.
+void TensorDesc::EnsureMaximumDimensionCount(uint32_t maximumDimensionCount, TensorAxis alignment)
+{
+    if (m_bufferTensorDesc.DimensionCount > maximumDimensionCount)
+    {
+        SetDimensionCount(maximumDimensionCount, alignment);
     }
 }
 
@@ -313,7 +322,52 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
     int32_t fillOffset = oldDimensionCount;
     int32_t fillCount = std::max(0, difference);
 
-    // alignment == TensorAxis::LeftAligned is the easy case.
+    // If shrinking the rank, fold dimensions into the first/last dimension.
+    // e.g. Folding 4D dimensions [2,3,4,5] to 3D right-aligned yield [6,4,5]
+    // e.g.         6D dimensions [2,3,4,5,6,7] to 3D left-aligned yield [1,2,840]
+    if (difference < 0 && newDimensionCount > 0)
+    {
+        uint32_t dimensionCountRemoved = -difference;
+        uint32_t dimensionCountFolded = dimensionCountRemoved + 1; // If 2 dimensions are removed, then 3 dimensions are folded into one.
+        uint32_t targetDimensionIndex;
+        uint32_t firstFoldedDimensionIndex;
+
+        // Determine the range to fold and which dimension to fold them into.
+        if (alignment == TensorAxis::RightAligned)
+        {
+            targetDimensionIndex = dimensionCountRemoved; // Fold extra dimensions into the first dimension of the new size.
+            firstFoldedDimensionIndex = 0;
+        }
+        else // alignment == TensorAxis::LeftAligned
+        {
+            targetDimensionIndex = newDimensionCount - 1; // Fold extra dimensions into the last dimension of the new size.
+            firstFoldedDimensionIndex = targetDimensionIndex;
+        }
+        auto sizeFoldBegin = &m_sizes[firstFoldedDimensionIndex];
+        auto sizeFoldEnd = &m_sizes[firstFoldedDimensionIndex + dimensionCountFolded];
+
+        // Ensure no stride broadcasting is lost during the fold, which would silently give incorrect results.
+        ML_CHECK_VALID_ARGUMENT(
+            m_bufferTensorDesc.Strides == nullptr ||
+            !HasBroadcastedDimensions(
+                { sizeFoldBegin, sizeFoldEnd },
+                { &m_strides[firstFoldedDimensionIndex], dimensionCountFolded }
+            )
+        );
+
+        m_sizes[targetDimensionIndex] = std::accumulate(sizeFoldBegin, sizeFoldEnd, 1u, std::multiplies<uint32_t>());
+
+        // Update strides too.
+        if (alignment == TensorAxis::LeftAligned)
+        {
+            m_strides[targetDimensionIndex] = m_strides[oldDimensionCount - 1]; // Migrate the last stride to its new position.
+        }
+        // Ensure the target stride is at least 1, not 0, in case a dimension of size 1 was folded that had a stride
+        // of 0 (which might happen because a stride of 0 for dimension of size 1 is ignorable).
+        m_strides[targetDimensionIndex] = std::max(m_strides[targetDimensionIndex], 1u);
+    }
+
+    // alignment == TensorAxis::LeftAligned is the easy case (just truncate the end).
     // Right alignment needs more work, shifting values over.
     if (alignment == TensorAxis::RightAligned)
     {
@@ -322,6 +376,7 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
         memmove(&m_sizes[fillCount], &m_sizes[oldDimensionCount - moveCount], sizeof(m_sizes[0]) * moveCount);
         memmove(&m_strides[fillCount], &m_strides[oldDimensionCount - moveCount], sizeof(m_strides[0]) * moveCount);
     }
+    // For any new dimensions, insert leading/trailing 1's for sizes and 0's for strides.
     if (fillCount > 0)
     {
         std::fill(&m_sizes[fillOffset], &m_sizes[fillOffset] + fillCount, 1u);
@@ -374,4 +429,31 @@ void TensorDesc::EnsureStridesExist() noexcept
 
     GetDescendingPackedStrides({m_sizes, m_bufferTensorDesc.DimensionCount}, {m_strides, m_bufferTensorDesc.DimensionCount});
     m_bufferTensorDesc.Strides = m_strides;
+}
+
+bool TensorDesc::HasBroadcastedDimensions(
+    gsl::span<const uint32_t> dimensions,
+    gsl::span<const uint32_t> strides
+    ) noexcept
+{
+    assert(dimensions.size() == strides.size());
+    for (uint32_t i = 0; i < dimensions.size(); ++i)
+    {
+        // Note logical dimensions of size 1 (even when stride is 0) are not considered broadcasted.
+        if (strides[i] == 0 && dimensions[i] != 1)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool TensorDesc::HasBroadcastedDimensions() const noexcept
+{
+    return IsValid()
+        && m_bufferTensorDesc.Strides != nullptr
+        && HasBroadcastedDimensions(
+            { m_sizes, m_bufferTensorDesc.DimensionCount },
+            { m_strides, m_bufferTensorDesc.DimensionCount }
+        );
 }

@@ -32,6 +32,11 @@ public:
         // Initialize the output description while overriding the shape
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
 
+        // DirectML only supports ranks up to 4D for GEMM, and so leading dimensions must be clamped.
+        m_inputTensorDescs[0].EnsureMaximumDimensionCount(4, TensorAxis::RightAligned);
+        m_inputTensorDescs[1].EnsureMaximumDimensionCount(4, TensorAxis::RightAligned);
+        m_outputTensorDescs[0].EnsureMaximumDimensionCount(4, TensorAxis::RightAligned);
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
