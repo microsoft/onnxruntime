@@ -15,6 +15,7 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1332,6 +1333,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
   ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
+
+  ORT_RETURN_IF_ERROR(TransformInitializersToPreferredFormat());
+
   ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
@@ -1499,6 +1503,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
     CreateGraphInfo(save_prepacked_initializers);
+  }
+
+  // Index all initializers including those that may have become unreferenced after transformation.
+  // This runs after CreateGraphInfo() to ensure consistent ordering - CreateGraphInfo indexes based on
+  // graph structure, then we add any remaining initializers (e.g., original weights before transformation).
+  for (const auto& [init_name, tensor_proto] : graph_.GetAllInitializedTensors()) {
+    ORT_UNUSED_PARAMETER(tensor_proto);
+    ort_value_name_idx_map_.Add(init_name);
   }
 
 #if defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1792,5 +1804,153 @@ void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCol
   }
 }
 #endif
+
+Status SessionState::TransformInitializersToPreferredFormat() {
+  // Build a map from initializer name to all nodes that consume it
+  std::unordered_map<std::string, std::vector<std::pair<NodeIndex, int>>> initializer_to_consumers;
+
+  const auto& initialized_tensors_map = graph_.GetAllInitializedTensors();
+  std::unordered_set<std::string> initializer_names;
+  for (const auto& [name, tensor_proto] : initialized_tensors_map) {
+    ORT_UNUSED_PARAMETER(tensor_proto);
+    initializer_names.insert(name);
+  }
+
+  // Scan nodes to find which initializers they use
+  for (const auto& node : graph_.Nodes()) {
+    int input_index = 0;
+    for (const auto* input_def : node.InputDefs()) {
+      if (input_def && input_def->Exists()) {
+        const auto& input_name = input_def->Name();
+        if (initializer_names.count(input_name) > 0) {
+          initializer_to_consumers[input_name].emplace_back(node.Index(), input_index);
+        }
+      }
+      ++input_index;
+    }
+  }
+
+  auto cpu_allocator = GetAllocator(OrtDevice());
+
+  for (const auto& [init_name, consumers] : initializer_to_consumers) {
+    if (consumers.empty()) {
+      continue;
+    }
+
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_.GetInitializer(init_name, true);
+    if (!tensor_proto) {
+      continue;
+    }
+
+    // Skip if this initializer was already transformed (when loading a saved ORT format model)
+    // Transformed initializers have format metadata in string_data
+    bool already_transformed = false;
+    for (const auto& attr_str : tensor_proto->string_data()) {
+      if (attr_str.find("onnxruntime_format:") == 0) {
+        already_transformed = true;
+        break;
+      }
+    }
+    if (already_transformed) {
+      continue;
+    }
+
+    // Phase 1: Query all consumers to discover what formats are needed
+    // Multiple nodes may request the same format, so we deduplicate by format
+    std::unordered_map<std::string, std::vector<std::pair<NodeIndex, int>>> format_to_consumers;
+
+    for (const auto& [node_idx, input_idx] : consumers) {
+      const Node* node = graph_.GetNode(node_idx);
+      if (!node) {
+        continue;
+      }
+
+      const auto& ep_type = node->GetExecutionProviderType();
+      if (ep_type.empty()) {
+        continue;
+      }
+
+      const auto* ep = execution_providers_.Get(ep_type);
+      if (!ep) {
+        continue;
+      }
+
+      // Ask EP if it wants this initializer in a different format
+      std::string format_descriptor;
+      Status query_status = ep->GetPreferredInitializerFormat(*node, input_idx, format_descriptor);
+
+      if (!query_status.IsOK() || format_descriptor.empty()) {
+        continue;
+      }
+
+      format_to_consumers[format_descriptor].emplace_back(node_idx, input_idx);
+    }
+
+    if (format_to_consumers.empty()) {
+      continue;
+    }
+
+    // Load the original initializer to CPU for transformation
+    TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(*tensor_proto);
+    const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type())->GetElementType();
+
+    Tensor original_tensor(tensor_type, tensor_shape, cpu_allocator);
+    ORT_RETURN_IF_ERROR(
+        utils::TensorProtoToTensor(Env::Default(), std::filesystem::path(), *tensor_proto, original_tensor));
+
+    // Phase 2: Transform once per unique format requested
+    for (const auto& [format_descriptor, nodes_needing_format] : format_to_consumers) {
+      const Node* first_node = graph_.GetNode(nodes_needing_format[0].first);
+      if (!first_node) {
+        continue;
+      }
+
+      const auto& ep_type = first_node->GetExecutionProviderType();
+      const auto* ep = execution_providers_.Get(ep_type);
+      if (!ep) {
+        continue;
+      }
+
+      // Perform the actual transformation
+      std::unique_ptr<Tensor> transformed_tensor;
+      Status transform_status = ep->TransformInitializerFormat(original_tensor, format_descriptor, transformed_tensor);
+
+      if (!transform_status.IsOK() || !transformed_tensor) {
+        LOGS(logger_, WARNING) << "Failed to transform initializer '" << init_name << "' to format '"
+                               << format_descriptor << "': " << transform_status.ErrorMessage();
+        continue;
+      }
+
+      // Set format metadata on the transformed tensor
+      transformed_tensor->SetFormatDescriptor(format_descriptor);
+
+      // Add the transformed initializer with a new name
+      std::string transformed_name = init_name + "_fmt_" + format_descriptor;
+
+      ONNX_NAMESPACE::TensorProto transformed_proto = utils::TensorToTensorProto(*transformed_tensor, transformed_name);
+
+      // Add format metadata as TensorProto attribute
+      auto* format_attr = transformed_proto.add_string_data();
+      *format_attr = "onnxruntime_format:" + format_descriptor;
+
+      graph_.AddInitializedTensor(transformed_proto);
+
+      // Update all nodes that need this format to use the transformed version
+      for (const auto& [node_idx, input_idx] : nodes_needing_format) {
+        Node* node = graph_.GetNode(node_idx);
+        if (!node) {
+          continue;
+        }
+
+        const auto* original_node_arg = node->InputDefs()[input_idx];
+        auto* transformed_node_arg = &graph_.GetOrCreateNodeArg(transformed_name, original_node_arg->TypeAsProto());
+
+        node->MutableInputDefs()[input_idx] = transformed_node_arg;
+      }
+    }
+  }
+
+  return Status::OK();
+}
 
 }  // namespace onnxruntime

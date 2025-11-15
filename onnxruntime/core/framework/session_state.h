@@ -431,6 +431,12 @@ class SessionState {
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
+  /**
+   * Transform initializer tensors to EP-preferred memory formats.
+   * This is called during session initialization before kernel creation.
+   */
+  Status TransformInitializersToPreferredFormat();
+
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
       gsl::span<const OrtValue> inputs,

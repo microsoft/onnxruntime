@@ -378,6 +378,39 @@ class IExecutionProvider {
     return std::nullopt;
   }
 
+  /**
+    Query the preferred format descriptor for an initializer without performing the transformation.
+    This is a lightweight query called during session initialization to determine what format
+    transformations are needed.
+
+    @param node The node that consumes the initializer
+    @param input_index The input index of the initializer in the node
+    @param[out] format_descriptor A string that uniquely identifies the preferred format.
+                                  Empty string means no transformation is needed.
+                                  Examples: "ABcd16a4b", "hwio".
+    @return Status::OK() if query succeeded (format_descriptor will be set).
+            Failed status indicates no transformation is needed.
+  */
+  virtual Status GetPreferredInitializerFormat(const Node& /*node*/, int /*input_index*/,
+                                               std::string& /*format_descriptor*/) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No format transformation needed");
+  }
+
+  /**
+    Transform an initializer to the specified format.
+    This performs the actual data transformation. It is only called once per unique format
+    even if multiple nodes need the same format.
+
+    @param original_tensor The original initializer tensor
+    @param format_descriptor The target format (from GetPreferredInitializerFormat)
+    @param[out] transformed_tensor The EP should allocate and fill this with the transformed data.
+    @return Status::OK() if transformation succeeded.
+  */
+  virtual Status TransformInitializerFormat(const Tensor& /*original_tensor*/, const std::string& /*format_descriptor*/,
+                                            std::unique_ptr<Tensor>& /*transformed_tensor*/) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Format transformation not supported");
+  }
+
   virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}
 
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.

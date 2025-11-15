@@ -64,6 +64,12 @@ class WebGpuExecutionProvider : public IExecutionProvider {
                                                    std::string_view node_op_type,
                                                    DataLayout target_data_layout) const override;
 
+  Status GetPreferredInitializerFormat(const Node& node, int input_index,
+                                       std::string& format_descriptor) const override;
+
+  Status TransformInitializerFormat(const Tensor& original_tensor, const std::string& format_descriptor,
+                                    std::unique_ptr<Tensor>& transformed_tensor) const override;
+
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 
   // WebGPU EP disallow concurrent run because actual implementation (eg. WebGPU backend) relies on global states to

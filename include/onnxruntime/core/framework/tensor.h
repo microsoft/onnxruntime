@@ -282,6 +282,19 @@ class Tensor final {
     byte_offset_ = byte_offset;
   }
 
+  /**
+   * Get the memory format descriptor for this tensor.
+   * Returns empty string if the tensor is in standard format.
+   */
+  inline const std::string& GetFormatDescriptor() const { return format_descriptor_; }
+
+  /**
+   * Set the memory format descriptor for this tensor.
+   * Used for EP-specific memory layouts (e.g., "ABcd16a4b" for blocked format).
+   * The format string encodes all necessary information including block sizes.
+   */
+  inline void SetFormatDescriptor(const std::string& format) { format_descriptor_ = format; }
+
   /// <summary>
   /// The number of Tensor "storage" elements. A single storage element may contain multiple sub-elements for
   /// sub-byte data types (e.g., int4/float4).
@@ -349,6 +362,9 @@ class Tensor final {
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   ptrdiff_t byte_offset_;
+
+  // Memory format descriptor for EP-specific layouts (e.g., "ABcd16a4b")
+  std::string format_descriptor_;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

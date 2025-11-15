@@ -1424,6 +1424,15 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     }
   }
 
+  // Read format metadata from TensorProto string_data
+  for (const auto& attr_str : tensor_proto.string_data()) {
+    if (attr_str.find("onnxruntime_format:") == 0) {
+      std::string format = attr_str.substr(19);  // Skip "onnxruntime_format:"
+      tensor.SetFormatDescriptor(format);
+      break;  // Only one format descriptor expected
+    }
+  }
+
   return Status::OK();
 }
 

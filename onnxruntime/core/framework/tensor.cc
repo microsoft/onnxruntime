@@ -195,7 +195,8 @@ Tensor::Tensor(Tensor&& other) noexcept
 #endif
       dtype_(other.dtype_),
       alloc_info_(other.alloc_info_),
-      byte_offset_(other.byte_offset_) {
+      byte_offset_(other.byte_offset_),
+      format_descriptor_(std::move(other.format_descriptor_)) {
   other.p_data_ = nullptr;
   other.buffer_deleter_ = nullptr;
   other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
@@ -221,6 +222,7 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
     dtype_ = other.dtype_;
     alloc_info_ = other.alloc_info_;
     byte_offset_ = other.byte_offset_;
+    format_descriptor_ = std::move(other.format_descriptor_);
 
     other.p_data_ = nullptr;
     other.buffer_deleter_ = nullptr;
