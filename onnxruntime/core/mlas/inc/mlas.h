@@ -1877,13 +1877,13 @@ MlasHalfGemmConvertPackB(
     void* PackedB
     );
 
-#if defined(__aarch64__) && defined(__linux__)
+
 /**
  * @brief Whether current CPU supports Bfloat16(bf16) acceleration.
  */
 bool MLASCALL
 MlasBf16AccelerationSupported();
-
+#if defined(__aarch64__) && defined(__linux__)
 /**
  * @brief Interface for bf16 gemm post processors.
  *
