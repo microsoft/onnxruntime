@@ -20,6 +20,11 @@
 
 #include "gtest/gtest.h"
 
+#include "qnn_test_env.h"
+
+// in test_main.cc
+extern std::unique_ptr<QNNTestEnvironment> qnn_env;
+
 namespace onnxruntime {
 namespace test {
 
@@ -529,15 +534,19 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
                                  const std::string& qnn_ctx_model_path = "",
                                  const std::unordered_map<std::string, std::string>& session_option_pairs = {},
                                  std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr) {
+  std::filesystem::path output_dir;
+  if (qnn_env->dump_onnx() || qnn_env->dump_dlc() || qnn_env->dump_json()) {
+    output_dir = qnn_env->CreateTestcaseDirs();
+  }
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
   auto& logging_manager = DefaultLoggingManager();
-
-  // Uncomment to dump LOGGER() output to stdout.
-  // logging_manager.RemoveSink(logging::SinkType::EtwSink);
-
   logging_manager.SetDefaultLoggerSeverity(log_severity);
+  if (qnn_env->verbose()) {
+    logging_manager.RemoveSink(logging::SinkType::EtwSink);
+    logging_manager.SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+  }
 
   // Create float model and serialize it to a string.
   onnxruntime::Model f32_model("f32_model", false, ModelMetaData(), PathString(),
@@ -551,8 +560,11 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   ASSERT_STATUS_OK(f32_model.MainGraph().Resolve());
   f32_model.ToProto().SerializeToString(&f32_model_data);
 
-  // Uncomment to save f32 model to disk for debugging.
-  // ASSERT_STATUS_OK(onnxruntime::Model::Save(f32_model, ToPathString("cmp_accuracy.f32.onnx")));
+  if (qnn_env->dump_onnx()) {
+    auto dump_path = output_dir / ToPathString("dumped_f32_model.onnx");
+    LOGS(logging_manager.DefaultLogger(), VERBOSE) << "Save onnx float32 model at: " << dump_path;
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(f32_model, dump_path));
+  }
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
@@ -594,11 +606,27 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
 
-  // Uncomment to save QDQ model to disk for debugging.
-  // ASSERT_STATUS_OK(onnxruntime::Model::Save(qdq_model, ToPathString("cmp_accuracy.qdq.onnx")));
+  if (qnn_env->dump_onnx()) {
+    auto dump_path = output_dir / ToPathString("dumped_qdq_model.onnx");
+    LOGS(logging_manager.DefaultLogger(), VERBOSE) << "Save onnx QDQ model at: " << dump_path;
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(qdq_model, dump_path));
+  }
 
   bool is_qnn_ep = true;
   TryEnableQNNSaver(qnn_options);
+  if (qnn_env->dump_dlc()) {
+    qnn_options["dump_qnn_ir_dlc"] = "1";
+    qnn_options["dump_qnn_ir_dlc_dir"] = output_dir.string();
+#if defined(_WIN32)
+    qnn_options["qnn_ir_backend_path"] = "QnnIr.dll";
+#else
+    qnn_options["qnn_ir_backend_path"] = "libQnnIr.so";
+#endif  // defined(_WIN32)
+  }
+  if (qnn_env->dump_json()) {
+    qnn_options["dump_json_qnn_graph"] = "1";
+    qnn_options["json_qnn_graph_dir"] = output_dir.string();
+  }
   std::vector<OrtValue> qnn_qdq_outputs;
   if (!qnn_ctx_model_path.empty()) {
     onnx::ModelProto model_proto;
@@ -743,11 +771,19 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
                                   logging::Severity log_severity = logging::Severity::kERROR,
                                   const std::string& qnn_ctx_model_path = "",
                                   const std::unordered_map<std::string, std::string>& session_option_pairs = {}) {
+  std::filesystem::path output_dir;
+  if (qnn_env->dump_onnx() || qnn_env->dump_dlc() || qnn_env->dump_json()) {
+    output_dir = qnn_env->CreateTestcaseDirs();
+  }
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
   auto& logging_manager = DefaultLoggingManager();
   logging_manager.SetDefaultLoggerSeverity(log_severity);
+  if (qnn_env->verbose()) {
+    logging_manager.RemoveSink(logging::SinkType::EtwSink);
+    logging_manager.SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+  }
 
   // Create float model and serialize it to a string.
   onnxruntime::Model f32_model("f32_model", false, ModelMetaData(), PathString(),
@@ -759,6 +795,12 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
   f32_helper.SetGraphOutputs();
   ASSERT_STATUS_OK(f32_model.MainGraph().Resolve());
   f32_model.ToProto().SerializeToString(&f32_model_data);
+
+  if (qnn_env->dump_onnx()) {
+    auto dump_path = output_dir / ToPathString("dumped_f32_model.onnx");
+    LOGS(logging_manager.DefaultLogger(), VERBOSE) << "Save onnx float32 model at: " << dump_path;
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(f32_model, dump_path));
+  }
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
@@ -796,8 +838,27 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
   ASSERT_STATUS_OK(f16_model.MainGraph().Resolve());
   f16_model.ToProto().SerializeToString(&f16_model_data);
 
+  if (qnn_env->dump_onnx()) {
+    auto dump_path = output_dir / ToPathString("dumped_f16_model.onnx");
+    LOGS(logging_manager.DefaultLogger(), VERBOSE) << "Save onnx float16 model at: " << dump_path;
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(f16_model, dump_path));
+  }
+
   bool is_qnn_ep = true;
   TryEnableQNNSaver(qnn_options);
+  if (qnn_env->dump_dlc()) {
+    qnn_options["dump_qnn_ir_dlc"] = "1";
+    qnn_options["dump_qnn_ir_dlc_dir"] = output_dir.string();
+#if defined(_WIN32)
+    qnn_options["qnn_ir_backend_path"] = "QnnIr.dll";
+#else
+    qnn_options["qnn_ir_backend_path"] = "libQnnIr.so";
+#endif  // defined(_WIN32)
+  }
+  if (qnn_env->dump_json()) {
+    qnn_options["dump_json_qnn_graph"] = "1";
+    qnn_options["json_qnn_graph_dir"] = output_dir.string();
+  }
   std::vector<OrtValue> qnn_f16_outputs;
   if (!qnn_ctx_model_path.empty()) {
     onnx::ModelProto model_proto;
