@@ -104,7 +104,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
+                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg,
+                                          const logging::Logger* logger = nullptr);
 
   ITuningContext* GetTuningContext() const override;
 

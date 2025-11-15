@@ -405,7 +405,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // One reserve call should have been made (for allocating memory for the sole initializer in the model)
     ASSERT_EQ(1, alloc_stats.num_reserves);
 
-    // This counter comes from Reserve(). The actual call for arena based allocator went to StreamAwareArena instance
+    // This counter comes from Reserve(). The actual call for arena based allocator went to StreamAwareBFCArena instance
     ASSERT_EQ(1, alloc_stats.num_allocs);
   }
 }

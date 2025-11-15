@@ -388,10 +388,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::vector<float> expected_values_mul_y_2 = {174, 216, 258, 102, 128, 154, 30, 40, 50};
 
   // Now run
-  st = session_object.Run(run_options, *io_binding.get());
-
-  std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
-  ASSERT_TRUE(st.IsOK());
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
 
   if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
       (output_device && output_device->Type() == OrtDevice::GPU)) {
@@ -402,21 +399,19 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
+    Tensor cpu_tensor(element_type, shape, cpu_alloc);
 #ifdef USE_CUDA
-    st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
 #endif
 #ifdef USE_ROCM
-    st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, cpu_tensor);
 #endif
 #ifdef USE_WEBGPU
-    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
-    ml_value.Init(cpu_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+    Tensor::InitOrtValue(std::move(cpu_tensor), ml_value);
     VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
 #endif
   } else {
@@ -2230,7 +2225,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   auto cuda_alloc = session_object.GetAllocator(mem_info);
 
   AllocatorStats alloc_stats;
-  static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+  cuda_alloc->GetStats(&alloc_stats);
 #ifdef ENABLE_TRAINING
   // In training builds, initializers are allocated using the Reserve() call which
   // will not cause an arena extension
@@ -2250,7 +2245,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
     RunOptions run_options_1;
     RunModel(session_object, run_options_1);
 
-    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+    cuda_alloc->GetStats(&alloc_stats);
 
     // The arena would have made 2 more extensions as part of servicing memory requests within Run()
     // 1) - To take the solitary feed to cuda memory
@@ -2274,7 +2269,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
                                                                  "gpu:0"));
     RunModel(session_object, run_options_2);
 
-    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+    cuda_alloc->GetStats(&alloc_stats);
 
     // The arena would have made no extensions in this Run() as the freed memory after the first Run()
     // will be re-used
