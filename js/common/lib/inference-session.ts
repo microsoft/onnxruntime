@@ -259,6 +259,20 @@ export declare namespace InferenceSession {
     forceCpuNodeNames?: readonly string[];
 
     /**
+     * Specify the validation mode for WebGPU execution provider.
+     * - 'disabled': Disable all validation.
+     * When used in Node.js, disable validation may cause process crash if WebGPU errors occur. Be cautious when using
+     * this mode.
+     * When used in web, this mode is equivalent to 'wgpuOnly'.
+     * - 'wgpuOnly': Perform WebGPU internal validation only.
+     * - 'basic': Perform basic validation including WebGPU internal validation. This is the default mode.
+     * - 'full': Perform full validation. This mode may have performance impact. Use it for debugging purpose.
+     *
+     * @default 'basic'
+     */
+    validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
+
+    /**
      * Specify an optional WebGPU device to be used by the WebGPU execution provider.
      */
     device?: TryGetGlobalType<'GPUDevice'>;
