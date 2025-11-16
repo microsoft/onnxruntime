@@ -451,24 +451,22 @@ TEST(ConvIntegerTest, WithoutPadding_2D_s8s8) {
 
   std::vector<int64_t> x_dims{1, 1, 3, 3};
   test.AddInput<int8_t>("x", x_dims,
-                        {-1,  2, -3,
-                          4, -5,  6,
-                         -7,  8, -9});
+                        {-1, 2, -3,
+                         4, -5, 6,
+                         -7, 8, -9});
 
   std::vector<int64_t> w_dims{1, 1, 2, 2};
   test.AddInput<int8_t>("w", w_dims,
-                        {1,  -2,
-                         3,  -4});
+                        {1, -2,
+                         3, -4});
 
   test.AddInput<int8_t>("x_zero_point", {}, {0});
   test.AddInput<int8_t>("w_zero_point", {}, {0});
 
   std::vector<int64_t> y_dims{1, 1, 2, 2};
   test.AddOutput<int32_t>("y", y_dims,
-                          {
-                            27,  -31,
-                           -39,   43
-                          });
+                          {27, -31,
+                           -39, 43});
 
   test.Run();
 }
@@ -478,14 +476,14 @@ TEST(ConvIntegerTest, WithPadding_2D_s8s8) {
 
   std::vector<int64_t> x_dims{1, 1, 3, 3};
   test.AddInput<int8_t>("x", x_dims,
-                        {-1,  2, -3,
-                          4, -5,  6,
-                         -7,  8, -9});
+                        {-1, 2, -3,
+                         4, -5, 6,
+                         -7, 8, -9});
 
   std::vector<int64_t> w_dims{1, 1, 2, 2};
   test.AddInput<int8_t>("w", w_dims,
-                        {1,  -2,
-                         3,  -4});
+                        {1, -2,
+                         3, -4});
 
   test.AddInput<int8_t>("x_zero_point", {}, {0});
   test.AddInput<int8_t>("w_zero_point", {}, {0});
@@ -494,12 +492,10 @@ TEST(ConvIntegerTest, WithPadding_2D_s8s8) {
 
   std::vector<int64_t> y_dims{1, 1, 4, 4};
   test.AddOutput<int32_t>("y", y_dims,
-                          {
-                             4,  -11,  18,  -9,
-                           -14,   27, -31,  15,
-                            20,  -39,  43, -21,
-                            14,  -23,  26,  -9
-                          });
+                          {4, -11, 18, -9,
+                           -14, 27, -31, 15,
+                           20, -39, 43, -21,
+                           14, -23, 26, -9});
 
   test.Run();
 }
