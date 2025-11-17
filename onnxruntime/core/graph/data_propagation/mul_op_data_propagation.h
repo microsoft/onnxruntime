@@ -7,6 +7,35 @@
 #include "core/graph/graph.h"
 namespace onnxruntime {
 
+/**
+ * @brief Class to infer the output scalar for 'Mul' operator given the input is a scalar related to shape.
+ *
+ *
+ * For example:
+ *
+ *  (input with the shape as float32[1, 3, 64, 64])
+ *     |
+ *     v
+ *   Shape            (It saves [1, 3, 64, 64] in inferred_shape_values_ in output's node_arg
+ *     |               after graph::SaveShapeValuesFromDataPropagation())
+ *     |
+ *     | ______
+ *     |       |
+ *     v       v
+ *   Gather  Gather   (First 'Gather' saves 3 in inferred_scalar_value_ in output node_arg, and
+ *     |       |       second 'Gather' saves 64 in inferred_scalar_value_ in output node_arg
+ *     |       |       after graph::SaveShapeValuesFromDataPropagation(), if the 'index' attributes
+ *     |       |       are 1 and 2 respectively)
+ *      \     /
+ *       \   /
+ *        | |
+ *        v v
+ *        Mul        (It gets 3 from inferred_scalar_value_ in input A's node_arg and 64 from inferred_scalar_value_
+ *         |          in input B's node_arg, then performs mul operation to get 192 and saves in inferred_scalar_value_
+ *         |          in output's node_arg)
+ *         v
+ *         ...
+ */
 class MulOpDataPropagation : public CustomDataPropagationBase {
  public:
   MulOpDataPropagation(const Node& node,

@@ -142,18 +142,19 @@ class NodeArg {
   // Node arg name, type and shape.
   NodeArgInfo node_arg_info_;
 
-  // This variable stores the inferred shape data as a TensorShapeProto after executing
-  // the ONNX operator's PartialDataPropagationFunction().
+  // This variable stores the actual tensor data of the shape as a TensorShapeProto after executing
+  // the ONNX operator's PartialDataPropagationFunction(). It's used for shape inference purpose.
   //
   // Calling an operator's TypeAndShapeInferenceFunction() alone is sometimes insufficient
-  // for complete shape inference. For example, the Shape operator only provides the
-  // output's rank (1-dimensional) but not its actual dimension values.
+  // for complete shape inference. For example, the Shape operator's TypeAndShapeInferenceFunction()
+  // only provides the output's rank which is 1 but not its actual shape values.
+  //
   // The PartialDataPropagationFunction(), defined in the ONNX operator schema, must also
   // be executed to obtain the concrete output shape values, allowing accurate propagation
   // of shape information throughout the graph.
   std::optional<ONNX_NAMESPACE::TensorShapeProto> inferred_shape_values_;
 
-  // This variable stores the inferred scalar output.
+  // This variable stores the actual scalar value.
   // It is also used for shape inference and data propagation to ensure consistent shape and
   // value information throughout the graph.
   std::optional<int64_t> inferred_scalar_value_;

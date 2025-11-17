@@ -7,7 +7,10 @@
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
-
+/**
+ * @brief Class to infer the output values/scalar for 'Unsqueeze' operator given the input is shape values.
+ *
+ */
 class UnsqueezeOpDataPropagation : public CustomDataPropagationBase {
  public:
   UnsqueezeOpDataPropagation(const Node& node,

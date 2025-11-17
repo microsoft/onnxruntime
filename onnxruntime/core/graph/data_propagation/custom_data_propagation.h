@@ -13,14 +13,17 @@ namespace onnxruntime {
 /**
  * @class CustomDataPropagation
  * Custom data propagation for the operator to help enhance shape inference.
+ *
+ * Calling infer() can infer the output values for the specific operator given the input is shape values.
+ * The purpose of this class is to make shape values being correctly inferred and propogated through the graph.
  */
 class CustomDataPropagationBase {
  public:
+  ORT_DISALLOW_COPY(CustomDataPropagationBase);
   virtual ~CustomDataPropagationBase() = default;
   virtual Status infer() = 0;
 
  protected:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomDataPropagationBase);
   CustomDataPropagationBase(const Node& node,
                             NodeArg& output_def,
                             std::function<Status(const std::string&, TensorShapeVector&)> func,
@@ -48,7 +51,8 @@ class CustomDataPropagationBase {
  *
  * In particular:
  *  - Scalar inputs and outputs are not handled correctly.
- *  - Some operators require additional logic that is not covered by the default function.
+ *  - Some operators require additional logic that is not covered by the default function,
+      e.g. PartialDataPropagationFunction.
  *
  * Therefore, for these cases, we perform custom data propagation to ensure
  * correct and complete inference.
@@ -65,7 +69,5 @@ std::unique_ptr<CustomDataPropagationBase> CreateCustomDataPropagation(const Nod
                                                                        std::function<Status(const std::string&, TensorShapeVector&)> func,
                                                                        const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
                                                                        const logging::Logger& logger);
-
-
 
 }  // namespace onnxruntime

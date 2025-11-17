@@ -8,6 +8,10 @@
 
 namespace onnxruntime {
 
+/**
+ * @brief Class to infer the output values/scalar for 'Squeeze' operator given the input is shape values.
+ *
+ */
 class SqueezeOpDataPropagation : public CustomDataPropagationBase {
  public:
   SqueezeOpDataPropagation(const Node& node,

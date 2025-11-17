@@ -15,6 +15,10 @@ Status GatherOpDataPropagation::infer() {
       output_from_onnx_op_data_propagation_.tensor_type().has_shape()) {
     dim_size = output_from_onnx_op_data_propagation_.tensor_type().shape().dim_size();
   }
+  // Check there is no result from Gather's PartialDataPropagationFunction(),
+  // so that it can run custom data propagation below.
+  // Otherwise, this infer() function won't be called as the result from Gather's PartialDataPropagationFunction()
+  // will be used in Graph::SaveShapeValuesFromDataPropagation().
   ORT_ENFORCE(dim_size == 0);
 
   // Following code extracts an element from a 1D array if all conditions are met.
@@ -36,18 +40,17 @@ Status GatherOpDataPropagation::infer() {
   //       should have inferred the output shape value.
   //       This Gather's custom data propagation handles case #3.
   const auto* input_1 = node_.InputDefs()[1];
-
   TensorShapeVector indices;
   ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), indices));
 
-  // Save the dimension value in the NodeArg.
-  // Index value is expected to be within bounds [-s, s-1] along axis of size s
+  // If input's inferred shape values is present, we then perfrom the gather operation on the shape values
+  // and saves the result in output's node_arg.
   if (input_0->GetInferredShapeValues().has_value()) {
     const auto& tensor_shape_proto = input_0->GetInferredShapeValues().value();
 
-    // If "indices" input is a scalar, then the size of indices is 1.
     if (indices.size() == 1) {
       ORT_TRY {
+        // Note: Index value is expected to be within bounds [-s, s-1] along axis of size s
         auto& dim = tensor_shape_proto.dim(static_cast<int32_t>(HandleNegativeAxis(indices[0], tensor_shape_proto.dim_size())));
         if (dim.has_dim_value()) {
           output_def_.SetInferredShapeScalarValue(dim.dim_value());
