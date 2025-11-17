@@ -27,6 +27,11 @@
 			}
 		}
 	};
-	const analytics = new oneDS.ApplicationInsights();
-	analytics.initialize(config, []);
+	// Initialize analytics only if oneDS is available (may be blocked by ad blockers)
+	if (typeof oneDS !== 'undefined') {
+		const analytics = new oneDS.ApplicationInsights();
+		analytics.initialize(config, []);
+	} else {
+		console.warn('OneDS analytics library not loaded (may be blocked by ad blockers)');
+	}
 </script>
