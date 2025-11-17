@@ -20,7 +20,7 @@ struct WebGpuProviderFactoryCreator {
 };
 
 // C API to create data transfer for WebGPU EP
-// Returns nullptr if WebGPU context (context_id=0) doesn't exist yet
+// If the context doesn't exist, creates a default one (context_id=0)
 // Caller takes ownership of the returned OrtDataTransferImpl*
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id);
 

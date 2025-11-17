@@ -24,9 +24,9 @@ struct WebGpuContextParams {
   bool enable_pix_capture;
 };
 
-static WebGpuContextParams GetDefaultWebGpuContextParams(int context_id) {
+static WebGpuContextParams GetDefaultWebGpuContextParams() {
   WebGpuContextParams params;
-  params.context_config.context_id = context_id;
+  params.context_config.context_id = 0;
   params.context_config.instance = nullptr;
   params.context_config.device = nullptr;
   params.context_config.dawn_proc_table = nullptr;
@@ -387,7 +387,7 @@ OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id) {
   if (webgpu::WebGpuContextFactory::HasContext(context_id)) {
     context_ptr = &webgpu::WebGpuContextFactory::GetContext(context_id);
   } else {
-    WebGpuContextParams params = GetDefaultWebGpuContextParams(context_id);
+    WebGpuContextParams params = GetDefaultWebGpuContextParams();
     context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
     context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
   }
