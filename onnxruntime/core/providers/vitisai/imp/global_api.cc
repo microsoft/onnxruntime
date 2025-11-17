@@ -611,3 +611,54 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     return &the_global_api;
   }
 }
+
+struct ExternalEpLibaray {
+  ExternalEpLibaray(const std::string& libray_name) : libray_name_{libray_name} {
+    Ensure();
+  }
+  onnxruntime::Provider* (*GetProvider)();
+
+  void Ensure() {
+    if (handle_)
+      return;
+    auto& env = Provider_GetHost()->Env__Default();
+#ifdef _WIN32
+    // this dll is already linked to the executable, normally a test program
+    if (!handle_) {
+      // First try loading with full path
+      auto library_filename = PathString(libray_name_.c_str());
+      auto module_relative_full_path = env.GeRuntimePath() + PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
+      ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(module_relative_full_path, true, &handle_));
+    }
+#else
+    auto full_path = env.GetRuntimePath() + PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
+    ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
+#endif
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "GetProvider", (void**)&GetProvider));
+  }
+  void Clear() {
+    if (handle_) {
+      auto& env = Provider_GetHost()->Env__Default();
+      auto status = env.UnloadDynamicLibrary(handle_);
+      vai_assert(status.IsOK(), status.ErrorMessage());
+      handle_ = nullptr;
+    }
+  }
+
+ private:
+  std::string libray_name_;
+  void* handle_{};
+};
+static std::unordered_map<std::string, ExternalEpLibaray> g_external_ep_libaries;
+
+std::unique_ptr<IExecutionProvider>
+CreateExecutionProviderFromAnotherEp(const std::string& lib,
+                                     std::unordered_map<std::string, std::string>& provider_options) {
+  auto it = g_external_ep_libaries.find(lib);
+  if (it == g_external_ep_libaries.end()) {
+    it = g_external_ep_libaries.emplace(lib).first;
+  }
+  auto ep_factory= it->second->GetProvider()->CreateExecutionProviderFactory(static_cast<void*>(&provider_options));
+  auto ep = ep_factory->CreateProvider();
+  return ep;
+}
