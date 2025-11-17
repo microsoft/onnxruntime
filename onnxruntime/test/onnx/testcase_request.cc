@@ -34,21 +34,13 @@ TestCaseRequestContext::TestCaseRequestContext(const Callback& cb, PThreadPool t
 }
 
 bool TestCaseRequestContext::SetupSession() {
-  ORT_TRY {
     const auto* test_case_name = test_case_.GetTestCaseName().c_str();
     session_opts_.SetLogId(test_case_name);
     Ort::Session session{env_, test_case_.GetModelUrl().native().c_str(), session_opts_};
     session_ = std::move(session);
     LOGF_DEFAULT(INFO, "Testing %s\n", test_case_name);
     return true;
-  }
-  ORT_CATCH(const Ort::Exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      LOGF_DEFAULT(ERROR, "Model %s failed to load:%s", test_case_.GetTestCaseName().c_str(), ex.what());
-      result_ = std::make_shared<TestCaseResult>(test_case_.GetDataCount(), EXECUTE_RESULT::NOT_SUPPORT, "");
-    });
-  }
-  return false;
+
 }
 
 std::shared_ptr<TestCaseResult> TestCaseRequestContext::Run(PThreadPool tpool,

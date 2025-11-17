@@ -5,6 +5,9 @@
 
 #include <cstdint>
 #include <type_traits>
+#include <iostream>
+#include <vector>
+#include <fstream> // Required for file operations
 
 #include "core/common/common.h"
 #include "core/common/narrow.h"
@@ -187,9 +190,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
 
     packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, compute_type_);
-    if (packed_b_size_ == 0) {
+    if (packed_b_size_ > 0) {
+      packed_b_size_ = 0;
+      std::cout << "Using de-quantize + fp32 Gemm\n";
       return Status::OK();
+    } else {
+      std::cout << "Using quantized MLAS kernel\n";    
     }
+
     auto qptr = tensor.DataRaw();
     auto scale_ptr = scales ? scales->DataRaw() : nullptr;
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
@@ -470,6 +478,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
 
   // TODO(fajin): move B dequant to prepack
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
+  std::vector<float> vec;
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
     // dequantize b, only 2b, 4b, and 8b quantization is supported for now
@@ -495,6 +504,12 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(K_),                       // number of rows in quantized input
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
+
+      for (int i = 0; i < 5120 * 2880; ++i)
+      {
+        vec.push_back(tmp_b_data_ptr.get()[i]);
+      }
+
     } else {  // If it isn't 4bit, it has to be 8-bit quantization
       ORT_ENFORCE(nbits_ == 8);
       MlasDequantizeBlockwise<float, 8>(
@@ -547,6 +562,15 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
 #endif
 
+    std::ofstream output_file("dumped_dequant.txt");  // Open file for writing
+
+  if (output_file.is_open()) {
+    for (const auto& a : vec) {
+      output_file << a << std::endl;  // Write each line and a newline character
+    }
+    output_file.close();  // Close the file
+  }
+
   std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
   for (size_t i = 0; i < batch_count; i++) {
     data[i].BIsPacked = false;
@@ -575,8 +599,22 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
     }
   }
 
-  MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), batch_count, thread_pool);
+  //MlasGemmBatch(CblasNoTrans, CblasTrans,
+  //              M, N, K, data.data(), batch_count, thread_pool);
+  
+  for (size_t m = 0; m < M; ++m)
+  {
+      for (size_t n = 0; n < N; ++n) {
+          float acc = 0.0f;
+      
+          for (size_t k = 0; k < K; ++k)
+          {
+            acc += a_data[m * lda + k] * tmp_b_data_ptr.get()[n * K + k]; 
+          }          
+
+          y_data[m * N + n] += acc;
+    }
+  }
 
   return Status::OK();
 }

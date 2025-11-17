@@ -593,6 +593,8 @@ struct BlockwiseQuantizer {
         int32_t columns,
         MLAS_THREADPOOL* thread_pool)
     {
+        (void)(thread_pool);
+
         // Thread partitioning
         const auto thrd_row_blks = (rows + ThreadBlk::kRow - 1) / ThreadBlk::kRow;
         const auto thrd_col_blks = (columns + ThreadBlk::kColumn - 1) / ThreadBlk::kColumn;
@@ -605,7 +607,7 @@ struct BlockwiseQuantizer {
         constexpr int32_t kPackSize = BitsTraits<qbits, false>::kPackSize;
 
         MlasTryBatchParallel(
-            thread_pool, total_thrd_blks,
+            nullptr, total_thrd_blks,
             [&](ptrdiff_t block_idx) {
                 int32_t r_blk_idx = static_cast<int32_t>(block_idx / thrd_col_blks);
                 int32_t c_blk_idx = static_cast<int32_t>(block_idx % thrd_col_blks);

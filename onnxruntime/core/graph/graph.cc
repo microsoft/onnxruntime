@@ -3222,6 +3222,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
     const auto& node_name = node.Name();
 
+    if (node_name == "node_Einsum_904")
+    {
+        int a = 1;
+      (void)(a);
+    }
+
     if (!node.Op()) {
       {
         auto status = Status::OK();

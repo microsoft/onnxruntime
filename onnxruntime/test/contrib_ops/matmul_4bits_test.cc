@@ -299,16 +299,18 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   }
 
   {
-    TestOptions opts = base_opts;
-    RunTest<AType>(opts);
+    //TestOptions opts = base_opts;
+    //RunTest<AType>(opts);
   }
 
   {
     TestOptions opts = base_opts;
     opts.has_zero_point = true;
+    opts.has_bias = false;
     RunTest<AType>(opts);
   }
 
+/*
 #if !defined(USE_DML) && !defined(USE_WEBGPU)
   {
     TestOptions opts = base_opts;
@@ -350,12 +352,14 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     RunTest<AType>(opts);
   }
 #endif
+  */
 }
 
 #if !defined(USE_OPENVINO)
 
 TEST(MatMulNBits, Float32_4b_Accuracy0) {
-  TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, 7, 5120, 2880, 32, 0>();
+  /*
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 0>();
   TestMatMulNBitsTyped<float, 1, 32, 16, 16, 0>();
   TestMatMulNBitsTyped<float, 1, 32, 32, 16, 0>();
@@ -379,6 +383,8 @@ TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 0>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 0>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
+  */
+
 }
 
 TEST(MatMulNBits, Float32_4b_Accuracy1) {

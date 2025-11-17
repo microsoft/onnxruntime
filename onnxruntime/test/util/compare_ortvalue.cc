@@ -160,6 +160,12 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
         post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di];
     const double diff = std::fabs(expected_output[di] - real_value);
     const double tol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected_output[di]);
+    
+    if ((real_value > 0 && expected_output[di] < 0) || (real_value < 0 && expected_output[di] > 0))
+    {
+      std::cout << real_value << "\t" << expected_output[di] << "\t" << diff << "\t" << max_diff << "\t" << di << "\n";
+    }
+
     if (!IsResultCloselyMatch<double>(real_value, expected_output[di], diff, tol)) {
       res.first = COMPARE_RESULT::RESULT_DIFFERS;
       // update error message if this is a larger diff
@@ -175,7 +181,10 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
             << ", diff: " << diff << ", tol=" << tol << std::dec << " idx=" << di << ".";
         res.second = oss.str();
         max_diff = diff;
+
+        //std::cout << real_value << "\t" << expected_output[di] << "\t" << diff << "\t" << max_diff << "\t" << di << "\n";
       }
+
       ++diff_count;
     }
   }

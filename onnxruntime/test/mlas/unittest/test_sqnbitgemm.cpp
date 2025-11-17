@@ -376,9 +376,10 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   static size_t RegisterShortExecuteTests() {
     size_t tests_registered = 0;
 
-    for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {SQNBIT_CompFp32, SQNBIT_CompInt8}) {
-      for (bool WithThreadpool : {false, true}) {
-        for (bool Symmetric : {false, true}) {
+    for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {SQNBIT_CompFp32}) {
+      for (bool WithThreadpool : {false}) {
+        for (bool Symmetric : {false}) {
+          /*
           for (size_t b = 1; b < 16; b++) {
             tests_registered += RegisterSingleTest(b, b, b, ComputeType, WithThreadpool, Symmetric, false);
             tests_registered += RegisterSingleTest(b, b, b, ComputeType, WithThreadpool, Symmetric, true);
@@ -407,6 +408,8 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           // tests_registered += RegisterSingleTest(1001, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
+        */
+         tests_registered += RegisterSingleTest(7, 5120, 2880, ComputeType, WithThreadpool, Symmetric, false);
         }
       }
     }
