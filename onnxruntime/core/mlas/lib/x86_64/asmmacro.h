@@ -97,6 +97,28 @@ Arguments:
 
         .endm
 
+
+/*++
+Macro Description:
+    This macro conditionally emits the statement if Count1 is equal to Value1
+    and Count2 is equal to Value2.
+Arguments:
+    Count1 - Supplies the variable used in the comparison.
+    Value1 - Supplies the static used in the comparison.
+    Count2 - Supplies the variable used in the comparison.
+    Value2 - Supplies the static used in the comparison.
+    Statement - Supplies the statement to conditionally emit.
+--*/
+
+        .macro EmitIfCount2EQ Count1, Value1, Count2, Value2, Statement
+
+.if (\Count1\() == \Value1\()) && (\Count2\() == \Value2\())
+        \Statement\()
+.endif
+
+        .endm
+
+
 /*++
 
 Macro Description:
