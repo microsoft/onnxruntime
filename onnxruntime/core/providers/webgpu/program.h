@@ -235,14 +235,17 @@ struct ProgramInput {
 struct ProgramOutput {
  private:
   struct AtomicTag {};
+  struct FlattenTag {};
 
  public:
   constexpr static const AtomicTag Atomic{};
+  constexpr static const FlattenTag Flatten{};
 
   ProgramOutput(Tensor* tensor);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, AtomicTag);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
