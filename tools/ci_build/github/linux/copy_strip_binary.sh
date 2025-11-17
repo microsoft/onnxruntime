@@ -18,8 +18,6 @@ EXIT_CODE=1
 uname -a
 cd "$BINARY_DIR"
 mv installed/usr/local $ARTIFACT_NAME
-mv $ARTIFACT_NAME/include/onnxruntime/* $ARTIFACT_NAME/include
-rmdir $ARTIFACT_NAME/include/onnxruntime
 # Do not ship onnx_test_runner
 rm -rf $ARTIFACT_NAME/bin
 echo "Copy debug symbols in a separate file and strip the original binary."
@@ -29,9 +27,6 @@ then
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
     # copy the CoreML EP header for macOS build (libs with .dylib ext)
     cp $SOURCE_DIR/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
-else
-   # Linux
-   mv $ARTIFACT_NAME/lib64 $ARTIFACT_NAME/lib
 fi
 
 # copy the README, licence and TPN
