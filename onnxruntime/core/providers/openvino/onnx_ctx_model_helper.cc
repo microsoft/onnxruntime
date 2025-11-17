@@ -93,29 +93,6 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-std::shared_ptr<SharedContext> EPCtxHandler::GetSharedContextForEpContextSubgraph(const GraphViewer& subgraph_view, const std::filesystem::path& ep_context_path) const {
-  if (!CheckForOVEPCtxNodeInGraph(subgraph_view)) {
-    return nullptr;
-  }
-
-  auto first_index = *subgraph_view.GetNodesInTopologicalOrder().begin();
-  auto node = subgraph_view.GetNode(first_index);
-  ORT_ENFORCE(node != nullptr);
-  auto& attrs = node->GetAttributes();
-  ORT_ENFORCE(attrs.count(EP_CACHE_CONTEXT) == 1);
-  const auto& ep_cache_context = attrs.at(EP_CACHE_CONTEXT).s();
-
-  ORT_ENFORCE(attrs.count(EMBED_MODE) == 1);
-  bool embed_mode = static_cast<bool>(attrs.at(EMBED_MODE).i());
-
-  std::filesystem::path bin_path{};
-  if (!embed_mode) {
-    bin_path = ep_context_path.parent_path() / ep_cache_context;
-  }
-
-  return shared_context_manager_->GetOrCreateSharedContext(bin_path);
-}
-
 std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const {
   auto first_index = *graph_viewer.GetNodesInTopologicalOrder().begin();
   auto node = graph_viewer.GetNode(first_index);
@@ -218,10 +195,12 @@ bool EPCtxHandler::CheckEPCacheContextAttribute(const GraphViewer& graph_viewer,
   return false;
 }
 
-void EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes, const std::filesystem::path& ep_context_dir) {
+std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes, const SessionContext& session_context) {
   bool has_embed_nodes = false;
   bool has_non_embed_nodes = false;
   bool has_main_context = false;
+
+  std::shared_ptr<SharedContext> shared_context{};
   for (const auto& fused_node_graph : fused_nodes) {
     const GraphViewer& graph_viewer = fused_node_graph.filtered_graph;
 
@@ -241,28 +220,29 @@ void EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAnd
     if (attrs.count(EMBED_MODE) == 1) {
       embed_mode = static_cast<bool>(attrs.at(EMBED_MODE).i());
     }
-    has_embed_nodes |= embed_mode;
-    has_non_embed_nodes |= !embed_mode;
 
     bool main_context = true;
     if (attrs.count(MAIN_CONTEXT) == 1) {
       main_context = static_cast<bool>(attrs.at(MAIN_CONTEXT).i());
     }
+
     has_main_context |= main_context;
+    has_embed_nodes |= embed_mode;
+    has_non_embed_nodes |= !embed_mode;
 
     const std::string& ep_cache_context = attrs.at(EP_CACHE_CONTEXT).s();
     if (embed_mode) {
       std::filesystem::path dummy_path{};
-      auto shared_context = shared_context_manager_->GetOrCreateSharedContext(dummy_path);
+      shared_context = shared_context_manager_->GetOrCreateSharedContext(dummy_path);
       if (main_context) {
         ORT_ENFORCE(!ep_cache_context.empty(), "Embedded EP context is indicated but EP_CACHE_CONTEXT attribute is empty.");
         std::istringstream ss(ep_cache_context);
         shared_context->Deserialize(ss);
       }
     } else {
-      std::filesystem::path ep_context_path = ep_context_dir / ep_cache_context;
+      std::filesystem::path ep_context_path = session_context.GetOutputModelPath().parent_path() / ep_cache_context;
       if (ep_context_path.extension() != ".xml") {
-        auto shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
+        shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
         shared_context->Deserialize();
       }
     }
@@ -272,6 +252,13 @@ void EPCtxHandler::Initialize(const std::vector<IExecutionProvider::FusedNodeAnd
               "Mixed embed and non-embed EP context nodes are not supported in a single model.");
   ORT_ENFORCE(!(has_embed_nodes && !has_main_context),
               "Expected at least one main context node when embedded EP context nodes are present.");
+
+    // No ep context nodes found - create a shared context that can hold native blobs or shared weights.
+  if (!shared_context) {
+    shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context.GetOutputBinPath());
+  }
+
+  return shared_context;
 }
 
 }  // namespace openvino_ep

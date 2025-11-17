@@ -189,13 +189,6 @@ std::unique_ptr<std::istream> BinManager::GetNativeBlobAsStream(const std::strin
   return std::make_unique<TensorStream>(GetNativeBlob(blob_name));
 }
 
-void BinManager::Clear() {
-  std::unique_lock lock(mutex_);
-  native_blobs_.clear();
-  mapped_bin_ = {};
-  external_bin_path_.reset();
-}
-
 std::filesystem::path BinManager::GetBinPathForModel(const std::filesystem::path& model_path) {
   ORT_ENFORCE(!model_path.empty());
   return model_path.parent_path() / (model_path.stem().string() + "_" + kOpenVINOExecutionProvider + ".bin");
@@ -215,22 +208,12 @@ void BinManager::Deserialize(std::shared_ptr<SharedContext> shared_context) {
   Deserialize(stream, shared_context);
 }
 
-bool BinManager::ShouldSerialize(const std::shared_ptr<SharedContext>& shared_context) const {
-  if (shared_context) {
-    auto metadata = shared_context->GetMetadataCopy();
-    if (!metadata.empty()) {
-      return true;
-    }
-  }
-  return !native_blobs_.empty();
-}
-
 void BinManager::Serialize(std::ostream& stream, std::shared_ptr<SharedContext> shared_context) {
   std::shared_lock ul(mutex_);
 
-  if (!ShouldSerialize(shared_context)) {
-    // nothing to serialize
-    return;
+  auto metadata = shared_context ? shared_context->GetMetadataCopy() : SharedContext::Metadata::Map{};
+  if (metadata.empty() && native_blobs_.empty()) {
+    return;  // Nothing to serialize
   }
 
   const auto stream_start = stream.tellp();
@@ -259,19 +242,16 @@ void BinManager::Serialize(std::ostream& stream, std::shared_ptr<SharedContext> 
   j[BSONFields::kProducer] = BSONFields::kProducerName;
 
   // Add weights metadata as a map (from SharedContext if available)
-  if (shared_context) {
-    auto metadata = shared_context->GetMetadataCopy();
-    if (!metadata.empty()) {
-      nlohmann::json weights_map = nlohmann::json::object();
-      for (const auto& [key, value] : metadata) {
-        nlohmann::json weight_entry;
-        weight_entry[BSONFields::kLocation] = value.serialized.location.string();
-        weight_entry[BSONFields::kDataOffset] = value.serialized.data_offset;
-        weight_entry[BSONFields::kSize] = value.serialized.size;
-        weights_map[key] = weight_entry;
-      }
-      j[BSONFields::kWeightsMetadata] = weights_map;
+  if (!metadata.empty()) {
+    nlohmann::json weights_map = nlohmann::json::object();
+    for (const auto& [key, value] : metadata) {
+      nlohmann::json weight_entry;
+      weight_entry[BSONFields::kLocation] = value.serialized.location.string();
+      weight_entry[BSONFields::kDataOffset] = value.serialized.data_offset;
+      weight_entry[BSONFields::kSize] = value.serialized.size;
+      weights_map[key] = weight_entry;
     }
+    j[BSONFields::kWeightsMetadata] = weights_map;
   }
 
   // Add blob metadata with placeholder values as a map (will be updated after writing blobs)
@@ -340,6 +320,14 @@ void BinManager::Serialize(std::ostream& stream, std::shared_ptr<SharedContext> 
 }
 
 void BinManager::Deserialize(std::istream& stream, std::shared_ptr<SharedContext> shared_context) {
+  try {
+    DeserializeImpl(stream, shared_context);
+  } catch (const std::exception& e) {
+    ORT_THROW(e.what(), "\nCould not deserialize binary data. This could mean the bin is corrupted or incompatible. Try re-generating ep context cache.");
+  }
+}
+
+void BinManager::DeserializeImpl(std::istream& stream, const std::shared_ptr<SharedContext>& shared_context) {
   // Read and validate header
   header_t header{};
 

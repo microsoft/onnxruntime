@@ -97,11 +97,12 @@ struct SessionContext : ProviderInfo {
     return onnx_model_path_name.empty() ? so_context_file_path : onnx_model_path_name;
   }
 
-  const std::filesystem::path GetOutputBinPath() const {
-    std::filesystem::path bin_file_name = so_context_file_path;
-    if (bin_file_name.empty()) {
-      bin_file_name = onnx_model_path_name;
-    }
+  const std::filesystem::path& GetOutputModelPath() const {
+    return so_context_file_path.empty() ? onnx_model_path_name : so_context_file_path;
+  }
+
+  std::filesystem::path GetOutputBinPath() const {
+    const auto& bin_file_name = GetOutputModelPath();
     if (bin_file_name.empty()) {
       return {};
     }

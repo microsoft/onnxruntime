@@ -132,14 +132,5 @@ void SharedContext::Deserialize() {
   bin_manager_.Deserialize(shared_from_this());
 }
 
-void SharedContext::Clear() {
-  // Outside the mutex since bin_manager has it's own lock, and we want to keep lock ordering consistent
-  // It's ok for clear to not be fully atomic we're primarily interested in internal consistency.
-  bin_manager_.Clear();
-  std::unique_lock lock(mutex_);
-  weight_files_.clear();
-  metadata_.clear();
-}
-
 }  // namespace openvino_ep
 }  // namespace onnxruntime

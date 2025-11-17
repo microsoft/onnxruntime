@@ -81,6 +81,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   SessionContext session_context_;
   std::shared_ptr<OVCore> ov_core_;
   std::shared_ptr<SharedContextManager> shared_context_manager_;
+  std::shared_ptr<SharedContext> shared_context_;
 
   std::list<BackendManager> backend_managers_;  // EP session owns the backend objects
   EPCtxHandler ep_ctx_handle_;

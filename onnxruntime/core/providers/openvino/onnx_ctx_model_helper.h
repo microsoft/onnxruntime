@@ -9,13 +9,11 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/framework/execution_provider.h"
-#include "ov_bin_manager.h"
 #include "ov_shared_context.h"
+#include "contexts.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
-
-class SharedBinManager;
 
 struct ModelBlobWrapper {
   ModelBlobWrapper(std::unique_ptr<std::istream> stream, const ov::Tensor& tensor) : stream_(std::move(stream)), tensor_(tensor) {}
@@ -38,7 +36,6 @@ class EPCtxHandler {
   EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger, std::shared_ptr<SharedContextManager> shared_context_manager);
   EPCtxHandler(const EPCtxHandler&) = delete;  // No copy constructor
   bool CheckForOVEPCtxNodeInGraph(const GraphViewer& subgraph_view) const;
-  std::shared_ptr<SharedContext> GetSharedContextForEpContextSubgraph(const GraphViewer& subgraph_view, const std::filesystem::path& ep_context_path) const;
   bool CheckForOVEPCtxNode(const Node& node) const;
   Status AddOVEPCtxNodeToGraph(const GraphViewer& subgraph_view,
                                const std::string& graph_name,
@@ -47,7 +44,7 @@ class EPCtxHandler {
   std::unique_ptr<ModelBlobWrapper> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& subgraph_view) const;
   InlinedVector<const Node*> GetEPCtxNodes() const;
   bool CheckEPCacheContextAttribute(const GraphViewer& subgraph_view, const std::string& target_attr_extn) const;
-  void Initialize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes, const std::filesystem::path& ep_context_path);
+  std::shared_ptr<SharedContext> Initialize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes, const SessionContext& session_context);
 
  private:
   const std::string openvino_sdk_version_;

@@ -31,7 +31,6 @@ class BinManager {
   void AddNativeBlob(const std::string& name, const ov::CompiledModel& compiled_model);
   ov::Tensor GetNativeBlob(const std::string& blob_name);
   std::unique_ptr<std::istream> GetNativeBlobAsStream(const std::string& blob_name);
-  void Clear();
 
   // Serialization/Deserialization
   void Serialize(std::ostream& stream, std::shared_ptr<SharedContext> shared_context = nullptr);
@@ -65,7 +64,7 @@ class BinManager {
     } serialized_info;
   };
 
-  bool ShouldSerialize(const std::shared_ptr<SharedContext>& shared_context) const;
+  void DeserializeImpl(std::istream& stream, const std::shared_ptr<SharedContext>& shared_context);
 
   mutable std::shared_mutex mutex_;
   std::optional<std::filesystem::path> external_bin_path_;
