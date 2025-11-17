@@ -135,12 +135,10 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id,
-                                                        size_t gpu_mem_limit,
-                                                        ArenaExtendStrategy arena_extend_strategy,
-                                                        CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
-                                                        const OrtArenaCfg* default_memory_arena_cfg,
-                                                        const logging::Logger* logger) {
+AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(const CUDAAllocatorParams& cuda_allocator_params) {
+  ORT_ENFORCE(cuda_allocator_params.external_alloc_info != nullptr,
+              "CUDAAllocatorParams.external_alloc_info is nullptr.");
+  const auto& external_allocator_info = *(cuda_allocator_params.external_alloc_info);
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
@@ -149,28 +147,42 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
                                                          external_allocator_info.free,
                                                          external_allocator_info.empty_cache);
         },
-        device_id,
+        cuda_allocator_params.device_id,
         false);
 
     return CreateAllocator(default_memory_info);
   } else {
-    const bool cuda_mempool_requested =
-        default_memory_arena_cfg != nullptr && default_memory_arena_cfg->use_cuda_mempool == 1;
-
-    const bool use_cuda_mempool = cuda_mempool_requested && cuda::CudaMempoolArena::IsCudaVersionSupported();
+    const auto* arena_cfg = cuda_allocator_params.arena_cfg;
+    const bool cuda_mempool_requested = arena_cfg != nullptr && arena_cfg->use_cuda_mempool == 1;
+    bool use_cuda_mempool = cuda_mempool_requested && cuda::CudaMempoolArena::IsCudaVersionSupported();
 
     if (cuda_mempool_requested && !use_cuda_mempool) {
-      LOGS_DEFAULT(WARNING) << "CUDA memory pool requested but not supported on this device/driver. Falling back to default BFCArena with CUDA allocator.";
+      LOGS_DEFAULT(WARNING)
+          << "CUDA memory pool requested but not supported on this device/driver."
+          << "Falling back to default BFCArena with CUDA allocator.";
     }
 
     if (use_cuda_mempool) {
-      auto device = OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, device_id);
+      const bool cuda_graph_enabled = cuda_allocator_params.provider_info != nullptr &&
+                                      cuda_allocator_params.provider_info->enable_cuda_graph;
+
+      if (cuda_graph_enabled) {
+        LOGS_DEFAULT(WARNING)
+            << "CUDA Mempool Arena allocator is not compatible with requested CUDA Graph Capture"
+            << "Falling back to default BFCArena with CUDA allocator.";
+        use_cuda_mempool = false;
+      }
+    }
+
+    if (use_cuda_mempool) {
+      auto device = OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                              cuda_allocator_params.device_id);
       auto mem_info = OrtMemoryInfo("CUDAMemPoolArena", OrtAllocatorType::OrtArenaAllocator, device, OrtMemTypeDefault);
 
       auto mempool_allocator = std::make_shared<cuda::CudaMempoolArena>(mem_info,
-                                                                        default_memory_arena_cfg->cuda_mempool_release_threshold,
-                                                                        default_memory_arena_cfg->cuda_mempool_bytes_to_keep_on_shrink,
-                                                                        logger);
+                                                                        arena_cfg->cuda_mempool_release_threshold,
+                                                                        arena_cfg->cuda_mempool_bytes_to_keep_on_shrink,
+                                                                        cuda_allocator_params.logger);
 
       return mempool_allocator;
     } else {
@@ -178,10 +190,11 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
           [](OrtDevice::DeviceId id) {
             return std::make_unique<CUDAAllocator>(id, CUDA);
           },
-          device_id,
+          cuda_allocator_params.device_id,
           true,
-          {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                    : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1, -1L)},
+          {arena_cfg ? *arena_cfg
+                     : OrtArenaCfg(cuda_allocator_params.cuda_mem_threshold,
+                                   static_cast<int>(cuda_allocator_params.arena_extend_strategy), -1, -1, -1, -1L)},
           // make it stream aware
           true);
       // CUDA malloc/free is expensive so always use an arena
@@ -3066,10 +3079,18 @@ std::vector<AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllocators() {
         return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
       },
       info_.device_id);
+
+  CUDAExecutionProvider::CUDAAllocatorParams params{};
+  params.device_id = info_.device_id;
+  params.cuda_mem_threshold = info_.gpu_mem_limit;
+  params.arena_extend_strategy = info_.arena_extend_strategy;
+  params.provider_info = &info_;
+  params.external_alloc_info = &info_.external_allocator_info;
+  params.arena_cfg = info_.default_memory_arena_cfg;
+  params.logger = GetLogger();
+
   return std::vector<AllocatorPtr>{
-      CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                          info_.external_allocator_info, info_.default_memory_arena_cfg,
-                          GetLogger()),
+      CreateCudaAllocator(params),
       CreateAllocator(pinned_memory_info),
   };
 }
