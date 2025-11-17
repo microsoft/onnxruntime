@@ -63,32 +63,6 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
                              WGSL_TEMPLATE_VARIABLE(val, val));
 }
 
-Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
-  const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
-  const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
-  const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
-
-  const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
-  const auto& present_key = sh.AddOutput("present_key", ShaderUsage::UseUniform);
-  const auto& present_value = sh.AddOutput("present_value", ShaderUsage::UseUniform);
-
-  if (prepare_indirect_dispatch_) {
-    sh.AddOutput("indirect_buffer", ShaderUsage::None);
-  }
-
-  return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
-                             WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
-                             WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
-                             WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
-                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
-                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
-                             WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(seqlens, seqlens),
-                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
-}
-
 Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val) {
   SplitPackedQKVProgram program;
   auto input_size = packedQKV->Shape().Size();
@@ -159,80 +133,6 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
           {static_cast<uint32_t>(dispatch_size)},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-  return context.RunProgram(program);
-}
-
-// Split packed QKV with Q/K rotary embedding and copy KV cache fusion
-Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::ComputeContext& context,
-                                                     const WebgpuAttentionParameters& params,
-                                                     const Tensor* packedQKV,
-                                                     const Tensor* seqlen_k,
-                                                     const Tensor* cos_cache,
-                                                     const Tensor* sin_cache,
-                                                     Tensor* query,
-                                                     Tensor* present_key,
-                                                     Tensor* present_value,
-                                                     Tensor* indirect_buffer) {
-  const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
-  const auto head_size = params.head_size_;
-
-  int components = 1;
-  // Currently we only support vectorization when RoPE is not interleaved
-  if (!params.rotary_interleaved_) {
-    if ((params.head_size_ % 4 == 0) && (half_rotary_embedding_dim % 4 == 0)) {
-      components = 4;
-    } else if ((params.head_size_ % 2 == 0) && (half_rotary_embedding_dim % 2 == 0)) {
-      components = 2;
-    }
-  }
-  // Adjust dimensions for vectorization
-  const auto half_rotary_embedding_dim_vec = half_rotary_embedding_dim / components;
-  const auto head_size_vec = head_size / components;
-
-  // Dispatch: batch_size * sequence_length * num_heads * (half_rotary_dim + need_copy_dim)
-  // work_per_head = half_rotary_dim + (head_size - 2 * half_rotary_dim)
-  //               = head_size - half_rotary_dim
-  const auto work_per_head = head_size_vec - half_rotary_embedding_dim_vec;
-  auto dispatch_size = static_cast<uint32_t>(params.batch_size_ * params.sequence_length_ * params.num_heads_ * work_per_head);
-
-  // Extract present_sequence_length from present_key tensor shape
-  const uint32_t present_sequence_length = gsl::narrow_cast<uint32_t>(present_key->Shape()[2]);
-
-  const bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
-
-  constexpr uint32_t tile_size = 64;
-
-  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, prepare_indirect_dispatch);
-  program
-      .CacheHint(params.rotary_interleaved_, prepare_indirect_dispatch)
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
-      .AddInputs({
-          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank, components},
-          {sin_cache, ProgramTensorMetadataDependency::Rank, components},
-      });
-  program.AddOutputs({{query, ProgramTensorMetadataDependency::None, components},
-                      {present_key, ProgramTensorMetadataDependency::None, components},
-                      {present_value, ProgramTensorMetadataDependency::None, components}});
-
-  if (prepare_indirect_dispatch) {
-    program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
-  }
-
-  program.AddUniformVariables({
-      {static_cast<uint32_t>(params.sequence_length_)},
-      {static_cast<uint32_t>(params.hidden_size_ / components)},
-      {static_cast<uint32_t>(params.kv_hidden_size_ / components)},
-      {static_cast<uint32_t>(params.num_heads_)},
-      {static_cast<uint32_t>(params.kv_num_heads_)},
-      {head_size_vec},
-      {half_rotary_embedding_dim_vec},
-      {present_sequence_length},
-      {tile_size},
-      {static_cast<uint32_t>(dispatch_size)},
-  });
-
-  program.SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
 
