@@ -21,6 +21,7 @@
 #include "core/providers/openvino/ov_interface.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
+#include "core/providers/openvino/exceptions.h"
 #include "core/providers/openvino/qdq_transformations/qdq_scales_fix.h"
 #include "../../framework/tensorprotoutils.h"
 
@@ -157,40 +158,11 @@ BackendManager::BackendManager(SessionContext& session_context,
     subgraph_context_.has_dynamic_input_shape = false;
 
     // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
-    try {
-      concrete_backend_ = BackendFactory::MakeBackend(model_proto,
-                                                      session_context_,
-                                                      subgraph_context_,
-                                                      *shared_context_,
-                                                      model_stream);
-    } catch (const OnnxRuntimeException& ex) {
-      std::string exception_str = ex.what();
-
-      if (session_context_.device_type.find("NPU") != std::string::npos &&
-          exception_str.find("intel_npu") != std::string::npos) {
-        // Handle NPU device related errors
-#ifndef NDEBUG
-        std::string suffix = session_context_.so_disable_cpu_ep_fallback ? "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" : "\nModel needs to be recompiled\n";
-        ORT_THROW(exception_str + suffix);
-#else
-        std::string error_message = "UNKNOWN NPU ERROR";
-        std::string error_code = "code 0x0";
-        std::regex error_message_pattern(R"(\bZE_\w*\b)");
-        std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
-        std::smatch matches;
-        if (std::regex_search(exception_str, matches, error_message_pattern)) {
-          error_message = matches[0];
-        }
-        if (std::regex_search(exception_str, matches, error_code_pattern)) {
-          error_code = matches[0];
-        }
-        std::string suffix = session_context_.so_disable_cpu_ep_fallback ? "\nModel failed to compile on NPU. Enable CPU fallback or try another device.\n" : "\nModel needs to be recompiled\n";
-        throw std::runtime_error(error_message + ", " + error_code + suffix);
-#endif
-      } else {
-        ORT_THROW(exception_str);
-      }
-    }
+    concrete_backend_ = BackendFactory::MakeBackend(model_proto,
+                                                    session_context_,
+                                                    subgraph_context_,
+                                                    *shared_context_,
+                                                    model_stream);
   }
 
   if (ShouldExportEpContext(session_context_, subgraph_context_)) {

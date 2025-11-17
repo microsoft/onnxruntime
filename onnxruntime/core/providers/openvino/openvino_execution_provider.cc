@@ -12,6 +12,7 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
+#include "core/providers/openvino/exceptions.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "openvino/core/version.hpp"
 #ifdef USE_OVEP_NPU_MEMORY
@@ -103,107 +104,111 @@ common::Status OpenVINOExecutionProvider::Compile(
   auto& logger = *GetLogger();
   Status status = Status::OK();
 
-  if (session_context_.so_context_enable && session_context_.so_context_embed_mode && session_context_.so_share_ep_contexts) {
-    return Status(common::StatusCategory::ONNXRUNTIME, common::EP_FAIL,
-                  std::string("Invalid EP context configuration: ") + kOrtSessionOptionEpContextEmbedMode + " must be 0 if " + kOrtSessionOptionShareEpContexts + " is 1.");
-  }
+  try {
+    if (session_context_.so_context_enable && session_context_.so_context_embed_mode && session_context_.so_share_ep_contexts) {
+      return Status(common::StatusCategory::ONNXRUNTIME, common::EP_FAIL,
+                    std::string("Invalid EP context configuration: ") + kOrtSessionOptionEpContextEmbedMode + " must be 0 if " + kOrtSessionOptionShareEpContexts + " is 1.");
+    }
 
-  bool is_epctx_model = false;
-  if (!fused_nodes.empty()) {
-    // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
-    const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
-    session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
-    session_context_.onnx_opset_version =
-        graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
+    bool is_epctx_model = false;
+    if (!fused_nodes.empty()) {
+      // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
+      const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
+      session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
+      session_context_.onnx_opset_version =
+          graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
 
-    // OVIR wrapped in epctx should be treated as source but this code does not
-    // This corner case is not in use and will be addressed in a future commit
-    is_epctx_model = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(graph_body_viewer_0);
-  }
+      // OVIR wrapped in epctx should be treated as source but this code does not
+      // This corner case is not in use and will be addressed in a future commit
+      is_epctx_model = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(graph_body_viewer_0);
+    }
 
-  if (is_epctx_model) {
-    ep_ctx_handle_.Initialize(fused_nodes, session_context_.GetOutputBinPath().parent_path());
-  }
+    if (is_epctx_model) {
+      ep_ctx_handle_.Initialize(fused_nodes, session_context_.GetOutputBinPath().parent_path());
+    }
 
-  struct OpenVINOEPFunctionState {
-    AllocateFunc allocate_func = nullptr;
-    DestroyFunc destroy_func = nullptr;
-    AllocatorHandle allocator_handle = nullptr;
-    BackendManager& backend_manager;
-  };
-
-  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
-
-    NodeComputeInfo compute_info;
-
-    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
-    // For precompiled blob, directly load the model instead of compiling the model
-    // For original model, check if the user wants to export a model with pre-compiled blob
-
-    auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           *shared_context_manager_,
-                                                           fused_node,
-                                                           graph_body_viewer,
-                                                           logger,
-                                                           ep_ctx_handle_);
-    compute_info.create_state_func =
-        [&backend_manager](ComputeContext* context, FunctionState* state) {
-          OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
-              .allocate_func = context->allocate_func,
-              .destroy_func = context->release_func,
-              .allocator_handle = context->allocator_handle,
-              .backend_manager = backend_manager};
-          *state = static_cast<FunctionState>(p);
-          return 0;
-        };
-
-    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
-      auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
-      try {
-        function_state->backend_manager.Compute(context);
-      } catch (const std::exception& ex) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
-      }
-      return Status::OK();
+    struct OpenVINOEPFunctionState {
+      AllocateFunc allocate_func = nullptr;
+      DestroyFunc destroy_func = nullptr;
+      AllocatorHandle allocator_handle = nullptr;
+      BackendManager& backend_manager;
     };
 
-    compute_info.release_state_func =
-        [](FunctionState state) {
-          if (state) {
-            OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
-            delete function_state;
-          }
-        };
-
-    node_compute_funcs.push_back(std::move(compute_info));
-  }
-
-  // Export compiled blobs as EPContext nodes if context enable is set
-  if (session_context_.so_context_enable) {
-    auto backend_it = backend_managers_.begin();
-    bool is_first = true;
-
-    for (const auto& fused_node_graph : fused_nodes) {
+    for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
       const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+      const Node& fused_node = fused_node_graph.fused_node;
 
-      // Set include_embed_data to true only for the first backend manager
-      backend_it->TryExportCompiledBlobAsEPCtxNode(graph_body_viewer, is_first);
+      NodeComputeInfo compute_info;
 
-      is_first = false;
-      ++backend_it;
+      // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+      // For precompiled blob, directly load the model instead of compiling the model
+      // For original model, check if the user wants to export a model with pre-compiled blob
+
+      auto& backend_manager = backend_managers_.emplace_back(session_context_,
+                                                             *shared_context_manager_,
+                                                             fused_node,
+                                                             graph_body_viewer,
+                                                             logger,
+                                                             ep_ctx_handle_);
+      compute_info.create_state_func =
+          [&backend_manager](ComputeContext* context, FunctionState* state) {
+            OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
+                .allocate_func = context->allocate_func,
+                .destroy_func = context->release_func,
+                .allocator_handle = context->allocator_handle,
+                .backend_manager = backend_manager};
+            *state = static_cast<FunctionState>(p);
+            return 0;
+          };
+
+      compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+        auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
+        try {
+          function_state->backend_manager.Compute(context);
+        } catch (const std::exception& ex) {
+          return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+        }
+        return Status::OK();
+      };
+
+      compute_info.release_state_func =
+          [](FunctionState state) {
+            if (state) {
+              OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
+              delete function_state;
+            }
+          };
+
+      node_compute_funcs.push_back(std::move(compute_info));
     }
 
-    // bit clunky ideally we should try to fold this into ep context handler
-    if (!session_context_.so_context_embed_mode) {
-      auto shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
-      shared_context->Serialize();
-      if (session_context_.so_stop_share_ep_contexts) {
-        shared_context_manager_->ClearActiveSharedContext();
-        shared_context->Clear();
+    // Export compiled blobs as EPContext nodes if context enable is set
+    if (session_context_.so_context_enable) {
+      auto backend_it = backend_managers_.begin();
+      bool is_first = true;
+
+      for (const auto& fused_node_graph : fused_nodes) {
+        const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+
+        // Set include_embed_data to true only for the first backend manager
+        backend_it->TryExportCompiledBlobAsEPCtxNode(graph_body_viewer, is_first);
+
+        is_first = false;
+        ++backend_it;
+      }
+
+      // bit clunky ideally we should try to fold this into ep context handler
+      if (!session_context_.so_context_embed_mode) {
+        auto shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context_.GetOutputBinPath());
+        shared_context->Serialize();
+        if (session_context_.so_stop_share_ep_contexts) {
+          shared_context_manager_->ClearActiveSharedContext();
+          shared_context->Clear();
+        }
       }
     }
+  } catch (const ovep_exception& ex) {
+    status = ex;
   }
 
   return status;
