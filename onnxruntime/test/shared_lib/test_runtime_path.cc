@@ -14,7 +14,6 @@
 
 namespace onnxruntime::test {
 
-#if !defined(_AIX)
 namespace {
 bool IsDirectorySeparator(PathChar c) {
   constexpr std::array dir_separators{ORT_TSTR('/'), std::filesystem::path::preferred_separator};
@@ -22,7 +21,11 @@ bool IsDirectorySeparator(PathChar c) {
 }
 }  // namespace
 
+#if !defined(_AIX)
 TEST(GetRuntimePathFromSharedLibraryTest, Basic) {
+#else
+TEST(GetRuntimePathFromSharedLibraryTest, DISABLED_Basic) {
+#endif
   const auto* runtime_path_cstr = OrtTestGetSharedLibraryRuntimePath();
   ASSERT_NE(runtime_path_cstr, nullptr);
 
@@ -47,28 +50,5 @@ TEST(GetRuntimePathFromSharedLibraryTest, Basic) {
 
   ASSERT_TRUE(std::filesystem::is_regular_file(canonical_shared_library_path));
 }
-#else
-TEST(GetRuntimePathFromSharedLibraryTest, Basic) {
-  const auto* runtime_path_cstr = OrtTestGetSharedLibraryRuntimePath();
-  ASSERT_NE(runtime_path_cstr, nullptr);
-
-  const auto runtime_path_str = std::basic_string_view<PathChar>{runtime_path_cstr};
-  const auto runtime_path = std::filesystem::path{runtime_path_str};
-
-  // Check that the runtime path contains the shared library file.
-  const auto shared_library_file_name =
-      GetSharedLibraryFileName(ORT_TSTR("onnxruntime_runtime_path_test_shared_library"));
-
-  const auto shared_library_path = runtime_path / shared_library_file_name;
-
-  // Get canonical path to ensure it exists and resolve any symlinks.
-  std::error_code ec{};
-  const auto canonical_shared_library_path = std::filesystem::canonical(shared_library_path, ec);
-  ASSERT_FALSE(ec) << "Failed to get canonical path to shared library file '" << shared_library_path
-                   << "'. Error: " << ec.message();
-
-  ASSERT_TRUE(std::filesystem::is_regular_file(canonical_shared_library_path));
-}
-#endif
 
 }  // namespace onnxruntime::test

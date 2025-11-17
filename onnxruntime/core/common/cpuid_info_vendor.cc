@@ -190,6 +190,9 @@ struct CpuVendorInfo {
 };
 
 constexpr auto kUnknownCpuVendorInfo = CpuVendorInfo{cpuinfo_vendor_unknown, "unknown", 0x0000};
+#if defined(_AIX)
+constexpr auto kIBMCpuVendorInfo = CpuVendorInfo{cpuinfo_vendor_ibm, "IBM", 0x1014};
+#endif
 
 constexpr std::array kCpuVendorInfos{
     CpuVendorInfo{cpuinfo_vendor_amd, "AMD", 0x1022},
@@ -198,7 +201,7 @@ constexpr std::array kCpuVendorInfos{
     CpuVendorInfo{cpuinfo_vendor_nvidia, "Nvidia", 0x10DE},
     CpuVendorInfo{cpuinfo_vendor_apple, "Apple", 0x106B},
     CpuVendorInfo{cpuinfo_vendor_arm, "ARM", 0x13B5},
-
+    CpuVendorInfo{cpuinfo_vendor_ibm, "IBM", 0x1014},
     // TODO add more as needed
 };
 
@@ -228,19 +231,18 @@ void CPUIDInfo::VendorInfoInit() {
       }
     }
 #endif  // defined(CPUINFO_SUPPORTED)
+#if defined(_AIX)
+    result = kIBMCpuVendorInfo.vendor;
+#endif
     return result;
   }();
 
   const auto* vendor_info = FindCpuVendorInfo(vendor);
-// Do below logging only if CPUINFO_SUPPORTED by the OS and still vendor_info is not available.
-#if defined(CPUINFO_SUPPORTED)
   if (vendor_info == nullptr) {
     LogEarlyWarning(MakeString("Unknown CPU vendor. cpuinfo_vendor value: ", static_cast<int>(vendor)));
     vendor_info = &kUnknownCpuVendorInfo;
   }
-#else
-  vendor_info = &kUnknownCpuVendorInfo;
-#endif
+
   vendor_ = vendor_info->name;
   vendor_id_ = vendor_info->id;
 }
