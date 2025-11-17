@@ -51,7 +51,7 @@ pip install onnxruntime
 #### Install nightly
 
 ```bash
-pip install flatbuffers numpy packaging protobuf sympy
+pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime
 ```
 
@@ -66,7 +66,7 @@ pip install onnxruntime-directml
 #### Install nightly
 
 ```bash
-pip install flatbuffers numpy packaging protobuf sympy
+pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-directml
 ```
 
@@ -84,14 +84,14 @@ For previous versions, you can download here: [1.18.1](https://aiinfra.visualstu
 #### Nightly for CUDA 13.x
 
 ```bash
-pip install flatbuffers numpy packaging protobuf sympy
+pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ onnxruntime-gpu
 ```
 
 #### Nightly for CUDA 12.x
 
 ```bash
-pip install flatbuffers numpy packaging protobuf sympy
+pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-gpu
 ```
 
@@ -100,7 +100,7 @@ pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackag
 For Cuda 11.x, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11/PyPI/onnxruntime-gpu/overview) for 1.19.2 or later.
 
 ```bash
-pip install flatbuffers numpy packaging protobuf sympy
+pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 pip install onnxruntime-gpu --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
 ```
 
@@ -115,7 +115,7 @@ pip install onnxruntime-qnn
 #### Install nightly
 
 ```bash
-pip install flatbuffers numpy packaging protobuf sympy
+pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-qnn
 ```
 
