@@ -755,6 +755,21 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAllocator, _In_ const OrtKernelInfo* i
   });
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out) {
+  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+    const auto& config_options_map = op_info->GetConfigOptions().GetConfigOptionsMap();
+
+    auto kvps = std::make_unique<OrtKeyValuePairs>();
+    for (const auto& kv : config_options_map) {
+      kvps->Add(kv.first.c_str(), kv.second.c_str());
+    }
+
+    *out = kvps.release();
+    return nullptr;
+  });
+}
+
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out) {
   if (count_or_bytes == 0) {
     *out = nullptr;
