@@ -2,21 +2,64 @@
 // Licensed under the MIT License.
 
 import * as React from 'react';
-import { Image, Text, TextInput, View } from 'react-native';
-// onnxruntime-react-native package is installed when bootstraping
-import { InferenceSession, Tensor } from 'onnxruntime-react-native';
-import MNIST, { MNISTInput, MNISTOutput, MNISTResult, } from './mnist-data-handler';
-import { Buffer } from 'buffer';
-import { readFile } from 'react-native-fs';
+import { Button, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MNISTTest from './MNISTTest';
+import BasicTypesTest from './BasicTypesTest';
+
+type Page = 'home' | 'mnist' | 'basic-types';
 
 interface State {
-  session:
-  InferenceSession | null;
-  output:
-  string | null;
-  imagePath:
-  string | null;
+  currentPage: Page;
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  scrollContent: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginTop: 20,
+    marginBottom: 10,
+    color: '#333',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 18,
+    marginBottom: 30,
+    color: '#666',
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    width: '100%',
+    marginBottom: 30,
+    alignItems: 'center',
+  },
+  buttonWrapper: {
+    width: '80%',
+    marginBottom: 10,
+  },
+  description: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  header: {
+    padding: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+  },
+  testContent: {
+    flex: 1,
+  },
+});
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export default class App extends React.PureComponent<{}, State> {
@@ -25,104 +68,89 @@ export default class App extends React.PureComponent<{}, State> {
     super(props);
 
     this.state = {
-      session: null,
-      output: null,
-      imagePath: null,
+      currentPage: 'home',
     };
   }
 
-  // Load a model when an app is loading
-  async componentDidMount(): Promise<void> {
-    if (!this.state.session) {
-      try {
-        const imagePath = await MNIST.getImagePath();
-        this.setState({ imagePath });
-
-        const modelPath = await MNIST.getLocalModelPath();
-
-        // test creating session with path
-        console.log('Creating with path');
-        const pathSession: InferenceSession = await InferenceSession.create(modelPath);
-        void pathSession.release();
-
-        // and with bytes
-        console.log('Creating with bytes');
-        const base64Str = await readFile(modelPath, 'base64');
-        const bytes = Buffer.from(base64Str, 'base64');
-        const session: InferenceSession = await InferenceSession.create(bytes);
-        this.setState({ session });
-
-        console.log('Test session created');
-        void await this.infer();
-      } catch (err) {
-        console.log(err.message);
-      }
-    }
-  }
-
-  // Run a model with a given image
-  infer = async (): Promise<void> => {
-    try {
-      const options: InferenceSession.RunOptions = {};
-
-      const mnistInput: MNISTInput = await MNIST.preprocess(this.state.imagePath!);
-      const input: { [name: string]: Tensor } = {};
-      for (const key in mnistInput) {
-        if (Object.hasOwnProperty.call(mnistInput, key)) {
-          const buffer = Buffer.from(mnistInput[key].data, 'base64');
-          const tensorData =
-            new Float32Array(buffer.buffer, buffer.byteOffset, buffer.length / Float32Array.BYTES_PER_ELEMENT);
-          input[key] = new Tensor(mnistInput[key].type as keyof Tensor.DataTypeMap, tensorData, mnistInput[key].dims);
-        }
-      }
-
-      const output: InferenceSession.ReturnType =
-        await this.state.session!.run(input, this.state.session!.outputNames, options);
-
-      const mnistOutput: MNISTOutput = {};
-      for (const key in output) {
-        if (Object.hasOwnProperty.call(output, key)) {
-          const buffer = (output[key].data as Float32Array).buffer;
-          const tensorData = {
-            data: Buffer.from(buffer, 0, buffer.byteLength).toString('base64'),
-          };
-          mnistOutput[key] = tensorData;
-        }
-      }
-      const result: MNISTResult = await MNIST.postprocess(mnistOutput);
-
-      this.setState({
-        output: result.result
-      });
-    } catch (err) {
-      console.log(err.message);
-    }
+  navigateTo = (page: Page) => {
+    this.setState({ currentPage: page });
   };
 
-  render(): React.JSX.Element {
-    const { output, imagePath } = this.state;
+  renderHome(): React.JSX.Element {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.title}>ONNX Runtime E2E Tests</Text>
+          <Text style={styles.subtitle}>Select a test to run:</Text>
+
+          <View style={styles.buttonContainer}>
+            <View style={styles.buttonWrapper}>
+              <Button
+                title="MNIST Test"
+                onPress={() => this.navigateTo('mnist')}
+                accessibilityLabel="mnist-test-button"
+              />
+            </View>
+            <Text style={styles.description}>
+              Test MNIST model with image classification
+            </Text>
+          </View>
+
+          <View style={styles.buttonContainer}>
+            <View style={styles.buttonWrapper}>
+              <Button
+                title="Basic Types Test"
+                onPress={() => this.navigateTo('basic-types')}
+                accessibilityLabel="basic-types-test-button"
+              />
+            </View>
+            <Text style={styles.description}>
+              Test various data types with basic models
+            </Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  renderTestPage(): React.JSX.Element {
+    const { currentPage } = this.state;
+
+    let testComponent: React.JSX.Element;
+    switch (currentPage) {
+      case 'mnist':
+        testComponent = <MNISTTest />;
+        break;
+      case 'basic-types':
+        testComponent = <BasicTypesTest />;
+        break;
+      default:
+        testComponent = <Text>Unknown test</Text>;
+    }
 
     return (
-      <View>
-        <Text>{'\n'}</Text>
-        {imagePath && (
-          <Image
-            source={{
-              uri: imagePath,
-            }}
-            style={{
-              height: 200,
-              width: 200,
-              resizeMode: 'stretch',
-            }}
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Button
+            title="← Back to Home"
+            onPress={() => this.navigateTo('home')}
+            accessibilityLabel="back-button"
           />
-        )}
-        {output && (
-          <TextInput accessibilityLabel='output'>
-            Result: {output}
-          </TextInput>
-        )}
-      </View>
+        </View>
+        <ScrollView style={styles.testContent}>
+          {testComponent}
+        </ScrollView>
+      </SafeAreaView>
     );
+  }
+
+  render(): React.JSX.Element {
+    const { currentPage } = this.state;
+
+    if (currentPage === 'home') {
+      return this.renderHome();
+    }
+
+    return this.renderTestPage();
   }
 }
