@@ -129,6 +129,11 @@ const setExecutionProviders = async (
 
               appendEpOption(epOptions, 'forceCpuNodeNames', names.join('\n'), allocs);
             }
+
+            // set validation mode
+            if (webgpuOptions.validationMode) {
+              appendEpOption(epOptions, 'validationMode', webgpuOptions.validationMode, allocs);
+            }
           }
 
           const info = getInstance().webgpuRegisterDevice!(customDevice);

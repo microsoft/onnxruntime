@@ -232,6 +232,7 @@ try:
                     "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
+                    "libcufft.so.12",
                     "libcurand.so.10",
                     "libnvJitLink.so.12",
                     "libnvJitLink.so.13",

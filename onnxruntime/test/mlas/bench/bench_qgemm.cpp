@@ -82,6 +82,9 @@ static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch", "Threads"
 
+  b->Args({1, 512, 512, 1, 1});
+  b->Args({1, 512, 1024, 1, 1});
+  b->Args({1, 1024, 1024, 1, 1});
   b->Args({384, 1024, 1024, 1, 4});
   b->Args({384, 1024, 3072, 1, 4});
   b->Args({384, 1024, 4096, 1, 4});
