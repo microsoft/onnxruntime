@@ -384,19 +384,14 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id) {
   webgpu::WebGpuContext* context_ptr = nullptr;
-  try {
+  if (webgpu::WebGpuContextFactory::HasContext(context_id)) {
     context_ptr = &webgpu::WebGpuContextFactory::GetContext(context_id);
-  } catch (...) {
-    // Context doesn't exist, create a default one using shared helper
+  } else {
     WebGpuContextParams params = GetDefaultWebGpuContextParams(context_id);
     context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
     context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
   }
-  if (context_ptr) {
-    return new WebGpuDataTransferImpl(*OrtApis::GetApi(ORT_API_VERSION), context_ptr->BufferManager());
-  }
-
-  return nullptr;
+  return new WebGpuDataTransferImpl(*OrtApis::GetApi(ORT_API_VERSION), context_ptr->BufferManager());
 }
 
 }  // namespace onnxruntime
