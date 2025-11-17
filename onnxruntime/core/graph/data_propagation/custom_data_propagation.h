@@ -14,7 +14,8 @@ namespace onnxruntime {
  * @class CustomDataPropagation
  * Custom data propagation for the operator to help enhance shape inference.
  *
- * Calling infer() can infer the output values for the specific operator given the input is shape values.
+ * Calling infer() can infer the output values for the specific operator given the input is shape values
+ * and saves the output values in output node_arg for other operators to use later.
  * The purpose of this class is to make shape values being correctly inferred and propogated through the graph.
  */
 class CustomDataPropagationBase {

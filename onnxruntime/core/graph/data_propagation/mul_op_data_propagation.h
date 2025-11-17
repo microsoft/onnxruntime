@@ -17,14 +17,14 @@ namespace onnxruntime {
  *     |
  *     v
  *   Shape            (It saves [1, 3, 64, 64] in inferred_shape_values_ in output's node_arg
- *     |               after graph::SaveShapeValuesFromDataPropagation())
+ *     |               during graph::SaveShapeValuesFromDataPropagation())
  *     |
  *     | ______
  *     |       |
  *     v       v
  *   Gather  Gather   (First 'Gather' saves 3 in inferred_scalar_value_ in output node_arg, and
  *     |       |       second 'Gather' saves 64 in inferred_scalar_value_ in output node_arg
- *     |       |       after graph::SaveShapeValuesFromDataPropagation(), if the 'index' attributes
+ *     |       |       during GatherOpDataPropagation(), if the 'index' attributes
  *     |       |       are 1 and 2 respectively)
  *      \     /
  *       \   /

@@ -8,6 +8,10 @@
 
 namespace onnxruntime {
 
+/**
+ * @brief Class to infer the output scalar for 'Size' operator given the input is shape values.
+ * 
+ */
 class SizeOpDataPropagation : public CustomDataPropagationBase {
  public:
   SizeOpDataPropagation(const Node& node,
