@@ -153,7 +153,7 @@ class ConvInteger : public OpKernel {
         gemm_params.A = Wdata + group_id * W_offset;
         gemm_params.lda = static_cast<size_t>(kernel_dim);
         gemm_params.ZeroPointA = filter_offset;
-        gemm_params.B = (col_buffer_data == nullptr) ? Xdata : col_buffer_data,
+        gemm_params.B = (col_buffer_data == nullptr) ? Xdata : col_buffer_data;
         gemm_params.ldb = static_cast<size_t>(output_image_size);
         gemm_params.ZeroPointB = &input_offset;
         gemm_params.C = Ydata;
