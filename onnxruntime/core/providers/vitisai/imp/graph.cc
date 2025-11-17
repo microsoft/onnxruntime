@@ -285,7 +285,7 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
   }
   for (auto& node : original_graph.Nodes()) {
     auto* node_proto = graph_proto->add_node();
-    node->ToProto(*node_proto, false);
+    node->ToProto(*node_proto, true);
     for (auto output : node->OutputDefs()) {
       if (output->Exists()) {
         auto* value_info = graph_proto->mutable_value_info()->Add();

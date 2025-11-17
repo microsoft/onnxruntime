@@ -1389,6 +1389,7 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   // choose performance mode
   switch (htp_performance_mode) {
     case HtpPerformanceMode::kHtpBurst:
+    case HtpPerformanceMode::kHtpSustainedHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMinLatency;
       dcvs_v3.dcvsEnable = kDcvsDisable;
@@ -1401,7 +1402,6 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       break;
-    case HtpPerformanceMode::kHtpSustainedHighPerformance:
     case HtpPerformanceMode::kHtpHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepLowLatency;
