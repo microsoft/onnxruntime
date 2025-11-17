@@ -45,7 +45,8 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     bool weight_is_initializer = false,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& err_str = "",
-                    int opset = 11) {
+                    int opset = 11,
+                    float rel_error = 0.002f) {
   std::unique_ptr<OpTester> tester;
   if (!attributes.activation.empty()) {
     tester = std::make_unique<OpTester>("NhwcFusedConv", 1, onnxruntime::kMSDomain);
@@ -85,7 +86,7 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   if (inputs.size() >= 4)
     tester->AddInput<MLFloat16>(szNames[3], input_shapes[3], inputs[3]);
 
-  tester->AddOutput<MLFloat16>("Y", expected_output_shape, expected_output, /*no sort*/ false, 0.002f, 0.0f);
+  tester->AddOutput<MLFloat16>("Y", expected_output_shape, expected_output, /*no sort*/ false, rel_error, 0.0f);
 
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
@@ -525,14 +526,16 @@ TEST(ConvFp16Test, Conv2D_MatMul_SplitK_With_Bias) {
   }
   vector<MLFloat16> expected_vals = FloatsToMLFloat16s(expected_vals_float32);
 
+  // Using a higher relative error threshold for the Linux arm64 bots
+  constexpr float rel_error = 0.02f;
   TestConvFp16Op(
       attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false,
-      OpTester::ExpectResult::kExpectSuccess, "", 11);
+      OpTester::ExpectResult::kExpectSuccess, "", 11, rel_error);
 
   // NNAPI/CoreML EP requires weight to be an initializer
   TestConvFp16Op(
       attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true,
-      OpTester::ExpectResult::kExpectSuccess, "", 11);
+      OpTester::ExpectResult::kExpectSuccess, "", 11, rel_error);
 }
 
 TEST(ConvFp16Test, Conv2D_Bias_1) {
