@@ -2749,6 +2749,8 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
       TensorProto tensor_proto;
       tensor_proto.set_data_type(TensorProto_DataType_INT64);
       tensor_proto.add_int64_data(inferred_shape_scalar_value.value());
+      temp_tensor_protos_.push_back(std::make_unique<TensorProto>(std::move(tensor_proto)));
+      return temp_tensor_protos_.back().get();
     }
 
     return nullptr;
