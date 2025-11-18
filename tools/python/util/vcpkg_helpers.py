@@ -82,14 +82,6 @@ endif()
         "-DONNX_USE_LITE_PROTO=ON"
     )"""
         )
-    else:
-        # keep default OFF for non-WebAssembly builds.
-        f.write(
-            r"""
-    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
-        "-DONNX_USE_LITE_PROTO=OFF"
-    )"""
-        )
 
     f.write(r"""
 endif() # End ONNX-specific block
