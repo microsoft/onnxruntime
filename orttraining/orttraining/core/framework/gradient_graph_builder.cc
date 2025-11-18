@@ -290,7 +290,7 @@ const std::unordered_set<size_t>* GradientGraphBuilder::GetStopGradientEdges(con
   }
 }
 
-Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
+Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve, bool is_isolated) {
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
@@ -426,7 +426,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
   }
 
-  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve));
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve, is_isolated));
 
   // For ORTModule, the graph will be sent back to frontend for cache. Frontend will use inference session to run the
   // cached graph. We need to save the new NodeArgs to value_info so we will not loss those shape/type information
