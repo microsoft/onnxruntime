@@ -30,7 +30,7 @@ static WebGpuContextParams GetDefaultWebGpuContextParams() {
   params.context_config.instance = nullptr;
   params.context_config.device = nullptr;
   params.context_config.dawn_proc_table = nullptr;
-  params.context_config.validation_mode = webgpu::ValidationMode::Basic;
+  params.context_config.validation_mode = webgpu::ValidationMode::Disabled;
   params.context_config.preserve_device = false;
   params.context_config.max_storage_buffer_binding_size = 0;
   params.context_config.power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);
