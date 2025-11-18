@@ -2,12 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <vector>
-#include <string>
 
-#include "core/common/inlined_containers.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
+#include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
