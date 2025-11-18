@@ -290,38 +290,16 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     will_use_flash_attention = CanApplyFlashAttention(attention_bias, present_key, present_value, temp_params, context);
   }
 
-  bool kv_cache_ready = false;
-  Tensor* indirect_buffer_ptr = nullptr;
-  Tensor indirect_buffer;
-
   if (parameters.is_packed_qkv_ && do_rotary_) {
-    qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
-
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
     if (will_use_flash_attention && parameters.past_present_share_buffer_) {
-      // Determine if we should use indirect dispatch for graph capture
-      const bool use_indirect_dispatch = (parameters.sequence_length_ == 1 &&
-                                          seqlen_k != nullptr &&
-                                          context.IsGraphCaptureEnabled());
-
-      // Create indirect dispatch buffer if needed
-      if (use_indirect_dispatch) {
-        const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
-        indirect_buffer = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
-        indirect_buffer_ptr = &indirect_buffer;
-      }
-
-      // Fused: splitQKV + rotary QK + copy KV cache
-      ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(context, parameters,
-                                                                        query, seqlen_k,
-                                                                        cos_cache, sin_cache,
-                                                                        &qSplit, present_key, present_value,
-                                                                        indirect_buffer_ptr));
-      kv_cache_ready = true;
-      key = present_key;
-      value = present_value;
+      // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
+      // query points to packed QKV, K and V are nullptr since they're not needed
+      return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
+                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache);
     } else {
       // Fused: splitQKV + rotary QK
+      qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
       kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
       vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
       ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbedding(context, parameters,
@@ -364,7 +342,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-                               present_value, parameters, context, seqlen_k, kv_cache_ready, indirect_buffer_ptr);
+                               present_value, parameters, context, seqlen_k);
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
