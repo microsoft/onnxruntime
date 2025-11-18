@@ -2,11 +2,7 @@
 // Licensed under the MIT License.
 #include <string>
 #include <vector>
-#include <iterator>
-#include <algorithm>
 
-#include "core/providers/webgpu/shader_helper.h"
-#include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
 #include "core/providers/webgpu/nn/activation_util.h"
