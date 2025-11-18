@@ -1318,7 +1318,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
 #endif
 #if defined(MLAS_TARGET_LARCH64)
