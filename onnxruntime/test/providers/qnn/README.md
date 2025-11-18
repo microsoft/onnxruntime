@@ -15,11 +15,11 @@ The tests are built as part of the regular ONNX Runtime build. After a successfu
     - `onnxruntime_provider_test.exe --gtest_filter=QnnGPUBackendTests.*`
     - `onnxruntime_provider_test.exe --gtest_filter=QnnIRBackendTests.*`
 2. Saving Test Artifacts
-    - For debugging it is often helpful to keep the intermediate files that the tests generate. The following custom flags are
-    recognized by the test binary:
-        - `--dump_onnx`: Saves the input ONNX model used for the test
-        - `--dump_json`: Save json qnn graph with provider_option `dump_json_qnn_graph`
-        - `--dump_dlc`: Saves the compiled QNN DLC file by specifying the provider_option `backend_path` to `QnnIr.dll`
+    - For debugging it is often helpful to keep the intermediate files that the tests generate. The following environment
+    variables are recognized by the test binary:
+        - `QNN_DUMP_ONNX`: Saves the input ONNX model used for the test
+        - `QNN_DUMP_JSON`: Save json qnn graph with provider_option `dump_json_qnn_graph`
+        - `QNN_DUMP_DLC`: Saves the compiled QNN DLC file by specifying the provider_option `backend_path` to `QnnIr.dll`
     - The artifacts will be saved to a directory named with `<TestSuite>_<TestName>`
         ```
         .
@@ -41,10 +41,29 @@ The tests are built as part of the regular ONNX Runtime build. After a successfu
         # All artifact files are placed under the current working directory from which the test binary is invoked.
         ```
 3. Verbose
-    - `--verbose`: Sets the ONNX Runtime log level to `ORT_LOGGING_LEVEL_VERBOSE`
+    - `QNN_VERBOSE`: Sets the ONNX Runtime log level to `ORT_LOGGING_LEVEL_VERBOSE`
 
-4. You can enable any combination of these flags, for example:
-    - `onnxruntime_provider_test.exe --gtest_filter=QnnHTPBackendTests.* --dump_onnx --dump_json --dump_dlc --verbose`
+4. You can enable any combination of these environment variables, for example:
+    - On Linux/macOS
+        ```bash
+        export QNN_DUMP_ONNX=1
+        export QNN_DUMP_JSON=1
+        export QNN_DUMP_DLC=1
+        export QNN_VERBOSE=1
+        ```
+    - On Windows
+        ```cmd
+        set QNN_DUMP_ONNX=1
+        set QNN_DUMP_JSON=1
+        set QNN_DUMP_DLC=1
+        set QNN_VERBOSE=1
+        ```
+        ```ps1
+        $Env:QNN_DUMP_ONNX = "1"
+        $Env:QNN_DUMP_JSON = "1"
+        $Env:QNN_DUMP_DLC = "1"
+        $Env:QNN_VERBOSE = "1"
+        ```
 
 # Note
 - An issue on QNN backends can prevent the test artifacts from being successfully saved.
