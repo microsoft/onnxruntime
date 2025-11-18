@@ -678,9 +678,9 @@ TEST(ConvIntegerTest, WithoutPadding_2D_s8u8) {
 
   std::vector<int64_t> x_dims{1, 1, 3, 3};
   test.AddInput<int8_t>("x", x_dims,
-                        {-1,  2, -3,
-                          4, -5,  6,
-                         -7,  8, -9});
+                        {-1, 2, -3,
+                         4, -5, 6,
+                         -7, 8, -9});
 
   std::vector<int64_t> w_dims{1, 1, 2, 2};
   test.AddInput<uint8_t>("w", w_dims,
@@ -692,8 +692,8 @@ TEST(ConvIntegerTest, WithoutPadding_2D_s8u8) {
 
   std::vector<int64_t> y_dims{1, 1, 2, 2};
   test.AddOutput<int32_t>("y", y_dims,
-                          {-5,  5,
-                            5, -5});
+                          {-5, 5,
+                           5, -5});
 
   test.Run();
 }
@@ -703,9 +703,9 @@ TEST(ConvIntegerTest, WithPadding_2D_s8u8) {
 
   std::vector<int64_t> x_dims{1, 1, 3, 3};
   test.AddInput<int8_t>("x", x_dims,
-                        {-1,  2, -3,
-                          4, -5,  6,
-                         -7,  8, -9});
+                        {-1, 2, -3,
+                         4, -5, 6,
+                         -7, 8, -9});
 
   std::vector<int64_t> w_dims{1, 1, 2, 2};
   test.AddInput<uint8_t>("w", w_dims,
@@ -718,10 +718,10 @@ TEST(ConvIntegerTest, WithPadding_2D_s8u8) {
 
   std::vector<int64_t> y_dims{1, 1, 4, 4};
   test.AddOutput<int32_t>("y", y_dims,
-                          { -4,   5,  -6,  -9,
-                            14,  -5,   5,  15,
-                           -20,   5,  -5, -21,
-                           -14,   9, -10,  -9});
+                          {-4, 5, -6, -9,
+                           14, -5, 5, 15,
+                           -20, 5, -5, -21,
+                           -14, 9, -10, -9});
 
   test.Run();
 }
