@@ -14,19 +14,6 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgram> {
- public:
-  GeneratePositionIDsProgram(bool is_first_prompt, bool is_subsequent_prompt) : Program{"GeneratePositionIDs"}, is_first_prompt_(is_first_prompt), is_subsequent_prompt_(is_subsequent_prompt) {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32}, {"sequence_length", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool is_first_prompt_;
-  bool is_subsequent_prompt_;
-};
-
 class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
  public:
   SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
@@ -35,6 +22,26 @@ class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
+};
+
+class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
+ public:
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const bool interleaved_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {
@@ -70,6 +77,8 @@ class GroupQueryAttention final : public WebGpuKernel {
   bool use_smooth_softmax_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 };
+
+KernelCreateInfo CreateGroupQueryAttentionKernelInfo(bool enable_graph_capture);
 
 }  // namespace webgpu
 }  // namespace contrib

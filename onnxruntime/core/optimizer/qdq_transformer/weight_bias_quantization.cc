@@ -4,6 +4,7 @@
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
 
 #include "core/common/common.h"
+#include "core/providers/common.h"
 #include "core/util/qmath.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -128,6 +129,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       int64_t axis = 1;
       if (auto axis_iter = dq_attrs.find("axis"); axis_iter != dq_attrs.end()) {
         axis = axis_iter->second.i();
+        const ONNX_NAMESPACE::TensorShapeProto* weight_shape = weight_arg->Shape();
+        if (!weight_shape && dq_1->InputDefs()[0]) {
+          weight_shape = dq_1->InputDefs()[0]->Shape();
+        }
+        if (axis < 0 && !weight_shape) {
+          continue;
+        }
+        axis = HandleNegativeAxis(axis, weight_shape->dim_size());
       }
 
       int64_t expected_axis = 0;
@@ -138,6 +147,8 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
           transB = trans_b_iter->second.i();
         }
         expected_axis = transB == 0 ? 1 : 0;
+      } else if (node.OpType() == "ConvTranspose") {
+        expected_axis = 1;
       }
 
       if (axis != expected_axis) {
@@ -161,14 +172,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       weight_scale_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_scale"));
       weight_scale_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       weight_scale_proto.mutable_float_data()->Add(scale);
-      weight_scale_arg = &graph_utils::AddInitializer(graph, weight_scale_proto);
+      weight_scale_arg = &graph_utils::AddInitializerWithOrtValue(graph, weight_scale_proto);
 
       // Weight zero point initializer.
       ONNX_NAMESPACE::TensorProto weight_zp_proto;
       weight_zp_proto.set_name(graph.GenerateNodeArgName(node.Name() + "_weight_zp"));
       weight_zp_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
       weight_zp_proto.mutable_int32_data()->Add(static_cast<int32_t>(zp));
-      NodeArg& weight_zp_arg = graph_utils::AddInitializer(graph, weight_zp_proto);
+      NodeArg& weight_zp_arg = graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto);
 
       // Q from float32 to int8.
       ONNX_NAMESPACE::TypeProto weight_q_type_proto;

@@ -69,8 +69,8 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 
   if (have_file) {
-    for (size_t runs = 0; runs < time_costs_submission.size(); runs++) {
-      outfile << model_name << "," << time_costs_submission[runs] << "," << peak_workingset_size << ","
+    for (size_t runs = 0; runs < time_costs_total.size(); runs++) {
+      outfile << model_name << "," << time_costs_total[runs] << "," << peak_workingset_size << ","
               << average_CPU_usage << "," << runs << std::endl;
     }
   } else {
@@ -80,8 +80,8 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
               << "\nRuns:" << time_costs_submission.size() << std::endl;
   }
 
-  if (!time_costs_submission.empty() && f_include_statistics) {
-    std::vector<double> sorted_time = time_costs_submission;
+  if (!time_costs_total.empty() && f_include_statistics) {
+    std::vector<double> sorted_time = time_costs_total;
 
     size_t total = sorted_time.size();
     size_t n50 = static_cast<size_t>(total * 0.5);

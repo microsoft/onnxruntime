@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.38.0.250901
+  default: 2.39.0.250926
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -35,6 +35,8 @@ jobs:
         PythonVersion: '3.12'
       Python313_x64:
         PythonVersion: '3.13'
+      Python314_x64:
+        PythonVersion: '3.14'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -113,5 +115,3 @@ jobs:
     inputs:
       artifactName: onnxruntime_qnn_arm64ec_$(PythonVersion)
       targetPath: '$(Build.ArtifactStagingDirectory)'
-
-

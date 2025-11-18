@@ -29,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)
     : WebGpuKernel(info), AttentionBase(info, false) {
-  ORT_ENFORCE(!is_unidirectional_, "Unidirectional MHA does not support webgpu kernel");
+  // Unidirectional attention is now supported for both flash attention and normal attention paths
 }
 
 Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {

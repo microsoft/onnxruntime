@@ -186,6 +186,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
+    parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
 
 def add_testing_args(parser: argparse.ArgumentParser) -> None:
@@ -203,6 +204,7 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
         help="Run onnx_test_runner against test data. Only used in ONNX Runtime's CI pipelines",
     )
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc executable.")
+    parser.add_argument("--cmake_deps_mirror_dir", help="Path to the local mirror of cmake dependencies.")
     parser.add_argument("--fuzz_testing", action="store_true", help="Enable Fuzz testing.")
     parser.add_argument(
         "--enable_symbolic_shape_infer_tests",
@@ -358,6 +360,9 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
     parser.add_argument("--emsdk_version", default="4.0.11", help="Specify version of emsdk.")
+    parser.add_argument(
+        "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
+    )
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD.")
     parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD.")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threading.")
@@ -629,8 +634,18 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         help="Enable CUDA kernel profiling (requires CUPTI in PATH).",
     )
 
+    # --- CPU ---
     cpu_group = parser.add_argument_group("CPU Execution Provider")
     cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
+    # The following enables building ORT with NCHWc Neon ARM kernels.
+    # At the time of writing, it is turned OFF by default because its performance relative to "regular" NCHW kernels
+    # is not good at smaller thread counts. But its speed-up is non-negligible with higher thread counts on supporting
+    # ARM platforms.
+    # Once the gap is closed for smaller thread counts, it can be turned on by default.
+    # See https://github.com/microsoft/onnxruntime/pull/25580#issuecomment-3335056846 for benchmarking details.
+    cpu_group.add_argument(
+        "--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels."
+    )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")

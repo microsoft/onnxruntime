@@ -543,7 +543,6 @@ class TensorManagerImpl implements TensorManager {
     const context = this.getMLContext(sessionId);
     const tensorId = createNewTensorId();
     // Defaulting to READ | WRITE if usage is not provided.
-    // eslint-disable-next-line no-bitwise
     const wrapper = new TensorWrapper({
       sessionId,
       context,

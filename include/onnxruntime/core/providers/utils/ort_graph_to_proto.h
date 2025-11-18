@@ -184,6 +184,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::ModelProto& model_proto,
                             HandleInitializerDataFunc handle_initializer_data_func = nullptr);
+/// <summary>
+/// Convert the endianess of data based of tensor element type. Mainly used in BE systems.
+/// </summary>
+/// <param name="value_info">OrtValueInfo for the initializer. Can be used to query name, type, shape,
+///                           and consumer nodes.</param>
+/// <param name="data">Pointer to data buffer.</param>
+/// <param name="bytes">Length of data buffer.</param>
+/// <returns>An Ort::Status indicating success or an error.</returns>
+Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes);
+
 }  // namespace OrtEpUtils
 
 // End of header
@@ -225,9 +235,27 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
                                                   bool get_symbolic_dims,
                                                   /*out*/ ONNXTensorElementDataType& elem_type,
                                                   /*out*/ std::vector<int64_t>& dims,
-                                                  /*out*/ std::vector<std::string>& symbolic_dims);
+                                                  /*out*/ std::vector<std::string>& symbolic_dims,
+                                                  /*out*/ bool& has_shape);
 static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info, onnx::ValueInfoProto& value_info_proto);
 static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
+static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element_type, size_t& element_size);
+static void SwapByteOrderInplace(void* data, const size_t& data_len, const size_t& element_size);
+
+// Below endian enum class is referenced from include/onnxruntime/core/framework/endian.h
+enum class endian {
+#if defined(_WIN32)
+  little = 0,
+  big = 1,
+  native = little,
+#elif defined(__GNUC__) || defined(__clang__)
+  little = __ORDER_LITTLE_ENDIAN__,
+  big = __ORDER_BIG_ENDIAN__,
+  native = __BYTE_ORDER__,
+#else
+#error onnxruntime::endian is not implemented in this environment.
+#endif
+};
 
 Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::GraphProto& graph_proto,
@@ -390,9 +418,10 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       std::vector<int64_t> initializer_dims;
       std::vector<std::string> initializer_sym_dims;
       ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+      bool has_shape = false;
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(initializer_value_info, /*get_sym_dims*/ false,
                                                                       initializer_elem_type, initializer_dims,
-                                                                      initializer_sym_dims));
+                                                                      initializer_sym_dims, has_shape));
 
       onnx::TensorProto* tensor_proto = graph_proto.add_initializer();
       tensor_proto->set_name(initializer_name);
@@ -435,7 +464,17 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       } else {
         // User wants to store data inline the TensorProto's raw_data
         tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
-        tensor_proto->set_raw_data(data, data_bytes);
+        if constexpr (endian::native == endian::big) {
+          size_t element_size = 0;
+          GetTensorElementSize(initializer_elem_type, element_size);
+          // create local copy of data and do endianess conversion
+          auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
+          std::memcpy(raw_data_buf.get(), data, data_bytes);
+          SwapByteOrderInplace(raw_data_buf.get(), data_bytes, element_size);
+          tensor_proto->set_raw_data(raw_data_buf.get(), data_bytes);
+        } else {
+          tensor_proto->set_raw_data(data, data_bytes);
+        }
       }
     }
   } catch (const Ort::Exception& ex) {
@@ -493,28 +532,29 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
                                                   bool get_symbolic_dims,
                                                   /*out*/ ONNXTensorElementDataType& elem_type,
                                                   /*out*/ std::vector<int64_t>& dims,
-                                                  /*out*/ std::vector<std::string>& symbolic_dims) {
+                                                  /*out*/ std::vector<std::string>& symbolic_dims,
+                                                  /*out*/ bool& has_shape) {
   try {
     Ort::ConstTypeInfo ort_type_info = vi.TypeInfo();
     ONNXType ort_onnx_type = ort_type_info.GetONNXType();
     ORT_EP_UTILS_C_RETURN_IF(ort_onnx_type != ONNX_TYPE_TENSOR, "Expected OrtValueInfo to represent a Tensor");
 
     Ort::ConstTensorTypeAndShapeInfo ort_type_shape = ort_type_info.GetTensorTypeAndShapeInfo();
-    ONNXTensorElementDataType ort_elem_type = ort_type_shape.GetElementType();
+    elem_type = ort_type_shape.GetElementType();
+    has_shape = ort_type_shape.HasShape();
 
-    size_t num_dims = ort_type_shape.GetDimensionsCount();
-    std::vector<int64_t> ort_dims = ort_type_shape.GetShape();
+    if (has_shape) {
+      const size_t num_dims = ort_type_shape.GetDimensionsCount();
+      dims = ort_type_shape.GetShape();
 
-    elem_type = ort_elem_type;
-    dims = std::move(ort_dims);
+      if (get_symbolic_dims) {
+        std::vector<const char*> ort_dim_syms(num_dims, nullptr);
+        ort_type_shape.GetSymbolicDimensions(ort_dim_syms.data(), ort_dim_syms.size());
 
-    if (get_symbolic_dims) {
-      std::vector<const char*> ort_dim_syms(num_dims, nullptr);
-      ort_type_shape.GetSymbolicDimensions(ort_dim_syms.data(), ort_dim_syms.size());
-
-      symbolic_dims.reserve(num_dims);
-      for (const char* sym_dim : ort_dim_syms) {
-        symbolic_dims.push_back(sym_dim);
+        symbolic_dims.reserve(num_dims);
+        for (const char* sym_dim : ort_dim_syms) {
+          symbolic_dims.push_back(sym_dim);
+        }
       }
     }
   } catch (const Ort::Exception& ex) {
@@ -533,17 +573,18 @@ static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info,
   ONNXTensorElementDataType ort_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
 
   // We currently only support ONNX tensors. Support for other types (e.g., ONNX_TYPE_SEQUENCE) can be added later.
+  bool has_shape = false;
   ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, /*get_sym_dims*/ true,
-                                                                  ort_elem_type, ort_dims, ort_dim_syms));
+                                                                  ort_elem_type, ort_dims, ort_dim_syms,
+                                                                  has_shape));
 
   value_info_proto.set_name(ort_value_info.GetName());
 
   onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
   type_proto_tensor->set_elem_type(ort_elem_type);
 
-  // If there are no dimensions in the shape, do not set a TensorShapeProto. Otherwise, it always looks
-  // like a scalar value.
-  if (!ort_dims.empty()) {
+  // If there is no shape, do not set a TensorShapeProto.
+  if (has_shape) {
     onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
     for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
@@ -695,7 +736,17 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
         const size_t data_bytes = tensor.GetTensorSizeInBytes();
 
         // Copy the Ortvalue to TensorProto as raw data
-        tensor_proto.set_raw_data(data, data_bytes);
+        if constexpr (endian::native == endian::big) {
+          size_t element_size = 0;
+          GetTensorElementSize(element_type, element_size);
+          // create local copy of data and do endianess conversion
+          auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
+          std::memcpy(raw_data_buf.get(), data, data_bytes);
+          SwapByteOrderInplace(raw_data_buf.get(), data_bytes, element_size);
+          tensor_proto.set_raw_data(raw_data_buf.get(), data_bytes);
+        } else {
+          tensor_proto.set_raw_data(data, data_bytes);
+        }
 
         *(attr_proto.mutable_t()) = std::move(tensor_proto);
         break;
@@ -712,6 +763,76 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
   }
 
   return Ort::Status{nullptr};
+}
+
+Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes) {
+#if !defined(_WIN32)
+  if constexpr (endian::native == endian::little) {
+    return Ort::Status{nullptr};
+  }
+  std::vector<int64_t> initializer_dims;
+  std::vector<std::string> initializer_sym_dims;
+  ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  size_t element_size = 0;
+  Ort::ConstValueInfo ort_value_info{value_info};
+  bool has_shape{false};
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, false,
+                                                                  initializer_elem_type, initializer_dims,
+                                                                  initializer_sym_dims, has_shape));
+  GetTensorElementSize(initializer_elem_type, element_size);
+  if (element_size != 1) {
+    SwapByteOrderInplace(data, bytes, element_size);
+  }
+#else
+  (value_info);
+  (data);
+  (bytes);
+#endif
+  return Ort::Status{nullptr};
+}
+
+static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element_type, size_t& element_size) {
+  using TensorElemDataMap = std::unordered_map<ONNXTensorElementDataType, size_t>;
+  static TensorElemDataMap tensor_elem_data_size{
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, sizeof(int8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, sizeof(int16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, sizeof(uint32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, sizeof(int64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, sizeof(uint64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, sizeof(double)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(uint8_t)},
+  };
+  auto pos = tensor_elem_data_size.find(element_type);
+  if (pos == tensor_elem_data_size.end()) {
+    std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(element_type));
+    return Ort::Status(err_msg.c_str(), ORT_FAIL);
+  }
+  element_size = pos->second;
+  return Ort::Status{nullptr};
+}
+
+static void SwapByteOrderInplace(void* data, const size_t& data_len, const size_t& element_size) {
+  char* bytes = reinterpret_cast<char*>(data);
+  size_t num_elements = data_len / element_size;
+  for (size_t i = 0; i < num_elements; ++i) {
+    char* start_byte = bytes + i * element_size;
+    char* end_byte = start_byte + element_size - 1;
+    for (size_t count = 0; count < element_size / 2; ++count) {
+      std::swap(*start_byte++, *end_byte--);
+    }
+  }
 }
 
 }  // namespace OrtEpUtils

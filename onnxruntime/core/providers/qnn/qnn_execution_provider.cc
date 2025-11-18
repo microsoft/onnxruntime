@@ -94,6 +94,8 @@ static void ParseProfilingLevel(std::string profiling_level_string,
     profiling_level = qnn::ProfilingLevel::BASIC;
   } else if (profiling_level_string == "detailed") {
     profiling_level = qnn::ProfilingLevel::DETAILED;
+  } else if (profiling_level_string == "optrace") {
+    profiling_level = qnn::ProfilingLevel::OPTRACE;
   } else {
     LOGS_DEFAULT(WARNING) << "Profiling level not valid.";
   }
@@ -400,6 +402,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (profiling_level_pos != provider_options_map.end()) {
     ParseProfilingLevel(profiling_level_pos->second, profiling_level);
   }
+
   static const std::string PROFILING_FILE = "profiling_file_path";
   auto profiling_file_pos = provider_options_map.find(PROFILING_FILE);
   if (profiling_file_pos != provider_options_map.end()) {
@@ -563,6 +566,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  // Option to skip QNN API interface version check to use other QNN library other than default.
+  static const std::string SKIP_QNN_VERSION_CHECK = "skip_qnn_version_check";
+  auto skip_qnn_version_check = ParseBoolOption(SKIP_QNN_VERSION_CHECK, false, provider_options_map);
+
   // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
   // So that all graphs from later sessions will be compiled into the same QNN context
   if (((context_cache_enabled_ && share_ep_contexts_) || enable_vtcm_backup_buffer_sharing_) && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
@@ -582,7 +589,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                      device_id_,
                                      htp_arch,
                                      soc_model,
-                                     op_packages});
+                                     op_packages,
+                                     skip_qnn_version_check});
     if (enable_vtcm_backup_buffer_sharing_) {
       SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_);
     }
@@ -1472,7 +1480,7 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
   }
 
   uint32_t rpc_polling_time = 0;
-  if (qnn::HtpPerformanceMode::kHtpBurst != htp_performance_mode) {
+  if (qnn::HtpPerformanceMode::kHtpBurst == htp_performance_mode) {
     rpc_polling_time = 9999;
   }
 
@@ -1575,6 +1583,17 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       } else {
         LOGS_DEFAULT(ERROR) << "Invalid EP Workload Type: " << value;
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid EP Workload Type.");
+      }
+    } else if (key == kOrtEpDynamicOptionsQnnHtpPerformanceMode) {
+      auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+      if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+        return Status::OK();
+      }
+      qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+      ParseHtpPerformanceMode(value, htp_performance_mode);
+      if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    htp_performance_mode));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";

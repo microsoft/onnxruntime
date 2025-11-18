@@ -78,6 +78,8 @@ struct int64s final {
   const int64_t* data() const { return g_host->int64s__data(this); }
   const int64_t& operator[](int index) const { return Get(index); }
   void Reserve(int size) { g_host->int64s__Reserve(this, size); }
+  const int64_t* begin() const { return data(); }
+  const int64_t* end() const { return data() + size(); }
   PROVIDER_DISALLOW_ALL(int64s)
 };
 
@@ -364,6 +366,7 @@ struct TypeProto_Sequence final {
 
 struct TypeProto final {
   static std::unique_ptr<TypeProto> Create() { return g_host->TypeProto__construct(); }
+  static void operator delete(void* p) { g_host->TypeProto__operator_delete(reinterpret_cast<TypeProto*>(p)); }
 
   bool has_tensor_type() const { return g_host->TypeProto__has_tensor_type(this); }
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
