@@ -200,7 +200,7 @@ class MLASCPUIDInfo
     bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
 
     bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
-  
+
    private:
     MLASCPUIDInfo();
 
