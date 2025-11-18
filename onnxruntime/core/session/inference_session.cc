@@ -2606,30 +2606,12 @@ common::Status InferenceSession::CheckShapes(const std::string& input_output_nam
                            " Please fix either the inputs/outputs or the model.");
   }
 
-#ifdef USE_QNN
-  // Helper function to check whether QNN EP is used & all nodes are assigned to QNN EP,
-  // and relax the constraint to support batch multiplier on the first dimension.
-  // We will check whether only the Htp backend is used inside QnnModel::ExecuteGraph.
-  auto is_valid_qnn_batch_multiplier = [this](int64_t input_dim, int64_t expected_dim, const Graph& graph) -> bool {
-    if (!AreAllNodesInMainGraphAssignedToOneEp(graph, kQnnExecutionProvider)) {
-      LOGS_IF(input_dim != expected_dim, *session_logger_, WARNING) << "input batch size and expected batch size are different. "
-                                                                    << "Batch multiplier is only supported on the QNN EP, "
-                                                                    << "but some nodes in the graph are assigned to other EPs";
-      return false;
-    }
-    return expected_dim > 0 && input_dim % expected_dim == 0;
-  };
-#endif
-
   InlinedVector<size_t> invalid_dim_indices;
   for (size_t i = 0; i < shape_size; ++i) {
     if (expected_shape[i] < 0) {
       continue;  // this represents a symbolic shape dimension
-#ifdef USE_QNN
-    } else if (i == 0 && is_valid_qnn_batch_multiplier(input_output_shape[i], expected_shape[i], model_->MainGraph())) {
-      continue;  // Qnn API supports batch multiplier, but the running batch size must be divisible by the original batch size.
-#endif
-    } else if (input_output_shape[i] != expected_shape[i]) {
+    }
+    if (input_output_shape[i] != expected_shape[i]) {
       invalid_dim_indices.push_back(i);
     }
   }
@@ -2999,10 +2981,17 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
-
+#ifdef USE_QNN
+      const bool batch_multiplier = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsQnnHtpBatchMultiplier, "0") == "1";
+      if (!batch_multiplier) {
+        LOGS(*session_logger_, INFO) << "Enable QNN HTP batch mutliplier. Don't validate the inputs/outptus";
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      }
+#else
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
-
+#endif
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =
           run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
