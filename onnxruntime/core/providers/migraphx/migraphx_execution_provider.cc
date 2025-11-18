@@ -861,6 +861,16 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
+
+#if HIP_VERSION_MAJOR > 7 || (HIP_VERSION_MAJOR == 7 && HIP_VERSION_MINOR >= 2)
+  // In ROCm 7.2 onward we'll query the MIGraphX API to get the supported op list
+  static std::set<std::string> mgx_supported_ops{}
+  auto list = migraphx::get_onnx_operators();
+  for(const auto& name : list)
+  {
+    mgx_supported_ops.emplace(name);
+  }
+#else
   static std::set<std::string> mgx_supported_ops = {"Abs",
                                                     "Acos",
                                                     "Acosh",
@@ -1022,6 +1032,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Upsample",
                                                     "Where",
                                                     "Xor"};
+#endif
+
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
