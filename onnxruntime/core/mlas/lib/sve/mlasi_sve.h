@@ -13,8 +13,9 @@ Abstract:
 
 #pragma once
 
-#include "../mlasi.h"
 #include <arm_sve.h>  // SVE intrinsic header
+
+#include "../mlasi.h"
 
 #ifndef __clang__
 #pragma GCC push_options
@@ -34,132 +35,55 @@ typedef svuint32_t MLAS_SVUINT32;
 typedef svbool_t MLAS_SVBOOL;
 
 // function decarations
-MLAS_FORCEINLINE
-MLAS_SVFLOAT32
-MlasSveComputeExpVector(
-    MLAS_SVBOOL Pred,
-    MLAS_SVFLOAT32 Vector
-);
+MLAS_FORCEINLINE MLAS_SVFLOAT32
+MlasSveComputeExpVector(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector);
 
-void
-MLASCALL
-MlasSveComputeExpF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N
-);
+void MLASCALL
+MlasSveComputeExpF32Kernel(const float* Input, float* Output, size_t N);
 
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
-MlasSveComputeSumExpVector(
-    MLAS_SVBOOL Pred,
-    MLAS_SVFLOAT32 Vector,
-    MLAS_SVFLOAT32 NegativeMaximumVector
-);
-
-float
-MLASCALL
-MlasSveComputeSumExpF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N,
-    const float* NegativeMaximum
-);
+MlasSveComputeSumExpVector(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector, MLAS_SVFLOAT32 NegativeMaximumVector);
 
 float MLASCALL
-MlasSveReduceMaximumF32Kernel(
-    const float* Input,
-    size_t N
-);
+MlasSveComputeSumExpF32Kernel(const float* Input, float* Output, size_t N, const float* NegativeMaximum);
 
-void
-MLASCALL
-MlasSveReduceMinimumMaximumF32Kernel(
-    const float* Input,
-    float* Min,
-    float* Max,
-    size_t N
-);
+float MLASCALL
+MlasSveReduceMaximumF32Kernel(const float* Input, size_t N);
 
-void
-MLASCALL
-MlasSveComputeSoftmaxOutputF32Kernel(
-    float* Output,
-    size_t N,
-    const float* Parameters
-);
+void MLASCALL
+MlasSveReduceMinimumMaximumF32Kernel(const float* Input, float* Min, float* Max, size_t N);
 
-void
-MLASCALL
-MlasSveComputeLogSoftmaxOutputF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N,
-    const float* Parameters
-);
+void MLASCALL
+MlasSveComputeSoftmaxOutputF32Kernel(float* Output, size_t N, const float* Parameters);
 
-void
-MLASCALL
-MlasSveErfKernel(
-    const float* Input,
-    float* Output,
-    size_t N
-);
+void MLASCALL
+MlasSveComputeLogSoftmaxOutputF32Kernel(const float* Input, float* Output, size_t N, const float* Parameters);
 
-void 
-MLASCALL
-MlasSveLogisticKernel(
-    const float* Input,
-    float* Output,
-    size_t N
-);
+void MLASCALL
+MlasSveErfKernel(const float* Input, float* Output, size_t N);
 
-//MLAS API for SVE intrinsics
+void MLASCALL
+MlasSveLogisticKernel(const float* Input, float* Output, size_t N);
+
+// MLAS API for SVE intrinsics
 size_t MLASCALL
-MlasSgemmKernelAdd_sve(
-    const float* A,
-    const float* B,
-    float* C,
-    size_t CountK,
-    size_t CountM,
-    size_t CountN,
-    size_t lda,
-    size_t ldc,
-    float alpha
-);
+MlasSgemmKernelAdd_sve(const float* A, const float* B, float* C, size_t CountK, size_t CountM, size_t CountN, size_t lda, size_t ldc, float alpha);
 
 size_t MLASCALL
-MlasSgemmKernelZero_sve(
-    const float* A,
-    const float* B,
-    float* C,
-    size_t CountK,
-    size_t CountM,
-    size_t CountN,
-    size_t lda,
-    size_t ldc,
-    float alpha
-);
+MlasSgemmKernelZero_sve(const float* A, const float* B, float* C, size_t CountK, size_t CountM, size_t CountN, size_t lda, size_t ldc, float alpha);
 
-void MLAS_SVE_TARGET
- MLASCALL
-    SVE_ZERO_INITIALIZE(float* d);
+void MLAS_SVE_TARGET MLASCALL
+SVE_ZERO_INITIALIZE(float* d);
 
-void MLAS_SVE_TARGET
- MLASCALL
-    SVE_LOAD_STORE(float* D, const float* b);
+void MLAS_SVE_TARGET MLASCALL
+SVE_LOAD_STORE(float* D, const float* b);
 
 void MLAS_SVE_TARGET MLASCALL
 SCATTER_STORE(float* d, const float* b);
 
-void MLAS_SVE_TARGET
-    MLASCALL
-    SVE_TRANSPOSE(
-        float*& D,
-        const float*& b,
-        size_t ldb,
-        size_t& x
-    );
+void MLAS_SVE_TARGET MLASCALL
+SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x);
 
 MLAS_SVE_TARGET
 inline int
@@ -240,8 +164,8 @@ MLAS_SVE_TARGET
 MLAS_FORCEINLINE
 MLAS_SVINT32
 MlasSveAddInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector1, MLAS_SVINT32 Vector2)
-{   
-    return svadd_s32_m(Pred, Vector1, Vector2);  
+{
+    return svadd_s32_m(Pred, Vector1, Vector2);
 }
 
 MLAS_SVE_TARGET
@@ -298,26 +222,26 @@ MLAS_SVINT32
 MlasSveBlendInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector1, MLAS_SVINT32 Vector2, MLAS_SVINT32 Selection)
 {
     return MlasSveOrInt32(
-        Pred, 
-        MlasSveAndInt32(Pred, Vector2, Selection), 
+        Pred,
+        MlasSveAndInt32(Pred, Vector2, Selection),
         MlasSveAndNotInt32(Pred, Selection, Vector1)
     );
 }
 
-template<unsigned ShiftCount>
+template <unsigned ShiftCount>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-MLAS_SVUINT32
-MlasSveShiftLeftUInt32(MLAS_SVBOOL Pred, MLAS_SVUINT32 Vector)
+    MLAS_FORCEINLINE
+        MLAS_SVUINT32
+        MlasSveShiftLeftUInt32(MLAS_SVBOOL Pred, MLAS_SVUINT32 Vector)
 {
     return svlsl_n_u32_z(Pred, Vector, ShiftCount);
 }
 
-template<unsigned ShiftCount>
+template <unsigned ShiftCount>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-MLAS_SVINT32
-MlasSveShiftLeftInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector)
+    MLAS_FORCEINLINE
+        MLAS_SVINT32
+        MlasSveShiftLeftInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector)
 {
     return svlsl_n_s32_z(Pred, Vector, ShiftCount);
 }
@@ -402,11 +326,10 @@ MlasSveStoreFloat32(MLAS_SVBOOL Pred, float* Buffer, MLAS_SVFLOAT32 Vector)
     svst1_f32(Pred, Buffer, Vector);
 }
 
-template<unsigned Lane>
+template <unsigned Lane>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
-MlasSveStoreLaneFloat32(float* Buffer, MLAS_SVFLOAT32 Vector)
+    MLAS_FORCEINLINE void
+    MlasSveStoreLaneFloat32(float* Buffer, MLAS_SVFLOAT32 Vector)
 {
     svbool_t Pred = svwhilelt_b32(Lane, Lane + 1);
     svst1_f32(Pred, Buffer, Vector);
@@ -421,11 +344,10 @@ MlasSveStoreLowHalfFloat32(float* Buffer, MLAS_SVFLOAT32 Vector)
     svst1_f32(Pred, Buffer, Vector);
 }
 
-template<unsigned Lane>
+template <unsigned Lane>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-float
-MlasSveExtractLaneFloat32(MLAS_SVFLOAT32 Vector)
+    MLAS_FORCEINLINE float
+    MlasSveExtractLaneFloat32(MLAS_SVFLOAT32 Vector)
 {
     float TmpBuffer[1];
     svbool_t Pred = svwhilelt_b32(Lane, Lane + 1);
@@ -470,7 +392,7 @@ MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveMultiplyFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2)
 {
-    return svmul_f32_m(Pred, Vector1, Vector2);  
+    return svmul_f32_m(Pred, Vector1, Vector2);
 }
 
 MLAS_SVE_TARGET
@@ -484,7 +406,7 @@ MlasSveExpFloat32(MLAS_SVUINT32 Vector)
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
-MlasSveScaleFloat32(MLAS_SVBOOL Pred,  MLAS_SVFLOAT32 Vector1, MLAS_SVINT32 Vector2)
+MlasSveScaleFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVINT32 Vector2)
 {
     return svscale_f32_m(Pred, Vector1, Vector2);
 }
@@ -494,7 +416,7 @@ MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveRoundINTFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector)
 {
-   return svrintm_f32_z(Pred, Vector);
+    return svrintm_f32_z(Pred, Vector);
 }
 
 MLAS_SVE_TARGET
@@ -537,10 +459,10 @@ MlasSveGreaterThanFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT
     // Compare Vector1 and Vector2, return a predicate vector
     svbool_t cmp_mask = svcmpgt_f32(Pred, Vector1, Vector2);
 
-    //Convert predicate to uint32_t mask
+    // Convert predicate to uint32_t mask
     svuint32_t mask_bits = svdup_u32_z(cmp_mask, 0xFFFFFFFF);
 
-    //Reinterpret to float32
+    // Reinterpret to float32
     return svreinterpret_f32_u32(mask_bits);
 }
 
@@ -551,7 +473,7 @@ MlasSveAndFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vecto
 {
     return MlasSveReinterpretAsFloat32(
         MlasSveAndInt32(
-            Pred, 
+            Pred,
             MlasSveReinterpretAsInt32(Vector1),
             MlasSveReinterpretAsInt32(Vector2)
         )
@@ -606,7 +528,7 @@ MLAS_SVFLOAT32
 MlasSveBlendFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2, MLAS_SVFLOAT32 Selection)
 {
     return MlasSveOrFloat32(
-        Pred, 
+        Pred,
         MlasSveAndFloat32(Pred, Vector2, Selection),
         MlasSveAndFloat32(Pred, Vector1, Selection)
     );
@@ -668,8 +590,8 @@ MLAS_SVFLOAT32
 MlasSvePowerOf2Float32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector)
 {
     MLAS_SVINT32 emm0 = MlasSveAddInt32(
-        Pred, 
-        MlasSveCastToInt32(Pred, Vector), 
+        Pred,
+        MlasSveCastToInt32(Pred, Vector),
         MlasSveBroadcastInt32(127)
     );
     return MlasSveReinterpretAsFloat32(MlasSveShiftLeftInt32<23>(Pred, emm0));
@@ -700,8 +622,7 @@ MlasSveCompareLessThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
 }
 
 MLASCALL
-inline
-void
+inline void
 Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
 {
     const static int VL = svcntw();
@@ -736,8 +657,7 @@ MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
 }
 
 MLASCALL
-inline
-void
+inline void
 Transpose_SVE256_4x4(float* D, const float* B, size_t ldb)
 {
     const static int VL = svcntw();

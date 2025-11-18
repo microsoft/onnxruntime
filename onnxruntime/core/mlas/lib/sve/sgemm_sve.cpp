@@ -517,14 +517,8 @@ MlasSgemmKernelAdd_sve(
     }
 }
 
-void MLAS_SVE_TARGET
-MLASCALL
-SVE_TRANSPOSE(
-        float*& D,
-        const float*& b,
-        size_t ldb,
-        size_t& x
-    )
+void MLAS_SVE_TARGET MLASCALL
+SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x)
 {
     const static int VL = svcntw();
     if (VL == 16) {
@@ -570,8 +564,7 @@ SCATTER_STORE(float* d, const float* b)
     MlasSveStoreFloat32(pb_fourth_half, &d[45], vec0);
 }
 
-void MLAS_SVE_TARGET
-MLASCALL
+void MLAS_SVE_TARGET MLASCALL
 SVE_LOAD_STORE(float* D, const float* b)
 {
     for (int i = 0; i < MLAS_SGEMM_STRIDEN_THREAD_ALIGN; i += VL()) {
@@ -580,8 +573,7 @@ SVE_LOAD_STORE(float* D, const float* b)
     }
 }
 
-void MLAS_SVE_TARGET
-MLASCALL
+void MLAS_SVE_TARGET MLASCALL
 SVE_ZERO_INITIALIZE(float* d)
 {
     if (VL() == PACKED_B_BLOCK_WIDTH) {
