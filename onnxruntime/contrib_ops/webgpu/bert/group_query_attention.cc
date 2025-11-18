@@ -297,22 +297,20 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
                                  present_value, parameters, context, seqlen_k, cos_cache, sin_cache);
-    } else {
-      // Fused: splitQKV + rotary QK
-      qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
-      kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-      vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-      ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbedding(context, parameters,
-                                                               query, seqlen_k,
-                                                               cos_cache, sin_cache,
-                                                               &qSplit, &kSplit, &vSplit));
-      key = &kSplit;
-      value = &vSplit;
     }
-
+    // Fused: splitQKV + rotary QK
+    qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
+    kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
+    vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
+    ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbedding(context, parameters,
+                                                             query, seqlen_k,
+                                                             cos_cache, sin_cache,
+                                                             &qSplit, &kSplit, &vSplit));
     parameters.is_packed_qkv_ = false;
     parameters.qkv_format_ = Q_K_V_BSNH;
     query = &qSplit;
+    key = &kSplit;
+    value = &vSplit;
   } else {
     if (parameters.is_packed_qkv_) {
       // splitQKV
