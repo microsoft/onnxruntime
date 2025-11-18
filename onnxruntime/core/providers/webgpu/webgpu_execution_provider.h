@@ -9,6 +9,7 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/weight_layout_transform_cache.h"
 
 struct pthreadpool;
 namespace onnxruntime {
@@ -85,6 +86,11 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   Status ReplayGraph(int graph_annotation_id) override;
   webgpu::BufferManager& BufferManager() const;
 
+  // Get weight layout transform cache
+  webgpu::WeightLayoutTransformCache& GetWeightLayoutTransformCache() const {
+    return *weight_layout_transform_cache_;
+  }
+
  private:
   bool IsGraphCaptureAllowed() const;
   void IncrementRegularRunCountBeforeGraphCapture();
@@ -105,6 +111,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   // Store captured commands directly in the EP instead of in WebGpuContext
   std::vector<webgpu::CapturedCommandInfo> captured_commands_;
+
+  // Cache for transformed weights (e.g., OIHW -> HWIO)
+  std::unique_ptr<webgpu::WeightLayoutTransformCache> weight_layout_transform_cache_;
 };
 
 }  // namespace onnxruntime
