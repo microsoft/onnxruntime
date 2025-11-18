@@ -236,7 +236,7 @@ bool DepthwiseConvKleidiAISupported(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
-    // Kernel specialization is for 3x3 with unit stride and dilation, and no padding.
+    // Kernel specialization is for 3x3 with unit stride and dilation, and padding of 0 or 1.
     if (Parameters->KernelShape[0] != 3 || Parameters->KernelShape[1] != 3) {
         return false;
     }
@@ -249,21 +249,40 @@ bool DepthwiseConvKleidiAISupported(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
-    if (Parameters->Padding[0] != 0 || Parameters->Padding[1] != 0 ||
-        Parameters->Padding[2] != 0 || Parameters->Padding[3] != 0) {
+    const size_t padding_vals[] = {
+        Parameters->Padding[0], Parameters->Padding[1], Parameters->Padding[2], Parameters->Padding[3]};
+    const bool zero_padding =
+        padding_vals[0] == 0 && padding_vals[1] == 0 && padding_vals[2] == 0 && padding_vals[3] == 0;
+    const bool unit_padding =
+        padding_vals[0] == 1 && padding_vals[1] == 1 && padding_vals[2] == 1 && padding_vals[3] == 1;
+
+    if (!zero_padding && !unit_padding) {
         return false;
     }
 
     return true;
 }
 
-bool DepthwiseConvKleidiAI(const size_t batches, const size_t in_height, const size_t in_width, const size_t channels,
-    const size_t filter_height, const size_t filter_width, const float* feature_map, const float* weights,
-    const float* bias, float* out, float clamp_min, float clamp_max){
+bool DepthwiseConvKleidiAI(const size_t batches,
+    const size_t in_height,
+    const size_t in_width,
+    const size_t channels,
+    const size_t filter_height,
+    const size_t filter_width,
+    const size_t pad_top,
+    const size_t pad_left,
+    const size_t pad_bottom,
+    const size_t pad_right,
+    const float* feature_map,
+    const float* weights,
+    const float* bias,
+    float* out,
+    float clamp_min,
+    float clamp_max){
     // -------------------------------------------------
     // 1. Constants
     // -------------------------------------------------
-    const Padding2D padding = Padding2D{}; //Using default padding values
+    const Padding2D padding{pad_left, pad_right, pad_bottom, pad_top};
     const int padded_in_height = static_cast<int>(in_height + padding.top + padding.bottom);
     const int padded_in_width  = static_cast<int>(in_width + padding.left + padding.right);
 
