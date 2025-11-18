@@ -3,6 +3,7 @@
 
 import functools
 import operator
+import os
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Literal
@@ -175,7 +176,7 @@ class OrtWheelTestTask(RunInTempDirectoryTask):
         )
 
 
-class OrtWheelSmokeTestTask(OrtWheelTestTask):
+class OrtWheelModelTestTask(OrtWheelTestTask):
     def __init__(
         self,
         group_name: str | None,
@@ -183,8 +184,9 @@ class OrtWheelSmokeTestTask(OrtWheelTestTask):
         wheel_pe_arch: WheelPeArchT,
         config: BuildConfigT,
         py_version: TargetPyVersionT,
+        test_files_or_dirs: list[str],
+        get_test_env: Callable[[], Mapping[str, str]],
     ) -> None:
-        self.__venv = venv
         self.__wheel_pe_arch = wheel_pe_arch
         self.__config = config
         self.__py_version = py_version
@@ -195,11 +197,8 @@ class OrtWheelSmokeTestTask(OrtWheelTestTask):
             wheel_pe_arch,
             py_version,
             self.__find_wheel,
-            [
-                str(REPO_ROOT / "qcom" / "model_test" / "smoke_test.py"),
-                str(REPO_ROOT / "qcom" / "model_test" / "model_zoo_test.py"),
-            ],
-            get_test_env=self.__get_test_env,
+            test_files_or_dirs,
+            get_test_env,
         )
 
     def __find_wheel(self) -> Path:
@@ -231,12 +230,58 @@ class OrtWheelSmokeTestTask(OrtWheelTestTask):
             raise FileNotFoundError("Could not find onnxruntime wheel.")
         return found_wheels[0]
 
-    def __get_test_env(self) -> Mapping[str, str]:
-        """Get an environment that tells the tests where to find their models."""
-        return {
-            "ORT_WHEEL_SMOKE_TEST_ROOT": str(get_onnx_models_root(self.__venv) / "testdata" / "smoke"),
-            "ORT_MODEL_ZOO_TEST_ROOTS": str(get_model_zoo_root(self.__venv) / "winml-cert"),
-        }
+
+class OrtWheelSmokeTestTask(OrtWheelModelTestTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        venv: Path | None,
+        wheel_pe_arch: WheelPeArchT,
+        config: BuildConfigT,
+        py_version: TargetPyVersionT,
+    ) -> None:
+        super().__init__(
+            group_name,
+            venv,
+            wheel_pe_arch,
+            config,
+            py_version,
+            [
+                str(REPO_ROOT / "qcom" / "model_test" / "smoke_test.py"),
+                str(REPO_ROOT / "qcom" / "model_test" / "model_zoo_test.py"),
+            ],
+            get_test_env=lambda: {
+                **os.environ,
+                "ORT_WHEEL_SMOKE_TEST_ROOT": str(get_onnx_models_root(venv) / "testdata" / "smoke"),
+                "ORT_MODEL_ZOO_TEST_ROOTS": str(get_model_zoo_root(venv) / "winml-cert"),
+            },
+        )
+
+
+class OrtWheelGpuModelTestTask(OrtWheelModelTestTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        venv: Path | None,
+        wheel_pe_arch: WheelPeArchT,
+        config: BuildConfigT,
+        py_version: TargetPyVersionT,
+    ) -> None:
+        super().__init__(
+            group_name,
+            venv,
+            wheel_pe_arch,
+            config,
+            py_version,
+            [
+                str(REPO_ROOT / "qcom" / "model_test" / "model_zoo_test.py"),
+            ],
+            get_test_env=lambda: {
+                **os.environ,
+                "ORT_MODEL_ZOO_TEST_ROOTS": str(get_model_zoo_root(venv) / "winml-cert-gpu"),
+                "ORT_MODEL_ZOO_BACKEND": "gpu",
+            },
+        )
 
 
 class RunLinterTask(CompositeTask):

@@ -38,7 +38,7 @@ from ep_build.tasks.build import (
     QdcTestsTask,
 )
 from ep_build.tasks.docker import MANYLINUX_2_34_AARCH64_TAG, DockerBuildTask
-from ep_build.tasks.python import CreateOrtVenvTask, OrtWheelSmokeTestTask, RunLinterTask
+from ep_build.tasks.python import CreateOrtVenvTask, OrtWheelGpuModelTestTask, OrtWheelSmokeTestTask, RunLinterTask
 from ep_build.typing import BuildConfigT, TargetPyVersionT
 from ep_build.util import (
     DEFAULT_PYTHON,
@@ -747,6 +747,22 @@ class TaskLibrary:
 
         @task
         @depends(["build_ort_windows_arm64"])
+        def test_ort_windows_arm64_pygpu(self, plan: Plan) -> str:
+            assert self.__target_py_version is not None
+            return plan.add_step(
+                OrtWheelGpuModelTestTask(
+                    "Running GPU model tests on ARM64",
+                    self.__venv_path,
+                    "arm64",
+                    self.__config,
+                    self.__target_py_version,
+                )
+            )
+
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64"])
         def test_ort_windows_arm64_pysmoke(self, plan: Plan) -> str:
             assert self.__target_py_version is not None
             return plan.add_step(
@@ -780,6 +796,22 @@ class TaskLibrary:
 
         @task
         @depends(["build_ort_windows_arm64ec"])
+        def test_ort_windows_arm64ec_pygpu(self, plan: Plan) -> str:
+            assert self.__target_py_version is not None
+            return plan.add_step(
+                OrtWheelGpuModelTestTask(
+                    "Running GPU model tests on ARM64ec",
+                    self.__venv_path,
+                    "arm64ec",
+                    self.__config,
+                    self.__target_py_version,
+                )
+            )
+
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64ec"])
         def test_ort_windows_arm64ec_pysmoke(self, plan: Plan) -> str:
             assert self.__target_py_version is not None
             return plan.add_step(
@@ -787,6 +819,22 @@ class TaskLibrary:
                     "Smoke testing ARM64ec wheel",
                     self.__venv_path,
                     "arm64ec",
+                    self.__config,
+                    self.__target_py_version,
+                )
+            )
+
+    if is_host_windows():
+
+        @task
+        @depends(["build_ort_windows_arm64x"])
+        def test_ort_windows_arm64x_pygpu(self, plan: Plan) -> str:
+            assert self.__target_py_version is not None
+            return plan.add_step(
+                OrtWheelGpuModelTestTask(
+                    "Running GPU model tests on ARM64x",
+                    self.__venv_path,
+                    "arm64x",
                     self.__config,
                     self.__target_py_version,
                 )

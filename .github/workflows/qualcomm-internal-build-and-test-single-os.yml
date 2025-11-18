@@ -189,4 +189,5 @@ jobs:
           qcom/build_and_test.py
           --target-py-version ${{inputs.target_py_vsn}}
           create_venv
-          test_ort_${{inputs.target_os}}_${{inputs.target_arch}}_pysmoke --only
+          test_ort_${{inputs.target_os}}_${{inputs.target_arch}}_pysmoke
+          test_ort_${{inputs.target_os}}_${{inputs.target_arch}}_pygpu --only

@@ -118,6 +118,7 @@ class ModelTestCase:
         assert len(inputs) == len(expected)
 
         for ds_idx in range(len(inputs)):
+            logging.debug(f"Inputs: { {n: t.shape for n, t in inputs[ds_idx].items()} }")
             logging.debug(f"Expected outputs: { {n: t.shape for n, t in expected[ds_idx].items()} }")
             actual = dict(
                 zip(self.output_names, cast(Sequence[np.ndarray], self.__session.run([], inputs[ds_idx])), strict=False)
