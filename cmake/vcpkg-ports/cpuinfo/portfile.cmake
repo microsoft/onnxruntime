@@ -6,8 +6,8 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO pytorch/cpuinfo
-    REF 877328f188a3c7d1fa855871a278eb48d530c4c0
-    SHA512 b6d5a9ce9996eee3b2f09f39115f7ae178fe4d4814cc35b049a59d04a82228e268aa52d073c307ccb56a427428622940e1c77f004c99851dfca0d3a5d803658b
+    REF f858c30bcb16f8effd5ff46996f0514539e17abc
+    SHA512 cd7c0c1ea59fac69f2746f65f59656798eeb87410c304ac9d3b3d26ebea4f4124d1426c10fb4b87ff5f93f367ea10d63337f519ee3c3f8fefbb4b7ebf6438130
     HEAD_REF master
     PATCHES
         patch_cpuinfo_h_for_arm64ec.patch
