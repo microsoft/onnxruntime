@@ -12,11 +12,14 @@ namespace webgpu {
 
 namespace {
 
+// TODO: move to common header.
 template <typename T>
 inline T ceil_div(T numerator, T denominator) {
   return (numerator + denominator - 1) / denominator;
 }
 
+// Chooses the optimal tile size (M, N) for the im2col operation.
+// This tile size is performance-tuned and varies depending on the target device.
 std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_n) {
   // Define a list of preferred (tile_m, tile_n) pairs in descending order of preference.
   const std::vector<std::pair<uint32_t, uint32_t>> kTileSizes = {
@@ -41,7 +44,7 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
   return kTileSizes.back();
 }
 
-// Add support for more devices and tile size configurations.
+// Add support for more devices.
 bool IsDeviceSupported(ComputeContext& context) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
 
