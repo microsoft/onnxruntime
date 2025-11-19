@@ -16,7 +16,7 @@ WebGpuKernel::WebGpuKernel(const OpKernelInfo& info)
 
 Status WebGpuKernel::Compute(OpKernelContext* p_op_kernel_context) const {
   WebGpuContext& webgpu_context = WebGpuContextFactory::GetContext(ep_.GetDeviceId());
-  ComputeContext context{*p_op_kernel_context, ep_, webgpu_context};
+  ComputeContext context{*p_op_kernel_context, *this, ep_, webgpu_context};
 
   if (webgpu_context.ValidationMode() >= ValidationMode::Full) {
     webgpu_context.PushErrorScope();
