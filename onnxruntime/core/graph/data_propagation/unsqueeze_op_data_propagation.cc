@@ -53,7 +53,16 @@ Status UnsqueezeOpDataPropagation::infer() {
       //       In opset 11 and earlier, "axes" is defined as a node attribute instead.
       if (node_.InputDefs().size() > 1) {
         const auto* input_1 = node_.InputDefs()[1];
-        ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), axes));
+        ORT_TRY {
+          ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), axes));
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            LOGS(logger_, ERROR) << ex.what();
+            LOGS(logger_, INFO) << "Skip Unsqueeze op custom data propagation.";
+            return Status::OK();
+          });
+        }
       } else {
         const auto& attrs = node_.GetAttributes();
         auto it = attrs.find("axes");
@@ -74,31 +83,32 @@ Status UnsqueezeOpDataPropagation::infer() {
           // Negative value means counting dimensions from the back.
           axes_set.insert(HandleNegativeAxis(axes[i], tensor_shape_proto.dim_size()));
         }
-
-        auto& inferred_shape_values = output_def_.GetMutableInferredShapeValues();
-
-        if (!inferred_shape_values.has_value()) {
-          inferred_shape_values.emplace();
-        }
-        inferred_shape_values->clear_dim();
-
-        int64_t axis = 0;
-        for (const auto& dim : tensor_shape_proto.dim()) {
-          if (axes_set.find(axis) != axes_set.end()) {
-            inferred_shape_values->add_dim()->set_dim_value(1);
-          }
-
-          auto value = dim.dim_value();
-          inferred_shape_values->add_dim()->set_dim_value(value);
-
-          axis += 1;
-        }
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
           LOGS(logger_, ERROR) << ex.what();
           LOGS(logger_, INFO) << "Skip Unsqueeze op custom data propagation.";
+          return Status::OK();
         });
+      }
+
+      auto& inferred_shape_values = output_def_.GetMutableInferredShapeValues();
+
+      if (!inferred_shape_values.has_value()) {
+        inferred_shape_values.emplace();
+      }
+      inferred_shape_values->clear_dim();
+
+      int64_t axis = 0;
+      for (const auto& dim : tensor_shape_proto.dim()) {
+        if (axes_set.find(axis) != axes_set.end()) {
+          inferred_shape_values->add_dim()->set_dim_value(1);
+        }
+
+        auto value = dim.dim_value();
+        inferred_shape_values->add_dim()->set_dim_value(value);
+
+        axis += 1;
       }
     }
   }

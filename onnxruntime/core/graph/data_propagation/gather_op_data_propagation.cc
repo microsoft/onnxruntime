@@ -51,16 +51,15 @@ Status GatherOpDataPropagation::infer() {
     return Status::OK();
   }
 
-  TensorShapeVector indices;
-  ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), indices));
-
   // If input's inferred shape values is present, we then perfrom the gather operation on the shape values
   // and saves the result in output's node_arg.
   if (input_0->GetInferredShapeValues().has_value()) {
     const auto& tensor_shape_proto = input_0->GetInferredShapeValues().value();
 
-    if (indices.size() == 1) {
-      ORT_TRY {
+    ORT_TRY {
+      TensorShapeVector indices;
+      ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), indices));
+      if (indices.size() == 1) {
         // Note: Index value is expected to be within bounds [-s, s-1] along axis of size s
         auto index = static_cast<int32_t>(
             HandleNegativeAxis(indices[0], tensor_shape_proto.dim_size()));
@@ -70,12 +69,13 @@ Status GatherOpDataPropagation::infer() {
           output_def_.SetInferredShapeScalarValue(dim.dim_value());
         }
       }
-      ORT_CATCH(const std::exception& ex) {
-        ORT_HANDLE_EXCEPTION([&]() {
-          LOGS(logger_, ERROR) << ex.what();
-          LOGS(logger_, INFO) << "Skip Gather op custom data propagation.";
-        });
-      }
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        LOGS(logger_, ERROR) << ex.what();
+        LOGS(logger_, INFO) << "Skip Gather op custom data propagation.";
+        return Status::OK();
+      });
     }
   }
 
