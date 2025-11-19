@@ -6,6 +6,7 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
+// Declares enum QKMatMulOutputMode and struct AttentionParameters inside namespace onnxruntime::attention_helper.
 namespace attention_helper {
 
 // enum equivalent to the onnx defintion of qk_matmul_output_mode

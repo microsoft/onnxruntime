@@ -38,13 +38,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
   qk_matmul_output_mode_ = info.node().OutputDefs().size() >= 4 && info.node().OutputDefs()[3]->Exists()
-                               ? static_cast<QKMatMulOutputMode>(mode)
-                               : QKMatMulOutputMode::kNone;
-  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kNone ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKMask ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftCap ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftMax,
+                               ? static_cast<attention_helper::QKMatMulOutputMode>(mode)
+                               : attention_helper::QKMatMulOutputMode::kNone;
+  ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQK ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKMask ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftCap ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftMax,
               "qk_matmul_output_mode must be 0, 1, 2, or 3.");
   // The default scale depends on the input dimensions. It is set to nan to indicate that it should be computed.
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
@@ -62,7 +62,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(4);
   const Tensor* past_value = context->Input<Tensor>(5);
 
-  AttentionParameters parameters;
+  attention_helper::AttentionParameters parameters;
   TensorShape y_shape;
   TensorShape present_key_shape;
   TensorShape present_value_shape;
@@ -93,7 +93,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, y_shape);
   Tensor* present_key = context->Output(1, present_key_shape);
   Tensor* present_value = context->Output(2, present_value_shape);
-  Tensor* output_qk = parameters.qk_matmul_output_mode == QKMatMulOutputMode::kNone
+  Tensor* output_qk = parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kNone
                           ? nullptr
                           : context->Output(3, output_qk_shape);
 
@@ -165,6 +165,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.output = reinterpret_cast<CudaT*>(Y->MutableData<T>());
   data.present_key = (present_key == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (present_value == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+  if (nullptr != output_qk) {
+    data.output_qk = reinterpret_cast<CudaT*>(output_qk->MutableData<T>());
+  }
 
   // Set additional fields
   data.bias = nullptr;            // New Attention op doesn't have bias

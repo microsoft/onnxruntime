@@ -116,13 +116,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
   qk_matmul_output_mode_ = info.node().OutputDefs().size() >= 4 && info.node().OutputDefs()[3]->Exists()
-                               ? static_cast<QKMatMulOutputMode>(mode)
-                               : QKMatMulOutputMode::kNone;
-  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kNone ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKMask ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftCap ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftMax,
+                               ? static_cast<attention_helper::QKMatMulOutputMode>(mode)
+                               : attention_helper::QKMatMulOutputMode::kNone;
+  ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQK ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKMask ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftCap ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftMax,
               "qk_matmul_output_mode must be 0, 1, 2, or 3.");
   // The default scale depends on the input dimensions. It is set to nan to indicate that it should be computed.
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());

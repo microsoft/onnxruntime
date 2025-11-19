@@ -18,7 +18,7 @@ inline Status ComputeOutputShapeForAttention(
     bool is_causal,
     float softcap,
     int softmax_precision,
-    attention_helper::QKMatMulOutputMode qk_matmul_output_mode,
+    QKMatMulOutputMode qk_matmul_output_mode,
     int kv_num_heads,
     int q_num_heads,
     float scale,
