@@ -76,10 +76,10 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '13.0') }}:
-          value: ${{ variables.win_trt_folder_cuda13 }}
         ${{ if eq(parameters.CudaVersion, '12.8') }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: ${{ variables.win_trt_folder_cuda13 }}
       - name: trt_build_flag
         ${{ if eq(parameters.use_tensorrt, true) }}:
           value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
