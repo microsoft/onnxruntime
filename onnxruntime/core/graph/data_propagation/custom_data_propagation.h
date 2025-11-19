@@ -65,10 +65,11 @@ class CustomDataPropagationBase {
  * @param logger The reference to a logger
  * @return std::unique_ptr<CustomDataPropagation> Returns a CustomDataPropagation object if available
  */
-std::unique_ptr<CustomDataPropagationBase> CreateCustomDataPropagation(const Node& node,
-                                                                       NodeArg& output_def,
-                                                                       std::function<Status(const std::string&, TensorShapeVector&)> func,
-                                                                       const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
-                                                                       const logging::Logger& logger);
+std::unique_ptr<CustomDataPropagationBase> CreateCustomDataPropagation(
+    const Node& node,
+    NodeArg& output_def,
+    std::function<Status(const std::string&, TensorShapeVector&)> func,
+    const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
+    const logging::Logger& logger);
 
 }  // namespace onnxruntime

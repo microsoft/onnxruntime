@@ -151,7 +151,8 @@ class NodeArg {
   //
   // The PartialDataPropagationFunction(), defined in the ONNX operator schema, must also
   // be executed to obtain the concrete output shape values, allowing accurate propagation
-  // of shape information throughout the graph.
+  // of shape information throughout the graph. If the concrete output shape value is not
+  // computed, then no shape value is saved here that's why this is optional.
   std::optional<ONNX_NAMESPACE::TensorShapeProto> inferred_shape_values_;
 
   // This variable stores the actual scalar value.

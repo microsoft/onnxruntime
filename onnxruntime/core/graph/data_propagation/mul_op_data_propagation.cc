@@ -15,8 +15,15 @@ Status MulOpDataPropagation::infer() {
   // Get "B" input
   const auto* input_1 = node_.InputDefs()[1];
 
+  // Return and do nothing if input doesn't exist
+  if (!input_0 || !input_1) {
+    return Status::OK();
+  }
+
   if (input_0->GetInferredShapeScalarValue().has_value() && input_1->GetInferredShapeScalarValue().has_value()) {
-    output_def_.SetInferredShapeScalarValue(input_0->GetInferredShapeScalarValue().value() * input_1->GetInferredShapeScalarValue().value());
+    output_def_.SetInferredShapeScalarValue(
+        input_0->GetInferredShapeScalarValue().value() *
+        input_1->GetInferredShapeScalarValue().value());
   }
 
   return Status::OK();

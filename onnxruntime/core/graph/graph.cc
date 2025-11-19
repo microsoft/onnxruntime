@@ -2893,7 +2893,7 @@ class DataPropagationContextImpl : public ONNX_NAMESPACE::DataPropagationContext
   std::vector<TypeProto> node_output_types_;
 };
 
-Status Graph::SaveShapeValuesFromDataPropagation(Node& node,
+Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
   // Helper function to get the input value if it's a initializer.

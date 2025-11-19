@@ -6,15 +6,18 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
-
-#if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-#include <unordered_set>
-#endif
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 
 Status UnsqueezeOpDataPropagation::infer() {
   const auto* input_0 = node_.InputDefs()[0];
+
+  // Return and do nothing if input doesn't exist
+  if (!input_0) {
+    return Status::OK();
+  }
+
   auto dim_size = output_from_onnx_op_data_propagation_.tensor_type().shape().dim_size();
 
   if (dim_size == 0 && input_0->GetInferredShapeScalarValue().has_value()) {
@@ -44,11 +47,7 @@ Status UnsqueezeOpDataPropagation::infer() {
     if (tensor_shape_proto.dim_size() > 0) {
       // Get axes value
       TensorShapeVector axes;
-#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
       InlinedHashSet<int64_t> axes_set;
-#else
-      std::unordered_set<int64_t> axes_set;
-#endif
 
       // Note: Starting from opset 13, "axes" is provided as a second input to the Squeeze operator.
       //       In opset 11 and earlier, "axes" is defined as a node attribute instead.

@@ -10,7 +10,9 @@ namespace onnxruntime {
 
 /**
  * @brief Class to infer the output scalar for 'Size' operator given the input is shape values.
- * 
+ *
+ * 'Size' operator takes a tensor as input and outputs a int64 scalar that equals to the total
+ * number of elements of the input tensor.
  */
 class SizeOpDataPropagation : public CustomDataPropagationBase {
  public:

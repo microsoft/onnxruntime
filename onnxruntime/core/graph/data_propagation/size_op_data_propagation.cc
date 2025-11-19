@@ -12,6 +12,11 @@ Status SizeOpDataPropagation::infer() {
   // Size operator generates a scalar output
   const auto* input_0 = node_.InputDefs()[0];
 
+  // Return and do nothing if input doesn't exist
+  if (!input_0) {
+    return Status::OK();
+  }
+
   if (input_0->GetInferredShapeValues().has_value()) {
     const auto& tensor_shape_proto = input_0->GetInferredShapeValues().value();
 
