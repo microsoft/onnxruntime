@@ -522,6 +522,9 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
                       Tensor* output_qk, WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context,
                       const Tensor* head_sink, const Tensor* seqlen_k, int local_window_size) {
+  if (context.IsGraphCaptureEnabled()) {
+    ORT_NOT_IMPLEMENTED("Graph capture not implemented for non flash attention path");
+  }
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
   const int total_sequence_length =
