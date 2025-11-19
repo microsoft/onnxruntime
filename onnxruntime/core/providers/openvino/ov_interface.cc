@@ -374,9 +374,40 @@ void OVInferRequest::Infer() {
 StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device)
     : OVInferRequest(std::move(infer_request)), target_device(device) {
   bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
-  if (gpu_or_npu) {
+
+  _npu_logits_slice_required = IsNPULogitsSliceRequired();
+
+  // check if there is input_ids tensors and if the tensor type is int64,
+  // because logic prefill_use_full_chat_history is only for specific inputs and data type
+  auto input_ids_opt = FindTensor("input_ids");
+  if (gpu_or_npu && input_ids_opt.has_value() && input_ids_opt->get_element_type() == ov::element::i64) {
     prefill_use_full_chat_history = true;
   }
+}
+
+static inline bool IsNPUWSliceOutEnabled(const ov::CompiledModel& compiled_model) {
+  auto slice_out_val = compiled_model.get_property("NPUW_SLICE_OUT");
+  if (!slice_out_val.empty()) {
+    if (slice_out_val.is<std::string>()) {
+      return (slice_out_val.as<std::string>() == "YES");
+    } else if (slice_out_val.is<bool>()) {
+      return slice_out_val.as<bool>();
+    }
+  }
+
+  return false;
+}
+
+bool StatefulOVInferRequest::IsNPULogitsSliceRequired() {
+  if (target_device.find("NPU") != std::string::npos) {
+    const auto& model = ovInfReq.get_compiled_model();
+    // If NPUW_SLICE_OUT is enabled, it means that it's not required to slice within OVEP.
+    // Otherwise, if NPUW_SLICE_OUT is NOT enabled, then we need to perform some explicit logit
+    // slicing in OVEP.
+    return !IsNPUWSliceOutEnabled(model);
+  }
+
+  return false;
 }
 
 void StatefulOVInferRequest::FillTensor(const std::string& tensor_name, const ov::element::Type& type,
@@ -519,5 +550,46 @@ void StatefulOVInferRequest::RewindKVCache(size_t index) {
     }
   }
 }
+
+OVTensorPtr StatefulOVInferRequest::GetTensor(const std::string& input_name) {
+
+  auto tobj = OVInferRequest::GetTensor(input_name);
+
+  if (_npu_logits_slice_required) {
+    if (input_name == "logits") {
+      if (tobj->get_shape().size() != 3) {
+        ORT_THROW(log_tag + std::format("Expected logits to have shape of rank 3, but it has shape of rank {}",
+                                        tobj->get_shape().size()));
+      }
+
+      // When _npu_logits_slice_required is true, it means that prefill may produce logits of shape:
+      // [<batch_size>, sequence_length, <vocab_size>]
+      // (Where 'sequence_length' is number of input tokens to prefill)
+      // But, ORT GenAI is expecting to receive logits of shape:
+      // [<batch_size>, 1, <vocab_size>]
+      // In this case, detect when shape[1] is not 1. When it is, create a slice of shape [<batch_size>, 1, <vocab_size>]
+      if (tobj->get_shape()[1] > 1) {
+        return OvExceptionBoundary<false>([&]() {
+          const ov::Coordinate begin = {0, tobj->get_shape()[1] - 1, 0};
+          const ov::Coordinate end = {tobj->get_shape()[0], tobj->get_shape()[1], tobj->get_shape()[2]};
+          auto sliced_tensor = ov::Tensor(*tobj, begin, end);
+          if (sliced_tensor.is_continuous()) {
+            OVTensorPtr blob = std::make_shared<OVTensor>(sliced_tensor);
+            return blob;
+          } else {
+            auto continuous_sliced_tensor = ov::Tensor(sliced_tensor.get_element_type(), sliced_tensor.get_shape());
+            sliced_tensor.copy_to(continuous_sliced_tensor);
+            OVTensorPtr blob = std::make_shared<OVTensor>(continuous_sliced_tensor);
+            return blob;
+          }
+        },
+        "Could not create sliced logits tensor");
+      }
+    }
+  }
+
+  return tobj;
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime
