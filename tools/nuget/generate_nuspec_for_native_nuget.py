@@ -595,15 +595,28 @@ def generate_files(line_list, args):
             files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpPrepare.dll") + runtimes + " />"
             )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV73Stub.dll") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV73Skel.so") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "libqnnhtpv73.cat") + runtimes + " />"
-            )
+            for htp_arch in [73, 81]:
+                files_list.append(
+                    "<file src="
+                    + '"'
+                    + os.path.join(args.native_build_path, f"QnnHtpV{htp_arch}Stub.dll")
+                    + runtimes
+                    + " />"
+                )
+                files_list.append(
+                    "<file src="
+                    + '"'
+                    + os.path.join(args.native_build_path, f"libQnnHtpV{htp_arch}Skel.so")
+                    + runtimes
+                    + " />"
+                )
+                files_list.append(
+                    "<file src="
+                    + '"'
+                    + os.path.join(args.native_build_path, f"libqnnhtpv{htp_arch}.cat")
+                    + runtimes
+                    + " />"
+                )
 
     is_ado_packaging_build = False
     # Process runtimes
