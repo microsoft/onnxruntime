@@ -40,7 +40,7 @@ namespace Dml
 
         inline bool IsValid() const noexcept { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
         inline uint32_t GetDimensionCount() const { return m_bufferTensorDesc.DimensionCount; }
-        void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
+        void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment, bool foldEndDimensions = false);
         void EnsureMinimumDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         void EnsureMaximumDimensionCount(uint32_t maximumDimensionCount, TensorAxis alignment);
 
@@ -48,12 +48,7 @@ namespace Dml
         gsl::span<const uint32_t> GetStrides() const noexcept;
         void SetStrides(gsl::span<const uint32_t> strides);
         void EnsureStridesExist() noexcept;
-        bool HasBroadcastedDimensions() const noexcept;
-        static bool HasBroadcastedDimensions(
-            gsl::span<const uint32_t> dimensions,
-            gsl::span<const uint32_t> strides
-            ) noexcept;
-
+        bool AreStridesCollapsible(gsl::span<const uint32_t> sizes, gsl::span<const uint32_t> strides) const noexcept;
         void SetDimensionsAndStrides(gsl::span<const uint32_t> sizes, gsl::span<const uint32_t> strides);
 
         // Rearranges existing m_sizes and m_strides by gathering axes from dimensionMapping.
