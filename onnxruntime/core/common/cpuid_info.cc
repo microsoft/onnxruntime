@@ -309,6 +309,8 @@ void CPUIDInfo::ArmWindowsInit() {
     has_arm_sme2_ = cpuinfo_has_arm_sme2();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
+
+  LogEarlyWarning(std::string{"CPUIDInfo::has_fp16_ = "} + (has_fp16_ ? "true" : "false"));
 }
 
 #elif defined(__APPLE__)  // ^ defined(_WIN32)
