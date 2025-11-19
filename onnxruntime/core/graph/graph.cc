@@ -2902,12 +2902,10 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
     const TensorProto* initializer = this->GetConstantInitializer(input_name, true);
 
     if (initializer) {
-      // Get shape from TensorProto and calculate element counts.
+      // Get shape from TensorProto as well as element counts.
       // If shape has dimension size equals zero, it means it's a scalar and has only one element.
-      size_t element_cnt = 1;
-      for (auto& dim : initializer->dims()) {
-        element_cnt *= static_cast<size_t>(dim);
-      }
+      auto tensor_shape = utils::GetTensorShapeFromTensorProto(*initializer);
+      size_t element_cnt = tensor_shape.Size();
 
       // Check if this is in-memory external data (data stored in OrtValue)
       if (utils::HasExternalDataInMemory(*initializer)) {
@@ -2916,9 +2914,16 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
         if (this->GetOrtValueInitializer(input_name, ort_value, true)) {
           const Tensor& tensor = ort_value.Get<Tensor>();
           if (initializer->data_type() == TensorProto_DataType_INT32) {
+            auto data_span = tensor.DataAsSpan<int32_t>();
+            ORT_ENFORCE(data_span.size() == element_cnt,
+                        "The element counts from Tensor should be the same"
+                        "from using utils::GetTensorShapeFromTensorProto()");
+
+            size_t index = 0;
             input_values.resize(element_cnt);
-            for (size_t i = 0; i < element_cnt; ++i) {
-              input_values[i] = static_cast<int64_t>(tensor.Data<int32_t>()[i]);
+            for (const auto& v : data_span) {
+              input_values[index] = static_cast<int64_t>(v);
+              ++index;
             }
           } else if (initializer->data_type() == TensorProto_DataType_INT64) {
             const int64_t* src = tensor.Data<int64_t>();
@@ -2933,7 +2938,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
       // Unpack tensor from raw data, external data (not in memory) or the type specific data field
       else {
         if (initializer->data_type() == TensorProto_DataType_INT32) {
-          std::vector<int32_t> tmp_values;
+          InlinedVector<int32_t> tmp_values;
           tmp_values.resize(element_cnt);
           ORT_RETURN_IF_ERROR(utils::UnpackTensor<int32_t>(*initializer,
                                                            this->ModelPath(),
@@ -2977,7 +2982,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
   }
 
   // If no custom data propagation is defined for the operator,
-  // fall back to using ONNX's PartialDataPropagationFunction(), if available.
+  // fall back to using the result of ONNX's PartialDataPropagationFunction(), if available.
 
   int dim_size = 0;
   if (onnx_inferred_type_after_data_propagation.has_tensor_type() &&
