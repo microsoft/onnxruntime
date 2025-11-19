@@ -9,10 +9,9 @@ namespace onnxruntime {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
-1Code has alerts.Press enter to view.
 
-    template <typename T>
-    class Attention final : public CudaKernel {
+template <typename T>
+class Attention final : public CudaKernel {
  public:
   Attention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;

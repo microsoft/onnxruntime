@@ -4,7 +4,6 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cuda/llm/attention.h"
-#include "core/providers/cuda/llm/attention_naive.h"
 #include "contrib_ops/cuda/bert/attention_data.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 
