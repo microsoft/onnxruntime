@@ -2947,7 +2947,7 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
       // Get shape from TensorProto as well as element counts.
       // If shape has dimension size equals zero, it means it's a scalar and has only one element.
       auto tensor_shape = utils::GetTensorShapeFromTensorProto(*initializer);
-      size_t element_cnt = tensor_shape.Size();
+      size_t element_cnt = static_cast<size_t>(tensor_shape.Size());
 
       // Check if this is in-memory external data (data stored in OrtValue)
       if (utils::HasExternalDataInMemory(*initializer)) {
