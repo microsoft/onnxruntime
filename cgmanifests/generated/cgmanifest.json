@@ -216,16 +216,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c",
-          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
-        },
-        "comments": "protobuf"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "072586a71b55b7f8c584153d223e95687148a900",
           "repositoryUrl": "https://github.com/Maratyszcza/psimd.git"
         },

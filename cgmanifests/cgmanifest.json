@@ -23,17 +23,6 @@
       },
       {
          "component": {
-            "Type": "maven",
-            "maven": {
-               "GroupId": "com.google.protobuf",
-               "ArtifactId": "protobuf-java",
-               "Version": "3.21.7"
-            },
-            "DevelopmentDependency": true
-         }
-      },
-      {
-         "component": {
             "type": "git",
             "git": {
                "commitHash": "2379917985919ed3918dc12cad47f469f245be7a",
@@ -462,16 +451,6 @@
                "repositoryUrl": "https://github.com/python/cpython"
             },
             "comments": "Python 3.5.10"
-         }
-      },
-      {
-         "component": {
-            "type": "pip",
-            "pip": {
-               "Name": "transformers",
-               "Version": "4.36.0"
-            },
-            "comments": "Installed in the training docker image"
          }
       },
       {
