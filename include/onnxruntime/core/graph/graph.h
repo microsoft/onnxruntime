@@ -1454,13 +1454,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return Resolve(default_options);
   }
 
-  /// <summary>
-  /// This function converts all the graph TensorProto initializers into OrtValues
-  /// and creates a in-memory external data reference for each OrtValue.
-  /// </summary>
-  /// <returns></returns>
-  Status ConvertInitializersIntoOrtValues();
-
   /**
    * @brief Converts a subset of graph TensorProto initializers into OrtValues and updates the graph proto.
    *

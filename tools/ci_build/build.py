@@ -505,6 +505,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_JSPI=" + ("ON" if args.enable_wasm_jspi else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
@@ -621,6 +622,7 @@ def generate_build_tree(
                 build_dir,
                 configs,
                 emscripten_root_path,
+                args.enable_wasm_jspi,
                 not args.disable_rtti,
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,
@@ -865,6 +867,12 @@ def generate_build_tree(
     #
     # if args.use_jsep and args.use_webgpu:
     #     raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
+
+    if args.enable_wasm_jspi:
+        if args.use_jsep:
+            raise BuildError("JSEP (--use_jsep) and WASM JSPI (--enable_wasm_jspi) cannot be enabled at the same time.")
+        if args.disable_wasm_exception_catching:
+            raise BuildError("Cannot set WebAssembly exception catching in JSPI build.")
 
     if not args.use_webgpu:
         if args.use_external_dawn:
@@ -1589,19 +1597,30 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         else:
             run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
-        # run shared_lib_test if necessary
+        # run shared library tests if applicable
         if args.build_shared_lib:
-            adb_push("libonnxruntime.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
-            adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
-            adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-            run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
-            run_adb_shell(
-                f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
-            )
+            shared_library_test_program_names = [
+                "onnxruntime_autoep_test",
+                "onnxruntime_customopregistration_test",
+                "onnxruntime_shared_lib_test",
+            ]
+
+            shared_libraries = [
+                "libcustom_op_get_const_input_test_library.so",
+                "libcustom_op_library.so",
+                "libexample_plugin_ep_virt_gpu.so",
+                "libexample_plugin_ep.so",
+                "libonnxruntime_runtime_path_test_shared_library.so",
+                "libonnxruntime.so",
+            ]
+
+            for file_to_copy in shared_library_test_program_names + shared_libraries:
+                adb_push(file_to_copy, device_dir, cwd=cwd)
+
+            # run test programs
+            for test_program_name in shared_library_test_program_names:
+                adb_shell(f"chmod +x {device_dir}/{test_program_name}")
+                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/{test_program_name}")
 
         all_android_tests_passed = True
 
@@ -1824,7 +1843,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess(
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
-                    if args.enable_transformers_tool_test:
+
+                    # onnx package does not support python 3.14 yet so skip the transformers tests for python 3.14.
+                    # we can remove this check when onnx package supports python 3.14.
+                    if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
+                        3,
+                        14,
+                    ):
                         import google.protobuf  # noqa: PLC0415
                         import numpy  # noqa: PLC0415
 
@@ -1931,6 +1956,7 @@ def build_python_wheel(
     use_acl,
     use_armnn,
     use_dml,
+    use_webgpu,
     use_cann,
     use_azure,
     use_qnn,
@@ -1988,6 +2014,8 @@ def build_python_wheel(
             args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
+        elif use_webgpu:
+            args.append("--wheel_name_suffix=webgpu")
         elif use_cann:
             args.append("--use_cann")
         elif use_qnn:
@@ -1997,6 +2025,10 @@ def build_python_wheel(
                 args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
+        elif wheel_name_suffix == "trt-rtx":
+            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
+            if cuda_version:
+                args.append(f"--cuda_version={cuda_version}")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2620,6 +2652,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
+                args.use_webgpu,
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,

@@ -7,6 +7,7 @@
 
 #include <utility>
 
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
@@ -23,11 +24,25 @@ namespace webgpu {
 class WebGpuContext;
 class BufferManager;
 
-class ComputeContext {
+class ComputeContext final {
  public:
-  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep);
+  // Nested accessor class to provide controlled access to BufferManager
+  class BufferManagerAccessor {
+    // access to BufferManager is limited to class WebGpuContext.
+    // This ensures no access to BufferManager from other classes, avoiding
+    // potential misuse.
+    friend class WebGpuContext;
 
-  virtual ~ComputeContext() = default;
+   private:
+    static const webgpu::BufferManager& Get(const ComputeContext& context);
+  };
+
+  ComputeContext(OpKernelContext& kernel_context,
+                 const OpKernel& op_kernel,
+                 const WebGpuExecutionProvider& ep,
+                 WebGpuContext& webgpu_context);
+
+  ~ComputeContext() = default;
 
   //
   // Get various information from the context.
@@ -120,35 +135,27 @@ class ComputeContext {
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
+
   //
-  // Run a compute shader program.
+  // Copy data from a tensor to another tensor.
   //
-  inline Status RunProgram(ProgramBase& program) {
-    return webgpu_context_.Run(*this, program);
+  // This method assumes that both tensors have the same data size.
+  //
+  inline Status CopyTensor(const Tensor& src, Tensor& dst) {
+    return op_kernel_.Info().GetDataTransferManager().CopyTensor(src, dst);
   }
 
   //
-  // Get the buffer manager from the GPU allocator.
+  // Run a compute shader program.
   //
-  const webgpu::BufferManager& BufferManager() const;
+  inline Status RunProgram(const ProgramBase& program) {
+    return webgpu_context_.Run(*this, program);
+  }
 
-  //
-  // Push error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  void PushErrorScope();
-
-  //
-  // Pop error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  Status PopErrorScope();
-
- protected:
+ private:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
+  const OpKernel& op_kernel_;
   const WebGpuExecutionProvider& ep_;
 };
 
