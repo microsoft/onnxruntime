@@ -292,7 +292,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (parameters.is_packed_qkv_ && do_rotary_) {
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
-    if (will_use_flash_attention && !parameters.past_present_share_buffer_) {
+    if (will_use_flash_attention && parameters.past_present_share_buffer_) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
