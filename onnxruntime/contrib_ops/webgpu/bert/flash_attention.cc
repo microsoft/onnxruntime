@@ -420,10 +420,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                                       &query_output, present_key, present_value,
                                                                       indirect_buffer_ptr, tile_size));
     Q = &query_output;
-    K = present_key;
-    V = present_value;
   } else {
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_indirect_dispatch ? seqlen_k : nullptr, use_indirect_dispatch ? indirect_buffer_ptr : nullptr));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_indirect_dispatch ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
   if (parameters.sequence_length_ > 1) {
