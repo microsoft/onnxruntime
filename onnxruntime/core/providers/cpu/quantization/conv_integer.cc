@@ -20,10 +20,6 @@ class ConvInteger : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   ConvAttributes conv_attrs_;
-
- private:
-  template <typename XT, typename WT>
-  Status ComputeInner(OpKernelContext* context) const;
 };
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -39,8 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     ConvInteger);
 
-template <typename XT, typename WT>
-Status ConvInteger::ComputeInner(OpKernelContext* context) const {
+Status ConvInteger::Compute(OpKernelContext* context) const {
   const auto input_defs = Node().InputDefs();
   size_t num_inputs = input_defs.size();
   const auto* X = context->Input<Tensor>(0);
@@ -119,43 +114,80 @@ Status ConvInteger::ComputeInner(OpKernelContext* context) const {
 
   const auto* Xdata = static_cast<const uint8_t*>(X->DataRaw());
   const auto* Wdata = static_cast<const uint8_t*>(W->DataRaw());
+  bool X_is_signed = X->IsDataType<int8_t>();
   auto* Ydata = Y->MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       if (col_buffer_data != nullptr) {
         if (kernel_rank == 2) {
-          math::Im2col<XT, StorageOrder::NCHW>()(
-              reinterpret_cast<const XT*>(Xdata),
-              C / conv_attrs_.group,
-              input_shape[0],
-              input_shape[1],
-              kernel_shape[0],
-              kernel_shape[1],
-              dilations[0],
-              dilations[1],
-              pads[0],
-              pads[1],
-              pads[2],
-              pads[3],
-              strides[0],
-              strides[1],
-              reinterpret_cast<XT*>(col_buffer_data),
-              static_cast<XT>(input_offset));
+          if (X_is_signed) {
+            math::Im2col<int8_t, StorageOrder::NCHW>()(
+                reinterpret_cast<const int8_t*>(Xdata),
+                C / conv_attrs_.group,
+                input_shape[0],
+                input_shape[1],
+                kernel_shape[0],
+                kernel_shape[1],
+                dilations[0],
+                dilations[1],
+                pads[0],
+                pads[1],
+                pads[2],
+                pads[3],
+                strides[0],
+                strides[1],
+                reinterpret_cast<int8_t*>(col_buffer_data),
+                static_cast<int8_t>(input_offset));
+          } else {
+            math::Im2col<uint8_t, StorageOrder::NCHW>()(
+                Xdata,
+                C / conv_attrs_.group,
+                input_shape[0],
+                input_shape[1],
+                kernel_shape[0],
+                kernel_shape[1],
+                dilations[0],
+                dilations[1],
+                pads[0],
+                pads[1],
+                pads[2],
+                pads[3],
+                strides[0],
+                strides[1],
+                col_buffer_data,
+                input_offset);
+          }
         } else {
-          math::Im2col<XT, StorageOrder::NCHW>()(
-              reinterpret_cast<const XT*>(Xdata),
-              input_shape.GetDims().data(),
-              output_shape.GetDims().data(),
-              kernel_dim,
-              kernel_shape.data(),
-              strides.data(),
-              dilations.data(),
-              pads.data(),
-              static_cast<int>(kernel_rank),
-              reinterpret_cast<XT*>(col_buffer_data),
-              false,
-              static_cast<XT>(input_offset));
+          if (X_is_signed) {
+            math::Im2col<int8_t, StorageOrder::NCHW>()(
+                reinterpret_cast<const int8_t*>(Xdata),
+                input_shape.GetDims().data(),
+                output_shape.GetDims().data(),
+                kernel_dim,
+                kernel_shape.data(),
+                strides.data(),
+                dilations.data(),
+                pads.data(),
+                static_cast<int>(kernel_rank),
+                reinterpret_cast<int8_t*>(col_buffer_data),
+                false,
+                static_cast<int8_t>(input_offset));
+          } else {
+            math::Im2col<uint8_t, StorageOrder::NCHW>()(
+                Xdata,
+                input_shape.GetDims().data(),
+                output_shape.GetDims().data(),
+                kernel_dim,
+                kernel_shape.data(),
+                strides.data(),
+                dilations.data(),
+                pads.data(),
+                static_cast<int>(kernel_rank),
+                col_buffer_data,
+                false,
+                input_offset);
+          }
         }
       }
 
@@ -164,7 +196,7 @@ Status ConvInteger::ComputeInner(OpKernelContext* context) const {
       gemm_shape.N = static_cast<size_t>(output_image_size);
       gemm_shape.K = static_cast<size_t>(kernel_dim);
       gemm_shape.AIsSigned = W->IsDataType<int8_t>();
-      gemm_shape.BIsSigned = X->IsDataType<int8_t>();
+      gemm_shape.BIsSigned = X_is_signed;
 
       MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
       gemm_params.A = Wdata + group_id * W_offset;
@@ -178,28 +210,12 @@ Status ConvInteger::ComputeInner(OpKernelContext* context) const {
 
       MlasGemm(gemm_shape, gemm_params, thread_pool);
 
-      Xdata = reinterpret_cast<const uint8_t*>(X_offset + reinterpret_cast<const XT*>(Xdata));
+      Xdata += X_offset;
       Ydata += Y_offset;
     }
   }
 
   return Status::OK();
-}
-
-Status ConvInteger::Compute(OpKernelContext* context) const {
-  const auto* X = context->Input<Tensor>(0);
-  const auto* W = context->Input<Tensor>(1);
-  if (X->IsDataType<int8_t>()) {
-    if (W->IsDataType<int8_t>())
-      return ComputeInner<int8_t, int8_t>(context);
-    else
-      return ComputeInner<int8_t, uint8_t>(context);
-  } else {
-    if (W->IsDataType<int8_t>())
-      return ComputeInner<uint8_t, int8_t>(context);
-    else
-      return ComputeInner<uint8_t, uint8_t>(context);
-  }
 }
 
 }  // namespace onnxruntime
