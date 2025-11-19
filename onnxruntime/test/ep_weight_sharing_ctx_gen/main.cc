@@ -12,6 +12,7 @@
 #include "onnx/onnx_pb.h"
 #include <algorithm>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 using namespace onnxruntime;
@@ -85,11 +86,6 @@ static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>
 
 using PluginEpLibraryRegistrationHandle = std::unique_ptr<void, std::function<void(void*)>>;
 
-struct PluginEpState {
-  PluginEpLibraryRegistrationHandle plugin_ep_library_registration_handle{};
-  std::vector<Ort::ConstEpDevice> selected_ep_devices{};
-};
-
 static PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
                                                                  const std::string& ep_library_registration_name,
                                                                  const std::basic_string<ORTCHAR_T>& ep_library_path) {
@@ -117,10 +113,10 @@ static PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
 }
 
 static Ort::Status SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions& session_options,
-                                             const qnnctxgen::PluginEpConfig& config, PluginEpState& plugin_ep_state) {
-  auto plugin_ep_library_registration_handle = RegisterPluginEpLibrary(env,
-                                                                       config.ep_library_registration_name,
-                                                                       ToPathString(config.ep_library_path));
+                                             const qnnctxgen::PluginEpConfig& config,
+                                             PluginEpLibraryRegistrationHandle& plugin_ep_library_registration_handle) {
+  auto lib_registration_handle = RegisterPluginEpLibrary(env, config.ep_library_registration_name,
+                                                         ToPathString(config.ep_library_path));
 
   std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
   std::vector<Ort::ConstEpDevice> selected_ep_devices{};
@@ -147,8 +143,7 @@ static Ort::Status SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions&
   }
 
   session_options.AppendExecutionProvider_V2(env, selected_ep_devices, config.default_ep_options);
-  plugin_ep_state.plugin_ep_library_registration_handle = std::move(plugin_ep_library_registration_handle);
-  plugin_ep_state.selected_ep_devices = std::move(selected_ep_devices);
+  plugin_ep_library_registration_handle = std::move(lib_registration_handle);
 
   return Ort::Status{nullptr};
 }
@@ -170,7 +165,7 @@ int real_main(int argc, char* argv[]) {
   Ort::Env env(logging_level, "ep_weight_sharing");
 
   ORT_TRY {
-    std::optional<PluginEpState> plugin_ep_state = std::nullopt;
+    std::optional<PluginEpLibraryRegistrationHandle> plugin_ep_library_registration_handle = std::nullopt;
     Ort::SessionOptions so;
     so.SetLogId("ep_weight_sharing_ctx_gen_session_logger");
     // Set default session option to dump EPContext model with non-embed mode
@@ -211,9 +206,11 @@ int real_main(int argc, char* argv[]) {
       std::string provider_name_ = test_config.machine_config.provider_type_name;
 
       if (const auto& plugin_ep_config = test_config.machine_config.plugin_ep_config; plugin_ep_config.has_value()) {
-        plugin_ep_state = PluginEpState{};
+        plugin_ep_library_registration_handle = PluginEpLibraryRegistrationHandle{};
 
-        if (Ort::Status status = SetPluginEpSessionOptions(env, so, *plugin_ep_config, *plugin_ep_state); !status.IsOK()) {
+        if (Ort::Status status = SetPluginEpSessionOptions(env, so, *plugin_ep_config,
+                                                           *plugin_ep_library_registration_handle);
+            !status.IsOK()) {
           ORT_CXX_API_THROW(status.GetErrorMessage(), status.GetErrorCode());
         }
       } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
