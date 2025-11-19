@@ -253,9 +253,14 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
   ORT_ENFORCE(!(has_embed_nodes && !has_main_context),
               "Expected at least one main context node when embedded EP context nodes are present.");
 
-    // No ep context nodes found - create a shared context that can hold native blobs or shared weights.
+  // No ep context nodes found - create a shared context that can hold native blobs or shared weights.
   if (!shared_context) {
-    shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context.GetOutputBinPath());
+    if (session_context.so_context_enable && session_context.so_share_ep_contexts) {
+      // We're creating a shared ep context model get or create the active context.
+      shared_context = shared_context_manager_->GetOrCreateActiveSharedContext(session_context.GetOutputBinPath());
+    } else {
+      shared_context = shared_context_manager_->GetOrCreateSharedContext(session_context.GetOutputBinPath());
+    }
   }
 
   return shared_context;
