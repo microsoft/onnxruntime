@@ -53,6 +53,7 @@ stages:
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '3.13'
+        architecture: arm64
         addToPath: true
 
     - script: |
@@ -77,7 +78,7 @@ stages:
         cd temp
         find $(Build.ArtifactStagingDirectory) -name '*.zip' -exec unzip {} \;
         rm -rf $(Build.ArtifactStagingDirectory)/*;
-        find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;        
+        find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;
         ls -l
         mv *.tgz $(Build.ArtifactStagingDirectory)
       displayName: 'Unzip Signed Files and Repackage to TGZ'
