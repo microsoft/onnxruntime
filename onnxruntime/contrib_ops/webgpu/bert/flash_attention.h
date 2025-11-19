@@ -187,7 +187,8 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* query,
                                                      Tensor* present_key,
                                                      Tensor* present_value,
-                                                     Tensor* indirect_buffer);
+                                                     Tensor* indirect_buffer,
+                                                     uint32_t tile_size);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -379,14 +379,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k,
                            const Tensor* cos_cache, const Tensor* sin_cache) {
+  constexpr uint32_t tile_size = 64;
+
   // Extract present_sequence_length directly from present_key tensor shape:
   // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
   const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
   const bool use_seqlen_k = seqlen_k != nullptr && context.IsGraphCaptureEnabled();
-
-  // Determine if we should use fused split packed QKV with rotary embedding based on cos_cache and sin_cache
-  const bool use_fused_split_rotary_copykv = (cos_cache != nullptr && sin_cache != nullptr);
 
   // Declare query_output at function scope to ensure it persists throughout the function
   Tensor query_output;
@@ -394,38 +393,40 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Create indirect dispatch buffer if using indirect dispatch
   Tensor* indirect_buffer_ptr = nullptr;
   Tensor indirect_buffer;
-  // Handle fused split packed QKV with rotary embedding and copy KV if requested
-  if (use_fused_split_rotary_copykv) {
+
+  // Prepare indirect dispatch buffer for decode path with static KV cache
+  const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
+                                     parameters.past_present_share_buffer_ &&
+                                     seqlen_k != nullptr &&
+                                     context.IsGraphCaptureEnabled();
+  if (use_indirect_dispatch) {
+    const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
+    indirect_buffer = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
+    indirect_buffer_ptr = &indirect_buffer;
+  }
+
+  const bool do_rotary = (cos_cache != nullptr && sin_cache != nullptr);
+
+  if (do_rotary) {
+    ORT_ENFORCE(parameters.is_packed_qkv_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires packed QKV input.");
+    ORT_ENFORCE(parameters.past_present_share_buffer_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires static KV cache.");
+
     // Q points to the packed QKV tensor in this case, create query output tensor
     query_output = context.CreateGPUTensor(Q->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
-    // For decode path (sequence_length == 1), may prepare indirect dispatch if needed
-    // Prepare indirect dispatch buffer for decode path with static KV cache
-    const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
-                                       parameters.past_present_share_buffer_ &&
-                                       seqlen_k != nullptr &&
-                                       context.IsGraphCaptureEnabled();
-    if (use_indirect_dispatch) {
-      const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
-      indirect_buffer = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
-      indirect_buffer_ptr = &indirect_buffer;
-    }
 
     ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(context, parameters,
                                                                       Q, seqlen_k,
                                                                       cos_cache, sin_cache,
                                                                       &query_output, present_key, present_value,
-                                                                      indirect_buffer_ptr));
+                                                                      indirect_buffer_ptr, tile_size));
     Q = &query_output;
     K = present_key;
     V = present_value;
+  } else {
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_indirect_dispatch ? seqlen_k : nullptr, use_indirect_dispatch ? indirect_buffer_ptr : nullptr));
   }
 
   if (parameters.sequence_length_ > 1) {
-    const uint32_t tile_size = 64;
-    // For encode path, copy KV if not using fused operation
-    if (!use_fused_split_rotary_copykv) {
-      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, nullptr));
-    }
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
@@ -470,27 +471,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                    parameters.sequence_length_, present_sequence_length});
   const TensorShape qk_shape(qk_dims);
   Tensor qk = context.CreateGPUTensor(Q->DataType(), qk_shape);
-  constexpr uint32_t tile_size = 64;
   const uint32_t num_total_seq_length_tile = (parameters.total_sequence_length_ + tile_size - 1) / tile_size;
   const uint32_t num_present_sequence_length_tile = (present_sequence_length + tile_size - 1) / tile_size;
-
-  // Determine if we should use indirect dispatch
-  const bool use_indirect_dispatch = parameters.past_present_share_buffer_ &&
-                                     seqlen_k != nullptr &&
-                                     context.IsGraphCaptureEnabled();
-
-  if (!use_fused_split_rotary_copykv) {
-    if (use_indirect_dispatch) {
-      const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
-      indirect_buffer = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
-      indirect_buffer_ptr = &indirect_buffer;
-      // Use the fused CopyKVCache that also prepares the indirect dispatch buffer
-      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, seqlen_k, indirect_buffer_ptr));
-    } else {
-      // Use the original CopyKVCache without indirect dispatch preparation
-      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, nullptr, nullptr));
-    }
-  }
 
   // The metadata is used to store the max and sum of each tile.
   const TensorShapeVector metadata_dims({parameters.batch_size_, parameters.num_heads_,
@@ -539,7 +521,8 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* query,
                                                      Tensor* present_key,
                                                      Tensor* present_value,
-                                                     Tensor* indirect_buffer) {
+                                                     Tensor* indirect_buffer,
+                                                     uint32_t tile_size) {
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -566,8 +549,6 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
   const uint32_t present_sequence_length = gsl::narrow_cast<uint32_t>(present_key->Shape()[2]);
 
   const bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
-
-  constexpr uint32_t tile_size = 64;
 
   SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, prepare_indirect_dispatch);
   program
