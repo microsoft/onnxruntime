@@ -49,8 +49,8 @@ Status SqueezeOpDataPropagation::infer() {
           ORT_HANDLE_EXCEPTION([&]() {
             LOGS(logger_, ERROR) << ex.what();
             LOGS(logger_, INFO) << "Skip Squeeze op custom data propagation.";
-            return Status::OK();
           });
+          return Status::OK();
         }
       } else {
         const auto& attrs = node_.GetAttributes();
@@ -73,8 +73,8 @@ Status SqueezeOpDataPropagation::infer() {
         ORT_HANDLE_EXCEPTION([&]() {
           LOGS(logger_, ERROR) << ex.what();
           LOGS(logger_, INFO) << "Skip Squeeze op custom data propagation.";
-          return Status::OK();
         });
+        return Status::OK();
       }
 
       auto& inferred_shape_values = output_def_.GetMutableInferredShapeValues();

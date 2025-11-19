@@ -74,8 +74,8 @@ Status GatherOpDataPropagation::infer() {
       ORT_HANDLE_EXCEPTION([&]() {
         LOGS(logger_, ERROR) << ex.what();
         LOGS(logger_, INFO) << "Skip Gather op custom data propagation.";
-        return Status::OK();
       });
+      return Status::OK();
     }
   }
 
