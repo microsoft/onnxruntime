@@ -16,7 +16,23 @@ Example: ./ep_weight_sharing_ctx_gen -e qnn -i "soc_model|60 htp_graph_finalizat
 
 Options:
         -e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn', 'tensorrt', 'openvino', 'vitisai'. Default: 'qnn'.
-        -p [plugin_ep_config_json_file]: Specify JSON configuration file for a plugin EP.
+        -p [plugin_ep_config_json_file]: Specify JSON configuration file for a plugin EP. Takes precedence over the '-e' and '-i' options.
+
+                                         Example JSON configuration that selects plugin EP devices via name:
+                                           {
+                                             "ep_library_registration_name": "example_plugin_ep",
+                                             "ep_library_path": "example_plugin_ep.dll",
+                                             "selected_ep_name": "example_plugin_ep",
+                                             "default_ep_options": { "key": "value" }
+                                           }
+
+                                         Example JSON configuration that selects plugin EP devices via index:
+                                           {
+                                             "ep_library_registration_name": "example_plugin_ep",
+                                             "ep_library_path": "example_plugin_ep.dll",
+                                             "selected_ep_device_indices": [ 0 ],
+                                             "default_ep_options": { "key": "value" }
+                                           }
         -v: Show verbose information.
         -C: Specify session configuration entries as key-value pairs: -C "<key1>|<value1> <key2>|<value2>"
             Refer to onnxruntime_session_options_config_keys.h for valid keys and values.
