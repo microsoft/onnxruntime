@@ -87,7 +87,7 @@ class TestCompileApi(AutoEpTestCase):
         session_options.add_provider_for_devices([ep_device], {})
 
         # Compile individual models
-        for i in range(len(input_models)):
+        for i in range(num_models):
             if i == num_models - 1:
                 # Tell EP that this is the last session that will be sharing resources.
                 session_options.add_session_config_entry("ep.stop_share_ep_contexts", "1")
