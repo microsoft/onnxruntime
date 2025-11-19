@@ -220,7 +220,7 @@ def run_turbo_demo(args):
     args.engine = "ORT_CUDA"
     base, refiner = load_pipelines(args, 1)
 
-    from datasets import load_dataset
+    from datasets import load_dataset  # noqa: PLC0415
 
     dataset = load_dataset("Gustavosta/Stable-Diffusion-Prompts")
     num_rows = dataset["test"].num_rows

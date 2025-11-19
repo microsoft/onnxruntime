@@ -37,7 +37,7 @@ ws = Workspace.get(name=args.workspace, subscription_id=args.subscription, resou
 experiment = Experiment(workspace=ws, name=args.experiment)
 
 # Find the Run
-runs = [r for r in experiment.get_runs()]
+runs = list(experiment.get_runs())
 
 if len(runs) == 0:
     print(f"No runs found in Experiment '{args.experiment}'")

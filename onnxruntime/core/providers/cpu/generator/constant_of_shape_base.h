@@ -52,6 +52,20 @@ using ConstantOfShapeDefaultOutputTypesOpset21 =
         uint8_t, uint16_t, uint32_t, uint64_t,
         bool>;
 
+// Opset 23 added support for float4e2m1.
+// TODO(titaiwang): Add support for float4e2m1.
+using ConstantOfShapeDefaultOutputTypesOpset23 =
+    TypeList<
+        BFloat16,
+        MLFloat16,
+        float, double,
+#if !defined(DISABLE_FLOAT8_TYPES)
+        Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ,
+#endif
+        int8_t, int16_t, int32_t, int64_t,
+        uint8_t, uint16_t, uint32_t, uint64_t,
+        bool>;
+
 template <typename EnabledOutputTypeList = ConstantOfShapeDefaultOutputTypes>
 class ConstantOfShapeBase {
  protected:
@@ -64,8 +78,9 @@ class ConstantOfShapeBase {
     auto* t_proto_p = t_proto.get();
 #endif
     if (info.GetAttr<ONNX_NAMESPACE::TensorProto>("value", t_proto_p).IsOK()) {
-      ORT_ENFORCE(t_proto_p->dims_size() == 1, "Must have a single dimension");
-      ORT_ENFORCE(t_proto_p->dims()[0] == 1, "Must have a single dimension of 1");
+      for (auto dim : t_proto_p->dims()) {
+        ORT_ENFORCE(dim == 1, "The value attribute of ConstantOfShape must be a single-element tensor");
+      }
       SetValueFromTensorProto(*t_proto_p);
     } else {
       float f_value = 0.f;

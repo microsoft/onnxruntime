@@ -23,6 +23,7 @@ class Softmax final : public XnnpackKernel {
   int opset_;
   OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
   XnnpackOperator op0_;
+  int64_t channel_dim_;
 };
 }  // namespace xnnpack
 }  // namespace onnxruntime

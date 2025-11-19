@@ -6,7 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 #include <emscripten.h>
 #include <emscripten/val.h>
@@ -35,7 +35,7 @@ class Model {
                                       const InlinedHashMap<std::string, OnnxTensorData>& outputs);
 
   // Mutex for exclusive lock to this model object.
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
   // Input and output names in the onnx model's order.
   const std::vector<std::string>& GetInputs() const { return inputs_; }
@@ -56,6 +56,12 @@ class Model {
   size_t GetMappedOutputIdx(const std::string& name) const;
 
  private:
+  onnxruntime::common::Status Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                       const InlinedHashMap<std::string, OnnxTensorData>& outputs);
+
+  onnxruntime::common::Status Compute(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                      const InlinedHashMap<std::string, OnnxTensorData>& outputs);
+
   emscripten::val wnn_context_ = emscripten::val::object();
   emscripten::val wnn_graph_ = emscripten::val::object();
   const logging::Logger& logger_;
@@ -71,9 +77,11 @@ class Model {
   InlinedHashMap<std::string, size_t> input_map_;
   InlinedHashMap<std::string, size_t> output_map_;
 
-  OrtMutex mutex_;
+  std::mutex mutex_;
 
-  Model(const emscripten::val& context, const emscripten::val& path, const logging::Logger& logger);
+  bool use_dispatch_;
+
+  Model(const emscripten::val& context, const emscripten::val& path, const logging::Logger& logger, bool use_dispatch);
 
   void SetInputOutputInfo(InlinedHashMap<std::string, OnnxTensorInfo>&& input_output_info) {
     input_output_info_ = std::move(input_output_info);

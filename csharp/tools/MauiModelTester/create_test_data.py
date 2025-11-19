@@ -2,7 +2,6 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -84,8 +83,8 @@ def parse_args():
     return args
 
 
-def create_existing_data_map(pb_files: List[Path]):
-    import onnx_test_data_utils as data_utils
+def create_existing_data_map(pb_files: list[Path]):
+    import onnx_test_data_utils as data_utils  # noqa: PLC0415
 
     data_map = {}
     for file in pb_files:
@@ -98,11 +97,11 @@ def create_existing_data_map(pb_files: List[Path]):
 
 def add_model_and_test_data_to_app(
     model_path: Path,
-    symbolic_dims: Optional[Dict[str, int]] = None,
-    input_map: Optional[Dict[str, np.ndarray]] = None,
-    output_map: Optional[Dict[str, np.ndarray]] = None,
+    symbolic_dims: dict[str, int] | None = None,
+    input_map: dict[str, np.ndarray] | None = None,
+    output_map: dict[str, np.ndarray] | None = None,
 ):
-    import ort_test_dir_utils as utils
+    import ort_test_dir_utils as utils  # noqa: PLC0415
 
     output_path = SOLUTION_DIR / "Resources" / "Raw"
     test_name = "test_data"

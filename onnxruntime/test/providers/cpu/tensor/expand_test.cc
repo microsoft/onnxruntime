@@ -167,6 +167,20 @@ TEST(ExpandOpTest, Expand_2x2x1x2x1_float) {
   test.Run();
 }
 
+TEST(ExpandOpTest, Expand_3x1x8_float) {
+  OpTester test("Expand", 8);
+  test.AddInput<float>("data_0", {3, 2, 1}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("data_1", {3}, {3, 1, 8});
+  test.AddOutput<float>("result", {3, 2, 8},
+                        {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                         2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                         3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f, 3.0f,
+                         4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                         5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f,
+                         6.0f, 6.0f, 6.0f, 6.0f, 6.0f, 6.0f, 6.0f, 6.0f});
+  test.Run();
+}
+
 #ifndef USE_TENSORRT
 TEST(ExpandOpTest, Expand_scalar_float) {
   OpTester test("Expand", 8);

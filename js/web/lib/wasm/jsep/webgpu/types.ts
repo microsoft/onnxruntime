@@ -15,7 +15,7 @@ export enum GpuDataType {
 }
 export type GpuDataId = number;
 
-export type GpuArchitecture = 'ampere';
+export type GpuArchitecture = 'ampere' | 'gen-12lp';
 export type GpuVendor = 'amd' | 'intel' | 'nvidia';
 export interface AdapterInfo {
   isArchitecture: (architecture: GpuArchitecture) => boolean;
@@ -187,8 +187,6 @@ export interface ComputeContext {
 
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
-  getMaxComputeWorkgroupSizes(): [number, number, number];
-  getMaxComputeWorkgroupStoragesize(): number;
 }
 
 export type TimestampQuery = 'none' | 'inside-passes' | 'at-passes';

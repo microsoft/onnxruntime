@@ -40,6 +40,25 @@ void ActivationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, con
 }
 
 namespace {
+
+template <typename T>
+void HandlePReluWeight(ModelBuilder& model_builder, const Node& node, const logging::Logger& logger,
+                       std::vector<T>& alpha_values) {
+  // add slope initializer as alpha weight
+  const auto& slope_tensor = *model_builder.GetConstantInitializer(node.InputDefs()[1]->Name());
+  Initializer unpacked_tensor(slope_tensor);
+  const auto alpha_v = unpacked_tensor.DataAsSpan<T>();
+
+  if (alpha_v.size() == 1) {
+    // expand to number of channels
+    std::vector<int64_t> x_shape;
+    GetShape(*node.InputDefs()[0], x_shape, logger);
+    alpha_values.resize(x_shape[x_shape.size() - 3], alpha_v[0]);
+  } else {
+    alpha_values.assign(alpha_v.begin(), alpha_v.end());
+  }
+}
+
 Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
                       const logging::Logger& logger,
                       COREML_SPEC::ActivationPReLU& prelu) {
@@ -78,12 +97,12 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                   const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.activation
     std::string_view coreml_op_type;
     bool add_alpha = false;
+    bool add_gelu_mode = false;
     if (op_type == "Sigmoid") {
       coreml_op_type = "sigmoid";
     } else if (op_type == "Tanh") {
@@ -92,6 +111,17 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       coreml_op_type = "relu";
     } else if (op_type == "LeakyRelu") {
       coreml_op_type = "leaky_relu";
+      add_alpha = true;
+    } else if (op_type == "Gelu") {
+      coreml_op_type = "gelu";
+      add_gelu_mode = true;
+    } else if (op_type == "PRelu") {
+      coreml_op_type = "prelu";
+      add_alpha = true;
+    } else if (op_type == "Softplus") {
+      coreml_op_type = "softplus";
+    } else if (op_type == "Elu") {
+      coreml_op_type = "elu";
       add_alpha = true;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -102,18 +132,45 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
 
     if (add_alpha) {
+      auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+      if ("PRelu" == op_type) {
+        if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          std::vector<float> alpha_values;
+          HandlePReluWeight(model_builder, node, logger, alpha_values);
+          AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
+        } else {
+          std::vector<MLFloat16> alpha_values;
+          HandlePReluWeight(model_builder, node, logger, alpha_values);
+          AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
+        }
+      } else {
+        NodeAttrHelper helper(node);
+        const auto alpha = helper.Get("alpha", "Elu" == op_type ? 1.0f : 0.01f);
+
+        if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+        } else {
+          AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
+        }
+      }
+    }
+    if (add_gelu_mode) {
       NodeAttrHelper helper(node);
-      const auto alpha = helper.Get("alpha", 0.01f);
-      AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+      std::string approximate = helper.Get("approximate", std::string("none"));
+      if (approximate == "tanh") {
+        approximate = "TANH_APPROXIMATION";
+      } else if (approximate == "none") {
+        approximate = "EXACT";
+      }
+      AddOperationInput(*op, "mode", model_builder.AddScalarConstant(op->type(), "mode", std::string(approximate)));
     }
 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
 
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     if (op_type == "Sigmoid") {
@@ -207,24 +264,25 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
                                             const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
 
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (input_params.create_mlprogram) {
-    if (op_type == "PRelu") {  // TODO: ML Program supports this so should be easy to enable
+  if (!input_params.create_mlprogram) {
+    if (op_type == "Gelu" || op_type == "Softplus" || op_type == "Elu") {
       return false;
     }
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
-    if (op_type == "PRelu") {
-      return IsPReluOpSupported(node, input_params, logger);
-    }
+  }
+  if (op_type == "PRelu") {
+    return IsPReluOpSupported(node, input_params, logger);
   }
 
   return true;
 }
 
-int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // All ops opset 5- uses consumed_inputs attribute which is not supported for now
+int ActivationOpBuilder::GetMinSupportedOpSet(const Node& node) const {
+  const auto& op_type(node.OpType());
+  // Softplus was unmodified from opset 1 to 21 (with no attributes).
+  if (op_type == "Softplus") {
+    return 1;
+  }
+  // All other ops opset 5- uses consumed_inputs attribute which is not supported for now.
   return 6;
 }
 
@@ -239,6 +297,9 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "Relu",
           "PRelu",
           "LeakyRelu",
+          "Gelu",
+          "Softplus",
+          "Elu",
       };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());

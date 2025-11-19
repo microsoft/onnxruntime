@@ -1,8 +1,10 @@
 /*
- * Copyright (c) 2021, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime.providers;
+
+import ai.onnxruntime.OrtFlags;
 
 /** Flags for the CoreML provider. */
 public enum CoreMLFlags implements OrtFlags {
@@ -25,7 +27,9 @@ public enum CoreMLFlags implements OrtFlags {
    * Create an MLProgram. By default it will create a NeuralNetwork model. Requires Core ML 5 or
    * later.
    */
-  CREATE_MLPROGRAM(16); // COREML_FLAG_CREATE_MLPROGRAM(0x010)
+  CREATE_MLPROGRAM(16), // COREML_FLAG_CREATE_MLPROGRAM(0x010)
+  /** exclude ANE */
+  CPU_AND_GPU(32); // COREML_FLAG_USE_CPU_AND_GPU(0x020)
 
   /** The native value of the enum. */
   public final int value;

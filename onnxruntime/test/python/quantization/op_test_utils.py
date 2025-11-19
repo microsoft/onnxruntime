@@ -1,14 +1,20 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+from __future__ import annotations
+
 import uuid
 from pathlib import Path
 
 import numpy as np
 import onnx
+from ml_dtypes import float8_e4m3fn
 from onnx import TensorProto
-from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
-from onnx.numpy_helper import float8e4m3_to_float32
+from onnx.helper import np_dtype_to_tensor_dtype
 from onnx.reference import ReferenceEvaluator
 from onnx.reference import ops as onnx_ops
-from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
 from onnx.reference.op_run import OpRun
 
 import onnxruntime
@@ -39,14 +45,6 @@ class QOpRun(OpRun):
     }
 
     def get_tensor_type(self, tensor: np.ndarray) -> int:
-        if tensor.dtype == float8e4m3fn and tensor.dtype.descr[0][0] == "e4m3fn":
-            return TensorProto.FLOAT8E4M3FN
-        if tensor.dtype == float8e4m3fnuz and tensor.dtype.descr[0][0] == "e4m3fnuz":
-            return TensorProto.FLOAT8E4M3FNUZ
-        if tensor.dtype == float8e5m2 and tensor.dtype.descr[0][0] == "e5m2":
-            return TensorProto.FLOAT8E5M2
-        if tensor.dtype == float8e5m2fnuz and tensor.dtype.descr[0][0] == "e5m2fnuz":
-            return TensorProto.FLOAT8E5M2FNUZ
         return np_dtype_to_tensor_dtype(tensor.dtype)
 
 
@@ -75,12 +73,8 @@ class QGemm(QOpRun):
         b_type = self.get_tensor_type(b_zero_point)
         y_type = self.get_tensor_type(y_zero_point)
         if a_type == TensorProto.FLOAT8E4M3FN and b_type == TensorProto.FLOAT8E4M3FN:
-            a_scaled = (float8e4m3_to_float32(A).astype(float) - float8e4m3_to_float32(a_zero_point)) * np.float32(
-                a_scale
-            )
-            b_scaled = (float8e4m3_to_float32(B).astype(float) - float8e4m3_to_float32(b_zero_point)) * np.float32(
-                b_scale
-            )
+            a_scaled = (A.astype(np.float32) - a_zero_point.astype(np.float32)) * np.float32(a_scale)
+            b_scaled = (B.astype(np.float32) - b_zero_point.astype(np.float32)) * np.float32(b_scale)
             y = a_scaled @ b_scaled * np.float32(alpha)
             if C is not None:
                 dtype = self.get_tensor_type(C)
@@ -90,12 +84,12 @@ class QGemm(QOpRun):
             if y_scale is not None:
                 y /= y_scale
             if y_zero_point is not None:
-                y += float8e4m3_to_float32(y_zero_point)
+                y += y_zero_point.astype(np.float32)
                 ry = y.ravel()
 
-                fy = np.empty(ry.shape, dtype=float8e4m3fn)
+                fy = np.empty(ry.shape, dtype=float8_e4m3fn)
                 for i in range(fy.shape[0]):
-                    el = float32_to_float8e4m3(ry[i])  # type: ignore[assignment]
+                    el = ry[i].astype(float8_e4m3fn)  # type: ignore[assignment]
                     fy[i] = el
                 y = fy.reshape(y.shape)
             else:
@@ -150,24 +144,14 @@ class QLinearMatMul(QOpRun):
         b_type = self.get_tensor_type(b_zero_point)
         y_type = self.get_tensor_type(y_zero_point)
         if a_type == TensorProto.FLOAT8E4M3FN and b_type == TensorProto.FLOAT8E4M3FN:
-            a_scaled = (float8e4m3_to_float32(A).astype(float) - float8e4m3_to_float32(a_zero_point)) * np.float32(
-                a_scale
-            )
-            b_scaled = (float8e4m3_to_float32(B).astype(float) - float8e4m3_to_float32(b_zero_point)) * np.float32(
-                b_scale
-            )
+            a_scaled = (A.astype(np.float32) - a_zero_point.astype(np.float32)) * np.float32(a_scale)
+            b_scaled = (B.astype(np.float32) - b_zero_point.astype(np.float32)) * np.float32(b_scale)
             y = a_scaled @ b_scaled
             if y_scale is not None:
                 y /= y_scale
             if y_zero_point is not None:
-                y += float8e4m3_to_float32(y_zero_point)
-                ry = y.ravel()
-
-                fy = np.empty(ry.shape, dtype=float8e4m3fn)
-                for i in range(fy.shape[0]):
-                    el = float32_to_float8e4m3(ry[i])  # type: ignore[assignment]
-                    fy[i] = el
-                y = fy.reshape(y.shape)
+                y += y_zero_point.astype(np.float32)
+                y = y.astype(float8_e4m3fn)
             else:
                 raise NotImplementedError("y_zero_point is not empty. QLinearMatMul is not implemented in that case.")
             return (y,)
@@ -372,15 +356,15 @@ def check_op_type_count(testcase, model_path, **kwargs):
         if node.op_type in optype2count:
             optype2count[node.op_type] += 1
 
-    for op_type in kwargs:
+    for op_type, value in kwargs.items():
         try:
             testcase.assertEqual(
-                kwargs[op_type],
+                value,
                 optype2count[op_type],
                 f"op_type {op_type} count not same",
             )
         except AssertionError as e:
-            from onnx_array_api.plotting.text_plot import onnx_simple_text_plot
+            from onnx_array_api.plotting.text_plot import onnx_simple_text_plot  # noqa: PLC0415
 
             raise AssertionError(
                 f"Assert failed:\noptype={optype2count}\nkwargs={kwargs}\n{onnx_simple_text_plot(model)}"
@@ -407,7 +391,7 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
         scale_zp = [i.name for i in model_f8.graph.initializer if i.name.startswith(name)]
         if len(scale_zp) not in (1, 3):
             raise AssertionError(
-                f"Need one or three names not {scale_zp}, all names: {set(i.name for i in model_f8.graph.initializer)}."
+                f"Need one or three names not {scale_zp}, all names: { {i.name for i in model_f8.graph.initializer} }."
             )
         scale = [name for name in scale_zp if "scale" in name]
         zero = [name for name in scale_zp if "zero" in name]
@@ -473,7 +457,7 @@ def check_model_correctness(
 
     with open(model_path_origin, "rb") as f:
         model_onnx = onnx.load(f)
-    ops_set = set(node.op_type for node in model_onnx.graph.node)
+    ops_set = {node.op_type for node in model_onnx.graph.node}
     check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
     check_target_evaluator = False
 
@@ -632,7 +616,7 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
                 tensor_name = node.input[check_item[1]] if check_item[0] == "i" else node.output[check_item[1]]
                 if tensor_name not in value_infos and tensor_name not in initializers:
                     raise AssertionError(
-                        f"Unable to find tensor_name={tensor_name!r} in {list(sorted(value_infos))}\n{model}"
+                        f"Unable to find tensor_name={tensor_name!r} in {sorted(value_infos)}\n{model}"
                     )
                 if tensor_name in value_infos:
                     vi = value_infos[tensor_name]
@@ -661,3 +645,29 @@ def generate_random_initializer(initializer_name, tensor_shape, tensor_dtype, me
     tensor = np.random.normal(mean, dev, tensor_shape).astype(tensor_dtype)
     init = onnx.numpy_helper.from_array(tensor, initializer_name)
     return init
+
+
+def get_tensor_consumers_and_producers(
+    model: onnx.ModelProto,
+) -> tuple[dict[str, list[onnx.NodeProto]], dict[str, onnx.NodeProto]]:
+    """
+    Returns a tuple containing the following python dictionaries:
+      - consumers: maps a tensor name to the list of nodes that have that tensor as an input.
+      - producers: maps a tensor name to the node that generates this tensor as an output.
+    """
+    consumers: dict[str, list[onnx.NodeProto]] = {}
+    producers: dict[str, onnx.NodeProto] = {}
+    for node in model.graph.node:
+        # Iterate through node's inputs to build the consumers dictionary.
+        for input_name in node.input:
+            if input_name:
+                if input_name not in consumers:
+                    consumers[input_name] = []
+
+                consumers[input_name].append(node)
+
+        # Iterate through node's outputs to build the producers dictionary.
+        for output_name in node.output:
+            producers[output_name] = node
+
+    return (consumers, producers)

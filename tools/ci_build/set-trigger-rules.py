@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 # This script is used to add trigger rules to the workflow files.
-
+from __future__ import annotations
 
 import multiprocessing
 import os
@@ -16,29 +16,25 @@ skip_js_changes = [
     "android-x86_64-crosscompile-ci-pipeline.yml",
     "bigmodels-ci-pipeline.yml",
     "linux-ci-pipeline.yml",
-    "linux-cpu-aten-pipeline.yml",
-    "linux-cpu-eager-pipeline.yml",
     "linux-dnnl-ci-pipeline.yml",
     "linux-gpu-ci-pipeline.yml",
     "linux-gpu-tensorrt-ci-pipeline.yml",
     "linux-migraphx-ci-pipeline.yml",
     "linux-openvino-ci-pipeline.yml",
     "linux-qnn-ci-pipeline.yml",
+    "linux-rocm-ci-pipeline.yml",
     "mac-ci-pipeline.yml",
     "mac-coreml-ci-pipeline.yml",
     "mac-ios-ci-pipeline.yml",
     "mac-ios-packaging-pipeline.yml",
     "mac-react-native-ci-pipeline.yml",
-    "orttraining-linux-ci-pipeline.yml",
-    "orttraining-linux-gpu-ci-pipeline.yml",
-    "orttraining-linux-gpu-ortmodule-distributed-test-ci-pipeline.yml",
-    "orttraining-mac-ci-pipeline.yml",
     "win-ci-pipeline.yml",
     "win-gpu-dml-ci-pipeline.yml",
     "win-gpu-cuda-ci-pipeline.yml",
-    "win-gpu-training-ci-pipeline.yml",
     "win-gpu-doc-gen-ci-pipeline.yml",
     "win-gpu-tensorrt-ci-pipeline.yml",
+    "win-gpu-webgpu-ci-pipeline.yml",
+    "win-openvino-ci-pipeline.yml",
     "win-qnn-arm64-ci-pipeline.yml",
     "win-qnn-ci-pipeline.yml",
 ]
@@ -74,12 +70,11 @@ def main():
     os.chdir(working_dir)
 
     trigger_rules = {"skip-docs.yml": skip_doc_changes, "skip-js.yml": skip_js_changes}
-    for key in trigger_rules:
+    for key, skip_changes in trigger_rules.items():
         trigger_file = os.path.join(working_dir, "triggers", key)
         with open(trigger_file) as f1:
             trigger_lines = f1.readlines()
 
-        skip_changes = trigger_rules[key]
         pool = multiprocessing.Pool()
         pool.starmap(add_trigger_filter, [(file, trigger_lines) for file in skip_changes])
         pool.close()

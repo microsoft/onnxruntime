@@ -25,6 +25,7 @@ static void RunOneTest(
     int sequence_length,
     int hidden_size,
     bool use_float16 = false,
+    bool use_bfloat16 = false,
     bool no_beta = false,
     bool simplified = false,
     bool use_token_count = false,
@@ -62,6 +63,8 @@ static void RunOneTest(
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
   auto cpu_ep = DefaultCpuExecutionProvider();
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (!use_float16) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
@@ -95,10 +98,57 @@ static void RunOneTest(
     if (cpu_ep != nullptr) {
       execution_providers.push_back(DefaultCpuExecutionProvider());
     }
+    if (webgpu_ep != nullptr) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    }
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else if (CudaHasBF16Support() && use_bfloat16) {
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
+    test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_data));
+    test.AddInput<BFloat16>("skip", skip_dims, ToBFloat16(skip_data));
+    test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_data));
+    if (!simplified) {
+      if (!no_beta) {
+        test.AddInput<BFloat16>("beta", beta_dims, ToBFloat16(beta_data));
+      } else {
+        test.AddOptionalInputEdge<BFloat16>();
+      }
+    }
+    test.AddAttribute("epsilon", epsilon);
+    if (!bias_data.empty()) {
+      test.AddInput<BFloat16>("bias", bias_dims, ToBFloat16(bias_data));
+    }
+
+    test.AddOutput<BFloat16>("output", output_dims, ToBFloat16(output_data));
+
+    // Use larger threshold for bf16
+    test.SetOutputAbsErr("output", 0.06f);
+
+    if (sum_output_data.size() != 0) {
+      // The second and third outputs are reserved for something else
+      test.AddOptionalOutputEdge<BFloat16>();
+      test.AddOptionalOutputEdge<BFloat16>();
+
+      test.AddOutput<BFloat16>("skip_input_bias_add_output",
+                               output_dims,
+                               ToBFloat16(sum_output_data));
+    }
+
+    if (strict) {
+      Ort::CUDAProviderOptions cuda_options;
+      std::unordered_map<std::string, std::string> options = {{"enable_skip_layer_norm_strict_mode", "1"}};
+      cuda_options.Update(options);
+      execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(cuda_options)));
+    } else {
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+    }
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
-             rocm_ep != nullptr) {
+             rocm_ep != nullptr ||
+             webgpu_ep != nullptr) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
@@ -132,21 +182,18 @@ static void RunOneTest(
                                 ToFloat16(sum_output_data));
     }
 
-    if (dml_ep != nullptr) {
+    if (webgpu_ep != nullptr) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    } else if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else if (rocm_ep != nullptr) {
       execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
       if (strict) {
-        const auto& api = Ort::GetApi();
-        OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-        std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
-            rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
-        std::vector<const char*> keys{"enable_skip_layer_norm_strict_mode"};
-        std::vector<const char*> values{"1"};
-        ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
-        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(rel_cuda_options.get())));
+        Ort::CUDAProviderOptions cuda_options;
+        std::unordered_map<std::string, std::string> options = {{"enable_skip_layer_norm_strict_mode", "1"}};
+        cuda_options.Update(options);
+        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(cuda_options)));
       } else {
         execution_providers.push_back(DefaultCudaExecutionProvider());
       }
@@ -169,21 +216,48 @@ static void RunTest(
     int sequence_length,
     int hidden_size,
     bool use_float16 = false,
+    bool use_bfloat16 = false,
     bool no_beta = false,
     bool simplified = false,
     bool use_token_count = false,
     bool broadcast_skip = false,
     bool no_batch_size = false) {
   RunOneTest(false, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
-             epsilon, batch_size, sequence_length, hidden_size, use_float16, no_beta, simplified,
+             epsilon, batch_size, sequence_length, hidden_size, use_float16, use_bfloat16, no_beta, simplified,
              use_token_count, broadcast_skip, no_batch_size);
 
   // strict mode does not support skip broadcasting.
   if (!broadcast_skip) {
     RunOneTest(true, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
-               epsilon, batch_size, sequence_length, hidden_size, use_float16, no_beta, simplified,
+               epsilon, batch_size, sequence_length, hidden_size, use_float16, use_bfloat16, no_beta, simplified,
                use_token_count, broadcast_skip, no_batch_size);
   }
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePack) {
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 2;
+  std::vector<int64_t> input_skip_output_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> gamma_beta_bias_dims = {hidden_size};
+  test.AddInput<MLFloat16>("x", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({1.f, 1.f, 1.f, 1.f}));
+  test.AddInput<MLFloat16>("gamma", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", gamma_beta_bias_dims, ToFloat16({1.f, 1.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({
+                                                                  1.f,
+                                                                  1.f,
+                                                                  1.f,
+                                                                  1.f,
+                                                              }));
+
+  // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {
@@ -275,6 +349,9 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {
       0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
       0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438};
 
+  bool use_float16 = true;
+  bool use_bfloat16 = true;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -286,7 +363,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {
           batch_size,
           sequence_length,
           hidden_size,
-          true);
+          use_float16,
+          use_bfloat16);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
@@ -351,7 +429,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
       0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, 0.1f};  // 8
 
   // Update test data result which use internal fp32 calculation for fp16 input/parameters.
-  // Following pytorch code snippet are used to generate the result: (Not torch uses fp32 internal calculation for this)
+  // Following pytorch code snippet are used to generate the result: (Note: torch uses fp32 internal calculation for this)
   //
   // gamma_tensor = torch.tensor(gamma_data, dtype=torch.float32).reshape(hidden_size).to('cuda:0').to(torch.float16)
   // beta_tensor = torch.tensor(beta_data, dtype=torch.float32).reshape(hidden_size).to('cuda:0').to(torch.float16)
@@ -380,6 +458,12 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
       1.13574219f, -0.12152100f, 0.77832031f, 0.05398560f, 0.30810547f, 0.47265625f, 0.09643555f, -0.53662109f,
       0.82617188f, -0.12152100f, 0.00000000f, 1.41894531f, 0.51367188f, 0.15832520f, 0.26123047f, 0.07135010f};
 
+  bool use_float16 = true;
+  bool use_bfloat16 = true;
+  bool no_beta = false;
+  bool simplified = false;
+  bool use_token_count = false;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -391,10 +475,11 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
           batch_size,
           sequence_length,
           hidden_size,
-          true /*use_float16*/,
-          false /*no_beta*/,
-          false /*simplified*/,
-          false /*use_token_count*/);
+          use_float16,
+          use_bfloat16,
+          no_beta,
+          simplified,
+          use_token_count);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_NoBeta) {
@@ -419,6 +504,10 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_NoBeta) {
       0.08433859348297119f, -0.27090578377246857f, -1.32897164821624756f, 3.0924152374267578f,
       0.26111652255058289f, -0.31333980560302734f, -0.69631003737449646f, 1.9148544311523438f};
 
+  bool use_float16 = false;
+  bool use_bfloat16 = false;
+  bool no_beta = true;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -430,8 +519,9 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_NoBeta) {
           batch_size,
           sequence_length,
           hidden_size,
-          false,
-          true);
+          use_float16,
+          use_bfloat16,
+          no_beta);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch2) {
@@ -639,7 +729,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec_token_count) {
       0.8f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 0.3f, 0.1f};  // 8
 
   // Update test data result which use internal fp32 calculation for fp16 input/parameters.
-  // Following pytorch code snippet are used to generate the result: (Not torch uses fp32 internal calculation for this)
+  // Following pytorch code snippet are used to generate the result: (Note: torch uses fp32 internal calculation for this)
   //
   // gamma_tensor = torch.tensor(gamma_data, dtype=torch.float32).reshape(hidden_size).to('cuda:0').to(torch.float16)
   // beta_tensor = torch.tensor(beta_data, dtype=torch.float32).reshape(hidden_size).to('cuda:0').to(torch.float16)
@@ -668,6 +758,12 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec_token_count) {
       1.13574219f, -0.12152100f, 0.77832031f, 0.05398560f, 0.30810547f, 0.47265625f, 0.09643555f, -0.53662109f,
       0.82617188f, -0.12152100f, 0.00000000f, 1.41894531f, 0.51367188f, 0.15832520f, 0.26123047f, 0.07135010f};
 
+  bool use_float16 = true;
+  bool use_bfloat16 = true;
+  bool no_beta = false;
+  bool simplified = false;
+  bool use_token_count = true;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -679,10 +775,11 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec_token_count) {
           batch_size,
           sequence_length,
           hidden_size,
-          true /*use_float16*/,
-          false /*no_beta*/,
-          false /*simplified*/,
-          true /*use_token_count*/);
+          use_float16,
+          use_bfloat16,
+          no_beta,
+          simplified,
+          use_token_count);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {
@@ -714,6 +811,12 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {
       0.55470430850982666, -0.15080101788043976, -2.3229825496673584, 3.255286693572998,
       0.15631480515003204, 0.21066918969154358, 4.9432611465454102, -1.7957965135574341};
 
+  bool use_float16 = false;
+  bool use_bfloat16 = false;
+  bool no_beta = false;
+  bool simplified = false;
+  bool use_token_count = true;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -725,10 +828,11 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {
           batch_size,
           sequence_length,
           hidden_size,
-          false,
-          false,
-          false,
-          true);
+          use_float16,
+          use_bfloat16,
+          no_beta,
+          simplified,
+          use_token_count);
 }
 
 TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
@@ -751,6 +855,11 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
       0.3491f, -0.1455f, 0.0000f, 3.2005f,
       0.3487f, 0.0930f, 2.7899f, -3.0689f};
 
+  bool use_float16 = true;
+  bool use_bfloat16 = true;
+  bool no_beta = true;
+  bool simplified = true;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -762,9 +871,10 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           batch_size,
           sequence_length,
           hidden_size,
-          true,
-          true,
-          true);
+          use_float16,
+          use_bfloat16,
+          no_beta,
+          simplified);
 }
 
 #if !defined(USE_ROCM)
@@ -795,6 +905,14 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
       0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
       0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438};
 
+  bool use_float16 = false;
+  bool use_bfloat16 = false;
+  bool no_beta = false;
+  bool simplified = false;
+  bool use_token_count = false;
+  bool broadcast_skip = true;
+  bool no_batch_size = true;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -806,12 +924,13 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
           batch_size,
           sequence_length,
           hidden_size,
-          false,  // use_float16
-          false,  // no_beta
-          false,  // simplified
-          false,  // use_token_count
-          true,   // broadcast_skip
-          true);  // no_batch_size
+          use_float16,
+          use_bfloat16,
+          no_beta,
+          simplified,
+          use_token_count,
+          broadcast_skip,
+          no_batch_size);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
@@ -841,6 +960,14 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
       0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
       0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438};
 
+  bool use_float16 = false;
+  bool use_bfloat16 = false;
+  bool no_beta = false;
+  bool simplified = false;
+  bool use_token_count = false;
+  bool broadcast_skip = true;
+  bool no_batch_size = false;
+
   RunTest(input_data,
           skip_data,
           gamma_data,
@@ -852,12 +979,13 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           batch_size,
           sequence_length,
           hidden_size,
-          false,   // use_float16
-          false,   // no_beta
-          false,   // simplified
-          false,   // use_token_count
-          true,    // broadcast_skip
-          false);  // no_batch_size
+          use_float16,
+          use_bfloat16,
+          no_beta,
+          simplified,
+          use_token_count,
+          broadcast_skip,
+          no_batch_size);
 }
 #endif
 

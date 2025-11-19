@@ -1,0 +1,122 @@
+parameters:
+  - name: includePublicSymbolServer
+    type: boolean
+    default: false
+  - name: searchPattern
+    type: string
+    default: '**/*.pdb'
+  - name: jobName
+    type: string
+    default: PublishSymbols
+  - name: indexSources
+    type: boolean
+    default: true
+  - name: symbolExpiryTime
+    type: string
+    default: 36530 # This is the default from PublishSymbols@2
+  - name: symbolsArtifactName
+    type: string
+    default: ''
+  - name: symbolsVersion
+    type: string
+    default: ''
+  - name: symbolProject
+    type: string
+  - name: subscription
+    type: string
+
+steps:
+  - powershell: |-
+      Get-PackageProvider -Name NuGet -ForceBootstrap
+      Install-Module -Verbose -AllowClobber -Force Az.Accounts, Az.Storage, Az.Network, Az.Resources, Az.Compute
+    displayName: Install Azure Module Dependencies
+
+  - task: PublishSymbols@2
+    displayName: Publish Symbols (to current Azure DevOps tenant)
+    continueOnError: True
+    inputs:
+      SearchPattern: ${{ parameters.searchPattern }}
+      IndexSources: ${{ parameters.indexSources }}
+      DetailedLog: true
+      SymbolsMaximumWaitTime: 30
+      SymbolServerType: 'TeamServices'
+      SymbolsProduct: 'onnxruntime'
+      SymbolsVersion: ${{ parameters.symbolsVersion }}
+      SymbolsArtifactName: '${{ parameters.symbolsArtifactName }}_${{ parameters.symbolsVersion }}'
+      SymbolExpirationInDays: ${{ parameters.symbolExpiryTime }}
+    env:
+      LIB: $(Build.SourcesDirectory)
+
+  - task: AzurePowerShell@5
+    displayName: Generate Token and Publish Symbols via REST API
+    inputs:
+      azureSubscription: ${{ parameters.subscription }}
+      azurePowerShellVersion: LatestVersion
+      pwsh: true
+      ScriptType: InlineScript
+      Inline: |
+        # Part 1: Generate an Azure Token
+        Write-Host "Attempting to retrieve Azure Access Token for symbol publishing API."
+        $apiResourceUrl = "api://30471ccf-0966-45b9-a979-065dbedb24c1"
+        try {
+          $secureTokenObject = (Get-AzAccessToken -ResourceUrl $apiResourceUrl).Token
+          Write-Host "Successfully retrieved a token object."
+        }
+        catch {
+          Write-Error "Failed to retrieve Azure Access Token. Error: $($_.Exception.Message)"
+          throw "Failed to retrieve Azure Access Token." # Fail the task
+        }
+
+        # Convert the SecureString token to a plain text string for the HTTP header
+        # This is done just-in-time before its use.
+        $plainTextToken = $secureTokenObject | ConvertFrom-SecureString -AsPlainText
+        Write-Host "Token converted to plain text for API call (will not be logged)."
+
+        # Part 2: Publish Symbols using internal REST API
+        Write-Host "Preparing to publish symbols using internal REST API."
+
+        # Prepare the defaults for Invoke-RestMethod for this scope
+        $PSDefaultParameterValues = @{} # Initialize to ensure a clean state for default parameters
+        $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ Authorization = "Bearer $plainTextToken" }
+        $PSDefaultParameterValues['Invoke-RestMethod:ContentType'] = "application/json"
+        $PSDefaultParameterValues['Invoke-RestMethod:Method'] = "POST" # Default method for symbol request creation/update
+
+        $baseUri = "https://symbolrequestprod.trafficmanager.net/projects/${{ parameters.symbolProject }}/requests"
+
+        # Prepare and submit the symbol request creation
+        $expirationDate = (Get-Date).Add([TimeSpan]::FromDays(${{ parameters.symbolExpiryTime }}))
+        $createRequestBody = @{
+          requestName    = "${{ parameters.symbolsArtifactName }}_${{ parameters.symbolsVersion }}";
+          expirationTime = $expirationDate.ToString();
+        }
+        $requestNameForUri = $createRequestBody.requestName # Store for use in the next URI
+
+        Write-Host "##[debug]Creating symbol request: Name '$($createRequestBody.requestName)', Expiration '$($createRequestBody.expirationTime)'. URI: '$baseUri'"
+        try {
+          Invoke-RestMethod -Uri $baseUri -Body ($createRequestBody | ConvertTo-Json -Compress) -Verbose
+          Write-Host "Successfully initiated symbol request '$($createRequestBody.requestName)'."
+        }
+        catch {
+          Write-Error "Failed to create symbol request. Error: $($_.Exception.Message)"
+          # Optionally inspect response: $_.ErrorDetails.Message or $_.Exception.Response
+          throw "Failed to create symbol request."
+        }
+
+        # Prepare and submit the symbol publication details
+        $publishRequestBody = @{
+          publishToInternalServer = $true;
+          publishToPublicServer   = [System.Convert]::ToBoolean("${{ parameters.includePublicSymbolServer }}"); # Ensure YAML boolean is correctly PowerShell boolean
+        }
+        $publishUri = "$baseUri/$requestNameForUri"
+
+        Write-Host "##[debug]Submitting symbol publication details for request '$requestNameForUri'. URI: '$publishUri'. Payload: $($publishRequestBody | ConvertTo-Json -Compress)"
+        try {
+          Invoke-RestMethod -Uri $publishUri -Body ($publishRequestBody | ConvertTo-Json -Compress) -Verbose
+          Write-Host "Successfully submitted symbol publication details for '$requestNameForUri'."
+        }
+        catch {
+          Write-Error "Failed to submit symbol publication details. Error: $($_.Exception.Message)"
+          throw "Failed to submit symbol publication details."
+        }
+
+        Write-Host "Symbol publishing process via REST API completed for '$requestNameForUri'."

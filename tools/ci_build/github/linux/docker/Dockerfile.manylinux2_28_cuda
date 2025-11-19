@@ -1,11 +1,11 @@
-# The default ARGs are for cuda 11.8 with cudnn8, TensorRT is optional
+# The default ARGs are for cuda 13.0 with cudnn8, TensorRT is optional
 # Please overwrite BASEIMAGE, TRT_VERSION and other arguments with
 # --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg TRT_VERSION=other_trt_version etc...'
 # for other cuda version and TRT version
-ARG BASEIMAGE=nvidia/cuda:12.5.1-cudnn-devel-ubi8
+ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
-ARG TRT_VERSION
+ARG TRT_VERSION=10.9.0.34-1.cuda12.8
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
@@ -32,8 +32,8 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
-ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
-#Add our own dependencies
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
+
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
@@ -42,5 +42,5 @@ ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-ENV PATH /usr/local/dotnet:$PATH
-ENV CUDA_MODULE_LOADING "LAZY"
+ENV PATH=/usr/local/dotnet:$PATH
+ENV CUDA_MODULE_LOADING="LAZY"

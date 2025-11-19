@@ -42,12 +42,14 @@ class GridSampleOpBuilder : public BaseOpBuilder {
 Status GridSampleOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
                                                   [[maybe_unused]] const Node& node,
                                                   [[maybe_unused]] const logging::Logger& logger) const {
-#if defined(COREML_ENABLE_MLPROGRAM)
   using namespace CoreML::Specification::MILSpec;  // NOLINT
   // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.image_resizing.resample
 
   const auto input_defs = node.InputDefs();
   const auto output_defs = node.OutputDefs();
+
+  // we already checked it and dtype must be existed.
+  auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
 
   NodeAttrHelper helper(node);
   std::string mode{GetMode(helper)};  //  need a std::string for use in AddScalarConstant
@@ -65,7 +67,11 @@ Status GridSampleOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder&
   AddOperationInput(*op, "coordinates", input_defs[1]->Name());
   AddOperationInput(*op, "sampling_mode", model_builder.AddScalarConstant(op->type(), "sampling_mode", mode));
   AddOperationInput(*op, "padding_mode", model_builder.AddScalarConstant(op->type(), "padding_mode", padding_mode));
-  AddOperationInput(*op, "padding_value", model_builder.AddScalarConstant(op->type(), "padding_value", 0.0f));
+  if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    AddOperationInput(*op, "padding_value", model_builder.AddScalarConstant(op->type(), "padding_value", 0.0f));
+  } else {
+    AddOperationInput(*op, "padding_value", model_builder.AddScalarConstant(op->type(), "padding_value", MLFloat16(0.0f)));
+  }
   AddOperationInput(*op, "coordinates_mode",
                     model_builder.AddScalarConstant(op->type(), "coordinates_mode", coordinates_mode));
   AddOperationInput(*op, "align_corners", model_builder.AddScalarConstant(op->type(), "align_corners", align_corners));
@@ -73,7 +79,6 @@ Status GridSampleOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder&
   AddOperationOutput(*op, *output_defs[0]);
 
   model_builder.AddOperation(std::move(op));
-#endif
   return Status::OK();
 }
 

@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <unordered_map>
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
@@ -9,9 +12,10 @@
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
+#include "core/session/ort_env.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
 #include "core/dlpack/dlpack_converter.h"
 #endif
 
@@ -23,11 +27,12 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #define BACKEND_PROC "GPU"
@@ -35,19 +40,19 @@ struct OrtStatus {
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_DNNL
+#ifdef USE_DNNL
 #define BACKEND_DNNL "-DNNL"
 #else
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #define BACKEND_MIGRAPHX "-MIGRAPHX"
 #else
 #define BACKEND_MIGRAPHX ""
 #endif
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #if OPENVINO_CONFIG_CPU
 #define BACKEND_OPENVINO "-OPENVINO_CPU"
 
@@ -68,17 +73,14 @@ struct OrtStatus {
 
 #elif OPENVINO_DISABLE_NPU_FALLBACK
 #define BACKEND_OPENVINO "-OPENVINO_DISABLE_NPU_FALLBACK"
-#endif
 
 #else
 #define BACKEND_OPENVINO ""
-#endif
+#endif  // OPENVINO_CONFIG_*
 
-#ifdef USE_TVM
-#define BACKEND_TVM "-TVM"
 #else
-#define BACKEND_TVM ""
-#endif
+#define BACKEND_OPENVINO ""
+#endif  // defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
@@ -110,7 +112,13 @@ struct OrtStatus {
 #define BACKEND_CANN ""
 #endif
 
-#ifdef USE_CUDA
+#if USE_WEBGPU
+#define BACKEND_WEBGPU "-WEBGPU"
+#else
+#define BACKEND_WEBGPU ""
+#endif
+
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
@@ -118,24 +126,25 @@ struct OrtStatus {
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #endif
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#ifdef USE_MIGRAPHX
-#include "core/providers/migraphx/migraphx_provider_factory.h"
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #endif
-#ifdef USE_OPENVINO
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
+#include "core/providers/migraphx/migraphx_provider_factory.h"
+#include "core/providers/migraphx/migraphx_execution_provider_info.h"
+#endif
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
 namespace onnxruntime {
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 namespace python {
 extern std::string openvino_device_type;
 }
 }  // namespace onnxruntime
-#endif
-#ifdef USE_TVM
-#include "core/providers/tvm/tvm_ep_options.h"
 #endif
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
@@ -151,7 +160,7 @@ extern std::string openvino_device_type;
 #include "core/providers/cann/cann_execution_provider_info.h"
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
@@ -168,10 +177,17 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
+}  // namespace onnxruntime
+#endif
+
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+namespace onnxruntime {
+ProviderInfo_Nv* TryGetProviderInfo_Nv();
+ProviderInfo_Nv& GetProviderInfo_Nv();
 }  // namespace onnxruntime
 #endif
 
@@ -194,64 +210,115 @@ extern bool do_copy_in_default_stream;
 // TODO remove deprecated global config
 extern onnxruntime::rocm::TunableOpInfo tunable_op;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
+namespace onnxruntime {
+namespace python {
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
 }  // namespace onnxruntime
 #endif
 
+#ifdef USE_MIGRAPHX
+namespace onnxruntime {
+ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
+ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+namespace python::migraphx::external {
+extern void* alloc_fn;
+extern void* free_fn;
+extern void* empty_cache_fn;
+inline bool UseExternalAllocator() {
+  return alloc_fn != nullptr && free_fn != nullptr;
+}
+}  // namespace python::migraphx::external
+}  // namespace onnxruntime
+
+#endif
+
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/shared_library/provider_host_api.h"
-
+#include "onnxruntime_pybind_module_functions.h"
 namespace onnxruntime {
 #if !defined(SHARED_PROVIDER) && !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
 namespace python {
 
-using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
-                                                           const std::vector<std::string>&,
-                                                           const ProviderOptionsMap&)>;
-
 // TODO remove deprecated global config
 extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
 extern size_t gpu_mem_limit;
 
-using PySessionOptions = OrtSessionOptions;
+#if !defined(ORT_MINIMAL_BUILD)
+using PyEpSelectionDelegate =
+    std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
+                                                  const std::map<std::string, std::string>& model_metadata,
+                                                  const std::map<std::string, std::string>& runtime_metadata,
+                                                  size_t max_selections)>;
+#endif
+
+// Thin wrapper over internal C OrtSessionOptions to store additional state.
+struct PySessionOptions : public OrtSessionOptions {
+#if !defined(ORT_MINIMAL_BUILD)
+  // Callback function from Python application that allows the user to specify custom EP selection logic.
+  PyEpSelectionDelegate py_ep_selection_delegate;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+};
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
-  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
-      : env_(std::move(env)) {
-    sess_ = std::make_unique<InferenceSession>(so.value, *env_);
+  PyInferenceSession(OrtEnv& env, const PySessionOptions& so)
+      : session_options_(so) {
+    sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment());
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
-      : env_(std::move(env)) {
+  PyInferenceSession(OrtEnv& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
+      : session_options_(so) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
+      sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment(), arg);
     } else {
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);
-      sess_ = std::make_unique<InferenceSession>(so.value, *env_, buffer);
+      sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment(), buffer);
     }
   }
 #endif
+
+  // Returns true if the session options have provider information from either
+  // setting explicit providers, setting a provider that supports a OrtEpDevice(s), or
+  // setting a selection policy (e.g., prefer gpu).
+  bool HasProvidersInSessionOptions() const {
+    return !session_options_.provider_factories.empty() ||
+           session_options_.value.ep_selection_policy.enable;
+  }
+
+  // Returns (and updates) a reference to the OrtSessionOptions for this inference session.
+  OrtSessionOptions& GetOrtSessionOptions() {
+    if (sess_) {
+      // Copy internal value from InferenceSession as it is the source of truth
+      // and the option configurations may have changed.
+      session_options_.value = sess_->GetSessionOptions();
+    }
+    return session_options_;
+  }
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
   virtual ~PyInferenceSession() = default;
 
  protected:
-  PyInferenceSession(std::shared_ptr<Environment> env, std::unique_ptr<InferenceSession> sess)
-      : env_(std::move(env)), sess_(std::move(sess)) {
+  PyInferenceSession(std::unique_ptr<InferenceSession> sess)
+      : sess_(std::move(sess)) {
   }
 
  private:
-  std::shared_ptr<Environment> env_;
   std::unique_ptr<InferenceSession> sess_;
+  OrtSessionOptions session_options_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
@@ -260,7 +327,7 @@ inline const PySessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 inline AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  static AllocatorPtr alloc = CPUAllocator::DefaultInstance();
   return alloc;
 }
 
@@ -375,7 +442,11 @@ class SessionObjectInitializer {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-std::shared_ptr<Environment> GetEnv();
+
+void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options);
+bool CheckIfUsingGlobalThreadPool();
+Environment& GetEnv();
+OrtEnv* GetOrtEnv();
 
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.
@@ -394,6 +465,8 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
+void addAdapterFormatMethods(pybind11::module& m);
+
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
@@ -410,7 +483,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
 
 // Allocate a new Capsule object, which takes the ownership of OrtValue.
 // Caller is responsible for releasing.
@@ -435,15 +508,12 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
-#ifdef USE_TVM
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
-#endif
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool enable_fast_math);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VSINPU();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";

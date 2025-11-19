@@ -24,7 +24,7 @@ def verify_inputs(beam_inputs, graph_inputs):
     # Verify that ONNX graph's inputs match beam search op's inputs
     beam_required_inputs = list(filter(lambda beam_input: beam_input, beam_inputs))
     assert len(graph_inputs) == len(beam_required_inputs)
-    for graph_input, beam_input in zip(graph_inputs, beam_required_inputs):
+    for graph_input, beam_input in zip(graph_inputs, beam_required_inputs, strict=False):
         # Check if graph_input is in beam_input to handle beam_input names with the "_fp16" suffix
         assert graph_input.name in beam_input
 
@@ -54,16 +54,19 @@ def chain_model(args):
     config = WhisperConfig.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer = WhisperTokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
+    use_fp16_inputs = args.precision == Precision.FLOAT16 or (
+        args.precision in (Precision.INT8, Precision.INT4) and args.use_gpu
+    )
     # Create inputs/outputs for WhisperBeamSearch op
-    temperature_name = "temperature_fp16" if args.precision == Precision.FLOAT16 else "temperature"
+    temperature_name = "temperature_fp16" if use_fp16_inputs else "temperature"
     beam_inputs = [
-        "input_features_fp16" if args.precision == Precision.FLOAT16 else "input_features",
+        "input_features_fp16" if use_fp16_inputs else "input_features",
         "max_length",
         "min_length",
         "num_beams",
         "num_return_sequences",
-        "length_penalty_fp16" if args.precision == Precision.FLOAT16 else "length_penalty",
-        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "repetition_penalty",
+        "length_penalty_fp16" if use_fp16_inputs else "length_penalty",
+        "repetition_penalty_fp16" if use_fp16_inputs else "repetition_penalty",
         "vocab_mask" if args.use_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
         "",  # attention mask
@@ -74,8 +77,8 @@ def chain_model(args):
         temperature_name if args.use_temperature else "",
     ]
 
-    sequence_scores_name = "sequence_scores_fp16" if args.precision == Precision.FLOAT16 else "sequence_scores"
-    scores_name = "scores_fp16" if args.precision == Precision.FLOAT16 else "scores"
+    sequence_scores_name = "sequence_scores_fp16" if use_fp16_inputs else "sequence_scores"
+    scores_name = "scores_fp16" if use_fp16_inputs else "scores"
     beam_outputs = [
         "sequences",
         sequence_scores_name if args.output_sequence_scores else "",
@@ -85,7 +88,7 @@ def chain_model(args):
     ]
 
     graph_nodes = []
-    if args.precision == Precision.FLOAT16:
+    if use_fp16_inputs:
         input_features_cast_node = helper.make_node(
             "Cast",
             inputs=["input_features"],
@@ -312,15 +315,20 @@ def chain_model(args):
     # Save WhisperBeamSearch graph and external data
     if os.path.isfile(args.beam_model_output_dir):
         logger.info(f"Overwriting {args.beam_model_output_dir} and {args.beam_model_output_dir + '.data'}")
-        os.remove(args.beam_model_output_dir)
-        os.remove(args.beam_model_output_dir + ".data")
+        if os.path.exists(args.beam_model_output_dir):
+            os.remove(args.beam_model_output_dir)
+        if os.path.exists(args.beam_model_output_dir + ".data"):
+            os.remove(args.beam_model_output_dir + ".data")
 
     onnx.save(
         beam_model,
         args.beam_model_output_dir,
-        save_as_external_data=True,
+        save_as_external_data=args.use_external_data_format,
         all_tensors_to_one_file=True,
         convert_attribute=True,
         location=f"{os.path.basename(args.beam_model_output_dir)}.data",
     )
-    onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
+    try:
+        onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
+    except Exception as e:
+        logger.error(f"An error occurred while running the ONNX checker: {e}", exc_info=True)  # noqa: G201

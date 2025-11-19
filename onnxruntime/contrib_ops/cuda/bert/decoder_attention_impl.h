@@ -4,6 +4,7 @@
 #pragma once
 
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_kv_cache.h"
 
 namespace onnxruntime {
 namespace contrib {

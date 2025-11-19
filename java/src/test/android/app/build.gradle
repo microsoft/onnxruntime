@@ -4,18 +4,27 @@ plugins {
 }
 
 def minSdkVer = System.properties.get("minSdkVer")?:24
+def qnnVersion = System.properties['qnnVersion']
 
 android {
-	compileSdkVersion 32
+	compileSdkVersion 34
 
 	defaultConfig {
 		applicationId "ai.onnxruntime.example.javavalidator"
 		minSdkVersion minSdkVer
-		targetSdkVersion 32
+		targetSdkVersion 34
 		versionCode 1
 		versionName "1.0"
 
 		testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+		// Add BuildConfig field for qnnVersion
+		if (qnnVersion != null) {
+			buildConfigField "boolean", "IS_QNN_BUILD", "true"
+		}
+		else {
+			buildConfigField "boolean", "IS_QNN_BUILD", "false"
+		}
 	}
 
 	buildTypes {
@@ -25,11 +34,29 @@ android {
 		}
 	}
 	compileOptions {
-		sourceCompatibility JavaVersion.VERSION_1_8
-		targetCompatibility JavaVersion.VERSION_1_8
+		sourceCompatibility JavaVersion.VERSION_17
+		targetCompatibility JavaVersion.VERSION_17
 	}
 	kotlinOptions {
-		jvmTarget = '1.8'
+		jvmTarget = '17'
+	}
+	// Conditional packagingOptions for QNN builds only
+	if (qnnVersion != null)	{
+		packagingOptions  {
+			jniLibs {
+				useLegacyPackaging = true
+			}
+			// Dsp is used in older QC devices and not supported by ORT
+			// Gpu support isn't the target, we just want Npu support (Htp)
+			exclude 'lib/arm64-v8a/libQnnGpu.so'
+			exclude 'lib/arm64-v8a/libQnnDsp*.so'
+		}
+
+		sourceSets {
+			main {
+				manifest.srcFile 'src/main/AndroidManifestQnn.xml'  // Use QNN manifest
+				}
+			}
 	}
 	namespace 'ai.onnxruntime.example.javavalidator'
 }
@@ -42,11 +69,20 @@ dependencies {
 	implementation 'com.google.android.material:material:1.3.0'
 	implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
 	testImplementation 'junit:junit:4.+'
-	androidTestImplementation 'androidx.test.ext:junit:1.1.3'
-	androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
-	implementation(name: "onnxruntime-android", ext: "aar")
+	androidTestImplementation "androidx.test.ext:junit:1.1.5"
+	androidTestImplementation "androidx.test.espresso:espresso-core:3.5.0"
 
-	androidTestImplementation 'androidx.test:runner:1.4.0'
-	androidTestImplementation 'androidx.test:rules:1.4.0'
+	androidTestImplementation "androidx.test:runner:1.5.2"
+	androidTestImplementation "androidx.test:rules:1.5.0"
 	androidTestImplementation 'com.microsoft.appcenter:espresso-test-extension:1.4'
+
+	// dependencies for onnxruntime-android-qnn
+	if (qnnVersion != null) {
+		implementation(name: "onnxruntime-android-qnn", ext: "aar")
+		implementation "com.qualcomm.qti:qnn-runtime:$qnnVersion"
+	}
+	else {
+		implementation(name: "onnxruntime-android", ext: "aar")
+	}
+
 }

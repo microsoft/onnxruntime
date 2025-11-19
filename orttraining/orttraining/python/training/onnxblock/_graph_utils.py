@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from typing import List, Union
 
 import onnx
 
@@ -43,7 +42,7 @@ def generate_graph_name(token: str) -> str:
     return f"onnx::{token}::{_get_token()}"
 
 
-def register_graph_outputs(model: onnx.ModelProto, output_names: Union[List[str], str]) -> None:
+def register_graph_outputs(model: onnx.ModelProto, output_names: list[str] | str) -> None:
     """Register the given output names as graph outputs.
 
     The graph outputs shape information is extracted from the graph value_infos and

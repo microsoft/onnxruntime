@@ -1,0 +1,412 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <memory>
+#include <string>
+#include <sstream>
+#include <cstdint>
+
+#include "core/providers/webgpu/shader_variable.h"
+
+#include "core/providers/webgpu/string_macros.h"
+
+namespace onnxruntime {
+namespace webgpu {
+
+namespace {
+constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
+    "f32",        // Float32
+    "vec2<f32>",  // Float32x2
+    "vec4<f32>",  // Float32x4
+    "f16",        // Float16
+    "vec2<f16>",  // Float16x2
+    "vec4<f16>",  // Float16x4
+    "i32",        // Int32
+    "vec2<i32>",  // Int32x2
+    "vec4<i32>",  // Int32x4
+    "u32",        // Uint32
+    "vec2<u32>",  // Uint32x2
+    "vec4<u32>",  // Uint32x4
+    "vec2<u32>",  // Int64
+    "vec2<u32>",  // Uint64
+    "u32",        // Boolx4
+    "u32",        // Uint8x4
+    "vec2<u32>",  // Uint8x8
+    "vec4<u32>",  // Uint8x16
+    "u32",        // Int8x4
+    "vec2<u32>",  // Int8x8
+    "vec4<u32>",  // Int8x16
+    "u32",        // Uint4x8
+    "u32",        // Int4x8
+};
+constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
+
+constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
+    "f32",         // Float32
+    "vec2<f32>",   // Float32x2
+    "vec4<f32>",   // Float32x4
+    "f16",         // Float16
+    "vec2<f16>",   // Float16x2
+    "vec4<f16>",   // Float16x4
+    "i32",         // Int32
+    "vec2<i32>",   // Int32x2
+    "vec4<i32>",   // Int32x4
+    "u32",         // Uint32
+    "vec2<u32>",   // Uint32x2
+    "vec4<u32>",   // Uint32x4
+    "i32",         // Int64 (trancated to i32)
+    "u32",         // Uint64 (trancated to u32)
+    "vec4<bool>",  // Boolx4
+    "u32",         // Uint8x4 (u32 as 4 elements of uint8)
+    "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
+    "vec4<u32>",   // Uint8x16 (vec4<u32> as 4x4 elements of uint8)
+    "u32",         // Int8x4 (u32 as 4 elements of int8)
+    "vec2<u32>",   // Int8x8 (vec2<i32> as 2x4 elements of int8)
+    "vec4<u32>",   // Int8x16 (vec4<i32> as 4x4 elements of int8)
+    "u32",         // Uint4x8
+    "u32",         // Int4x8
+};
+constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
+
+constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
+    "f32",   // Float32
+    "f32",   // Float32x2
+    "f32",   // Float32x4
+    "f16",   // Float16
+    "f16",   // Float16x2
+    "f16",   // Float16x4
+    "i32",   // Int32
+    "i32",   // Int32x2
+    "i32",   // Int32x4
+    "u32",   // Uint32
+    "u32",   // Uint32x2
+    "u32",   // Uint32x4
+    "i32",   // Int64
+    "u32",   // Uint64
+    "bool",  // Boolx4
+    "u32",   // Uint8x4
+    "u32",   // Uint8x8
+    "u32",   // Uint8x16
+    "i32",   // Int8x4
+    "i32",   // Int8x8
+    "i32",   // Int8x16
+    "u32",   // Uint4x8
+    "i32",   // Int4x8
+};
+constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
+
+constexpr static const uint32_t BYTES_ARRAY[] = {
+    4,   // Float32
+    8,   // Float32x2
+    16,  // Float32x4
+    2,   // Float16
+    4,   // Float16x2
+    8,   // Float16x4
+    4,   // Int32
+    8,   // Int32x2
+    16,  // Int32x4
+    4,   // Uint32
+    8,   // Uint32x2
+    16,  // Uint32x4
+    8,   // Int64 (vec2<u32>)
+    8,   // Uint64 (vec2<u32>)
+    4,   // Boolx4 (packed in u32)
+    4,   // Uint8x4 (packed in u32)
+    8,   // Uint8x8 (vec2<u32>)
+    16,  // Uint8x16 (vec4<u32>)
+    4,   // Int8x4 (packed in u32)
+    8,   // Int8x8 (vec2<u32>)
+    16,  // Int8x16 (vec4<u32>)
+    4,   // Uint4x8 (packed in u32)
+    4,   // Int4x8 (packed in u32)
+};
+constexpr static const auto BYTES = details::_to_std_array(BYTES_ARRAY);
+
+inline std::string GetIndicesType(int rank) {
+  return rank < 2 ? "u32"
+                  : (rank <= 4 ? MakeStringWithClassicLocale("vec", rank, "<u32>")
+                               : MakeStringWithClassicLocale("array<u32, ", rank, ">"));
+}
+
+}  // namespace
+
+ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims)
+    : name_(name),
+      type_(type),
+      num_components_{NumberOfComponents(type)},
+      rank_{static_cast<int>(dims.NumDimensions())},
+      dims_{dims},
+      usage_(usage),
+      indices_type_{GetIndicesType(rank_)},
+      value_type_alias_{name_ + "_value_t"},
+      element_type_alias_{name_ + "_element_t"},
+      indices_type_alias_{name_ + "_indices_t"} {}
+
+ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims, uint32_t segments, uint64_t maxStorageBufferBindingSize)
+    : ShaderIndicesHelper{name, type, usage, dims},
+      segments_{segments},
+      max_storage_buffer_binding_size_{maxStorageBufferBindingSize} {
+  ORT_ENFORCE(type_ != ProgramVariableDataType::InvalidType, "Invalid type for variable ", name_);
+  ORT_ENFORCE(num_components_ > 0, "Invalid number of components for variable ", name_);
+}
+
+void ShaderIndicesHelper::Impl(std::ostream& ss) const {
+  // Start generating code
+
+  const std::string shape = (usage_ & ShaderUsage::UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
+  const std::string stride = (usage_ & ShaderUsage::UseUniform) ? "uniforms." + name_ + "_stride" : name_ + "_stride";
+
+  // Types
+  if (usage_ & ShaderUsage::UseValueTypeAlias) {
+    SS_APPEND(ss, "alias ", value_type_alias_, " = ", VALUE_TYPE[static_cast<int>(type_)], ";\n");
+  }
+  if (usage_ & ShaderUsage::UseIndicesTypeAlias) {
+    SS_APPEND(ss, "alias ", indices_type_alias_, " = ", indices_type_, ";\n");
+  }
+  if (usage_ & ShaderUsage::UseElementTypeAlias) {
+    SS_APPEND(ss, "alias ", element_type_alias_, " = ", ELEMENT_TYPE[static_cast<int>(type_)], ";\n");
+  }
+
+  // Need shape and strides when (not use uniform) and (use shape and stride is enabled)
+  if (!(usage_ & ShaderUsage::UseUniform) && (usage_ & ShaderUsage::UseShapeAndStride) && rank_ > 0) {
+    SS_APPEND(ss, "const ", shape, " = ", IndicesType(), "(");
+
+    bool first = true;
+    for (auto dim : dims_.GetDims()) {
+      if (!first) {
+        ss << ",";
+      }
+
+      ss << dim;
+      first = false;
+    }
+    ss << ");\n";
+
+    if (rank_ > 1) {
+      SS_APPEND(ss, "const ", stride, " = ", GetIndicesType(rank_ - 1), "(");
+      first = true;
+      for (int i = 1; i < rank_; i++) {
+        if (!first) {
+          ss << ",";
+        }
+        ss << dims_.SizeFromDimension(i);
+        first = false;
+      }
+      ss << ");\n";
+    }
+  }
+
+  // Implementation of "fn o2i_{name}"
+  if (usage_ & ShaderUsage::UseOffsetToIndices) {
+    if (rank_ >= 2) {
+      SS_APPEND(ss, "fn o2i_", name_, "(offset : u32)->", IndicesType(), " {\n");
+      SS_APPEND(ss, "  var indices: ", IndicesType(), ";\n");
+      SS_APPEND(ss, "  var current = offset;\n");
+      for (int i = 0; i < rank_ - 1; i++) {
+        auto current_stride = GetElementAt(stride, i, rank_ - 1);
+        SS_APPEND(ss, "  indices[", i, "] = current / ", current_stride, ";\n");
+        SS_APPEND(ss, "  current = current % ", current_stride, ";\n");
+      }
+      SS_APPEND(ss, "  indices[", rank_ - 1, "] = current;\n");
+      SS_APPEND(ss, "  return indices;\n");
+      SS_APPEND(ss, "}\n");
+    }
+  }
+
+  // Implementation of "fn i2o_{name}"
+  if (usage_ & ShaderUsage::UseIndicesToOffset) {
+    if (rank_ >= 2) {
+      SS_APPEND(ss, "fn i2o_", name_, "(indices : ", IndicesType(), ")->u32 {\n");
+      SS_APPEND(ss, "  return ");
+      for (int i = 0; i < rank_ - 1; i++) {
+        SS_APPEND(ss, "indices[", i, "] * ", GetElementAt(stride, i, rank_ - 1), " + ");
+      }
+      SS_APPEND(ss, "indices[", rank_ - 1, "];\n");
+      SS_APPEND(ss, "}\n");
+    }
+  }
+
+  // Implementation of "fn {res_name}_bi2o_{name}"
+  if (usage_ & ShaderUsage::UseBroadcastedIndicesToOffset) {
+    if (rank_ > 0) {
+      for (const auto& broadcasted_result_ptr : broadcasted_to_) {
+        const auto& broadcasted_result = *broadcasted_result_ptr;
+        SS_APPEND(ss, "fn ", broadcasted_result.name_, "_bi2o_", name_, "(indices : ", broadcasted_result.indices_type_, ")->u32 {\n");
+        if (rank_ == 1) {
+          SS_APPEND(ss, "  return ", broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", shape, ";\n");
+        } else {
+          SS_APPEND(ss, "  return ");
+          for (int i = 0; i < rank_ - 1; i++) {
+            auto idx = broadcasted_result.IndicesGet("indices", i + broadcasted_result.rank_ - rank_);
+            std::string current_stride = rank_ == 2 ? stride : GetElementAt(stride, i, rank_ - 1);
+            SS_APPEND(ss, current_stride, " * (", idx, " % ", IndicesGet(shape, i), ") + ");
+          }
+          SS_APPEND(ss, broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", IndicesGet(shape, rank_ - 1), ";\n");
+        }
+        SS_APPEND(ss, "}\n");
+      }
+    }
+  }
+}
+
+void ShaderVariableHelper::Impl(std::ostream& ss) const {
+  ShaderIndicesHelper::Impl(ss);
+
+  // Implementation of "fn set_{name}"
+  if (usage_ & ShaderUsage::UseSet) {
+    if (rank_ >= 2) {
+      SS_APPEND(ss, "fn set_", name_, "(d0: u32");
+      for (int i = 1; i < rank_; i++) {
+        SS_APPEND(ss, ", d", i, ": u32");
+      }
+      SS_APPEND(ss, ", value: ", ValueType(), ") {\n");
+      SS_APPEND(ss, "  set_", name_, "_by_indices(d0");
+      for (int i = 1; i < rank_; i++) {
+        SS_APPEND(ss, ", d", i);
+      }
+      SS_APPEND(ss, ", value);\n");
+      SS_APPEND(ss, "}\n");
+    }
+  }
+
+  // Implementation of "fn set_{name}_by_indices"
+  if (usage_ & ShaderUsage::UseSetByIndices) {
+    if (rank_ >= 2) {
+      SS_APPEND(ss, "fn set_", name_, "_by_indices(indices: ", IndicesType(), ", value: ", ValueType(), ") {\n");
+      SS_APPEND(ss, "  ", SetByOffset("i2o_" + name_ + "(indices)", "value"), "\n");
+      SS_APPEND(ss, "}\n");
+    }
+  }
+
+  // Implementation of "fn get_{name}"
+  if (usage_ & ShaderUsage::UseGet) {
+    if (rank_ >= 2) {
+      SS_APPEND(ss, "fn get_", name_, "(d0: u32");
+      for (int i = 1; i < rank_; i++) {
+        SS_APPEND(ss, ", d", i, ": u32");
+      }
+      SS_APPEND(ss, ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return get_", name_, "_by_indices(d0");
+      for (int i = 1; i < rank_; i++) {
+        SS_APPEND(ss, ", d", i);
+      }
+      SS_APPEND(ss, ");\n");
+      SS_APPEND(ss, "}\n");
+    }
+  }
+
+  // Implementation of "fn get_{name}_by_indices"
+  if (usage_ & ShaderUsage::UseGetByIndices) {
+    if (rank_ >= 2) {
+      SS_APPEND(ss, "fn get_", name_, "_by_indices(indices_fnarg: ", IndicesType(), ")->", ValueType(), " {\n");
+      SS_APPEND(ss, "  return ", GetByOffset("i2o_" + name_ + "(indices_fnarg)"), ";\n");
+      SS_APPEND(ss, "}\n");
+    }
+  }
+  // Implementation of "fn get_{name}_by_offset" for multi-buffer segmented inputs
+  if (usage_ & ShaderUsage::UseGetByOffsetSegments) {
+    // Multi-buffer segmented input accessor.
+    // Compute which physical storage buffer chunk the global linear element offset belongs to.
+    SS_APPEND(ss, "fn get_", name_, "_by_offset(global_offset: u32) -> ", ValueType(), " {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    // case 0 (base buffer name_)
+    SS_APPEND(ss, "    case 0u: { return ", name_, "[local_offset]; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { return ", name_, i, "[local_offset]; }\n");
+    }
+    SS_APPEND(ss, "    default: { return ", name_, "[local_offset]; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
+  // Implementation of "fn set_{name}_by_offset" for multi-buffer segmented variables
+  if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
+    SS_APPEND(ss, "fn set_", name_, "_by_offset(global_offset: u32, value: ", ValueType(), ") {\n");
+    SS_APPEND(ss, "  const CHUNK_SIZE_IN_ELEMENTS: u32 = ", max_storage_buffer_binding_size_, "u / ", BYTES[static_cast<int>(type_)], "u;\n");
+    SS_APPEND(ss, "  let buffer_index: u32 = global_offset / CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  let local_offset: u32 = global_offset % CHUNK_SIZE_IN_ELEMENTS;\n");
+    SS_APPEND(ss, "  switch(buffer_index) {\n");
+    SS_APPEND(ss, "    case 0u: { ", name_, "[local_offset] = value; return; }\n");
+    for (uint32_t i = 1; i < segments_; ++i) {
+      SS_APPEND(ss, "    case ", i, "u: { ", name_, i, "[local_offset] = value; return; }\n");
+    }
+    SS_APPEND(ss, "    default: { ", name_, "[local_offset] = value; return; }\n");
+    SS_APPEND(ss, "  }\n");
+    SS_APPEND(ss, "}\n");
+  }
+}
+
+std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const {
+  SS(ss, kStringInitialSizeGetByOffsetImpl);
+
+  if (usage_ & ShaderUsage::UseGetByOffsetSegments) {
+    return MakeStringWithClassicLocale("get_", name_, "_by_offset(", offset, ")");
+  }
+  switch (type_) {
+    case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
+      ORT_THROW("Invalid type");
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Int64:
+    case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
+      ss << ElementType() << "(" << name_ << "[" << offset << "].x)";
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
+      ss << "vec4<bool>(bool("
+         << name_ << "[" << offset << "] & 0xFFu), bool("
+         << name_ << "[" << offset << "] & 0xFF00u), bool("
+         << name_ << "[" << offset << "] & 0xFF0000u), bool("
+         << name_ << "[" << offset << "] & 0xFF000000u))";
+      break;
+    default:
+      ss << name_ << "[" << offset << "]";
+  }
+
+  return SS_GET(ss);
+}
+
+std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
+  SS(ss, kStringInitialSizeSetByOffsetImpl);
+
+  if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
+    return MakeStringWithClassicLocale("set_", name_, "_by_offset(", offset, ",", value, ");");
+  }
+
+  switch (type_) {
+    case onnxruntime::webgpu::ProgramVariableDataType::InvalidType:
+      ORT_THROW("Invalid type");
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Int64:
+      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
+      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";
+      break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
+      ss << name_ << "[" << offset << "]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(" << value << "));";
+      break;
+    default:
+      ss << name_ << "[" << offset << "]=" << value << ";";
+  }
+
+  return SS_GET(ss);
+}
+
+std::string_view ShaderVariableHelper::StorageType() const {
+  return STORAGE_TYPE[static_cast<int>(type_)];
+}
+
+std::string_view ShaderVariableHelper::ValueType() const {
+  return (usage_ & ShaderUsage::UseValueTypeAlias) ? value_type_alias_ : VALUE_TYPE[static_cast<int>(type_)];
+}
+
+std::string_view ShaderVariableHelper::ElementType() const {
+  return (usage_ & ShaderUsage::UseElementTypeAlias) ? element_type_alias_ : ELEMENT_TYPE[static_cast<int>(type_)];
+}
+
+std::string_view ShaderIndicesHelper::IndicesType() const {
+  return (usage_ & ShaderUsage::UseIndicesTypeAlias) ? indices_type_alias_ : indices_type_;
+}
+}  // namespace webgpu
+}  // namespace onnxruntime

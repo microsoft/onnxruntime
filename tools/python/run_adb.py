@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import logging
 import os
 import sys
-import typing
 
 from util import run
 from util.android import get_sdk_tool_paths
 
 
-def run_adb(android_sdk_root: str, args: typing.List[str]):
+def run_adb(android_sdk_root: str, args: list[str]):
     sdk_tool_paths = get_sdk_tool_paths(android_sdk_root)
     run(sdk_tool_paths.adb, *args)
 

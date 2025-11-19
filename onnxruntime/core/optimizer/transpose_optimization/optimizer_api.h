@@ -10,6 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <cstdint>
 #include <vector>
 
 namespace onnx_transpose_optimization {
@@ -146,6 +147,9 @@ class ValueInfoRef {
 /// </summary>
 class NodeRef {
  public:
+  /// <returns>Node name</returns>
+  virtual std::string_view Name() const = 0;
+
   /// <returns>Op computed by the node</returns>
   virtual std::string_view OpType() const = 0;
 
@@ -361,6 +365,7 @@ class GraphRef {
   /// generated. Outputs of created node have unspecified shapes/dtypes. They will be populated afterwards using
   /// CopyValueInfo.
   /// </summary>
+  /// <param name="name">The new node's name</param>
   /// <param name="op_type">The new node's op type</param>
   /// <param name="inputs">Inputs for the node. "" for missing optional inputs.</param>
   /// <param name="num_outputs">
@@ -368,7 +373,7 @@ class GraphRef {
   /// </param>
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
+  virtual std::unique_ptr<NodeRef> AddNode(std::string_view name, std::string_view op_type, const std::vector<std::string_view>& inputs,
                                            size_t num_outputs, std::string_view domain = /*kOnnxDomain*/ "") = 0;
 
   /// <summary>
@@ -461,7 +466,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 21;
+constexpr int64_t kMaxSupportedOpset = 24;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

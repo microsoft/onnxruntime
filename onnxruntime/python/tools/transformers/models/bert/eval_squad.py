@@ -33,7 +33,7 @@ except ImportError:
     from importlib_metadata import PackageNotFoundError, version
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from datasets import load_dataset
 from evaluate import evaluator
@@ -60,7 +60,7 @@ def get_package_version(package_name: str):
 
 
 def load_onnx_model(
-    model_id: str, onnx_path: Optional[str] = None, provider="CUDAExecutionProvider", use_io_binding: bool = False
+    model_id: str, onnx_path: str | None = None, provider="CUDAExecutionProvider", use_io_binding: bool = False
 ):
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
@@ -95,7 +95,7 @@ def load_onnx_model(
     return model, onnx_path
 
 
-def output_details(results: List[Dict[str, Any]], csv_filename: str):
+def output_details(results: list[dict[str, Any]], csv_filename: str):
     """Output a CSV file with detail of each test results.
 
     Args:
@@ -136,7 +136,7 @@ def output_details(results: List[Dict[str, Any]], csv_filename: str):
     print(f"Detail results are saved to csv file: {csv_filename}")
 
 
-def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name: str):
+def output_summary(results: list[dict[str, Any]], csv_filename: str, metric_name: str):
     """Output a CSV file with summary of a metric on combinations of batch_size and sequence_length.
 
     Args:
@@ -176,7 +176,7 @@ def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name
             # Metric value for given pair of batch_size and sequence_length.
             # Assume that (onnx_path, batch_size and sequence_length) are unique so keep first occurrence only.
             values = {}
-            values.update({k: "" for k in key_names})
+            values.update(dict.fromkeys(key_names, ""))
 
             for result in results:
                 if result["onnx_path"] == model and result[metric_name]:

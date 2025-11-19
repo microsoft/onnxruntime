@@ -14,7 +14,6 @@
 # limitations under the License.
 """BERT finetuning runner."""
 
-
 import argparse
 
 # ==================
@@ -337,7 +336,7 @@ def prepare_model_and_optimizer(args, device):
             optimizer._lazy_init_maybe_master_weights()
             optimizer._amp_stash.lazy_init_called = True
             optimizer.load_state_dict(checkpoint["optimizer"])
-            for param, saved_param in zip(amp.master_params(optimizer), checkpoint["master params"]):
+            for param, saved_param in zip(amp.master_params(optimizer), checkpoint["master params"], strict=False):
                 param.data.copy_(saved_param.data)
 
     if args.local_rank != -1:
@@ -555,7 +554,7 @@ def main():
                         )
                         is_model_exported = False
 
-                        import onnxruntime as ort
+                        import onnxruntime as ort  # noqa: PLC0415
 
                         sess = ort.InferenceSession(onnx_path, providers=ort.get_available_providers())
                         result = sess.run(

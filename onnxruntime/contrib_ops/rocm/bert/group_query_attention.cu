@@ -5,7 +5,7 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/rocm/bert/group_query_attention.h"
-#include "contrib_ops/rocm/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/rocm/bert/rotary_embedding_impl.h"
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
 
@@ -115,7 +115,7 @@ Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters,
   const int batch_size = parameters.batch_size;
   const int threads = max_threads_per_block;
   const int blocks = (batch_size * seqlen + threads - 1) / threads;
-  if (parameters.is_prompt) {
+  if (parameters.is_first_prompt) {
     SeqlensToPosIdsPrompt<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, seqlen, batch_size);
   } else {
     SeqlensToPosIdsToken<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, batch_size);
@@ -212,6 +212,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   // parameters.left_padding = left_padding_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
+
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckNoQKOutput(
+      context->OutputCount(),
+      static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
 
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -325,7 +329,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   // build present kv cache
   auto* present_key_ptr = reinterpret_cast<HipT*>(present_key->MutableDataRaw());
   auto* present_value_ptr = reinterpret_cast<HipT*>(present_value->MutableDataRaw());
-  if (parameters.is_prompt) {
+  if (parameters.is_first_prompt) {
     // copy prompt kv to present kv
     ORT_RETURN_IF_ERROR(LaunchStridedCopy(hip_stream, key_ptr, kv_shape, key_strides.ForBNSHCoord(),
                                           present_key_ptr, present_strides.ForBNSHCoord(), max_thr_per_blk));
@@ -383,7 +387,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       return ret;
     }
 
-    if (parameters.is_prompt && is_unidirectional_) {
+    if (parameters.is_first_prompt && is_unidirectional_) {
       return mask_info::decode("t", sequence_length, kv_sequence_length);
     }
 
@@ -496,8 +500,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       parameters.head_size,
       parameters.head_size,  // v head size
       GetCkFmhaDataTypeString<T>(),
-      !parameters.is_prompt,  // true,  // is_group_mode
-      true,                   // is_v_rowmajor ? dim is fastest : seq is fastest
+      !parameters.is_first_prompt,  // true,  // is_group_mode
+      true,                         // is_v_rowmajor ? dim is fastest : seq is fastest
       mask.type,
       bias_type,
       false,  // has_lse

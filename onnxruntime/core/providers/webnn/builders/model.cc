@@ -8,24 +8,32 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
-#include "core/common/safeint.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
-#include "core/providers/webnn/builders/helper.h"
 #include "model.h"
 
 namespace onnxruntime {
 namespace webnn {
 
-Model::Model(const emscripten::val& context, const emscripten::val& graph, const logging::Logger& logger)
+Model::Model(const emscripten::val& context, const emscripten::val& graph, const logging::Logger& logger, bool use_dispatch)
     : wnn_context_(context),
       wnn_graph_(graph),
-      logger_(logger) {}
+      logger_(logger),
+      use_dispatch_(use_dispatch) {}
 
 Model::~Model() {}
 
 Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                       const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
+  if (use_dispatch_) {
+    return Dispatch(inputs, outputs);
+  } else {
+    return Compute(inputs, outputs);
+  }
+}
+
+onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                           const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
   for (const auto& input : inputs) {
     const std::string& name = input.first;
     const struct OnnxTensorData tensor = input.second;
@@ -33,6 +41,8 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
     emscripten::val view = emscripten::val::undefined();
     switch (tensor.tensor_info.data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const uint8_t*>(tensor.buffer))};
@@ -84,6 +94,8 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
     emscripten::val view = emscripten::val::undefined();
     switch (tensor.tensor_info.data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                              static_cast<const uint8_t*>(tensor.buffer))};
@@ -142,6 +154,48 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
   return Status::OK();
 }
 
+onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                            const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
+  auto webnnEnsureTensor = emscripten::val::module_property("webnnEnsureTensor");
+  auto promises = emscripten::val::array();
+  bool trace = emscripten::val::module_property("webnnEnableTraceEvent").as<bool>();
+  emscripten::val console = emscripten::val::global("console");
+  if (trace) {
+    console.call<void>("time", emscripten::val("ORT::Dispatch::webnnEnsureTensor"));
+  }
+  for (const auto& [_, tensor] : inputs) {
+    emscripten::val shape = emscripten::val::array();
+    for (const auto& dim : tensor.tensor_info.shape) {
+      uint32_t dim_val = SafeInt<uint32_t>(dim);
+      shape.call<void>("push", dim_val);
+    }
+    auto ml_tensor = webnnEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
+    promises.call<void>("push", ml_tensor);
+  }
+  for (const auto& [_, tensor] : outputs) {
+    emscripten::val shape = emscripten::val::array();
+    for (const auto& dim : tensor.tensor_info.shape) {
+      uint32_t dim_val = SafeInt<uint32_t>(dim);
+      shape.call<void>("push", dim_val);
+    }
+    auto ml_tensor = webnnEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
+    promises.call<void>("push", ml_tensor);
+  }
+  if (trace) {
+    console.call<void>("timeEnd", emscripten::val("ORT::Dispatch::webnnEnsureTensor"));
+  }
+  auto ml_tensors = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
+  for (const auto& [name, _] : inputs) {
+    wnn_inputs_.set(name, ml_tensors.call<emscripten::val>("shift"));
+  }
+  for (const auto& [name, _] : outputs) {
+    wnn_outputs_.set(name, ml_tensors.call<emscripten::val>("shift"));
+  }
+  wnn_context_.call<void>("dispatch", wnn_graph_, wnn_inputs_, wnn_outputs_);
+
+  return Status::OK();
+}
+
 const OnnxTensorInfo& Model::GetInputOutputInfo(const std::string& name) const {
   return input_output_info_.at(name);
 }
@@ -156,6 +210,10 @@ void Model::SetOutputMap(InlinedHashMap<std::string, size_t>&& output_map) {
 
 // Pre-allocate the input and output buffers for the WebNN graph.
 void Model::AllocateInputOutputBuffers() {
+  // We don't need to allocate JS ArrayBuffers if the WebNN API supports MLTensor.
+  if (use_dispatch_) {
+    return;
+  }
   for (const auto& input : inputs_) {
     const auto& input_info = input_output_info_.at(input);
     const auto input_shape = input_info.shape;
@@ -163,6 +221,8 @@ void Model::AllocateInputOutputBuffers() {
     const auto data_type = input_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         wnn_inputs_.set(input, emscripten::val::global("Uint8Array").new_(num_elements));
         break;
@@ -198,6 +258,8 @@ void Model::AllocateInputOutputBuffers() {
     const auto data_type = output_info.data_type;
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         wnn_outputs_.set(output, emscripten::val::global("Uint8Array").new_(num_elements));
         break;

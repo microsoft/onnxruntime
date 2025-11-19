@@ -266,7 +266,7 @@ MlasBlockwiseQuantizedShape(
 /**
  * @brief Compute the sizes of the quantized data and quantization parameter buffers.
  *
- * @param qbits                             The bit width of each quantized value.
+ * @tparam qbits                            The bit width of each quantized value.
  * @param block_size                        The number of quantized values in a block.
  * @param columnwise                        Whether a block contains values from a matrix column (true) or row (false).
  * @param rows                              Number of matrix rows.
@@ -277,9 +277,9 @@ MlasBlockwiseQuantizedShape(
  *
  * If the qbits or block_size values are unsupported the output sizes will be zero.
  */
+template<int qbits>
 void MLASCALL
 MlasBlockwiseQuantizedBufferSizes(
-    int qbits,
     int block_size,
     bool columnwise,
     int rows,

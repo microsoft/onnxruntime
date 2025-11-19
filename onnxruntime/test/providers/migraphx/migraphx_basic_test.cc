@@ -3,7 +3,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -187,6 +187,50 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
   std::vector<NodeIndex> input_nodes;
   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
 }
+
+static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+  // Access the underlying InferenceSession.
+  const OrtSession* ort_session = session;
+  const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+  bool has_ep = false;
+
+  for (const auto& provider : s->GetRegisteredProviderTypes()) {
+    if (provider == ep_name) {
+      has_ep = true;
+      break;
+    }
+  }
+  return has_ep;
+}
+
+#if defined(WIN32)
+// Tests autoEP feature to automatically select an EP that supports the GPU.
+// Currently only works on Windows.
+TEST(MIGraphXExecutionProviderTest, AutoEp_PreferGpu) {
+  PathString model_name = ORT_TSTR("migraphx_basic_test.onnx");
+
+  onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
+  std::vector<int> dims = {1, 3, 2};
+  CreateBaseModel(model, dims);
+
+  auto status = onnxruntime::Model::Save(model, model_name);
+  ASSERT_TRUE(status.IsOK());
+
+  auto env = Ort::Env();
+  env.UpdateEnvWithCustomLogLevel(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING);
+
+  {
+    env.RegisterExecutionProviderLibrary(kMIGraphXExecutionProvider, ORT_TSTR("onnxruntime_providers_migraphx.dll"));
+
+    Ort::SessionOptions so;
+    so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+    Ort::Session session_object(env, model_name.c_str(), so);
+    EXPECT_TRUE(SessionHasEp(session_object, kMIGraphXExecutionProvider));
+  }
+
+  env.UnregisterExecutionProviderLibrary(kMIGraphXExecutionProvider);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

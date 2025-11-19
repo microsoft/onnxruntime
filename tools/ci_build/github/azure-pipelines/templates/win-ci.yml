@@ -40,6 +40,19 @@ parameters:
   type: string
   default: ''
 
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
 # for inference packages '', for training packages '-training'
 # used for drop-extra and c api artifacts (onnxruntime-win-* or onnxrutime-training-win-*)
 - name: artifact_name_suffix
@@ -48,7 +61,7 @@ parameters:
 
 - name: ort_build_pool_name
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
@@ -60,16 +73,12 @@ parameters:
   type: boolean
   default: false
 
-- name: PublishProtoc
-  type: boolean
-  default: false
-
 - name: CudaVersion
   type: string
-  default: '11.8'
+  default: '12.8'
   values:
-      - 11.8
-      - 12.2
+      - 12.8
+      - 13.0
 
 - name: SpecificArtifact
   displayName: Use Specific Artifact
@@ -93,50 +102,66 @@ stages:
     ${{ else }}:
       buildJavaParameter: ''
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-      timeoutParameter: '--test_all_timeout 72000'
+      timeoutParameter: '--ctest_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
       clean: all
+    templateContext:
+      sdl:
+        codeSignValidation:
+          enabled: true
+          break: false
+        psscriptanalyzer:
+          enabled: true
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - output: pipelineArtifact
+          targetPath: $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
+          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+      # GPU build has two jobs. This is the first one.
+      - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
+          - output: pipelineArtifact
+            targetPath: $(Agent.TempDirectory)/RelWithDebInfo
+            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
+
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-      pool: onnxruntime-Win-CPU-2022
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
     ${{ else }}:
-      pool: ${{ parameters.ort_build_pool_name }}
+      pool:
+        name: ${{ parameters.ort_build_pool_name }}
+        os: windows
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
       timeoutInMinutes: 1200
     ${{ else }}:
       timeoutInMinutes: 360
 
     steps:
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
-
       - checkout: self
         clean: true
         submodules: none
 
-      - template: telemetry-steps.yml
+      - template: setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
           inputs:
-            versionSpec: "11"
+            versionSpec: "17"
             jdkArchitectureOption: ${{ parameters.buildArch }}
             jdkSourceOption: 'PreInstalled'
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.8'
-          addToPath: true
-          architecture: ${{ parameters.buildArch }}
-
-      - task: NodeTool@0
-        condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-        inputs:
-          versionSpec: '18.x'
 
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
@@ -147,66 +172,29 @@ stages:
             ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
               DownloadCUDA: true
               DownloadTRT: true
-      - powershell: |
-          Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-        displayName: 'Append dotnet x86  Directory to PATH'
-        condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
-
-      - template: download-deps.yml
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-version-number-variables-step.yml
+
+      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter)'
+          arguments: '--parallel 16 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --build --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter)'
           workingDirectory: '$(Build.BinariesDirectory)'
-
-
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-          platform: ${{ parameters.msbuildPlatform }}
-          configuration: RelWithDebInfo
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true  # default is num logical cores worth of projects building concurrently
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          createLogFile: true
 
       # For CPU job, tests are run in the same machine as building
       - ${{ if eq(parameters.buildJava, 'true') }}:
+        - template: setup-maven.yml
         - template: make_java_win_binaries.yml
           parameters:
             msbuildPlatform: ${{ parameters.msbuildPlatform }}
             java_artifact_id: ${{ parameters.java_artifact_id }}
-            ${{ if or(contains(parameters.buildparameter, 'use_cuda'), contains(parameters.buildparameter, 'use_tensorrt')) }}:
-            # When it is a GPU build, we only assemble the java binaries, testing will be done in the later stage with GPU machine
-              buildOnly: true
-            ${{ else }}:
-              buildOnly: false
+            PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+            PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+            buildOnly: true
 
-        - task: PublishBuildArtifacts@1
-          displayName: 'Publish Java temp binaries'
-          inputs:
-            pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-            artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
         # All GPU builds will be tested in the next stage with GPU machine
       - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
         - task: PythonScript@0
@@ -238,12 +226,6 @@ stages:
             displayName: 'Copy java pad and folder for java test'
             workingDirectory: '$(Build.BinariesDirectory)'
 
-        - task: PublishPipelineArtifact@1
-          inputs:
-            targetPath: '$(Agent.TempDirectory)/RelWithDebInfo'
-            artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
-            publishLocation: 'pipeline'
-
       - script: |
           dir *.dll
           mkdir $(Build.ArtifactStagingDirectory)\testdata
@@ -265,14 +247,6 @@ stages:
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
             DoEsrp: ${{ parameters.DoEsrp }}
 
-      #Upload protoc.exe, which will be used in nuget build for generating C# files
-      - task: PublishPipelineArtifact@1
-        displayName: Publish protoc as drop-extra
-        condition: and(succeeded(), or(eq('${{ parameters.packageName}}', 'x64'), eq('${{ parameters.PublishProtoc}}', true)))
-        inputs:
-          targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
-
       - task: CopyFiles@2
         displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
@@ -280,121 +254,3 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
-
-      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - task: CredScan@3
-          displayName: 'Run CredScan'
-          inputs:
-            debugMode: false
-          continueOnError: true
-
-        - task: BinSkim@4
-          displayName: 'Run BinSkim'
-          inputs:
-            AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
-          continueOnError: true
-
-        - task: PostAnalysis@2
-          inputs:
-            GdnBreakAllTools: false
-            GdnBreakGdnToolBinSkim: true
-            GdnBreakPolicy: M365
-            GdnBreakPolicyMinSev: Error
-
-        - task: TSAUpload@2
-          displayName: 'TSA upload'
-          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-          inputs:
-            GdnPublishTsaOnboard: false
-            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-          continueOnError: true
-
-      - template: component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
-- ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-  - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
-    jobs:
-    - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
-      workspace:
-        clean: all
-      pool: ${{ parameters.ort_build_pool_name }}
-      timeoutInMinutes: 180
-      steps:
-        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-          displayName: 'Clean Agent Directories'
-          condition: always()
-
-        - checkout: self
-          clean: true
-          submodules: none
-
-        - template: flex-downloadPipelineArtifact.yml
-          parameters:
-            ArtifactName: "Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts"
-            StepName: 'Download Pipeline Artifact - Windows GPU Packages Build'
-            TargetPath: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-            SpecificArtifact: ${{ parameters.SpecificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
-
-        - powershell: |
-            tree /f
-            $drive = (Get-Location).Drive.Name
-            $file = 'CTestTestfile.cmake'
-            (Get-Content $file ) -replace 'C:\\a', -join($drive, ':\\a') | Set-Content $file
-            (Get-Content $file ) -replace 'C:/a', -join($drive, ':/a') | Set-Content $file
-          displayName: 'List built files and update CTestTestfile.cmake drive letter'
-          workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/'
-
-        - template: telemetry-steps.yml
-
-        - template: set-version-number-variables-step.yml
-
-        - ${{ if eq(parameters['buildJava'], 'true') }}:
-          - task: JavaToolInstaller@0
-            inputs:
-              versionSpec: "11"
-              jdkArchitectureOption: ${{ parameters.buildArch }}
-              jdkSourceOption: 'PreInstalled'
-
-        - task: UsePythonVersion@0
-          inputs:
-            versionSpec: '3.8'
-            addToPath: true
-            architecture: ${{ parameters.buildArch }}
-
-        - task: NodeTool@0
-          condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-          inputs:
-            versionSpec: '18.x'
-
-        - ${{ if ne(parameters.CudaVersion, '') }}:
-          - template: jobs/download_win_gpu_library.yml
-            parameters:
-              CudaVersion: ${{ parameters.CudaVersion }}
-              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-                DownloadCUDA: true
-              ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
-                DownloadCUDA: true
-                DownloadTRT: true
-
-        - powershell: |
-            Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-          displayName: 'Append dotnet x86  Directory to PATH'
-          condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
-
-        - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
-            workingDirectory: '$(Build.BinariesDirectory)'
-# Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
-        - ${{ if eq(parameters.buildJava, 'true') }}:
-          - template: make_java_win_binaries.yml
-            parameters:
-              msbuildPlatform: ${{ parameters.msbuildPlatform }}
-              java_artifact_id: ${{ parameters.java_artifact_id }}
-              buildOnly: false

@@ -8,9 +8,12 @@
 #include <iostream>
 #include <codecvt>
 #include <filesystem>
+#include <functional>
 #include <gsl/gsl>
 #include "core/common/inlined_containers.h"
+#include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
+#include "core/framework/ep_context_options.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -64,6 +67,18 @@ struct FreeDimensionOverride {
   std::string dim_identifier;
   FreeDimensionOverrideType dim_identifier_type;
   int64_t dim_value;
+};
+
+using CheckLoadCancellationFn = std::function<bool()>;
+
+struct EpSelectionPolicy {
+  // flag to detect that a policy was set by the user.
+  // need to preserve current behavior of defaulting to CPU EP if no EPs are explicitly registered
+  // and no selection policy was explicitly provided.
+  bool enable{false};
+  OrtExecutionProviderDevicePolicy policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+  EpSelectionDelegate delegate{};
+  void* state{nullptr};  // state for the delegate
 };
 
 /**
@@ -124,7 +139,7 @@ struct SessionOptions {
   unsigned max_num_graph_transformation_steps = 10;  // TODO choose a good default here?
 
   // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level3;
+  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel;
 
   // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
   OrtThreadPoolParams intra_op_param;
@@ -151,6 +166,7 @@ struct SessionOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   ConfigOptions config_options;
+
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
@@ -184,6 +200,32 @@ struct SessionOptions {
   // User specified logging func and param
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;
+
+  void SetLoadCancellationFlag(bool value) noexcept {
+    *load_cancellation_flag = value;
+  }
+
+  bool IsLoadCancellationFlagSet() const noexcept {
+    return *load_cancellation_flag;
+  }
+
+  // Load cancellation flag is necessary to be within shared memory as session_options are
+  // copied internally and the flag needs to be accessible across all copies.
+  std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
+
+  // Policy to guide Execution Provider selection
+  EpSelectionPolicy ep_selection_policy = {false,
+                                           OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_DEFAULT,
+                                           nullptr};
+
+  // Options for generating compile EPContext models were previously stored in session_option.configs as
+  // string key/value pairs. To support more advanced options, such as setting input/output buffers, we
+  // now have to store EPContext options in a struct of type EpContextModelGenerationOptions.
+  // The function GetEpContextGenerationOptions() handles conversion of string key/value pairs to the new
+  // struct type.
+  bool has_explicit_ep_context_gen_options = false;
+  epctx::ModelGenOptions ep_context_gen_options = {};
+  epctx::ModelGenOptions GetEpContextGenerationOptions() const;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
@@ -207,6 +249,7 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
      << " use_per_session_threads:" << session_options.use_per_session_threads
      << " thread_pool_allow_spinning:" << session_options.thread_pool_allow_spinning
      << " use_deterministic_compute:" << session_options.use_deterministic_compute
+     << " ep_selection_policy:" << session_options.ep_selection_policy.policy
      << " config_options: { " << session_options.config_options << " }"
   //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)

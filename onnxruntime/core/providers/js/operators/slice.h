@@ -20,9 +20,9 @@ class Slice : public JsKernel, public SliceBase {
     std::vector<int32_t> starts(attr_starts.begin(), attr_starts.end());
     std::vector<int32_t> ends(attr_ends.begin(), attr_ends.end());
 
-    JSEP_INIT_KERNEL_ATTRIBUTE(Slice, ({"starts" : $1 ? Array.from(HEAP32.subarray($1, $2)) : [],
-                                        "ends" : $3 ? Array.from(HEAP32.subarray($3, $4)) : [],
-                                        "axes" : $5 ? Array.from(HEAP32.subarray($5, $6)) : []}),
+    JSEP_INIT_KERNEL_ATTRIBUTE(Slice, ({"starts" : $1 ? Array.from(HEAP32.subarray(Number($1), Number($2))) : [],
+                                        "ends" : $3 ? Array.from(HEAP32.subarray(Number($3), Number($4))) : [],
+                                        "axes" : $5 ? Array.from(HEAP32.subarray(Number($5), Number($6))) : []}),
                                JSEP_HEAP32_INDEX_START(starts),
                                JSEP_HEAP32_INDEX_END(starts),
                                JSEP_HEAP32_INDEX_START(ends),

@@ -254,5 +254,45 @@ TEST(ConvIntegerTest, WithStride3_2D_u8u8) {
   test.Run();
 }
 
+TEST(ConvIntegerTest, NoXZeroPoint) {
+  OpTester test("ConvInteger", 10);
+  std::vector<int64_t> x_dims{1, 1, 3, 3};
+  test.AddInput<uint8_t>("x", x_dims,
+                         {2, 3, 4,
+                          5, 6, 7,
+                          8, 9, 10});
+  std::vector<int64_t> w_dims{1, 1, 2, 2};
+  test.AddInput<uint8_t>("w", w_dims,
+                         {2, 2,
+                          2, 2});
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddInput<uint8_t>("w_zero_point", {}, {1});
+  std::vector<int64_t> y_dims{1, 1, 2, 2};
+  test.AddOutput<int32_t>("y", y_dims,
+                          {16, 20,
+                           28, 32});
+  test.Run();
+}
+
+// provide optional input with empty name for w. tests that input args == 4 but the w_zero_point does not exist.
+TEST(ConvIntegerTest, NoWZeroPoint) {
+  OpTester test("ConvInteger", 10);
+  std::vector<int64_t> x_dims{1, 1, 3, 3};
+  test.AddInput<uint8_t>("x", x_dims,
+                         {2, 3, 4,
+                          5, 6, 7,
+                          8, 9, 10});
+  std::vector<int64_t> w_dims{1, 1, 2, 2};
+  test.AddInput<uint8_t>("w", w_dims,
+                         {2, 2,
+                          2, 2});
+  test.AddInput<uint8_t>("x_zero_point", {}, {1});
+  test.AddOptionalInputEdge<uint8_t>();
+  std::vector<int64_t> y_dims{1, 1, 2, 2};
+  test.AddOutput<int32_t>("y", y_dims,
+                          {24, 32,
+                           48, 56});
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime

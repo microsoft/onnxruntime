@@ -28,8 +28,14 @@ class GatherBlockQuantized : public JsKernel {
       block_size = 128;
     }
 
+    int64_t bits;
+    constexpr int64_t default_bits = 4;
+    info.GetAttrOrDefault("bits", &bits, default_bits);
+    ORT_ENFORCE(bits == 4, "GatherBlockQuantized JS kernel only support bits==4");
+
     ORT_ENFORCE(block_size >= 16 && ((block_size - 1) & block_size) == 0,
                 "'block_size' must be 2's power and not less than 16.");
+
     JSEP_INIT_KERNEL_ATTRIBUTE(GatherBlockQuantized, ({
                                  "gatherAxis" : $1,
                                  "quantizeAxis" : $2,

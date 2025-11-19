@@ -98,7 +98,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     bool IsAllocationInterface(const ::OrtMemoryInfo& info)
     {
-        return strcmp(info.name, onnxruntime::CPU) && !(info.mem_type == ::OrtMemType::OrtMemTypeCPUOutput || info.mem_type == ::OrtMemType::OrtMemTypeCPUInput);
+        return strcmp(info.name.c_str(), onnxruntime::CPU) && !(info.mem_type == ::OrtMemType::OrtMemTypeCPUOutput || info.mem_type == ::OrtMemType::OrtMemTypeCPUInput);
     }
 
     // Translate the data object stored in a tensor to the type which will be returned through
@@ -1576,9 +1576,21 @@ namespace Windows::AI::MachineLearning::Adapter
         // The tensor may be stored as raw data or in typed fields.
         if (impl->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
         {
-            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*impl, modelPath, m_unpackedExternalTensor));
-            m_dataPtr = reinterpret_cast<std::byte*>(m_unpackedExternalTensor.data());
-            m_tensorByteSize = m_unpackedExternalTensor.size();
+            std::basic_string<ORTCHAR_T> externalFilePath;
+            onnxruntime::FileOffsetType fileOffset;
+            SafeInt<size_t> safeTensorByteSize;
+            THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*impl,  modelPath, /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
+            if (externalFilePath == onnxruntime::utils::kTensorProtoMemoryAddressTag)
+            {
+                m_dataPtr = reinterpret_cast<std::byte*>(fileOffset);
+                m_tensorByteSize = safeTensorByteSize;
+            }
+            else
+            {
+                THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*impl, modelPath, m_unpackedExternalTensor));
+                m_dataPtr = reinterpret_cast<std::byte*>(m_unpackedExternalTensor.data());
+                m_tensorByteSize = m_unpackedExternalTensor.size();
+            }
         }
         else if (impl->has_raw_data())
         {
@@ -1762,7 +1774,9 @@ namespace Windows::AI::MachineLearning::Adapter
         }
 
         // tells caller whether this tensor is in CPU memory
-        return !strcmp(m_impl->Location().name, onnxruntime::CPU) || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput;
+        return !strcmp(m_impl->Location().name.c_str(), onnxruntime::CPU) 
+            || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput
+            || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput;
     }
 
     bool STDMETHODCALLTYPE TensorWrapper::IsDataInterface() const noexcept

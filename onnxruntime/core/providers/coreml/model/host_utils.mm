@@ -16,6 +16,8 @@ bool HasRequiredBaseOS() {
 }
 
 int32_t CoreMLVersion() {
+  if (HAS_COREML8_OR_LATER)
+    return 8;
   if (HAS_COREML7_OR_LATER)
     return 7;
   if (HAS_COREML6_OR_LATER)

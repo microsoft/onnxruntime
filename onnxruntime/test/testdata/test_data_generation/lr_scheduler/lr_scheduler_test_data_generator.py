@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 """This file is used to generate test data for LR scheduler optimizer tests in
-   orttraining/orttraining/test/training_api/core/training_api_tests.cc."""
+orttraining/orttraining/test/training_api/core/training_api_tests.cc."""
 
 import torch
 from torch.optim.lr_scheduler import LambdaLR
@@ -33,7 +33,7 @@ class WarmupLinearSchedule(LambdaLR):
         super().__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
 
     def lr_lambda(self, step):
-        print(f"warmup_step_count_: {self.warmup_steps }, step: {step}, total_step_count_: {self.t_total}")
+        print(f"warmup_step_count_: {self.warmup_steps}, step: {step}, total_step_count_: {self.t_total}")
         if step < self.warmup_steps:
             return float(step) / float(max(1, self.warmup_steps))
         return max(0.0, float(self.t_total - step) / float(max(1.0, self.t_total - self.warmup_steps)))
@@ -58,9 +58,9 @@ def main():
     for warmup_name, num_warmup_steps in num_warmup_step_data_dict.items():
         pt_model = SingleParameterModule(dimension_in, dimension_hidden).to(device)
 
-        import tempfile
+        import tempfile  # noqa: PLC0415
 
-        fp = tempfile.NamedTemporaryFile()
+        fp = tempfile.NamedTemporaryFile()  # noqa: SIM115
 
         adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
         scheduler = WarmupLinearSchedule(adamw_optimizer, num_warmup_steps, num_training_steps)
@@ -83,7 +83,7 @@ def main():
                     fp.name,
                 )
 
-        import json
+        import json  # noqa: PLC0415
 
         json_file_name = f"warmup_linear_scheduler_warmupstep-{warmup_name}.json"
         with open(json_file_name, "w", encoding="utf-8") as f:
@@ -105,7 +105,7 @@ def main():
             new_adamw_optimizer.zero_grad()
             new_scheduler.step()
 
-        import json
+        import json  # noqa: PLC0415
 
         json_file_name = f"warmup_linear_scheduler_warmupstep-{warmup_name}_restored.json"
         with open(json_file_name, "w", encoding="utf-8") as f:

@@ -50,7 +50,8 @@ class TestCaseRequestContext {
   static std::shared_ptr<TestCaseResult> Run(PThreadPool tpool,
                                              const ITestCase& c, Ort::Env& env,
                                              const Ort::SessionOptions& sf,
-                                             size_t concurrent_runs, size_t repeat_count);
+                                             size_t concurrent_runs, size_t repeat_count,
+                                             bool inference_mode = false);
 
   /// <summary>
   /// Schedules a TestCase to asynchronously on a TP. The function returns immediately.
@@ -64,7 +65,7 @@ class TestCaseRequestContext {
   /// <param name="concurrent_runs"></param>
   static void Request(const Callback& cb, PThreadPool tpool, const ITestCase& c,
                       Ort::Env& env, const Ort::SessionOptions& sf,
-                      size_t test_case_id, size_t concurrent_runs);
+                      size_t test_case_id, size_t concurrent_runs, bool inference_mode = false);
 
   const TIME_SPEC& GetTimeSpend() const {
     return test_case_time_;
@@ -79,7 +80,7 @@ class TestCaseRequestContext {
   ~TestCaseRequestContext() = default;
 
   TestCaseRequestContext(const Callback& cb, PThreadPool tp, const ITestCase& test_case, Ort::Env& env,
-                         const Ort::SessionOptions& session_opts, size_t test_case_id);
+                         const Ort::SessionOptions& session_opts, size_t test_case_id, bool inference_mode = false);
 
  private:
   bool SetupSession();
@@ -109,6 +110,7 @@ class TestCaseRequestContext {
   MockedOrtAllocator allocator_;
   std::shared_ptr<TestCaseResult> result_;
   TIME_SPEC test_case_time_;
+  bool inference_mode_;
   Callable<void, size_t, EXECUTE_RESULT, const TIME_SPEC&> on_data_task_cb_;
 
   mutable std::atomic_size_t data_tasks_started_;

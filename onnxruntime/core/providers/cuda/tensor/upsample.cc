@@ -159,6 +159,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 rank,
                                 mode_,
                                 coordinate_transform_mode_,
+                                cubic_coeff_a_,
                                 X_dims, output_dims,
                                 batch_size, num_channels,
                                 std::make_tuple(0, input_height, input_width),
@@ -201,6 +202,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 rank,
                                 mode_,
                                 coordinate_transform_mode_,
+                                cubic_coeff_a_,
                                 X_dims, output_dims,
                                 batch_size, num_channels,
                                 std::make_tuple(input_depth, input_height, input_width),
@@ -246,7 +248,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           const float height_scale = is_2D ? scales[0] : scales[2];
           const float width_scale = is_2D ? scales[1] : scales[3];
 
-          ResizeAntiAliasImpl(Stream(context), rank, mode_, coordinate_transform_mode_,
+          ResizeAntiAliasImpl(Stream(context), rank, mode_, coordinate_transform_mode_, cubic_coeff_a_,
                               X_dims, output_dims,
                               batch_size, num_channels,
                               std::make_tuple(0, input_height, input_width),
@@ -290,16 +292,16 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
 
-    UpampleImpl(Stream(context),
-                mode_,
-                rank,
-                (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
-                input_strides,
-                output_div_pitches,
-                scales_div,
-                reinterpret_cast<const CudaT*>(X->Data<T>()),
-                reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                output_count);
+    UpsampleImpl(Stream(context),
+                 mode_,
+                 rank,
+                 (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
+                 input_strides,
+                 output_div_pitches,
+                 scales_div,
+                 reinterpret_cast<const CudaT*>(X->Data<T>()),
+                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                 output_count);
   }
 
   return Status::OK();

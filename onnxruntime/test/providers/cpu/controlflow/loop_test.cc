@@ -12,7 +12,7 @@
 
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -576,11 +576,10 @@ TEST(Loop, InfiniteLoopTermination) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true",
            {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
 
-  // call get to propagate any exception
-  terminator_result.get();
-
   // done with the thread
   terminator_thread.join();
+  // call get to propagate any exception
+  terminator_result.get();
 }
 
 // Add basic test to trigger types override logic in Graph::InferAndVerifySubgraphTypes as well as
@@ -689,7 +688,7 @@ TEST(Loop, SubgraphTypeOverride) {
   Graph::ResolveOptions options;
   options.override_types = true;
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider}, &session_run_options, nullptr,
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options, nullptr,
            ExecutionMode::ORT_SEQUENTIAL, options);
 }
 
@@ -1163,7 +1162,7 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
   test.AddSeqOutput("loop_var_0_final", seq_output);
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)

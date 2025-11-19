@@ -20,44 +20,59 @@ enum class OUTPUT_MODE {
   ALL_SCORES
 };
 
-enum NODE_MODE : uint8_t {
-  LEAF = 1,
-  BRANCH_LEQ = 2,
-  BRANCH_LT = 4,
-  BRANCH_GTE = 6,
-  BRANCH_GT = 8,
-  BRANCH_EQ = 10,
-  BRANCH_NEQ = 12
+enum NODE_MODE_ONNX : uint8_t {
+  BRANCH_LEQ = 0,
+  BRANCH_LT = 1,
+  BRANCH_GTE = 2,
+  BRANCH_GT = 3,
+  BRANCH_EQ = 4,
+  BRANCH_NEQ = 5,
+  BRANCH_MEMBER = 6,
+  LEAF = 7,
+  // This rule is not part of ONNX standard. BRANCH_MEMBER has different implementations
+  // based on the set size. The first one is for small sets (< 31 categories),
+  // the second one is for big sets. All trees are defined with the first one.
+  // The kernel decides to switch to the second one if the set is too big.
+  BRANCH_MEMBER_BIGSET = 8,
 };
 
-static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
+static inline NODE_MODE_ONNX MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_LEQ") {
-    return NODE_MODE::BRANCH_LEQ;
+    return NODE_MODE_ONNX::BRANCH_LEQ;
   }
   if (input == "LEAF") {
-    return NODE_MODE::LEAF;
+    return NODE_MODE_ONNX::LEAF;
   }
   if (input == "BRANCH_LT") {
-    return NODE_MODE::BRANCH_LT;
+    return NODE_MODE_ONNX::BRANCH_LT;
   }
   if (input == "BRANCH_GTE") {
-    return NODE_MODE::BRANCH_GTE;
+    return NODE_MODE_ONNX::BRANCH_GTE;
   }
   if (input == "BRANCH_GT") {
-    return NODE_MODE::BRANCH_GT;
+    return NODE_MODE_ONNX::BRANCH_GT;
   }
   if (input == "BRANCH_EQ") {
-    return NODE_MODE::BRANCH_EQ;
+    return NODE_MODE_ONNX::BRANCH_EQ;
   }
-  return NODE_MODE::BRANCH_NEQ;
+  if (input == "BRANCH_MEMBER") {
+    return NODE_MODE_ONNX::BRANCH_MEMBER;
+  }
+  if (input == "BRANCH_MEMBER_BIGSET") {
+    return NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET;
+  }
+  if (input == "BRANCH_NEQ") {
+    return NODE_MODE_ONNX::BRANCH_NEQ;
+  }
+  ORT_THROW("Unexpected value for node_mode");
 }
 
-enum class POST_EVAL_TRANSFORM {
-  NONE,
-  LOGISTIC,
-  SOFTMAX,
-  SOFTMAX_ZERO,
-  PROBIT
+enum class POST_EVAL_TRANSFORM : int64_t {
+  NONE = 0,
+  LOGISTIC = 1,
+  SOFTMAX = 2,
+  SOFTMAX_ZERO = 3,
+  PROBIT = 4
 };
 
 static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
@@ -73,14 +88,17 @@ static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
   if (input == "SOFTMAX_ZERO") {
     return POST_EVAL_TRANSFORM::SOFTMAX_ZERO;
   }
-  return POST_EVAL_TRANSFORM::PROBIT;
+  if (input == "PROBIT") {
+    return POST_EVAL_TRANSFORM::PROBIT;
+  }
+  ORT_THROW("Unexpected value for post_eval_transform");
 }
 
-enum class AGGREGATE_FUNCTION {
-  AVERAGE,
-  SUM,
-  MIN,
-  MAX
+enum class AGGREGATE_FUNCTION : int64_t {
+  AVERAGE = 0,
+  SUM = 1,
+  MIN = 2,
+  MAX = 3
 };
 
 static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input) {
@@ -93,7 +111,10 @@ static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input)
   if (input == "MIN") {
     return AGGREGATE_FUNCTION::MIN;
   }
-  return AGGREGATE_FUNCTION::MAX;
+  if (input == "MAX") {
+    return AGGREGATE_FUNCTION::MAX;
+  }
+  ORT_THROW("Unexpected value for aggregate_function");
 }
 
 enum class CAST_TO {
@@ -147,7 +168,10 @@ static inline KERNEL MakeKernel(const std::string& input) {
   if (input == "RBF") {
     return KERNEL::RBF;
   }
-  return KERNEL::SIGMOID;
+  if (input == "SIGMOID") {
+    return KERNEL::SIGMOID;
+  }
+  ORT_THROW("Unexpected value for KERNEL");
 }
 
 enum NORMALIZE {
@@ -441,7 +465,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         }
 
         if (use_mlas) {
-          MlasComputeSoftmax(s, s, num_batches, onnxruntime::narrow<size_t>(batch_size), false, false, threadpool);
+          MlasComputeSoftmax(s, s, num_batches, onnxruntime::narrow<size_t>(batch_size), false, false, 0.0f, threadpool);
         } else {
           while (s < s_end) {
             gsl::span<float> scores_for_batch(s, s + batch_size);

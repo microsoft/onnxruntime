@@ -148,6 +148,26 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     abort();                                                                                       \
   } while (false)
 
+#define ORT_THROW_FROM_STATUS(status)                \
+  do {                                               \
+    ::onnxruntime::PrintFinalMessage(                \
+        ::onnxruntime::OnnxRuntimeException(         \
+            ORT_WHERE_WITH_STACK, status.ToString()) \
+            .what());                                \
+    abort();                                         \
+  } while (false)
+
+#define ORT_THROW_WITH_CATEGORY_AND_CODE(category, code, ...)                       \
+  do {                                                                              \
+    ::onnxruntime::PrintFinalMessage(                                               \
+        ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
+                                            ::onnxruntime::MakeString(__VA_ARGS__), \
+                                            ::onnxruntime::common::category,        \
+                                            ::onnxruntime::common::code)            \
+            .what());                                                               \
+    abort();                                                                        \
+  } while (false)
+
 #else
 
 #define ORT_TRY try
@@ -179,6 +199,16 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #define ORT_THROW_EX(ex, ...) \
   throw ex(__VA_ARGS__)
+
+#define ORT_THROW_FROM_STATUS(status)                                                                   \
+  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, status.ToString(), status.Category(), \
+                                            static_cast<::onnxruntime::common::StatusCode>(status.Code()))
+
+#define ORT_THROW_WITH_CATEGORY_AND_CODE(category, code, ...)                       \
+  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
+                                            ::onnxruntime::MakeString(__VA_ARGS__), \
+                                            ::onnxruntime::common::category,        \
+                                            ::onnxruntime::common::code)
 
 #endif
 
@@ -237,7 +267,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     auto _status = (expr);                                                                                    \
     if ((!_status.IsOK())) {                                                                                  \
       ::onnxruntime::LogRuntimeError(0, _status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__); \
-      ORT_THROW(_status);                                                                                     \
+      ORT_THROW_FROM_STATUS(_status);                                                                         \
     }                                                                                                         \
   } while (0)
 
@@ -264,15 +294,29 @@ inline std::string ToUTF8String(const std::string& s) { return s; }
 /**
  * Convert a wide character string to a UTF-8 string
  */
-std::string ToUTF8String(const std::wstring& s);
-
-std::wstring ToWideString(const std::string& s);
+std::string ToUTF8String(std::wstring_view s);
+inline std::string ToUTF8String(const wchar_t* s) {
+  return ToUTF8String(std::wstring_view{s});
+}
+inline std::string ToUTF8String(const std::wstring& s) {
+  return ToUTF8String(std::wstring_view{s});
+}
+std::wstring ToWideString(std::string_view s);
+inline std::wstring ToWideString(const char* s) {
+  return ToWideString(std::string_view{s});
+}
+inline std::wstring ToWideString(const std::string& s) {
+  return ToWideString(std::string_view{s});
+}
 inline std::wstring ToWideString(const std::wstring& s) { return s; }
+inline std::wstring ToWideString(std::wstring_view s) { return std::wstring{s}; }
 #else
 inline std::string ToWideString(const std::string& s) { return s; }
+inline std::string ToWideString(const char* s) { return s; }
+inline std::string ToWideString(std::string_view s) { return std::string{s}; }
 #endif
 
-constexpr size_t kMaxStrLen = 2048;
+constexpr size_t kMaxStrLen = 4096;
 
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.

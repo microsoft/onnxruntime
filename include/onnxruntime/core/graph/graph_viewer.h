@@ -57,6 +57,11 @@ class GraphViewer {
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept;
 
+  /** Returns the ONNX IR version for the model. */
+  Version GetOnnxIRVersion() const noexcept {
+    return graph_->GetOnnxIRVersion();
+  }
+
   /**
   Gets the Graph inputs, excluding initializers.
   @returns Collection of NodeArg pointers for the graph inputs, excluding inputs that have matching initializers.
@@ -192,6 +197,12 @@ class GraphViewer {
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return graph_->GetSchemaRegistry(); }
 #endif
+
+  /** Populate `value` if an externally allocated OrtValue exists for an initializer with the given name.
+   */
+  bool GetOrtValueInitializer(const std::string& name, OrtValue& value) const {
+    return graph_->GetOrtValueInitializer(name, value);
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);

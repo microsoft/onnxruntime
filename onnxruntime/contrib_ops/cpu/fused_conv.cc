@@ -19,6 +19,10 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     1,
     float,
     KernelDefBuilder()
+        // If the fused "sum" input is available to the FusedConv node,
+        // provide a hint to the allocation planner that it can re-use the
+        // "sum"'s input as the output buffer of the FusedConv node.
+        .MayInplace(3, 0)
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedConvFloat);
 

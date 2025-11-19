@@ -6,7 +6,7 @@
 import re
 import uuid
 from collections import defaultdict
-from typing import Any, List, Tuple
+from typing import Any
 
 import numpy as np
 import torch
@@ -27,7 +27,7 @@ def _topological_sort_internal(node, visited, output_consumers, sorted_nodes):
 
 
 # Topological sort of nodes given the input names. The list of nodes contain both constant and non-constant nodes.
-def topological_sort(inputs: List[str], nodes: List[NodeProto]) -> List[NodeProto]:
+def topological_sort(inputs: list[str], nodes: list[NodeProto]) -> list[NodeProto]:
     const_nodes = []
     non_const_nodes = []
     for node in nodes:
@@ -119,7 +119,7 @@ def may_add_brackets(name: str) -> str:
     return name
 
 
-def sort_reduce_axes(axes: List[int], rank: int, check_contiguous: bool = True) -> List[int]:
+def sort_reduce_axes(axes: list[int], rank: int, check_contiguous: bool = True) -> list[int]:
     axes = [axis + rank if axis < 0 else axis for axis in axes]
     axes.sort()
     if check_contiguous:
@@ -129,7 +129,7 @@ def sort_reduce_axes(axes: List[int], rank: int, check_contiguous: bool = True) 
 
 
 # Get the keep_dims attribute and reduce axes from a reduce node.
-def get_reduce_info(node: NodeProto, graph: GraphProto, input_rank: int) -> Tuple[int, List[int]]:
+def get_reduce_info(node: NodeProto, graph: GraphProto, input_rank: int) -> tuple[int, list[int]]:
     keep_dims = get_attribute(node, "keepdims", 1)
     noop_with_empty_axes = get_attribute(node, "noop_with_empty_axes", 0)
     axes = get_attribute(node, "axes", None)

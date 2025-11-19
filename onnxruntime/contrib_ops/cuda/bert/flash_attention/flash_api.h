@@ -77,10 +77,12 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int head_size,
                       int max_seqlen_q,
                       int max_seqlen_k,
+                      int total_q,
                       float softmax_scale,
                       const float softcap,
                       bool is_causal,
                       bool is_bf16,
+                      int local_window_size = -1,
                       int max_num_blocks_per_seq = 0,
                       int page_block_size = 1);
 
@@ -96,6 +98,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* seqlens_k_,   // batch_size
                        void* rotary_cos,   // seqlen_ro x (rotary_dim / 2)
                        void* rotary_sin,   // seqlen_ro x (rotary_dim / 2)
+                       void* head_sink,    // num_heads
                        int* block_table,   // batch_size x max_num_blocks_per_seq
                        int batch_size,
                        int num_heads,
@@ -121,6 +124,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int page_block_size = 1);
 
 size_t get_softmax_lse_size(size_t max_seqlen_q, size_t batch_size, size_t num_heads);
+size_t get_softmax_lse_size(size_t token_count, size_t num_heads);
 
 std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_size, size_t seqlen_q, size_t seqlen_k, size_t num_heads,
                                                                    size_t head_size, size_t num_SMs);

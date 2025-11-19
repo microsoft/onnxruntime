@@ -23,7 +23,7 @@ class Resize : public JsKernel, public UpsampleBase {
     std::transform(axes_.begin(), axes_.end(), std::back_inserter(axes), [](auto& axis) { return gsl::narrow_cast<int32_t>(axis); });
     JSEP_INIT_KERNEL_ATTRIBUTE(Resize, ({
                                  "antialias" : $1,
-                                 "axes" : $2 ? Array.from(HEAP32.subarray($2, $3)) : [],
+                                 "axes" : $2 ? Array.from(HEAP32.subarray(Number($2), Number($3))) : [],
                                  "coordinateTransformMode" : UTF8ToString($4),
                                  "cubicCoeffA" : $5,
                                  "excludeOutside" : $6,
@@ -107,7 +107,6 @@ class Resize : public JsKernel, public UpsampleBase {
   }
 
   virtual Status SerializeCustomData(OpKernelContext* context, AllocatorPtr alloc, void** ptr, size_t* size) const {
-    TensorShapeVector output_dims;
     std::vector<float> roi_array;
     std::vector<float> scales_array;
 

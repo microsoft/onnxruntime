@@ -1,13 +1,11 @@
+#!/bin/bash
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
 # This measures the performance of OnnxRuntime, PyTorch and TorchScript on transformer models.
-# Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
-# GPU:   conda install pytorch torchvision cudatoolkit=11.0 -c pytorch
-# CPU:   conda install pytorch torchvision cpuonly -c pytorch
-# To use torch2, please install the nightly PyTorch by replacing pytorch with pytorch-nightly.
+# Please install PyTorch (see https://pytorch.org/) before running this benchmark.
 
 # When use_package=true, you need not copy other files to run benchmarks except this sh file.
 # Otherwise, it will use python script (*.py) files in this directory.
@@ -59,7 +57,6 @@ sequence_lengths="8 16 32 64 128 256 512 1024"
 # Here we only test one input (input_ids) for fair comparison with PyTorch.
 input_counts=1
 
-# Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
 models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
 
 # If you have multiple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
@@ -91,7 +88,6 @@ fi
 
 
 if [ "$run_install" = true ] ; then
-  pip uninstall --yes ort-nightly ort-gpu-nightly
   pip uninstall --yes onnxruntime
   pip uninstall --yes onnxruntime-gpu
   if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -99,7 +95,7 @@ if [ "$run_install" = true ] ; then
   else
     pip install onnxruntime-gpu
   fi
-  pip install --upgrade onnx coloredlogs packaging psutil py3nvml onnxconverter_common numpy transformers sympy
+  pip install --upgrade onnx coloredlogs packaging psutil py3nvml numpy transformers sympy
 fi
 
 if [ "$use_package" = true ] ; then

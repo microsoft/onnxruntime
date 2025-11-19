@@ -27,12 +27,6 @@ class NodeUnit;
 bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
                    float& min, float& max, const logging::Logger& logger);
 
-/// <deprecated>GraphViewer GetConstantInitializer/IsConstantInitializer should be used to ensure the initializer is
-/// constant. Low risk for Clip min/max but in general the infrastructure to check if an operator is supported needs
-/// to be updated to not use InitializedTensorSet which may contain non-constant initializers.</deprecated>
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
-                   float& min, float& max, const logging::Logger& logger);
-
 // Get the type of the given NodeArg
 // Will return false if the given NodeArg has no type
 bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger);
@@ -57,6 +51,7 @@ class NodeAttrHelper {
   std::vector<int64_t> Get(const std::string& key, const std::vector<int64_t>& def_val) const;
 
   const std::string& Get(const std::string& key, const std::string& def_val) const;
+  std::vector<std::string> Get(const std::string& key, const std::vector<std::string>& def_val) const;
 
   // Convert the i() or ints() of the attribute from int64_t to int32_t
   int32_t Get(const std::string& key, int32_t def_val) const;

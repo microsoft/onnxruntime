@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "contrib_ops/cpu/utils/console_dumper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,6 +25,9 @@ class Sequences : public ISequences {
 
   // Returns current sequence length.
   int GetSequenceLength() const override;
+
+  // Returns max sequence length.
+  int GetMaxLength() const override;
 
 #ifdef DEBUG_GENERATION
   // Print the sequences to StdOut in debug mode

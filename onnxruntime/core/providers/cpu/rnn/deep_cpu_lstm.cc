@@ -163,7 +163,14 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LSTM, 7, 13,
                                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
                                    DeepCpuLstmOp);
 
-ONNX_CPU_OPERATOR_KERNEL(LSTM, 14,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LSTM, 14, 21,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                             DataTypeImpl::GetTensorType<double>()})
+                                       .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+                                   DeepCpuLstmOp);
+
+ONNX_CPU_OPERATOR_KERNEL(LSTM, 22,
                          KernelDefBuilder()
                              .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                                    DataTypeImpl::GetTensorType<double>()})
@@ -189,7 +196,7 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
     return Status::OK();
   }
 
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K);
+  const size_t packed_weights_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, N, K);
   if (packed_weights_size == 0) {
     return Status::OK();
   }
@@ -210,7 +217,7 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
 
   const auto* weights_data = weights.Data<float>();
   for (int i = 0; i < num_directions_; i++) {
-    MlasGemmPackB(CblasTrans, N, K, weights_data, K, packed_weights_data);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, N, K, weights_data, K, packed_weights_data);
     packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
     weights_data += N * K;
   }

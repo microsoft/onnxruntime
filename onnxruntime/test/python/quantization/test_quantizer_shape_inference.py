@@ -38,7 +38,7 @@ class TestQuantizerShapeInference(unittest.TestCase):
             opset_imports=[oh.make_opsetid("", 18), oh.make_opsetid("com.microsoft", 1)],
         )
         model_shaped = onnx.shape_inference.infer_shapes(model)
-        shaped_results = set(t.name for t in model_shaped.graph.value_info)
+        shaped_results = {t.name for t in model_shaped.graph.value_info}
         # every result after T1 depends on T2 coming from a node com.microsoft,
         # shape_inference cannot go beyond this point
         self.assertEqual(shaped_results, {"T1"})

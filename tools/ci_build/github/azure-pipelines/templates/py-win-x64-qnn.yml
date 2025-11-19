@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.25.0.240728
+  default: 2.39.0.250926
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -19,6 +19,11 @@ parameters:
   type: string
   default: ''
 
+- name: is1ES
+  displayName: 'Whether the pipeline is running in 1ES'
+  type: boolean
+  default: false
+
 jobs:
 - job: Win_py_x64_qnn_Wheels
   timeoutInMinutes: 210
@@ -28,16 +33,14 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
   strategy:
     matrix:
-      Python38_x64:
-        PythonVersion: '3.8'
-      Python39_x64:
-        PythonVersion: '3.9'
-      Python310_x64:
-        PythonVersion: '3.10'
       Python311_x64:
         PythonVersion: '3.11'
       Python312_x64:
         PythonVersion: '3.12'
+      Python313_x64:
+        PythonVersion: '3.13'
+      Python314_x64:
+        PythonVersion: '3.14'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -46,35 +49,12 @@ jobs:
         clean: true
         submodules: recursive
 
-      - template: telemetry-steps.yml
+      - template: setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: $(PythonVersion)
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: $(PythonVersion)
-          addToPath: true
-          architecture: 'x64'
-
-      - task: onebranch.pipeline.tsaoptions@1
-        displayName: 'OneBranch TSAOptions'
-        inputs:
-          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-          appendSourceBranchName: false
-
-      - template: download-deps.yml
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
+      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 
       - template: set-nightly-build-option-variable-step.yml
 
@@ -91,10 +71,11 @@ jobs:
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
+            --build_shared_lib
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --update
+            --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --update
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -132,34 +113,20 @@ jobs:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime_qnn_x64
+      - ${{ if eq(parameters.is1ES, true) }}:
+        - task: 1ES.PublishPipelineArtifact@1
+          displayName: 'Publish Artifact: ONNXRuntime python wheel'
+          inputs:
+            artifactName: onnxruntime_qnn_x64_$(PythonVersion)
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+      - ${{ if eq(parameters.is1ES, false) }}:
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Artifact: ONNXRuntime python wheel'
+          inputs:
+            artifactName: onnxruntime_qnn_x64_$(PythonVersion)
+            targetPath: '$(Build.ArtifactStagingDirectory)'
 
       - script: |
           7z x *.whl
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'unzip the package'
-
-      - task: CredScan@3
-        displayName: 'Run CredScan'
-        inputs:
-          debugMode: false
-        continueOnError: true
-
-      - task: BinSkim@4
-        displayName: 'Run BinSkim'
-        inputs:
-          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
-
-      - task: TSAUpload@2
-        displayName: 'TSA upload'
-        condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-        inputs:
-          GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'

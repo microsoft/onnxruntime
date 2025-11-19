@@ -44,9 +44,21 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   If);
 
 // opset-19 supports float8
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
+                                  kOnnxDomain,
+                                  19, 20,
+                                  kJsExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      // Support sequence/optional tensors when all JSEP infra
+                                      // (including tests runner) supports it
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  If);
+
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
-                        19,
+                        21,
                         kJsExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU

@@ -9,7 +9,6 @@ import logging
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Optional, Union
 
 import onnx
 
@@ -17,14 +16,16 @@ import onnxruntime
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 
-from .quant_utils import add_pre_process_metadata
+from .fusions import ReplaceUpsampleWithResize
+from .onnx_model import ONNXModel
+from .quant_utils import add_pre_process_metadata, save_and_reload_model_with_shape_infer
 
 logger = logging.getLogger(__name__)
 
 
 def quant_pre_process(
-    input_model: Optional[Union[str, Path, onnx.ModelProto]] = None,
-    output_model_path: Optional[Union[str, Path]] = None,
+    input_model: str | Path | onnx.ModelProto | None = None,
+    output_model_path: str | Path | None = None,
     skip_optimization: bool = False,
     skip_onnx_shape: bool = False,
     skip_symbolic_shape: bool = False,
@@ -34,7 +35,7 @@ def quant_pre_process(
     verbose: int = 0,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,
-    external_data_location: Optional[str] = None,
+    external_data_location: str | None = None,
     external_data_size_threshold: int = 1024,
     **deprecated_kwargs,
 ) -> None:
@@ -86,6 +87,21 @@ def quant_pre_process(
                 verbose,
             )
 
+        # Since Upsample is deprecated after opset v10, and the model's opset will
+        # be upgraded to at least v11 during quantization, we need to replace Upsample
+        # with Resize first to avoid generating an invalid model.
+        if model:
+            ai_onnx_domain = [opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+            if len(ai_onnx_domain) == 1:
+                opset_version = ai_onnx_domain[0].version
+                if opset_version < 10:
+                    ReplaceUpsampleWithResize(ONNXModel(model), opset_version).apply()
+                    model.opset_import.remove(ai_onnx_domain[0])
+                    opset_version = 11
+                    model.opset_import.extend([onnx.helper.make_opsetid("", opset_version)])
+                    model = onnx.version_converter.convert_version(model, opset_version)
+                    model = save_and_reload_model_with_shape_infer(model)
+
         if not skip_optimization:
             # Use ORT optimizers (native code) to optimize model
             if not skip_symbolic_shape:
@@ -120,6 +136,12 @@ def quant_pre_process(
                     external_names, external_values = extract_raw_data_from_model(input_model)
                     sess_option.add_external_initializers(list(external_names), list(external_values))
                     input_model = input_model.SerializeToString()
+                # the saved optimized model otherwise points to the original external data file name
+                # which is not available relative to the optimized model file
+                elif skip_symbolic_shape and save_as_external_data:
+                    sess_option.add_session_config_entry(
+                        "session.optimized_model_external_initializers_file_name", "optimized.onnx.data"
+                    )
 
                 sess = onnxruntime.InferenceSession(input_model, sess_option, providers=["CPUExecutionProvider"])
                 # Close the session to avoid the cleanup error on Windows for temp folders

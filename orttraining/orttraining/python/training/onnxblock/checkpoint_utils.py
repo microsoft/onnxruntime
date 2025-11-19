@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 import os
-from typing import List, Tuple, Union
 
 import onnx
 
@@ -11,8 +10,8 @@ from onnxruntime.capi._pybind_state import save_checkpoint as _save_checkpoint
 
 
 def save_checkpoint(
-    parameters: Tuple[List[onnx.TensorProto], List[onnx.TensorProto]],
-    path_to_checkpoint: Union[str, os.PathLike],
+    parameters: tuple[list[onnx.TensorProto], list[onnx.TensorProto]],
+    path_to_checkpoint: str | os.PathLike,
     nominal_checkpoint: bool = False,
 ) -> None:
     """Saves the parameters to the checkpoint directory path_to_checkpoint.
@@ -32,7 +31,7 @@ def save_checkpoint(
     _save_checkpoint(trainable_params, non_trainable_params, os.fspath(path_to_checkpoint), nominal_checkpoint)
 
 
-def load_checkpoint_to_model(path_to_checkpoint: Union[str, os.PathLike], model: onnx.ModelProto) -> None:
+def load_checkpoint_to_model(path_to_checkpoint: str | os.PathLike, model: onnx.ModelProto) -> None:
     """Loads the checkpoint to an onnx inference model.
 
     Args:

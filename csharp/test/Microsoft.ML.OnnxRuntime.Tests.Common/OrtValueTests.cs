@@ -153,6 +153,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Verify contained data
             Assert.Equal(originalData.ToArray(), tensor.GetTensorDataAsSpan<T>().ToArray());
+            var byteData = tensor.GetTensorMutableRawData();
+            Assert.Equal(byteData.Length, tensor.GetTensorSizeInBytes());
         }
 
         [Fact(DisplayName = "CreateTensorOverManagedBuffer")]
@@ -278,7 +280,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // Must return always 2 for map since we have two ort values
             Assert.Equal(2, map.GetValueCount());
 
-            map.ProcessMap((keys, values) => {
+            map.ProcessMap((keys, values) =>
+            {
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, keys.OnnxType);
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, values.OnnxType);
                 Assert.Equal(ml_data_1, keys.GetTensorDataAsSpan<long>().ToArray());

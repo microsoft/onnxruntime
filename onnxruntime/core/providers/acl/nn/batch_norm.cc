@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2020, NXP Semiconductor, Inc. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
@@ -80,7 +81,6 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
 
     auto layer = std::make_shared<arm_compute::NEBatchNormalizationLayer>();
 
-#ifdef ACL_2308
     arm_compute::TensorShape in_x_shape;
     const TensorShape& x_shape = X->Shape();
     const auto& dims_vec = x_shape.GetDims();
@@ -94,9 +94,6 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
     in_x_shape.set(2, onnxruntime::narrow<size_t>(dims_vec[1]));  // C
 
     tbatch_norm.in->allocator()->init(arm_compute::TensorInfo(in_x_shape, arm_compute::Format::F32));
-#else
-    tbatch_norm.in->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(X->Shape()), arm_compute::Format::F32));
-#endif
     tbatch_norm.out->allocator()->init(arm_compute::TensorInfo(tbatch_norm.in->info()->tensor_shape(), arm_compute::Format::F32));
 
     tbatch_norm.scale->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(S->Shape()), arm_compute::Format::F32));

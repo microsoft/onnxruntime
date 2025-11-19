@@ -27,7 +27,7 @@ export declare namespace Logger {
      */
     provider?: Provider;
     /**
-     * Specify the minimal logger serverity. 'warning' by default
+     * Specify the minimal logger severity. 'warning' by default
      */
     minimalSeverity?: Logger.Severity;
     /**
@@ -178,7 +178,7 @@ function createCategorizedLogger(category: string): Logger.CategorizedLogger {
   };
 }
 
-// NOTE: argument 'category' is put the last parameter beacause typescript
+// NOTE: argument 'category' is put the last parameter because typescript
 // doesn't allow optional argument put in front of required argument. This
 // order is different from a usual logging API.
 function logInternal(severity: Logger.Severity, content: string, _stack: number, category?: string) {
@@ -440,7 +440,7 @@ export class Profiler {
       this._timingEvents.length - this._flushPointer >= this._flushBatchSize ||
       currentTime - this._flushTime >= this._flushIntervalInMilliseconds
     ) {
-      // should flush when either batch size accumlated or interval elepsed
+      // should flush when either batch size accumulated or interval elepsed
 
       for (
         const previousPointer = this._flushPointer;

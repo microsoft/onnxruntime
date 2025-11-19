@@ -36,12 +36,16 @@ int Sequences::GetSequenceLength() const {
   return current_length_;
 }
 
+int Sequences::GetMaxLength() const {
+  return max_length_;
+}
+
 #ifdef DEBUG_GENERATION
 void Sequences::PrintSequences(const IConsoleDumper* dumper) const {
   for (int i = 0; i < batch_beam_size_; i++) {
     gsl::span<const int32_t> sequence = GetSequence(i);
-    dumper->Print("sequences", i, false);
-    dumper->Print(nullptr, sequence.data(), 1, current_length_);
+    auto name = ::onnxruntime::MakeString("sequences[", i, "]");
+    dumper->Print(name.c_str(), sequence.data(), 1, current_length_);
   }
 }
 #endif

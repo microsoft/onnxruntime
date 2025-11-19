@@ -642,9 +642,9 @@ def get_args(rank=0):
 
     # Check that only one (batch_size, sequence_length) combination is set for profiling
     if args.profile:
-        assert (
-            len(args.batch_sizes) == 1 and len(args.sequence_lengths) == 1
-        ), "Please provide only one (batch_size, sequence_length) combination for profiling"
+        assert len(args.batch_sizes) == 1 and len(args.sequence_lengths) == 1, (
+            "Please provide only one (batch_size, sequence_length) combination for profiling"
+        )
 
     return args
 

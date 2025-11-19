@@ -20,7 +20,7 @@
 #include <filesystem>
 
 #include "BetaDistribution.h"
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "onnxruntime_cxx_api.h"
 
 #include "testlog.h"

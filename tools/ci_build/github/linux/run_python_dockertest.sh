@@ -16,7 +16,7 @@ if [ $DEVICE = "GPU" ]; then
 fi
 
 mkdir -p $HOME/.onnx
-docker run --rm \
+docker run -e SYSTEM_COLLECTIONURI --rm \
     --volume /data/onnx:/data/onnx:ro \
     --volume $BUILD_SOURCESDIRECTORY:/onnxruntime_src \
     --volume $BUILD_BINARIESDIRECTORY:/build \

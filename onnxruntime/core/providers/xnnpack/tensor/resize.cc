@@ -29,9 +29,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     const auto& x_arg = inputs[0].node_arg;
 
     const auto* x_type = x_arg.TypeAsProto();
-    if (x_type == nullptr || (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-                              x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
-                              x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+    if (x_type == nullptr || !IsComputeTypeSupported(x_type->tensor_type().elem_type())) {
       break;
     }
 
@@ -66,9 +64,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     // check the scale for the second dim is 1 or the size of the second dim matches the input shape.
     // if not, it is not the C dim as a Resize will not change the number of channels.
-    InlinedVector<float> scale(4, 1.0F);
     if (scale_tensor) {
-      const Initializer scale_val(*scale_tensor, node_unit.ModelPath());
+      const Initializer scale_val(graph_viewer.GetGraph(), *scale_tensor, node_unit.ModelPath());
       const auto scales = scale_val.DataAsSpan<float>();
       if (scales[1] != 1.0F) {
         break;
@@ -93,7 +90,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
 
     if (size_tensor) {
-      const Initializer size_val(*size_tensor, node_unit.ModelPath());
+      const Initializer size_val(graph_viewer.GetGraph(), *size_tensor, node_unit.ModelPath());
       if (size_val.DataAsSpan<int64_t>()[1] != x_shape->dim(1).dim_value()) {
         break;
       }
@@ -181,6 +178,9 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       op_type_ = OpComputeType::op_compute_type_fp32;
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      op_type_ = OpComputeType::op_compute_type_fp16;
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       op_type_ = OpComputeType::op_compute_type_qu8;
       break;
@@ -189,7 +189,7 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
       break;
     default:
       auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-      ORT_THROW("unsupported op in Resize, we have FLOAT|UINT8|INT8, but get ", stype);
+      ORT_THROW("unsupported op in Resize, we have FLOAT|FLOAT16|UINT8|INT8, but get ", stype);
   }
 
   const auto* x_shape = input_defs[0]->Shape();
@@ -214,8 +214,6 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     }
   }
 
-  int64_t channels = x_shape->dim(3).dim_value();
-
   uint32_t flags = 0;
   ORT_ENFORCE(mode_ == UpsampleMode::LINEAR, "only support bilinear resize");
   if (coordinate_transform_mode_ == ResizeCoordinateTransformationMode::ALIGN_CORNERS) {
@@ -227,12 +225,16 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
 
   xnn_status xstatus = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
+  auto out_h = output_dims_[1];
+  auto out_w = output_dims_[2];
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_f32(channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc(xnn_datatype_fp32, out_h, out_w, flags, &p);
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    xstatus = xnn_create_resize_bilinear2d_nhwc(xnn_datatype_fp16, out_h, out_w, flags, &p);
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_u8(channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc(xnn_datatype_quint8, out_h, out_w, flags, &p);
   } else {
-    xstatus = xnn_create_resize_bilinear2d_nhwc_s8(channels, channels, channels, flags, &p);
+    xstatus = xnn_create_resize_bilinear2d_nhwc(xnn_datatype_qint8, out_h, out_w, flags, &p);
   }
 
   ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_resize_bilinear2d_nhwc_", OpTypeToString(op_type_), " failed. Status:",
@@ -248,26 +250,21 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
   auto N = X_shape[0];
   auto H = X_shape[1];
   auto W = X_shape[2];
+  auto C = X_shape[3];
   Tensor* output = ctx->Output(0, TensorShape(output_dims));
 
   pthreadpool_t threadpool = GetThreadPool();
 
   // setup allocator/automated dellocate for workspace
   size_t workspace_size = 0;
-  size_t workspace_alignment = 0;
   xnn_allocator* allocator = GetStoredAllocator().second;
   auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
   std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
 
-  auto reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_f32;
-  if (op_type_ == OpComputeType::op_compute_type_qu8) {
-    reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_u8;
-  } else if (op_type_ == OpComputeType::op_compute_type_qs8) {
-    reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_s8;
-  }
+  auto reshape_fn = xnn_reshape_resize_bilinear2d_nhwc;
 
-  auto status = reshape_fn(op0_.get(), N, H, W, output_dims[1], output_dims[2],
-                           &workspace_size, &workspace_alignment, threadpool);
+  auto status = reshape_fn(op0_.get(), N, H, W, C, C, C,
+                           &workspace_size, threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_resize_bilinear2d_nhwc_", OpTypeToString(op_type_),
                            " returned ", status);
@@ -276,14 +273,17 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
   workspace.reset(allocator->aligned_allocate(allocator->context, XNN_ALLOCATION_ALIGNMENT, workspace_size));
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_setup_resize_bilinear2d_nhwc_f32(op0_.get(), workspace.get(), input->Data<float>(),
-                                                  output->MutableData<float>());
+    status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<float>(),
+                                              output->MutableData<float>());
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<MLFloat16>(),
+                                              output->MutableData<MLFloat16>());
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
-    status = xnn_setup_resize_bilinear2d_nhwc_u8(op0_.get(), workspace.get(), input->Data<uint8_t>(),
-                                                 output->MutableData<uint8_t>());
+    status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<uint8_t>(),
+                                              output->MutableData<uint8_t>());
   } else {
-    status = xnn_setup_resize_bilinear2d_nhwc_s8(op0_.get(), workspace.get(), input->Data<int8_t>(),
-                                                 output->MutableData<int8_t>());
+    status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<int8_t>(),
+                                              output->MutableData<int8_t>());
   }
 
   if (status != xnn_status_success) {
@@ -326,22 +326,26 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, 17, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 18, 18, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                            DataTypeImpl::GetTensorType<uint8_t>(),
                                                                            DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);

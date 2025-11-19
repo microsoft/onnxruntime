@@ -105,9 +105,9 @@ def optimize_onnx(
     verbose=False,
 ):
     if find_transformers_source():
-        from optimizer import optimize_model
+        from optimizer import optimize_model  # noqa: PLC0415
     else:
-        from onnxruntime.transformers.optimizer import optimize_model
+        from onnxruntime.transformers.optimizer import optimize_model  # noqa: PLC0415
 
     onnx_model = optimize_model(
         input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level, verbose=verbose
@@ -115,9 +115,9 @@ def optimize_onnx(
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:
-        assert (
-            len(onnx_model.get_nodes_by_op_type(expected_op)) == 1
-        ), f"Expected {expected_op} node not found in the optimized model {optimized_onnx_path}"
+        assert len(onnx_model.get_nodes_by_op_type(expected_op)) == 1, (
+            f"Expected {expected_op} node not found in the optimized model {optimized_onnx_path}"
+        )
 
 
 def diff_outputs(torch_outputs, ort_outputs, index):
@@ -162,7 +162,7 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
 
 
 def create_ort_session(onnx_model_path, use_gpu=True, optimized=True, verbose=False):
-    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions  # noqa: PLC0415
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL

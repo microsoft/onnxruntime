@@ -2,14 +2,10 @@
 // Licensed under the MIT License.
 
 #include <cassert>
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/safeint.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -90,10 +86,10 @@ static bool FixStaticIndices(const std::vector<uint8_t>& onnx_bytes,
 }
 
 // Gets the size of input0 on the axis dimension.
-static Status GetInpu0AxisDimValue(const QnnModelWrapper& qnn_model_wrapper,
-                                   const NodeUnit& node_unit,
-                                   int64_t default_axis_value,
-                                   /*out*/ int64_t& axis_dim_value) {
+static Status GetInput0AxisDimValue(const QnnModelWrapper& qnn_model_wrapper,
+                                    const NodeUnit& node_unit,
+                                    int64_t default_axis_value,
+                                    /*out*/ int64_t& axis_dim_value) {
   const auto& input0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input0_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input0.node_arg, input0_shape),
@@ -115,8 +111,9 @@ static Status GetInpu0AxisDimValue(const QnnModelWrapper& qnn_model_wrapper,
 
 // Processes the indices input to Gather operators.
 //
-// In general, QNN only supports int32/uint32 indices. QNN EP has to add Cast for dynamic int64 indices or
-// convert static int64 indices to int32.
+// QNN only supports int32 / uint32 as indices tensor data types.
+// When indices tensor is an initializer, statically cast values int64 -> int32.
+// When dynamic input, add explicit QNN Cast node for int64 -> int32 conversion.
 //
 // The HTP backend only supports dynamic int64 indices if they are a graph input.
 static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
@@ -125,23 +122,10 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
                                   const logging::Logger& logger,
                                   std::vector<std::string>& input_names,
                                   bool do_op_validation) {
-  const auto& input_name = indices_input.node_arg.Name();
-  if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
-    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
-    input_names.push_back(input_name);
-    return Status::OK();
-  }
+  const auto& indices_tensor_name = indices_input.node_arg.Name();
 
   TensorInfo indices_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(indices_input, indices_info));
-
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  const bool is_graph_input = qnn_model_wrapper.IsGraphInput(input_name);
-  ORT_RETURN_IF(is_npu_backend &&
-                    (indices_info.qnn_data_type == QNN_DATATYPE_INT_64) &&
-                    !(indices_info.is_initializer || is_graph_input),
-                "HTP backend doesn't support a Gather* op with a dynamic int64 input activation ",
-                "unless it is a graph input.");
 
   std::vector<uint8_t> qnn_indices_bytes;
 
@@ -163,33 +147,44 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
     }
   }
 
-  Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(input_name);
   std::vector<uint32_t> cast_output_shape(indices_info.shape);
-  QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, indices_info.qnn_data_type, QnnQuantParamsWrapper(),
-                                       std::move(indices_info.shape), std::move(qnn_indices_bytes));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
-
-  // Insert QNN Cast op to convert dynamic indices from int64 to int32.
-  std::string indices_input_name(input_name);
-  if (indices_info.qnn_data_type == QNN_DATATYPE_INT_64) {
-    assert(!indices_info.is_initializer);
-
-    indices_input_name = input_name + "_ort_qnn_ep_cast";
-    QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32,
-                                 QnnQuantParamsWrapper(), std::move(cast_output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      "Cast",
-                                                      {input_name},
-                                                      {indices_input_name},
-                                                      {},
-                                                      do_op_validation),
-                      "Failed to add node.");
+  if (qnn_model_wrapper.IsQnnTensorWrapperExist(indices_tensor_name)) {
+    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << indices_tensor_name;
+  } else {
+    QnnTensorWrapper input_tensorwrapper(indices_tensor_name,
+                                         qnn_model_wrapper.GetTensorType(indices_tensor_name),
+                                         indices_info.qnn_data_type, QnnQuantParamsWrapper(),
+                                         std::move(indices_info.shape),
+                                         std::move(qnn_indices_bytes));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
 
-  input_names.push_back(indices_input_name);
-
+  // Insert QNN Cast op to convert dynamic indices from int64 to int32.
+  std::string indices_casted_name{indices_tensor_name};
+  if (indices_info.qnn_data_type == QNN_DATATYPE_INT_64) {
+    assert(!indices_info.is_initializer);
+    indices_casted_name += "_int32";
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(indices_casted_name)) {
+      LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << indices_casted_name;
+    } else {
+      QnnTensorWrapper indices_cast_tensor(indices_casted_name,
+                                           QNN_TENSOR_TYPE_NATIVE,
+                                           QNN_DATATYPE_INT_32,
+                                           QnnQuantParamsWrapper(),
+                                           std::move(cast_output_shape));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(indices_cast_tensor)),
+                        "Failed to add gather indices cast tensor.");
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(indices_tensor_name, QNN_OP_CAST),
+                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                        QNN_OP_CAST,
+                                                        {indices_tensor_name},
+                                                        {indices_casted_name},
+                                                        {},
+                                                        do_op_validation),
+                        "Failed to add gather indices cast node.");
+    }
+  }
+  input_names.push_back(indices_casted_name);
   return Status::OK();
 }
 
@@ -203,8 +198,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   int64_t input0_axis_dim = 0;
-  ORT_RETURN_IF_ERROR(GetInpu0AxisDimValue(qnn_model_wrapper, node_unit, /*default_axis*/ 0, input0_axis_dim));
-
+  ORT_RETURN_IF_ERROR(GetInput0AxisDimValue(qnn_model_wrapper, node_unit, /*default_axis_value=*/0, input0_axis_dim));
   return ProcessIndicesInput(qnn_model_wrapper, inputs[1], input0_axis_dim, logger, input_names, do_op_validation);
 }
 
@@ -279,13 +273,66 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
-  std::string gather_output_name = output_name + (reshape_required ? "_ort_qnn_ep_reshape" : "");
+
+  struct CastNodeInfo {
+    std::string node_name;
+    std::string input_name;
+    std::string output_name;
+  };
+  std::vector<CastNodeInfo> cast_node_info_vec;
+
+  // Get the output info for the gather output tensor
+  TensorInfo output_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(gather_output, output_info));
+
+  // Check if we need to add a cast node for int64
+  bool needs_int64_cast = false;
+  if (is_graph_output) {
+    for (const auto& input_name : input_names) {
+      if (input_name.find("_cast_int32") != std::string::npos) {
+        needs_int64_cast = true;
+        break;
+      }
+    }
+  }
+
+  // Store the cast input name to ensure consistency
+  std::string cast_input_name;
+
+  // If a cast to int64 is needed, add the cast node
+  if (needs_int64_cast) {
+    const std::string cast_node_name = utils::GetUniqueName(node_unit, "_cast_int64");
+    cast_input_name = utils::GetUniqueName(output_name, "_cast_int64");
+    const std::string cast_output_name = output_name;
+
+    // Create the cast input tensor wrapper
+    QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
+                                              QNN_TENSOR_TYPE_NATIVE,
+                                              output_info.qnn_data_type,
+                                              output_info.quant_param.Copy(),
+                                              std::move(qnn_output_shape));
+
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
+    cast_node_info_vec.emplace_back(CastNodeInfo{cast_node_name, cast_input_name, cast_output_name});
+    Qnn_TensorType_t cast_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    QnnTensorWrapper cast_output(output_name, cast_tensor_type, qnn_data_type, std::move(quantize_param),
+                                 std::move(target_output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
+  }
+
+  std::string gather_output_name = output_name;
+  if (reshape_required) {
+    gather_output_name = utils::GetUniqueName(output_name, "_reshape");
+  } else if (needs_int64_cast) {
+    // Use the previously stored cast_input_name for consistency
+    gather_output_name = cast_input_name;
+  }
+
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param.Copy(),
                                          std::move(qnn_output_shape));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(gather_output_wrapper)), "Failed to add tensor.");
-
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
@@ -300,15 +347,34 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     QnnTensorWrapper reshape_output(output_name, reshape_tensor_type, qnn_data_type, std::move(quantize_param),
                                     std::move(target_output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_output)), "Failed to add tensor.");
-    const static std::string qnn_node_type = "Reshape";
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_name,
+    std::string node_output_name = output_name;
+
+    if (needs_int64_cast) {
+      // If needs_int64 is true, use the previously stored cast_input_name for consistency
+      node_output_name = cast_input_name;
+    }
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_RESHAPE),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      qnn_node_type,
+                                                      QNN_OP_RESHAPE,
                                                       {gather_output_name},
-                                                      {output_name},
+                                                      {node_output_name},
                                                       {},
                                                       do_op_validation),
                       "Failed to add node.");
+  }
+
+  if (needs_int64_cast) {
+    for (const auto& cast_node_info : cast_node_info_vec) {
+      // Insert cast node.
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
+                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                        QNN_OP_CAST,
+                                                        {cast_node_info.input_name},
+                                                        {cast_node_info.output_name},
+                                                        {},
+                                                        do_op_validation),
+                        " Failed to add Cast node");
+    }
   }
 
   return Status::OK();

@@ -31,6 +31,7 @@ limitations under the License.
 #endif
 #include <unistd.h>
 
+#include <filesystem>
 #include <iostream>
 #include <optional>
 #include <thread>
@@ -62,15 +63,8 @@ namespace {
 
 constexpr int OneMillion = 1000000;
 
-class UnmapFileParam {
- public:
-  void* addr;
-  size_t len;
-};
-
-static void UnmapFile(void* param) noexcept {
-  std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
-  int ret = munmap(p->addr, p->len);
+static void UnmapFile(void* addr, size_t len) noexcept {
+  int ret = munmap(addr, len);
   if (ret != 0) {
     auto [err_no, err_msg] = GetErrnoInfo();
     LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
@@ -230,13 +224,11 @@ class PosixThread : public EnvThread {
         } else {
           errno = ret;
           auto [err_no, err_msg] = GetErrnoInfo();
-#if !defined(USE_MIGRAPHX)
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
                               << ", mask: " << *p->affinity
                               << ", error code: " << err_no << " error msg: " << err_msg
                               << ". Specify the number of threads explicitly so the affinity is not set.";
-#endif
         }
       }
 #endif
@@ -451,7 +443,9 @@ class PosixEnv : public Env {
 
     mapped_memory =
         MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
-                        OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+                        [mapped_base, mapped_length](void*) {
+                          UnmapFile(mapped_base, mapped_length);
+                        }};
 
     return Status::OK();
   }
@@ -469,6 +463,14 @@ class PosixEnv : public Env {
       return false;
     }
     return S_ISDIR(sb.st_mode);
+  }
+
+  bool FileExists(const std::string& path) const override {
+    struct stat sb;
+    if (stat(path.c_str(), &sb)) {
+      return false;
+    }
+    return S_ISREG(sb.st_mode);
   }
 
   common::Status CreateFolder(const std::string& path) const override {
@@ -551,6 +553,23 @@ class PosixEnv : public Env {
                             "Failed to unload library with error: " + std::string(error_str));
     }
     return common::Status::OK();
+  }
+
+  PathString GetRuntimePath() const override {
+    // Use dladdr() to look up the file that contains an address from this binary.
+    const void* const address_from_this_binary = reinterpret_cast<const void*>(Env::Default);
+
+    if (Dl_info dl_info{};
+        dladdr(address_from_this_binary, &dl_info) != 0 && dl_info.dli_fname != nullptr) {
+      LOGS_DEFAULT(VERBOSE) << "Getting runtime path as parent directory of binary: " << dl_info.dli_fname;
+
+      auto runtime_path = std::filesystem::path{dl_info.dli_fname};
+      runtime_path = std::filesystem::absolute(runtime_path);
+      runtime_path.remove_filename();
+      return runtime_path;
+    }
+
+    return PathString{};
   }
 
   common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {

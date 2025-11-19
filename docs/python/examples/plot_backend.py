@@ -14,6 +14,7 @@ to run predictions using this runtime.
 Let's use the API to compute the prediction
 of a simple logistic regression model.
 """
+
 import numpy as np
 from onnx import load
 

@@ -33,23 +33,52 @@ parameters:
 - name: pool_name
   displayName: Pool name
   type: string
-  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 - name: packageName
   displayName: Package Name
   type: string
   default: 'onnxruntime-android'
+- name: enable_code_sign
+  displayName: Use GPG to sign the jars
+  type: boolean
+
+- name: ReleaseVersionSuffix
+  displayName: Release Version Suffix
+  type: string
+  default: ''
+
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
+- name: QnnSDKVersion
+  displayName: QNN SDK Version
+  type: string
+  default: '2.39.0.250926'
+
+- name: is1ES
+  displayName: Is 1ES pipeline
+  type: boolean
+  default: false
 
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: ${{parameters.pool_name}}
+  pool:
+    name: ${{ parameters.pool_name }}
+    ${{ if or(contains(parameters.pool_name, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
+      os: linux
+    ${{ if contains(parameters.pool_name, 'win')}}:
+      os: windows
+    ${{ if contains(parameters.pool_name, 'mac')}}:
+      os: macOS
 
-  variables:
-    artifacts_directory: $(Build.BinariesDirectory)/.artifacts
-
+  templateContext:        
+    outputs:
+    - output: pipelineArtifact
+      targetPath: $(Build.BinariesDirectory)/.artifacts
+      artifactName: ${{parameters.artifactName}}
   steps:
   - checkout: self
     clean: true
@@ -60,20 +89,24 @@ jobs:
     inputs:
       script: |
         # Create a folder for artifacts
-        mkdir -p $(artifacts_directory)
+        mkdir -p $(Build.BinariesDirectory)/.artifacts
       workingDirectory: $(Build.BinariesDirectory)
 
-  #TODO: use a different docker file since this job doesn't need to rely on manylinux
   - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-      Context: tools/ci_build/github/linux/docker
+      Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
+      Repository: onnxruntimecpubuildcentos8x64_packaging
 
   - template: set-version-number-variables-step.yml
 
   - template: use-android-ndk.yml
+
+  - ${{ if contains(parameters.packageName, 'qnn') }}:
+    - template: jobs/init_linux_qnn_sdk_x64.yml
+      parameters:
+        QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 
   - task: CmdLine@2
     displayName: Build Android AAR Packages
@@ -85,24 +118,34 @@ jobs:
         cp ${{parameters.buildSettings}} $(Build.BinariesDirectory)/.build_settings/build_settings.json
         [ -f "${{parameters.includedOpsConfig}}" ] && \
           cp ${{parameters.includedOpsConfig}} $(Build.BinariesDirectory)/.build_settings/include_ops_and_types.config
-        docker run --rm \
+
+         # Mount qnn volume if building qnn android package
+        if [[ ${{ parameters.packageName }} == *qnn* ]]; then
+          QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
+          USE_QNN="1"
+        else
+          QNN_VOLUME=""
+          USE_QNN="0"
+        fi
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
           --volume $NDK_HOME:/ndk_home \
-          --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
+          --volume $(Build.BinariesDirectory)/.artifacts:/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
+          $QNN_VOLUME \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e BUILD_CONFIG=${{parameters.buildConfig}} \
           -e ORT_VERSION=$(OnnxRuntimeVersion) \
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
-          onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
+          -e RELEASE_VERSION_SUFFIX=${{parameters.ReleaseVersionSuffix}} \
+          onnxruntimecpubuildcentos8x64_packaging \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathtoPublish: '$(artifacts_directory)'
-      artifactName: '${{parameters.artifactName}}'
+  - template: jar-maven-signing-linux.yml
+    parameters:
+      JarFileDirectory: $(Build.BinariesDirectory)/.artifacts

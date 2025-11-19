@@ -243,14 +243,16 @@ export class WebGpuBackend {
       requiredFeatures,
     };
 
-    if (adapter.features.has('chromium-experimental-timestamp-query-inside-passes')) {
-      requiredFeatures.push('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName);
-    } else if (adapter.features.has('timestamp-query')) {
-      requiredFeatures.push('timestamp-query');
+    // Try requiring WebGPU features
+    const requireFeatureIfAvailable = (feature: GPUFeatureName) =>
+      adapter.features.has(feature) && requiredFeatures.push(feature) && true;
+    // Try chromium-experimental-timestamp-query-inside-passes and fallback to timestamp-query
+    if (!requireFeatureIfAvailable('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName)) {
+      requireFeatureIfAvailable('timestamp-query');
     }
-    if (adapter.features.has('shader-f16')) {
-      requiredFeatures.push('shader-f16');
-    }
+    requireFeatureIfAvailable('shader-f16');
+    // Try subgroups
+    requireFeatureIfAvailable('subgroups' as GPUFeatureName);
 
     this.device = await adapter.requestDevice(deviceDescriptor);
     this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
@@ -426,7 +428,7 @@ export class WebGpuBackend {
             console.log(
               `[profiling] kernel "${kernelId}|${kernelType}|${kernelName}|${programName}" ${inputShapes}${
                 outputShapes
-              }execution time: ${endTime - startTime} ns`,
+              }start time: ${startTime} ns, execution time: ${endTime - startTime} ns`,
             );
           }
           TRACE('GPU', `${programName}::${startTimeU64}::${endTimeU64}`);
@@ -785,15 +787,20 @@ export class WebGpuBackend {
       this.sessionExternalDataMapping.set(sessionId, sessionInputOutputMapping);
     }
 
+    // the buffer may be user created, or managed by GPU data manager.
+    // The GPU data manager will not manage these buffers. we register them as external buffers.
+    //
+    // The map `sessionInputOutputMapping` is used to store the data ID and buffer for each input/output. Once a
+    // specific input/output is registered, the data ID will not change.
     const previousBuffer = sessionInputOutputMapping.get(index);
-    const id = this.gpuDataManager.registerExternalBuffer(buffer, size, previousBuffer?.[1]);
+    const id = this.gpuDataManager.registerExternalBuffer(buffer, size, previousBuffer);
     sessionInputOutputMapping.set(index, [id, buffer]);
     return id;
   }
   unregisterBuffers(sessionId: number): void {
     const sessionInputOutputMapping = this.sessionExternalDataMapping.get(sessionId);
     if (sessionInputOutputMapping) {
-      sessionInputOutputMapping.forEach((bufferInfo) => this.gpuDataManager.unregisterExternalBuffer(bufferInfo[1]));
+      sessionInputOutputMapping.forEach((bufferInfo) => this.gpuDataManager.unregisterExternalBuffer(bufferInfo[0]));
       this.sessionExternalDataMapping.delete(sessionId);
     }
   }
@@ -895,6 +902,10 @@ export class WebGpuBackend {
     // flush the left commands before we change the status.
     this.flush();
     this.sessionStatus = 'default';
+  }
+
+  onCreateSession(): void {
+    this.gpuDataManager.onCreateSession();
   }
 
   onReleaseSession(sessionId: number): void {

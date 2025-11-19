@@ -200,11 +200,15 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_TYPED(name, ver, double)    \
   BINARY_OP_TYPED(name, ver, BFloat16)
 
-#define BINARY_OP_UZILHFD(name, ver)   \
-  BINARY_OP_TYPED(name, ver, uint32_t) \
-  BINARY_OP_TYPED(name, ver, uint64_t) \
-  BINARY_OP_TYPED(name, ver, int32_t)  \
-  BINARY_OP_TYPED(name, ver, int64_t)  \
+#define BINARY_OP_BWUZCSILHFD(name, ver) \
+  BINARY_OP_TYPED(name, ver, uint8_t)    \
+  BINARY_OP_TYPED(name, ver, uint16_t)   \
+  BINARY_OP_TYPED(name, ver, uint32_t)   \
+  BINARY_OP_TYPED(name, ver, uint64_t)   \
+  BINARY_OP_TYPED(name, ver, int8_t)     \
+  BINARY_OP_TYPED(name, ver, int16_t)    \
+  BINARY_OP_TYPED(name, ver, int32_t)    \
+  BINARY_OP_TYPED(name, ver, int64_t)    \
   BINARY_OP_HFD(name, ver)
 
 #define BINARY_OP_REGISTER_VERSIONED_OIL(name, startver, endver)                      \
@@ -279,10 +283,10 @@ BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Sub, 13, 13)
 BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Mul, 13, 13)
 BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Div, 13, 13)
 
-BINARY_OP_UZILHFD(Add, 14)
-BINARY_OP_UZILHFD(Sub, 14)
-BINARY_OP_UZILHFD(Mul, 14)
-BINARY_OP_UZILHFD(Div, 14)
+BINARY_OP_BWUZCSILHFD(Add, 14)
+BINARY_OP_BWUZCSILHFD(Sub, 14)
+BINARY_OP_BWUZCSILHFD(Mul, 14)
+BINARY_OP_BWUZCSILHFD(Div, 14)
 
 BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
@@ -310,7 +314,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     13, 14,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>())
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16, BFloat16>())
         .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
@@ -320,8 +324,8 @@ ONNX_OPERATOR_KERNEL_EX(
     15,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>())
-        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16, BFloat16>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16, BFloat16>()),
     Pow);
 
 namespace pow12_internal {
@@ -400,6 +404,20 @@ Status DispatchOnFirstArg(cudaStream_t stream, const BinaryElementwisePreparatio
           reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
           prepare.output_tensor->Shape().Size());
       break;
+    case on::TensorProto_DataType_BFLOAT16:
+      ImplT1_Pow<typename ToCudaType<T>::MappedType, typename ToCudaType<BFloat16>::MappedType>(
+          stream,
+          prepare.output_rank_or_simple_broadcast,
+          &prepare.lhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
+          &prepare.rhs_padded_strides,
+          reinterpret_cast<const typename ToCudaType<BFloat16>::MappedType*>(prepare.rhs_tensor->Data<BFloat16>()),
+          &prepare.fdm_output_strides,
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
                           DataTypeImpl::ToString(prepare.rhs_tensor->DataType()));
@@ -431,6 +449,9 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
       break;
     case on::TensorProto_DataType_FLOAT16:
       s = DispatchOnFirstArg<MLFloat16>(Stream(context), prepare);
+      break;
+    case on::TensorProto_DataType_BFLOAT16:
+      s = DispatchOnFirstArg<BFloat16>(Stream(context), prepare);
       break;
     default:
       s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",

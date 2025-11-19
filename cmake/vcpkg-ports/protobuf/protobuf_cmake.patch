@@ -1,0 +1,122 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 04cb3303a..9535ea2af 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -242,16 +242,14 @@ endif (protobuf_BUILD_SHARED_LIBS)
+ if (MSVC)
+   if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+     # Build with multiple processes
+-    add_definitions(/MP)
++    add_compile_options(/MP)
+   endif()
+   # Set source file and execution character sets to UTF-8
+-  add_definitions(/utf-8)
++  add_compile_options(/utf-8)
+   # MSVC warning suppressions
+-  add_definitions(
++  add_compile_options(
+     /wd4065 # switch statement contains 'default' but no 'case' labels
+-    /wd4244 # 'conversion' conversion from 'type1' to 'type2', possible loss of data
+     /wd4251 # 'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'
+-    /wd4267 # 'var' : conversion from 'size_t' to 'type', possible loss of data
+     /wd4305 # 'identifier' : truncation from 'type1' to 'type2'
+     /wd4307 # 'operator' : integral constant overflow
+     /wd4309 # 'conversion' : truncation of constant value
+@@ -259,26 +257,20 @@ if (MSVC)
+     /wd4355 # 'this' : used in base member initializer list
+     /wd4506 # no definition for inline function 'function'
+     /wd4800 # 'type' : forcing value to bool 'true' or 'false' (performance warning)
+-    /wd4996 # The compiler encountered a deprecated declaration.
++    ${onnxruntime_PROTOBUF_EXTRA_WARNING_DISABLEMENT}
+   )
+   # Allow big object
+-  add_definitions(/bigobj)
++  add_compile_options(/bigobj)
+   string(REPLACE "/" "\\" PROTOBUF_SOURCE_WIN32_PATH ${protobuf_SOURCE_DIR})
+   string(REPLACE "/" "\\" PROTOBUF_BINARY_WIN32_PATH ${protobuf_BINARY_DIR})
+   string(REPLACE "." ","  protobuf_RC_FILEVERSION "${protobuf_VERSION}")
+   configure_file(${protobuf_SOURCE_DIR}/cmake/extract_includes.bat.in extract_includes.bat)
+ 
+   # Suppress linker warnings about files with no symbols defined.
+-  set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4221")
++  string(APPEND CMAKE_STATIC_LINKER_FLAGS " /ignore:4221")
+ 
+-  if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+-    # Configure Resource Compiler
+-    enable_language(RC)
+-    # use English language (0x409) in resource compiler
+-    set(rc_flags "/l0x409")
+-    # fix rc.exe invocations because of usage of add_definitions()
+-    set(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> ${rc_flags} <DEFINES> /fo<OBJECT> <SOURCE>")
+-  endif()
++  # use English language (0x409) in resource compiler
++  string(APPEND CMAKE_RC_FLAGS " -l0x409")
+ 
+   # Generate the version.rc file used elsewhere.
+   configure_file(${protobuf_SOURCE_DIR}/cmake/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
+@@ -289,7 +281,6 @@ if (MSVC)
+ else (MSVC)
+   # No version.rc file.
+   set(protobuf_version_rc_file)
+-
+   # When building with "make", "lib" prefix will be added automatically by
+   # the build tool.
+   set(LIB_PREFIX)
+diff --git a/cmake/install.cmake b/cmake/install.cmake
+index 825cb25fc..4f453d6cd 100644
+--- a/cmake/install.cmake
++++ b/cmake/install.cmake
+@@ -32,7 +32,7 @@ if (protobuf_BUILD_PROTOC_BINARIES)
+   install(TARGETS protoc EXPORT protobuf-targets
+     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT protoc
+     BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT protoc)
+-  if (UNIX AND NOT APPLE)
++  if (UNIX AND NOT APPLE AND NOT protobuf_MSVC_STATIC_RUNTIME)
+     set_property(TARGET protoc
+       PROPERTY INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+   elseif (APPLE)
+diff --git a/src/google/protobuf/compiler/command_line_interface.cc b/src/google/protobuf/compiler/command_line_interface.cc
+index 5e9a2c418..8eaa6e035 100644
+--- a/src/google/protobuf/compiler/command_line_interface.cc
++++ b/src/google/protobuf/compiler/command_line_interface.cc
+@@ -261,12 +261,15 @@ void AddDefaultProtoPaths(
+         std::pair<std::string, std::string>("", path + "/include"));
+     return;
+   }
+-  // Check if the upper level directory has an "include" subdirectory.
++  // change "'$/bin' is next to 'include'" assumption to "'$/bin/tools' is next to 'include'"
++  for (int i = 0; i < 2; i++)
++  {
+   pos = path.find_last_of("/\\");
+   if (pos == std::string::npos || pos == 0) {
+     return;
+   }
+   path = path.substr(0, pos);
++  }
+   if (IsInstalledProtoPath(path + "/include")) {
+     paths->push_back(
+         std::pair<std::string, std::string>("", path + "/include"));
+diff --git a/src/google/protobuf/map.h b/src/google/protobuf/map.h
+index 008c19225..cbab108c2 100644
+--- a/src/google/protobuf/map.h
++++ b/src/google/protobuf/map.h
+@@ -52,7 +52,8 @@
+ #endif  // defined(__cpp_lib_string_view)
+ 
+ #if !defined(GOOGLE_PROTOBUF_NO_RDTSC) && defined(__APPLE__)
+-#include <mach/mach_time.h>
++// apply update from https://github.com/protocolbuffers/protobuf/pull/15662/
++#include <time.h>
+ #endif
+ 
+ #include <google/protobuf/stubs/common.h>
+@@ -1154,7 +1155,8 @@ class Map {
+ #if defined(__APPLE__)
+       // Use a commpage-based fast time function on Apple environments (MacOS,
+       // iOS, tvOS, watchOS, etc).
+-      s += mach_absolute_time();
++      // apply update from https://github.com/protocolbuffers/protobuf/pull/15662/
++      s += clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+ #elif defined(__x86_64__) && defined(__GNUC__)
+       uint32_t hi, lo;
+       asm volatile("rdtsc" : "=a"(lo), "=d"(hi));

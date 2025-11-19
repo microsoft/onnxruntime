@@ -9,21 +9,28 @@
 using namespace onnxruntime;
 
 namespace onnxruntime {
+
 struct CoreMLProviderFactory : IExecutionProviderFactory {
-  CoreMLProviderFactory(uint32_t coreml_flags)
-      : coreml_flags_(coreml_flags) {}
+  CoreMLProviderFactory(const CoreMLOptions& options)
+      : options_(options) {}
   ~CoreMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-  uint32_t coreml_flags_;
+  CoreMLOptions options_;
 };
 
 std::unique_ptr<IExecutionProvider> CoreMLProviderFactory::CreateProvider() {
-  return std::make_unique<CoreMLExecutionProvider>(coreml_flags_);
+  return std::make_unique<CoreMLExecutionProvider>(options_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CoreMLProviderFactoryCreator::Create(uint32_t coreml_flags) {
-  return std::make_shared<onnxruntime::CoreMLProviderFactory>(coreml_flags);
+  CoreMLOptions coreml_options(coreml_flags);
+  return std::make_shared<onnxruntime::CoreMLProviderFactory>(coreml_options);
+}
+
+std::shared_ptr<IExecutionProviderFactory> CoreMLProviderFactoryCreator::Create(const ProviderOptions& options) {
+  CoreMLOptions coreml_options(options);
+  return std::make_shared<onnxruntime::CoreMLProviderFactory>(coreml_options);
 }
 }  // namespace onnxruntime
 

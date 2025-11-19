@@ -110,7 +110,10 @@ Return Value:
         q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_2));
         q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_0));
 
-        MlasStoreFloat32x4(Output, MlasAddFloat32x4(MlasDivideFloat32x4(p, q), MlasBroadcastFloat32x4(0.5f)));
+        MlasStoreFloat32x4(Output, MlasClampFloat32x4(
+            MlasAddFloat32x4(MlasDivideFloat32x4(p, q), MlasBroadcastFloat32x4(0.5f)),
+            0.0f,
+            1.0f));
 
         Input += 4;
         Output += 4;
@@ -145,7 +148,7 @@ Return Value:
         q = q * ValueSquared + MlasLogisticConstants.beta_2;
         q = q * ValueSquared + MlasLogisticConstants.beta_0;
 
-        *Output++ = (p / q) + 0.5f;
+        *Output++ = std::clamp((p / q) + 0.5f, 0.0f, 1.0f);
 
         N -= 1;
     }
@@ -178,7 +181,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().LogisticKernelRoutine(Input, Output, N);
 #else
     MlasLogisticKernel(Input, Output, N);

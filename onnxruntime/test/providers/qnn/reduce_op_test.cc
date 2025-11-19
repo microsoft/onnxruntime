@@ -6,8 +6,8 @@
 #include <string>
 #include "core/graph/graph.h"
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -82,19 +82,12 @@ static void RunReduceTest(const std::string& op_type,
                           float fp32_abs_err = 1e-5f,
                           bool enable_fp16 = false) {
   ProviderOptions provider_options;
+  provider_options["offload_graph_io_quantization"] = "0";
   if (enable_fp16) {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnHtp.dll";
-#else
-    provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+    provider_options["backend_type"] = "htp";
     provider_options["enable_htp_fp16_precision"] = "1";
   } else {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnCpu.dll";
-#else
-    provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+    provider_options["backend_type"] = "cpu";
   }
 
   RunQnnModelTest(BuildReduceOpTestCase<DataType>(op_type,
@@ -120,7 +113,7 @@ static void RunReduceTest(const std::string& op_type,
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, ReduceSumOpset13_Int32) {
   RunReduceTest<int32_t>("ReduceSum",
-                         TestInputDef<int32_t>({2, 2}, false, -10.0f, 10.0f),
+                         TestInputDef<int32_t>({2, 2}, false, -10, 10),
                          std::vector<int64_t>{0, 1},
                          true,  // keepdims
                          13,
@@ -134,7 +127,7 @@ TEST_F(QnnCPUBackendTests, ReduceSumOpset13_Int32) {
 // - Uses opset 11, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, ReduceSumOpset11_Int32) {
   RunReduceTest<int32_t>("ReduceSum",
-                         TestInputDef<int32_t>({2, 2}, false, -10.0f, 10.0f),
+                         TestInputDef<int32_t>({2, 2}, false, -10, 10),
                          std::vector<int64_t>{0, 1},
                          true,  // keepdims
                          11,
@@ -309,13 +302,35 @@ TEST_F(QnnCPUBackendTests, ReduceMeanOpset13) {
                        ExpectedEPNodeAssignment::All);
 }
 
+//
+// ReduceL2
+//
+TEST_F(QnnCPUBackendTests, ReduceL2Opset18) {
+  RunReduceTest<float>("ReduceL2",
+                       TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                       std::vector<int64_t>{0, 1},
+                       true,  // keepdims
+                       18,
+                       ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, ReduceL2Opset13) {
+  RunReduceTest<float>("ReduceL2",
+                       TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                       std::vector<int64_t>{0, 1},
+                       true,  // keepdims
+                       13,
+                       ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Test creates a graph with a ReduceSum node, and checks that all nodes are supported by the QNN EP
 // HTP backend with FP16 precision, and that the inference results match the CPU EP results.
 //
 // Failed QNN Opvalidation because of 5D input. It runs OK if bypass the op validation
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumOpset11_5D_FP16) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, ReduceSumOpset11_5D_FP16) {
   float fp32_abs_err = 3e-2f;
   bool enable_fp16 = true;
   RunReduceTest<float>("ReduceSum",
@@ -396,11 +411,8 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                int opset,
                                ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   constexpr bool noop_with_empty_axes = false;
   const bool axes_as_input = ReduceOpHasAxesInput(op_type, opset);  // Later opsets have "axes" as an input.
@@ -418,12 +430,23 @@ static void RunReduceOpQDQTest(const std::string& op_type,
 // ReduceSum
 //
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=2.785210132598877, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -2.785210132598877
+// qdq@QNN_EP val: -2.6541414260864258 (err: 0.13106870651245117, err/output_range: 4.7058820724487305%)
+// qdq@CPU_EP val: -2.7415206432342529 (err: 0.043689489364624023, err/output_range: 1.5686246156692505%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 3.1372575759887695%
 // Test creates a Q -> DQ -> ReduceSum -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset13) {
+#else
 TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13) {
+#endif
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
                               TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
                               {0, 1},  // axes
@@ -442,12 +465,23 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13_LastAxis) {
                               13,    // opset
                               ExpectedEPNodeAssignment::All);
 }
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=2.785210132598877, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -2.785210132598877
+// qdq@QNN_EP val: -2.6541414260864258 (err: 0.13106870651245117, err/output_range: 4.7058820724487305%)
+// qdq@CPU_EP val: -2.7415206432342529 (err: 0.043689489364624023, err/output_range: 1.5686246156692505%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 3.1372575759887695%
 // Test creates a Q -> DQ -> ReduceSum -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
 // - Uses opset 11, which has "axes" as an attribute.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset11) {
+#else
 TEST_F(QnnHTPBackendTests, ReduceSumU8Opset11) {
+#endif
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
                               TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
                               {0, 1},  // axes
@@ -616,12 +650,23 @@ TEST_F(QnnHTPBackendTests, ReduceMinS8Opset18) {
 // ReduceMean
 //
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=0.69630253314971924, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -0.69630253314971924
+// qdq@QNN_EP val: -0.66353535652160645 (err: 0.032767176628112793, err/output_range: 4.7058820724487305%)
+// qdq@CPU_EP val: -0.68538016080856323 (err: 0.010922372341156006, err/output_range: 1.5686246156692505%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 3.1372575759887695%
 // Test creates a Q -> DQ -> ReduceMean -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_ReduceMeanU8Opset18) {
+#else
 TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18) {
+#endif
   RunReduceOpQDQTest<uint8_t>("ReduceMean",
                               TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
                               {0, 1},  // axes
@@ -641,12 +686,23 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18_LastAxis) {
                               ExpectedEPNodeAssignment::All);
 }
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=0.69630253314971924, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -0.69630253314971924
+// qdq@QNN_EP val: -0.66353535652160645 (err: 0.032767176628112793, err/output_range: 4.7058820724487305%)
+// qdq@CPU_EP val: -0.68538016080856323 (err: 0.010922372341156006, err/output_range: 1.5686246156692505%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 3.1372575759887695%
 // Test creates a Q -> DQ -> ReduceMean -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an attribute.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_ReduceMeanU8Opset13) {
+#else
 TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset13) {
+#endif
   RunReduceOpQDQTest<uint8_t>("ReduceMean",
                               TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
                               {0, 1},  // axes

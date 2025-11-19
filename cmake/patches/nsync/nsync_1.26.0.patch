@@ -1,0 +1,14 @@
+diff --git a/public/nsync_atomic.h b/public/nsync_atomic.h
+index aebe4f7..466a262 100644
+--- a/public/nsync_atomic.h
++++ b/public/nsync_atomic.h
+@@ -45,7 +45,8 @@ NSYNC_CPP_END_
+ NSYNC_CPP_START_
+ typedef std::atomic<uint32_t> nsync_atomic_uint32_;
+ NSYNC_CPP_END_
+-#define NSYNC_ATOMIC_UINT32_INIT_ ATOMIC_VAR_INIT (0)
++// Replace deprecated ATOMIC_VAR_INIT with std::atomic<uint32_t> brace initialization
++#define NSYNC_ATOMIC_UINT32_INIT_ { 0 }
+ #define NSYNC_ATOMIC_UINT32_LOAD_(p) (std::atomic_load (p))
+ #define NSYNC_ATOMIC_UINT32_STORE_(p,v) (std::atomic_store ((p), (uint32_t) (v)))
+ #define NSYNC_ATOMIC_UINT32_PTR_(p) (p)

@@ -19,7 +19,7 @@ Abstract:
 #include <cassert>
 #include <utility>
 
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 #include "sqnbitgemm_kernel_avx_common_int8.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen16.h"
@@ -28,7 +28,7 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
 
 //
-// CompFp32 kernel implementation.
+// SQNBIT_CompFp32 kernel implementation.
 //
 
 #include "sqnbitgemm_kernel_avx_common_fp32.h"
@@ -151,7 +151,7 @@ SQ4BitGemmM1Kernel_CompFp32_avx512(
 }
 
 //
-// CompInt8 kernel implementation.
+// SQNBIT_CompInt8 kernel implementation.
 //
 
 MLAS_FORCEINLINE
@@ -216,6 +216,100 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
         );
     } else {
         MlasQ4Int8GemmKernelBlkLen128Avx512<false>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    }
+
+    float* c_blk = C;
+    const float* b_blk_sum = QuantBBlkSum;
+
+    size_t RowsRemaining = CountM;
+    const float* a_blksum_row = ABlockSum;
+    while (RowsRemaining > 0) {
+        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
+        );
+
+        c_blk += ldc * RowsHandled;
+        a_blksum_row += BlockCountK * RowsHandled;
+        RowsRemaining -= RowsHandled;
+    }
+    return CountM;
+}
+
+MLAS_FORCEINLINE
+size_t
+SQ8BitGemmKernel_BlkSum_CompInt8_avx512(
+    const size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* /*QuantBZeroPoint*/,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t /*CountK*/,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum,
+    const float* /*QuantBBlkSum2*/
+)
+{
+    if (BlkLen == 16) {
+        MlasQ8Int8GemmKernelBlkLen16Avx512<false>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else if (BlkLen == 32) {
+        MlasQ8Int8GemmKernelBlkLen32Avx512<false>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else if (BlkLen == 64) {
+        MlasQ8Int8GemmKernelBlkLen64Avx512<false>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else {
+        MlasQ8Int8GemmKernelBlkLen128Avx512<false>(
             BlkLen,
             QuantA,
             QuantAScale,
@@ -332,12 +426,12 @@ SQ4BitGemmPackQuantBDataAndBlkSum512(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
-    bool has_zp_input,
+    bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
-    PackedQuantBDataStruct& packed_quant_b,
+    PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -346,26 +440,56 @@ SQ4BitGemmPackQuantBDataAndBlkSum512(
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
     size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
-    if (ComputeType == CompInt8) {
+    if (ComputeType == SQNBIT_CompInt8) {
         SubBlkLen = 128;
     }
-    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, packed_quant_b, ThreadPool);
+    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin,
+        HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
 }
 
-const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
-    MLAS_SQNBIT_GEMM_DISPATCH d;
+static void
+SQ8BitGemmPackQuantBDataAndBlkSum512(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    const float* QuantBScaleBegin,
+    bool HasZeroPoint,
+    const std::byte* QuantBZPBegin,
+    PackedQuantBDataStruct<float, 8>& PackedQuantB,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
-    d.SQ4BitGemmPackQuantBDataSize = SQ4BitGemmPackQuantBDataSize;
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
+    if (ComputeType == SQNBIT_CompInt8) {
+        SubBlkLen = 128;
+    }
+    Q8PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin,
+        HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
+}
+
+const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
+    MLAS_QNBIT_GEMM_DISPATCH d;
+
+    d.Q4BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<4>;
+    d.Q8BitGemmPackQuantBDataSize = QNBitGemmPackQuantBDataSize<8>;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
     d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512;
+    d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum512;
 
-    d.SQ4BitGemmPerGemmWorkspaceSize = SQ4BitGemmPerGemmWorkspaceSize;
-    d.SQ4BitGemmPerGemmWorkspaceAlignment = SQ4BitGemmPerGemmWorkspaceAlignment;
+    d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
+    d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx512;
-    d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
+    d.SQ4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
     d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx512;
+    d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
 
     return d;

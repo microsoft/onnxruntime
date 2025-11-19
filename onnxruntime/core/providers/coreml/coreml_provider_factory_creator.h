@@ -5,10 +5,12 @@
 
 #include <memory>
 
+#include "core/framework/provider_options.h"
 #include "core/providers/providers.h"
 
 namespace onnxruntime {
 struct CoreMLProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(uint32_t coreml_flags);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& options);
 };
 }  // namespace onnxruntime

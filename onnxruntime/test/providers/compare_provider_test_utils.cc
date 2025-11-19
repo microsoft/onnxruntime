@@ -36,6 +36,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultRocmExecutionProvider();
   else if (provider_type == onnxruntime::kDmlExecutionProvider)
     execution_provider = DefaultDmlExecutionProvider();
+  else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+    execution_provider = DefaultWebGpuExecutionProvider();
   // skip if execution provider is disabled
   if (execution_provider == nullptr) {
     return nullptr;

@@ -8,6 +8,7 @@
 #include "core/providers/rocm/tunable/gemm.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -32,7 +33,7 @@ struct GemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     return MakeString("M", m, "_N", n, "_K", k, "_B", batch);
   }
 
-  rocblas_handle handle;
+  hipblasHandle_t handle;
   const AttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 
@@ -43,7 +44,7 @@ struct GemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
 
   int3 bias_strides;
 
-  const T* ones; // used for broadcasting bias if the underlying algorithm does not support strides
+  const T* ones;  // used for broadcasting bias if the underlying algorithm does not support strides
   T* workspace_buffer;
 };
 

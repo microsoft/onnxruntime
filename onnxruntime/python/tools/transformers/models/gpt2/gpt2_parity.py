@@ -125,7 +125,7 @@ class ParityTask:
 
 def load_results_from_csv(csv_path):
     rows = []
-    import csv
+    import csv  # noqa: PLC0415
 
     with open(csv_path, newline="") as csvfile:
         reader = csv.DictReader(csvfile)
@@ -366,7 +366,7 @@ def run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops):
 
     # Only weights in FP16
     task.run(
-        fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in all_ops] + ["--force_fp16_initializers"],
+        fp16_baseline + fp32_io + ["--op_block_list"] + list(all_ops) + ["--force_fp16_initializers"],
         "FP32 except weights in FP16",
     )
 

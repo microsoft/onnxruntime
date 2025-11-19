@@ -18,19 +18,20 @@
             "--build_apple_framework",
             "--use_coreml",
             "--skip_tests",
+            "--no_kleidiai",
             "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
         ],
         "iphoneos": [
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
-            "--apple_deploy_target=13.0"
+            "--apple_deploy_target=15.1"
         ],
         "iphonesimulator": [
             "--ios",
             "--use_xcode",
             "--use_xnnpack",
-            "--apple_deploy_target=13.0"
+            "--apple_deploy_target=15.1"
         ],
         "macabi":[
             "--macos=Catalyst",

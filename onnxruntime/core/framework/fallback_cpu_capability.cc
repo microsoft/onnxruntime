@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/common/inlined_containers.h"
 
@@ -41,7 +43,8 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger) {
   // automatic conversion from const std::vector&
   const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
   InlinedVector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
@@ -83,7 +86,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
               candidates.push(consumer_node->Index());
-              LOGS_DEFAULT(INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
+              LOGS(logger, INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
             }
           }
           return Status::OK();
@@ -127,13 +130,15 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
 
-      // skip placing on CPU if the data typs is float16 or bfloat16 or float8e4m3fn, float8e4m3fnuz, floate5m2, floate5m2fnuz
+      // skip placing on CPU if the data typs is float16 or bfloat16 or
+      // float8e4m3fn, float8e4m3fnuz, floate5m2, floate5m2fnuz or float4e2m1
       if (input->Type() == DataTypeUtils::ToType("float16") ||
           input->Type() == DataTypeUtils::ToType("bfloat16") ||
           input->Type() == DataTypeUtils::ToType("float8e4m3fn") ||
           input->Type() == DataTypeUtils::ToType("float8e4m3fnuz") ||
           input->Type() == DataTypeUtils::ToType("float8e5m2") ||
-          input->Type() == DataTypeUtils::ToType("float8e5m2fnuz")) {
+          input->Type() == DataTypeUtils::ToType("float8e5m2fnuz") ||
+          input->Type() == DataTypeUtils::ToType("float4e2m1")) {
         place_in_cpu = false;
         break;
       }
@@ -159,9 +164,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
     if (place_in_cpu) {
       cpu_nodes.insert(cur);
-      LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
-                         << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
-                         << " capable of executing this node";
+      LOGS(logger, INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
+                         << " because the CPU execution path is deemed faster than overhead involved with execution "
+                            "on other EPs capable of executing this node";
       for (auto* output : node->OutputDefs()) {
         cpu_output_args.insert(output);
       }
@@ -175,3 +180,5 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -65,14 +65,14 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   test.AddInput<TIndex>("indices", indices_dims, indices_data);
   test.AddInput<T>("updates", indices_dims, updates_data);
   test.AddOutput<T>("y", input_dims, output_data);
-  // OpenVINO doesn't support negative indices value.
+  // OpenVINO and QNN doesn't support negative indices value.
   // Disable TensorRT due to missing int8 calibrator.
   if (std::is_same<T, int8_t>::value) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   } else if (std::is_same<T, MLFloat16>::value) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
   } else {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
   }
 
   onnxruntime::test::OpTester test1("ScatterElements", 11);
@@ -82,11 +82,11 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   test1.AddInput<T>("updates", indices_dims, updates_data);
   test1.AddOutput<T>("y", input_dims, output_data);
   if (std::is_same<T, int8_t>::value) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
   } else if (std::is_same<T, MLFloat16>::value) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
   } else {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
   }
 }
 
@@ -268,7 +268,7 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(Scatter, InvalidIndex) {
@@ -344,7 +344,7 @@ TEST(ScatterElements, AddReductionAxis1) {
   test.AddInput<float>("updates", {2, 4}, {2.f, 5.f, 3.f, 6.f, 7.f, 9.f, 8.f, 10.f});
   test.AddOutput<float>("y", {2, 3}, {9.f, 4.f + (2.f + 5.f + 3.f + 6.f), 1.f, 7.f, 3.f + (7.f + 9.f + 8.f + 10.f), 6.f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ScatterElements, MulReduction) {
@@ -371,7 +371,7 @@ TEST(ScatterElements, MulReductionAxis1) {
   test.AddInput<float>("updates", {2, 4}, {2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f});
   test.AddOutput<float>("y", {2, 3}, {9.f, 4.f * (2.f * 3.f * 4.f * 5.f), 1.f, 7.f, 3.f * (6.f * 7.f * 8.f * 9.f), 6.f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ScatterElements, MaxReduction_MLFloat16) {

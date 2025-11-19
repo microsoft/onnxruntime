@@ -63,7 +63,6 @@ void GatherImpl(
     size_t element_size,
     void* output_data,
     const size_t N) {
-
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
   switch (element_size) {

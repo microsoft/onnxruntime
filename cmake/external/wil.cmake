@@ -3,10 +3,11 @@
 set(WIL_BUILD_PACKAGING OFF CACHE BOOL "" FORCE)
 set(WIL_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
   microsoft_wil
   URL ${DEP_URL_microsoft_wil}
   URL_HASH SHA1=${DEP_SHA1_microsoft_wil}
+  EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES wil
 )
 

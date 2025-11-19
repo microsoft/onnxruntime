@@ -4,6 +4,8 @@
 import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
 import { OnnxModelOptions } from './onnx-model.js';
 import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
+import type { Tensor } from './tensor.js';
+import { TryGetGlobalType } from './type-helper.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -79,7 +81,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'all';
+    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'layout' | 'all';
 
     /**
      * Whether enable CPU memory arena.
@@ -243,7 +245,37 @@ export declare namespace InferenceSession {
   }
   export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgpu';
+
+    /**
+     * Specify the preferred layout when running layout sensitive operators.
+     *
+     * @default 'NCHW'
+     */
     preferredLayout?: 'NCHW' | 'NHWC';
+
+    /**
+     * Specify a list of node names that should be executed on CPU even when WebGPU EP is used.
+     */
+    forceCpuNodeNames?: readonly string[];
+
+    /**
+     * Specify the validation mode for WebGPU execution provider.
+     * - 'disabled': Disable all validation.
+     * When used in Node.js, disable validation may cause process crash if WebGPU errors occur. Be cautious when using
+     * this mode.
+     * When used in web, this mode is equivalent to 'wgpuOnly'.
+     * - 'wgpuOnly': Perform WebGPU internal validation only.
+     * - 'basic': Perform basic validation including WebGPU internal validation. This is the default mode.
+     * - 'full': Perform full validation. This mode may have performance impact. Use it for debugging purpose.
+     *
+     * @default 'basic'
+     */
+    validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
+
+    /**
+     * Specify an optional WebGPU device to be used by the WebGPU execution provider.
+     */
+    device?: TryGetGlobalType<'GPUDevice'>;
   }
 
   // #region WebNN options
@@ -282,7 +314,7 @@ export declare namespace InferenceSession {
     extends WebNNExecutionProviderName,
       Omit<WebNNContextOptions, 'deviceType'>,
       Required<Pick<WebNNContextOptions, 'deviceType'>> {
-    context: unknown /* MLContext */;
+    context: TryGetGlobalType<'MLContext'>;
   }
 
   /**
@@ -291,8 +323,8 @@ export declare namespace InferenceSession {
    * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext-gpudevice
    */
   export interface WebNNOptionsWebGpu extends WebNNExecutionProviderName {
-    context: unknown /* MLContext */;
-    gpuDevice: unknown /* GPUDevice */;
+    context: TryGetGlobalType<'MLContext'>;
+    gpuDevice: TryGetGlobalType<'GPUDevice'>;
   }
 
   /**
@@ -307,7 +339,24 @@ export declare namespace InferenceSession {
 
   export interface QnnExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'qnn';
-    // TODO add flags
+    /**
+     * Specify the QNN backend type. E.g., 'cpu' or 'htp'.
+     * Mutually exclusive with `backendPath`.
+     *
+     * @default 'htp'
+     */
+    backendType?: string;
+    /**
+     * Specify a path to the QNN backend library.
+     * Mutually exclusive with `backendType`.
+     */
+    backendPath?: string;
+    /**
+     * Specify whether to enable HTP FP16 precision.
+     *
+     * @default true
+     */
+    enableFp16Precision?: boolean;
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'coreml';
@@ -320,6 +369,7 @@ export declare namespace InferenceSession {
      * COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004
      * COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008
      * COREML_FLAG_CREATE_MLPROGRAM = 0x010
+     * COREML_FLAG_USE_CPU_AND_GPU = 0x020
      * ```
      *
      * See include/onnxruntime/core/providers/coreml/coreml_provider_factory.h for more details.
@@ -333,6 +383,7 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime (react-native).
      */
     useCPUOnly?: boolean;
+    useCPUAndGPU?: boolean;
     /**
      * Specify whether to enable CoreML EP on subgraph.
      *
@@ -416,10 +467,52 @@ export declare namespace InferenceSession {
 
   // #region value metadata
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-interface
-  interface ValueMetadata {
-    // TBD
+  /**
+   * The common part of the value metadata type for both tensor and non-tensor values.
+   */
+  export interface ValueMetadataBase {
+    /**
+     * The name of the specified input or output.
+     */
+    readonly name: string;
   }
+
+  /**
+   * Represents the metadata of a non-tensor value.
+   */
+  export interface NonTensorValueMetadata extends ValueMetadataBase {
+    /**
+     * Get a value indicating whether the value is a tensor.
+     */
+    readonly isTensor: false;
+  }
+
+  /**
+   * Represents the metadata of a tensor value.
+   */
+  export interface TensorValueMetadata extends ValueMetadataBase {
+    /**
+     * Get a value indicating whether the value is a tensor.
+     */
+    readonly isTensor: true;
+    /**
+     * Get the data type of the tensor.
+     */
+    readonly type: Tensor.Type;
+    /**
+     * Get the shape of the tensor.
+     *
+     * If the shape is not defined, the value will an empty array. Otherwise, it will be an array representing the shape
+     * of the tensor. Each element in the array can be a number or a string. If the element is a number, it represents
+     * the corresponding dimension size. If the element is a string, it represents a symbolic dimension.
+     */
+    readonly shape: ReadonlyArray<number | string>;
+  }
+
+  /**
+   * Represents the metadata of a value.
+   */
+  export type ValueMetadata = NonTensorValueMetadata | TensorValueMetadata;
 
   // #endregion
 }
@@ -491,15 +584,15 @@ export interface InferenceSession {
    */
   readonly outputNames: readonly string[];
 
-  // /**
-  //  * Get input metadata of the loaded model.
-  //  */
-  // readonly inputMetadata: ReadonlyArray<Readonly<InferenceSession.ValueMetadata>>;
+  /**
+   * Get input metadata of the loaded model.
+   */
+  readonly inputMetadata: readonly InferenceSession.ValueMetadata[];
 
-  // /**
-  //  * Get output metadata of the loaded model.
-  //  */
-  // readonly outputMetadata: ReadonlyArray<Readonly<InferenceSession.ValueMetadata>>;
+  /**
+   * Get output metadata of the loaded model.
+   */
+  readonly outputMetadata: readonly InferenceSession.ValueMetadata[];
 
   // #endregion
 }

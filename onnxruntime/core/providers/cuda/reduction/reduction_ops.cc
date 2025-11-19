@@ -16,17 +16,17 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, end)                                \
+#define REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, begin, end)                         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
-      1, end,                                                                              \
+      begin, end,                                                                          \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-#define REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, version)                                                                        \
+#define REGISTER_KERNEL_VERSIONED_SINCE_TYPED(name, T, version)                                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                  \
       name,                                                                                                                       \
       kOnnxDomain,                                                                                                                \
@@ -37,8 +37,13 @@ namespace cuda {
       name<T>);
 
 #define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur) \
-  REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(name, T, last)                      \
-  REGISTER_KERNEL_TYPED_AXES_INPUT(name, T, cur)
+  REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, 1, last)                   \
+  REGISTER_KERNEL_VERSIONED_SINCE_TYPED(name, T, cur)
+
+#define REGISTER_KERNEL_ARGMIN_OR_ARGMAX(name, T)        \
+  REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, 1, 11)  \
+  REGISTER_KERNEL_VERSIONED_RANGE_TYPED(name, T, 12, 12) \
+  REGISTER_KERNEL_VERSIONED_SINCE_TYPED(name, T, 13)
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
 template <bool allow_multi_axes>
@@ -362,7 +367,7 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
       IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
       const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
       if (calculate_sqt) {
-        input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+        input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream);
         input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
         fast_divmod tmp_div;
         Impl_Mul<CudaT>(stream, static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
@@ -379,7 +384,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
         } break;
         case ApplicableMatrixReduction::Columns: {
           const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<CudaT>(m, n);
-          auto buffer = buffer_size_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<void>(gpu_allocator, buffer_size_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+          auto buffer = buffer_size_bytes == 0
+                            ? nullptr
+                            : IAllocator::MakeUniquePtr<void>(gpu_allocator, buffer_size_bytes, false, ort_stream);
           ORT_RETURN_IF_ERROR(reduce_matrix_columns(stream, input_data,
                                                     reinterpret_cast<CudaT*>(output.MutableData<T>()), m, n,
                                                     buffer.get(), buffer_size_bytes));
@@ -416,7 +423,7 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
   if ((ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
       (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
-    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+    temp_X = IAllocator::MakeUniquePtr<float>(gpu_allocator, input_count, false, ort_stream);
     Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()), temp_X.get(), input_shape.Size());
   } else {
     cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
@@ -439,18 +446,22 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
   CudaStream* cuda_stream = static_cast<CudaStream*>(ort_stream);
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                        input_tensor, output_tensor, &workspace_bytes));
-  auto workspace_cuda = workspace_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, workspace_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+  auto workspace_cuda = workspace_bytes == 0
+                            ? nullptr
+                            : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, workspace_bytes, false, ort_stream);
 
   size_t indices_bytes = 0;
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                      input_tensor, output_tensor, &indices_bytes));
-  auto indices_cuda = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+  auto indices_cuda = indices_bytes == 0
+                          ? nullptr
+                          : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream);
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
     IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     CudaT* input_data = nullptr;
     if (calculate_sqt) {
-      input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+      input_data_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream);
       input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<CudaT>(stream,
@@ -477,7 +488,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
         size_t indices_bytes_max = 0;
         CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc,
                                                            input_tensor, output_tensor, &indices_bytes_max));
-        auto indices_cuda_max = indices_bytes == 0 ? nullptr : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+        auto indices_cuda_max = indices_bytes == 0
+                                    ? nullptr
+                                    : IAllocator::MakeUniquePtr<uint32_t>(gpu_allocator, indices_bytes, false, ort_stream);
         auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,
@@ -488,9 +501,11 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
 
       // Exp(X-ReduceMax)
       const TensorShape output_shape(output_dims);
-      auto exp_result_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream, WaitCudaNotificationOnDevice);
+      auto exp_result_buffer = IAllocator::MakeUniquePtr<T>(gpu_allocator, input_count, false, ort_stream);
       auto exp_result = exp_result_buffer.get();
-      auto log_sum_result_buffer = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<T>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+      auto log_sum_result_buffer = output_count == 0
+                                       ? nullptr
+                                       : IAllocator::MakeUniquePtr<T>(gpu_allocator, output_count, false, ort_stream);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
@@ -558,7 +573,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
         }
       } else {
         if (temp_X) {
-          auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+          auto temp_output = output_count == 0
+                                 ? nullptr
+                                 : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream);
           CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
               CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
               workspace_cuda.get(), workspace_bytes,
@@ -584,14 +601,18 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t), stream));
     } else {
       if (temp_X) {
-        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+        auto temp_output = output_count == 0
+                               ? nullptr
+                               : IAllocator::MakeUniquePtr<float>(gpu_allocator, output_count, false, ort_stream);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, temp_X.get(),
             &zero, output_tensor, temp_output.get()));
       } else {
-        auto temp_output = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, output_count, false, ort_stream, WaitCudaNotificationOnDevice);
+        auto temp_output = output_count == 0
+                               ? nullptr
+                               : IAllocator::MakeUniquePtr<CudaT>(gpu_allocator, output_count, false, ort_stream);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
@@ -600,7 +621,8 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
       }
 
       // CUDA reduction index is uint32_t for now, cast it to int64_t according to ONNX spec
-      Impl_Cast<uint32_t, int64_t>(stream, reinterpret_cast<uint32_t*>(indices_cuda.get()), output.MutableData<int64_t>(), output_count);
+      Impl_Cast<uint32_t, int64_t>(stream, reinterpret_cast<uint32_t*>(indices_cuda.get()),
+                                   output.MutableData<int64_t>(), output_count);
     }
   }
 
@@ -645,10 +667,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   TensorShapeVector axes;
 
   size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {
+  const Tensor* axes_tensor = num_inputs == 2 ? ctx->Input<Tensor>(1) : nullptr;  // optional input. may be nullptr.
+  if (axes_tensor != nullptr) {
     // override the attribute value with the input value for reduction_axes
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
     ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
     const auto* data = axes_tensor->Data<int64_t>();
@@ -830,14 +851,13 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 
 }  // namespace ReductionOps
 
-// CUDA ArgMax/ArgMin doesn't have OpSet12+ implementation (with select_last_index attr) yet
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, MLFloat16, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, float, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMax, double, 11)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, MLFloat16)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, float)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMax, double)
 
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, MLFloat16, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, float, 11)
-REGISTER_KERNEL_UNTIL_VERSIONED_TYPED(ArgMin, double, 11)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, MLFloat16)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, float)
+REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, double)
 
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, MLFloat16, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, float, 17, 18)

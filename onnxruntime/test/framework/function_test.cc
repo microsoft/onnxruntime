@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/graph/onnx_protobuf.h"
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
@@ -12,13 +13,12 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 
-#include "test/test_environment.h"
-#include "test/framework/test_utils.h"
-#include "inference_session_wrapper.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/internal_testing_ep/internal_testing_execution_provider.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-
-#include "test/providers/internal_testing/internal_testing_execution_provider.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -580,13 +580,7 @@ TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
 
   // myfun is not removed because it was claimed by InternalTestingEP
   model_proto = session_object.GetModel().ToProto();
-#ifdef USE_TVM
-  // TVM EP takes the whole graph and optimizes it within its own framework.
-  // It does not retain the original graph.
-  ASSERT_EQ(0, model_proto.functions_size());
-#else
   ASSERT_EQ(1, model_proto.functions_size());
-#endif
 }
 
 TEST(FunctionTest, TestInlinedFunctionDoesNotReserrectNonExistingArgs) {

@@ -21,7 +21,7 @@ class Transpose final : public JsKernel, public TransposeBase {
       }
     }
     JSEP_INIT_KERNEL_ATTRIBUTE(Transpose, ({
-                                 "perm" : $1 ? Array.from(HEAP32.subarray($1, $2)) : []
+                                 "perm" : $1 ? Array.from(HEAP32.subarray(Number($1), Number($2))) : []
                                }),
                                JSEP_HEAP32_INDEX_START(perm),
                                JSEP_HEAP32_INDEX_END(perm));

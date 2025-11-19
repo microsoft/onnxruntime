@@ -11,9 +11,9 @@ import io
 import logging
 import os
 from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from functools import partial
 from hashlib import md5 as hash_fn
-from typing import Mapping, Sequence
 
 import onnx
 import torch
@@ -200,7 +200,7 @@ class PostExportProcessedModelInfo:
 
         The inputs are constructed in the order they appear in the model's forward function signature
         """
-        from ._mem_efficient_grad_mgmt import (
+        from ._mem_efficient_grad_mgmt import (  # noqa: PLC0415
             MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
             MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
             MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
@@ -213,8 +213,8 @@ class PostExportProcessedModelInfo:
             # Create the buffers for the inputs that are either parameters or buffers in the original module.
             # For user inputs, fill with None for now, and will be filled dynamically during the forward run.
 
-            parameter_names = {k: v for k, v in self._flattened_module.named_parameters()}
-            buffer_names = {k: v for k, v in self._flattened_module.named_buffers()}
+            parameter_names = dict(self._flattened_module.named_parameters())
+            buffer_names = dict(self._flattened_module.named_buffers())
 
             for input_name in self.onnx_graph_input_names:
                 if input_name in parameter_names:
@@ -577,12 +577,12 @@ class GraphTransitionManager:
             # Model may have unused params dropped after export, so we only check those inputs existing in onnx graph.
 
             onnx_graph_input_requires_grads = []
-            parameter_names = {k: v for k, v in flatten_module.named_parameters()}
+            parameter_names = dict(flatten_module.named_parameters())
             for input_name in exported_model_info.onnx_graph_input_names:
                 if input_name in exported_model_info.onnx_graph_input_names_user_defined:
-                    assert (
-                        input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined
-                    ), f"{input_name} model_info_for_export.onnx_graph_input_data_accessor_user_defined"
+                    assert input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined, (
+                        f"{input_name} model_info_for_export.onnx_graph_input_data_accessor_user_defined"
+                    )
                     # We assume the data accessor should be the same as the one used for the previous export, because
                     # there is args and kwargs schema check during export check phase.
                     if model_info_for_export.onnx_graph_input_data_accessor_user_defined[input_name](
@@ -619,7 +619,7 @@ class GraphTransitionManager:
         post_processed_model = copy.deepcopy(exported_model_info.exported_model)
 
         if enable_custom_autograd_function:
-            from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
+            from ._custom_autograd_function_exporter import post_process_enabling_autograd_function  # noqa: PLC0415
 
             post_processed_model = post_process_enabling_autograd_function(post_processed_model)
 
@@ -630,7 +630,7 @@ class GraphTransitionManager:
 
         if export_mode == torch.onnx.TrainingMode.TRAINING:
             if enable_zero_stage3_support:
-                from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
+                from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat  # noqa: PLC0415
 
                 post_processed_model = post_processing_enable_zero_stage3_compat(
                     post_processed_model,
@@ -647,7 +647,7 @@ class GraphTransitionManager:
 
         if enable_mem_efficient_grad_management:
             # Remove those trainable parameters from graph input, as they will be retrieved from weight pull node.
-            from ._mem_efficient_grad_mgmt import get_params_connected_to_pull_param_trigger
+            from ._mem_efficient_grad_mgmt import get_params_connected_to_pull_param_trigger  # noqa: PLC0415
 
             # MUST call this before post_processing_enable_mem_efficient_training, otherwise, the onnx graph input
             # will be modified.
@@ -663,7 +663,7 @@ class GraphTransitionManager:
                     if k in onnx_graph_input_names_require_grad:
                         onnx_graph_input_names_require_grad.remove(k)
 
-                from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+                from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME  # noqa: PLC0415
 
                 # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
                 onnx_graph_input_names_user_defined.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
@@ -671,7 +671,7 @@ class GraphTransitionManager:
                 onnx_graph_input_names.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
                 onnx_graph_input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
 
-                from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
+                from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training  # noqa: PLC0415
 
                 # Override the options if model is not modified.
 
@@ -736,7 +736,6 @@ class GraphTransitionManager:
         runtime_inspector: RuntimeInspector,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
-
         # Add hooks to check the sparsity of the embedding and label inputs during the export.
         embedding_hook_handles = GraphTransitionManager._add_check_embedding_sparsity_hook(
             enable_embedding_sparse_optimizer, device, logger, runtime_inspector, flattened_module
@@ -750,7 +749,7 @@ class GraphTransitionManager:
         random_states = _utils.get_random_states()
 
         torch_exporter_verbose_log = debug_options.log_level < LogLevel.WARNING
-        from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
+        from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step  # noqa: PLC0415
 
         with export_context(), no_increase_global_step():
             exported_model, module_output_schema = GraphTransitionManager._get_exported_model(
@@ -867,8 +866,9 @@ class GraphTransitionManager:
         assert model_info_for_export.export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad(), stage3_export_context(
-                enable_zero_stage3_support, stage3_param_handle, flattened_module
+            with (
+                torch.no_grad(),
+                stage3_export_context(enable_zero_stage3_support, stage3_param_handle, flattened_module),
             ):
                 required_export_kwargs = {
                     "input_names": model_info_for_export.onnx_graph_input_names,  # did not contains parameters as its input yet

@@ -34,8 +34,13 @@ def get_section_sizes(binary_path, readelf_path, dump_to_file=None):
     for match in re.finditer(r"\[[\s\d]+\] (\..*)$", output, re.MULTILINE):
         items = match.group(1).split()
         name = items[0]
+        if name == ".relro_padding":
+            # padding fluctuates and isn't due to the actual code. as it adds noise to the diff exclude it
+            continue
+
         # convert size from hex to int
         size = int(items[4], 16)
+
         section_sizes[name] = size
 
         if dump_to_file:

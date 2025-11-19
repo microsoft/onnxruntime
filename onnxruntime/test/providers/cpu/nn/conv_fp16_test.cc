@@ -3,11 +3,10 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK)
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/providers/run_options_config_keys.h"
 #include "default_providers.h"
 
 using namespace std;
@@ -28,6 +27,15 @@ struct ConvOpAndTestAttributes {
   vector<float> activation_parameters = {};
 };
 
+/*
+Please notice that, we have predefined macros in the head of the file
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML)
+When we have these two macro defines, this UT will turn into green light and work.
+
+If attributes.activation is set the NhwcFusedConv contrib op is used.
+If you are adding support for a new EP to the test and the EP does not support NhwcFusedConv
+please add the EP to the excluded_providers list.
+*/
 void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     const vector<vector<MLFloat16>>& inputs,
                     const vector<vector<int64_t>>& input_shapes,
@@ -81,11 +89,13 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
-  // QNN have issue with dynamic weight, auto pad with SAME_UPPER, SAME_LOWER
+  // QNN has issue with dynamic weight, auto pad with SAME_UPPER, SAME_LOWER
   if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
     excluded_providers.insert(kQnnExecutionProvider);
   }
-
+  if (!weight_is_initializer || !attributes.activation.empty()) {
+    excluded_providers.insert(kCoreMLExecutionProvider);
+  }
   tester->Run(expect_result, err_str, excluded_providers);
 }
 
@@ -260,6 +270,68 @@ TEST(ConvFp16Test, Conv1D_Bias) {
 
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvBF16Test, Conv2D_1) {
+#ifndef USE_CUDA
+  GTEST_SKIP() << "BFloat16 tests are only enabled on CUDA builds";
+#else
+  if (!CudaHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Conv", 22);
+
+  ConvOpAndTestAttributes attributes = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1, 1, 2},  // pads
+      vector<int64_t>{3, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<BFloat16> X = {BFloat16(-0.0910644531f), BFloat16(-0.325195312f)};
+  vector<int64_t> X_shape = {2, 1, 1, 1};
+  vector<BFloat16> W = {BFloat16(0.431152344f), BFloat16(-0.125610352f), BFloat16(0.448974609f),
+                        BFloat16(-0.310058594f), BFloat16(0.135253906f), BFloat16(-0.0679321289f),
+                        BFloat16(0.226684570f), BFloat16(-0.173950195f), BFloat16(-0.312988281f),
+                        BFloat16(-0.315429688f), BFloat16(0.065612793f), BFloat16(0.265625f),
+                        BFloat16(0.413574219f), BFloat16(0.312255859f), BFloat16(-0.375976562f),
+                        BFloat16(-0.00571060181f), BFloat16(0.349121094f), BFloat16(0.450927734f)};
+  vector<int64_t> W_shape = {2, 1, 3, 3};
+  vector<int64_t> Y_shape = {2, 2, 1, 2};
+  auto expected_vals = {BFloat16(-0.012316823f), BFloat16(0.0282353163f),
+                        BFloat16(-0.0284354091f), BFloat16(-0.0376619101f),
+                        BFloat16(-0.0439839363f), BFloat16(0.100829601f),
+                        BFloat16(-0.101544142f), BFloat16(-0.134492397f)};
+
+  test.AddAttribute("group", attributes.group);
+  test.AddAttribute("kernel_shape", attributes.kernel_shape);
+
+  if (!attributes.dilations.empty()) {
+    test.AddAttribute("dilations", attributes.dilations);
+  }
+
+  // Only one of pads / auto_pad can be present
+  if (!attributes.pads.empty()) {
+    test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
+  }
+
+  if (!attributes.strides.empty()) {
+    test.AddAttribute("strides", attributes.strides);
+  }
+
+  test.AddInput<BFloat16>("X", X_shape, X);
+  test.AddInput<BFloat16>("W", W_shape, W, false /*weight_is_initializer*/);
+  test.AddOutput<BFloat16>("Y", Y_shape, expected_vals, /*no sort*/ false, 0.002f, 0.0f);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+#endif
 }
 
 TEST(ConvFp16Test, Conv2D_1) {
@@ -507,7 +579,7 @@ TEST(ConvFp16Test, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -546,7 +618,7 @@ TEST(ConvFp16Test, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -590,7 +662,7 @@ TEST(ConvFp16Test, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -957,7 +1029,7 @@ TEST(ConvFp16Test, ConvDimWithZero) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {kWebGpuExecutionProvider}    // excluded EPs
   };
 
   vector<MLFloat16> X;
@@ -1071,7 +1143,7 @@ TEST(ConvFp16Test, Pointwise_3D) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -1147,6 +1219,7 @@ TEST(ConvFp16Test, Pointwise_Relu) {
       MLFloat16(17.5f), MLFloat16(9.5f)};
 
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvFp16Test, Conv2D_HardSigmoid) {
@@ -1176,6 +1249,7 @@ TEST(ConvFp16Test, Conv2D_HardSigmoid) {
       MLFloat16(1.0f), MLFloat16(0.0f),
       MLFloat16(1.0f), MLFloat16(0.0f)};
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvFp16Test, Conv2D_Bias_Z_Relu) {
@@ -1205,6 +1279,7 @@ TEST(ConvFp16Test, Conv2D_Bias_Z_Relu) {
   vector<int64_t> Z_shape = {1, 2, 2, 2};
   auto expected_vals = {MLFloat16(12.0f), MLFloat16(11.0f), MLFloat16(17.0f), MLFloat16(15.0f), MLFloat16(25.0f), MLFloat16(23.0f), MLFloat16(29.0f), MLFloat16(28.0f)};
   TestConvFp16Op(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B, Z}, {X_shape, W_shape, B_shape, Z_shape}, expected_vals, Y_shape, true);
 }
 
 #endif  // CONTRIB_OPS

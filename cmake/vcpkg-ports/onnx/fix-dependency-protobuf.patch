@@ -1,0 +1,28 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 47995579..1542b11f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -169,6 +169,7 @@ if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
+   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+ endif()
+ 
++find_package(protobuf CONFIG REQUIRED)
+ list(APPEND CMAKE_MODULE_PATH ${ONNX_ROOT}/cmake/external)
+ if(NOT ONNX_BUILD_CUSTOM_PROTOBUF)
+   if((ONNX_USE_LITE_PROTO AND TARGET protobuf::libprotobuf-lite) OR ((NOT ONNX_USE_LITE_PROTO) AND TARGET protobuf::libprotobuf))
+diff --git a/cmake/ONNXConfig.cmake.in b/cmake/ONNXConfig.cmake.in
+index a5129bfd..d450b51e 100644
+--- a/cmake/ONNXConfig.cmake.in
++++ b/cmake/ONNXConfig.cmake.in
+@@ -4,9 +4,8 @@
+ # library version information
+ set(ONNX_VERSION "@ONNX_VERSION@")
+ 
+-if((NOT @@ONNX_USE_PROTOBUF_SHARED_LIBS@@) AND @@Build_Protobuf@@)
+-  find_package(Protobuf REQUIRED CONFIG)
+-endif()
++include(CMakeFindDependencyMacro)
++find_dependency(protobuf CONFIG)
+ 
+ # import targets
+ include ("${CMAKE_CURRENT_LIST_DIR}/ONNXTargets.cmake")

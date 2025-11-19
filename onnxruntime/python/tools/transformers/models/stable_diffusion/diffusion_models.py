@@ -24,7 +24,6 @@
 import logging
 import os
 import tempfile
-from typing import Dict, List, Optional
 
 import onnx
 import onnx_graphsurgeon as gs
@@ -135,7 +134,7 @@ class PipelineInfo:
     def use_safetensors(self) -> bool:
         return self.is_xl() or self.version in ["sd-turbo"]
 
-    def stages(self) -> List[str]:
+    def stages(self) -> list[str]:
         if self.is_xl_base_or_turbo():
             return ["clip", "clip2", "unetxl"] + (["vae"] if self._use_vae else [])
 
@@ -150,11 +149,11 @@ class PipelineInfo:
     def vae_torch_fallback(self) -> bool:
         return self.is_xl() and not self._use_fp16_vae
 
-    def custom_fp16_vae(self) -> Optional[str]:
+    def custom_fp16_vae(self) -> str | None:
         # For SD XL, use a VAE that fine-tuned to run in fp16 precision without generating NaNs
         return "madebyollin/sdxl-vae-fp16-fix" if self._use_fp16_vae and self.is_xl() else None
 
-    def custom_unet(self) -> Optional[str]:
+    def custom_unet(self) -> str | None:
         return "latent-consistency/lcm-sdxl" if self._use_lcm and self.is_xl_base() else None
 
     @staticmethod
@@ -372,13 +371,13 @@ class BaseModel:
     def load_model(self, framework_model_dir: str, subfolder: str):
         pass
 
-    def get_input_names(self) -> List[str]:
+    def get_input_names(self) -> list[str]:
         pass
 
-    def get_output_names(self) -> List[str]:
+    def get_output_names(self) -> list[str]:
         pass
 
-    def get_dynamic_axes(self) -> Dict[str, Dict[int, str]]:
+    def get_dynamic_axes(self) -> dict[str, dict[int, str]]:
         pass
 
     def get_sample_input(self, batch_size, image_height, image_width) -> tuple:
@@ -418,7 +417,7 @@ class BaseModel:
     def get_shape_dict(self, batch_size, image_height, image_width):
         pass
 
-    def fp32_input_output_names(self) -> List[str]:
+    def fp32_input_output_names(self) -> list[str]:
         """For CUDA EP, we export ONNX model with FP32 first, then convert it to mixed precision model.
         This is a list of input or output names that are kept as float32 in optimized model.
         """
@@ -720,7 +719,7 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
 
     def forward(self, sample, timestep, encoder_hidden_states, controlnet_images, controlnet_scales):
         for i, (controlnet_image, conditioning_scale, controlnet) in enumerate(
-            zip(controlnet_images, controlnet_scales, self.controlnets)
+            zip(controlnet_images, controlnet_scales, self.controlnets, strict=False)
         ):
             down_samples, mid_sample = controlnet(
                 sample,
@@ -739,7 +738,7 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
             else:
                 down_block_res_samples = [
                     samples_prev + samples_curr
-                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
+                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples, strict=False)
                 ]
                 mid_block_res_sample += mid_sample
 
@@ -772,7 +771,7 @@ class UNet2DConditionXLControlNetModel(torch.nn.Module):
     ):
         added_cond_kwargs = {"text_embeds": text_embeds, "time_ids": time_ids}
         for i, (controlnet_image, conditioning_scale, controlnet) in enumerate(
-            zip(controlnet_images, controlnet_scales, self.controlnets)
+            zip(controlnet_images, controlnet_scales, self.controlnets, strict=False)
         ):
             down_samples, mid_sample = controlnet(
                 sample,
@@ -790,7 +789,7 @@ class UNet2DConditionXLControlNetModel(torch.nn.Module):
             else:
                 down_block_res_samples = [
                     samples_prev + samples_curr
-                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
+                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples, strict=False)
                 ]
                 mid_block_res_sample += mid_sample
 
@@ -1152,7 +1151,7 @@ class VAE(BaseModel):
         device,
         max_batch_size,
         fp16: bool = False,
-        custom_fp16_vae: Optional[str] = None,
+        custom_fp16_vae: str | None = None,
     ):
         super().__init__(
             pipeline_info,
@@ -1232,7 +1231,7 @@ class VAE(BaseModel):
         dtype = torch.float16 if self.fp16 else torch.float32
         return (torch.randn(batch_size, 4, latent_height, latent_width, dtype=dtype, device=self.device),)
 
-    def fp32_input_output_names(self) -> List[str]:
+    def fp32_input_output_names(self) -> list[str]:
         return []
 
 

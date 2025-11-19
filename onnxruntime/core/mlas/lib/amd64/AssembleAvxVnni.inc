@@ -176,3 +176,155 @@ VpdpwssdsXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
         VnniXmmXmmXmm 053h, DestReg, Src1Reg, Src2Reg
 
         ENDM
+
+;
+; Macro Description:
+;
+;   This macro builds a VNNI instruction of the form:
+;
+;       instr ymm1,ymm2,ymm3
+;
+; Arguments:
+;
+;   Opcode - Specifies the opcode for the VNNI instruction.
+;
+;   Prefix - Specifies the opcode prefix for payload 1
+;
+;   DestReg - Specifies the destination register.
+;
+;   Src1Reg - Specifies the first source register.
+;
+;   Src2Reg - Specifies the second source register.
+;
+
+Avx2VnniYmmYmmYmm MACRO Opcode, Prefix, DestReg, Src1Reg, Src2Reg
+
+        LOCAL   Payload0, Payload1, ModRMByte
+
+        Payload0 = 002h                     ; "0F 38" prefix
+        Payload0 = Payload0 + ((((YmmIndex_&DestReg& SHR 3) AND 1) XOR 1) SHL 7)
+        Payload0 = Payload0 + (1 SHL 6)
+        Payload0 = Payload0 + ((((YmmIndex_&Src2Reg& SHR 3) AND 1) XOR 1) SHL 5)
+
+        Payload1 = 004h + Prefix            ; 256-bit length and opcode prefix
+        Payload1 = Payload1 + (((YmmIndex_&Src1Reg& AND 15) XOR 15) SHL 3)
+
+        ModRMByte = 0C0h                    ; register form
+        ModRMByte = ModRMByte + ((YmmIndex_&DestReg& AND 7) SHL 3)
+        ModRMByte = ModRMByte + (YmmIndex_&Src2Reg& AND 7)
+
+        db      0C4h, Payload0, Payload1, Opcode, ModRMByte
+
+        ENDM
+
+VpdpbssdYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 050h, 003h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbssdsYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 051h, 003h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbsudYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 050h, 002h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbsudsYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 051h, 002h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbuudYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 050h, 000h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbuudsYmmYmmYmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 051h, 000h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+;
+; Macro Description:
+;
+;   This macro builds a VNNI instruction of the form:
+;
+;       instr xmm1,xmm2,xmm3
+;
+; Arguments:
+;
+;   Opcode - Specifies the opcode for the VNNI instruction.
+;
+;   Prefix - Specifies the opcode prefix for payload 1
+;
+;   DestReg - Specifies the destination register.
+;
+;   Src1Reg - Specifies the first source register.
+;
+;   Src2Reg - Specifies the second source register.
+;
+
+Avx2VnniXmmXmmXmm MACRO Opcode, Prefix, DestReg, Src1Reg, Src2Reg
+
+        LOCAL   Payload0, Payload1, ModRMByte
+
+        Payload0 = 002h                     ; "0F 38" prefix
+        Payload0 = Payload0 + ((((XmmIndex_&DestReg& SHR 3) AND 1) XOR 1) SHL 7)
+        Payload0 = Payload0 + (1 SHL 6)
+        Payload0 = Payload0 + ((((XmmIndex_&Src2Reg& SHR 3) AND 1) XOR 1) SHL 5)
+
+        Payload1 = 000h + Prefix            ; 128-bit length and opcode prefix
+        Payload1 = Payload1 + (((XmmIndex_&Src1Reg& AND 15) XOR 15) SHL 3)
+
+        ModRMByte = 0C0h                    ; register form
+        ModRMByte = ModRMByte + ((XmmIndex_&DestReg& AND 7) SHL 3)
+        ModRMByte = ModRMByte + (XmmIndex_&Src2Reg& AND 7)
+
+        db      0C4h, Payload0, Payload1, Opcode, ModRMByte
+
+        ENDM
+
+VpdpbssdXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 050h, 003h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbssdsXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 051h, 003h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbsudXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 050h, 002h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbsudsXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 051h, 002h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbuudXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 050h, 000h, DestReg, Src1Reg, Src2Reg
+
+        ENDM
+
+VpdpbuudsXmmXmmXmm MACRO DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 051h, 000h, DestReg, Src1Reg, Src2Reg
+
+        ENDM

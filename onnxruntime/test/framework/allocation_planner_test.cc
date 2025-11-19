@@ -19,6 +19,7 @@ using json = nlohmann::json;
 #include "core/framework/allocation_planner.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"
+#include "core/graph/graph_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/util/thread_utils.h"
 
@@ -31,13 +32,6 @@ using json = nlohmann::json;
 #endif  // USE_CUDA
 #include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
-
-// Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
-// GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
-// GCC 4.x.
-// (This static var is referenced in some tests below)
-const OrtDevice::DeviceType OrtDevice::GPU;
-const OrtDevice::DeviceType OrtDevice::CPU;
 
 namespace onnxruntime {
 #ifdef USE_CUDA
@@ -251,6 +245,7 @@ class PlannerTest : public ::testing::Test {
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
@@ -260,7 +255,7 @@ class PlannerTest : public ::testing::Test {
     op_kernel_infos_.push_back(std::move(info));
     const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
-                                             kernel_type_str_resolver)) {
+                                             kernel_type_str_resolver, logger)) {
       ASSERT_STATUS_OK(reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -270,7 +265,7 @@ class PlannerTest : public ::testing::Test {
     }
 
     const KernelCreateInfo* kci;
-    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, &kci));
+    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, logger, &kci));
     kernel_create_info_map.insert({p_node->Index(), gsl::not_null<const KernelCreateInfo*>(kci)});
   }
 
@@ -282,7 +277,8 @@ class PlannerTest : public ::testing::Test {
     }
   }
 
-  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
+  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {},
+                  bool invoke_createPlan_explicityly = true) {
     state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
@@ -313,7 +309,8 @@ class PlannerTest : public ::testing::Test {
      public:
       // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
       // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-      virtual WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType /*notification_owner_ep_type*/, const OrtDevice::DeviceType /*executor_ep_type*/) const override {
+      virtual WaitNotificationFn GetWaitHandle(const OrtDevice& /*notification_owner_device*/,
+                                               const OrtDevice& /*executor_device*/) const override {
         return nullptr;
       }
 
@@ -1020,7 +1017,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
     tensor.add_float_data(1.0f);
     tensor.set_data_type(TensorProto_DataType_FLOAT);
     tensor.set_name("init_data");
-    main_graph.AddInitializedTensor(tensor);
+    graph_utils::AddInitializerWithOrtValue(main_graph, tensor);
 
     // Main graph's inputs/outputs
     main_graph.SetInputs({&abs_data_in, &if_in});
@@ -1127,7 +1124,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
     tensor.add_int64_data(1);
     tensor.set_data_type(TensorProto_DataType_INT64);
     tensor.set_name("init_data");
-    main_graph.AddInitializedTensor(tensor);
+    graph_utils::AddInitializerWithOrtValue(main_graph, tensor);
 
     // Main graph's inputs/outputs
     main_graph.SetInputs({&abs_data_in, &if_in});
@@ -1552,7 +1549,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 64 * 3 * 7 * 7; ++i) conv_0_weight_tensor.add_float_data(0.234f);
   conv_0_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_0_weight_tensor.set_name("conv_0_weight");
-  main_graph.AddInitializedTensor(conv_0_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_0_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_1_weight_tensor;
   conv_1_weight_tensor.add_dims(64L);
@@ -1562,7 +1559,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   conv_1_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   for (int i = 0; i < 64 * 64; ++i) conv_1_weight_tensor.add_float_data(1.017f);
   conv_1_weight_tensor.set_name("conv_1_weight");
-  main_graph.AddInitializedTensor(conv_1_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_1_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_2_weight_tensor;
   conv_2_weight_tensor.add_dims(64L);
@@ -1572,7 +1569,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 64 * 64 * 3 * 3; ++i) conv_2_weight_tensor.add_float_data(2.317f);
   conv_2_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_2_weight_tensor.set_name("conv_2_weight");
-  main_graph.AddInitializedTensor(conv_2_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_2_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_3_weight_tensor;
   conv_3_weight_tensor.add_dims(256L);
@@ -1582,7 +1579,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 256 * 64; ++i) conv_3_weight_tensor.add_float_data(1.256f);
   conv_3_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_3_weight_tensor.set_name("conv_3_weight");
-  main_graph.AddInitializedTensor(conv_3_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_3_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_4_weight_tensor;
   conv_4_weight_tensor.add_dims(256L);
@@ -1592,7 +1589,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 256 * 64; ++i) conv_4_weight_tensor.add_float_data(1.913f);
   conv_4_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_4_weight_tensor.set_name("conv_4_weight");
-  main_graph.AddInitializedTensor(conv_4_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_4_weight_tensor);
 
   auto& conv_0_weight = main_graph.GetOrCreateNodeArg("conv_0_weight", &conv_0_weight_type);
   auto& conv_1_weight = main_graph.GetOrCreateNodeArg("conv_1_weight", &conv_1_weight_type);
@@ -1605,35 +1602,35 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   conv_0_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_0_bias_tensor.set_name("conv_0_bias");
   for (int i = 0; i < 64; ++i) conv_0_bias_tensor.add_float_data(1.123f);
-  main_graph.AddInitializedTensor(conv_0_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_0_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_1_bias_tensor;
   conv_1_bias_tensor.add_dims(64L);
   for (int i = 0; i < 64; ++i) conv_1_bias_tensor.add_float_data(2.234f);
   conv_1_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_1_bias_tensor.set_name("conv_1_bias");
-  main_graph.AddInitializedTensor(conv_1_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_1_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_2_bias_tensor;
   conv_2_bias_tensor.add_dims(64L);
   for (int i = 0; i < 64; ++i) conv_2_bias_tensor.add_float_data(0.121f);
   conv_2_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_2_bias_tensor.set_name("conv_2_bias");
-  main_graph.AddInitializedTensor(conv_2_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_2_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_3_bias_tensor;
   conv_3_bias_tensor.add_dims(256L);
   for (int i = 0; i < 256; ++i) conv_3_bias_tensor.add_float_data(1.201f);
   conv_3_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_3_bias_tensor.set_name("conv_3_bias");
-  main_graph.AddInitializedTensor(conv_3_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_3_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_4_bias_tensor;
   conv_4_bias_tensor.add_dims(256L);
   for (int i = 0; i < 256; ++i) conv_4_bias_tensor.add_float_data(0.897f);
   conv_4_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_4_bias_tensor.set_name("conv_4_bias");
-  main_graph.AddInitializedTensor(conv_4_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_4_bias_tensor);
 
   auto& conv_0_bias = main_graph.GetOrCreateNodeArg("conv_0_bias", &conv_0_bias_type);
   auto& conv_1_bias = main_graph.GetOrCreateNodeArg("conv_1_bias", &conv_1_bias_type);

@@ -11,6 +11,7 @@
 
 #include "core/common/flatbuffers.h"
 
+#include "core/framework/session_options.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -19,6 +20,8 @@
 #endif
 
 namespace onnxruntime {
+
+class PrepackedShareableWeightsContainer;
 
 namespace fbs {
 struct Model;
@@ -35,6 +38,14 @@ struct ModelOptions {
   // warnings will be logged but processing will continue and no error will
   // be returned.
   bool strict_shape_type_inference;
+
+  CheckLoadCancellationFn check_load_cancellation_fn;
+
+  ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference,
+               CheckLoadCancellationFn check_load_cancellation_fn)
+      : allow_released_opsets_only(allow_released_opsets_only),
+        strict_shape_type_inference(strict_shape_type_inference),
+        check_load_cancellation_fn(std::move(check_load_cancellation_fn)) {}
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
       : allow_released_opsets_only(allow_released_opsets_only),
@@ -99,6 +110,11 @@ class Model {
                  const ModelOptions& options = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  // Check for load cancellation.
+  bool IsLoadCancellationFlagSet() const noexcept {
+    return check_load_cancellation_fn_ && check_load_cancellation_fn_();
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Get model's IR version.
@@ -173,6 +189,8 @@ class Model {
 
   const ModelMetaData& MetaData() const noexcept;
 
+  ModelMetaData& MetaData() noexcept;
+
   // Gets the path from which the model was loaded, if any.
   const std::filesystem::path& ModelPath() const noexcept { return model_path_; }
 
@@ -190,15 +208,19 @@ class Model {
   // initializer offset could be page aligned and allocation granularity aligned for mmap support.
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                                   const std::filesystem::path& file_path,
-                                                                  size_t initializer_size_threshold,
-                                                                  const Graph::OffsetAlignmentInfo& align_info) const;
+                                                                  const ModelSavingOptions& model_saving_options) const;
 
-  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
-                                                                  const std::filesystem::path& file_path,
-                                                                  size_t initializer_size_threshold) const {
-    Graph::OffsetAlignmentInfo default_align_info;
-    return ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold, default_align_info);
-  }
+  /// <summary>
+  /// Serialize the Model to a onnx::ModelProto. Caller provides a function that determines where each initializer
+  /// is stored (i.e., either in an external file or within the model).
+  /// </summary>
+  /// <param name="handle_initializer_func">Function called for every initializer.</param>
+  /// <param name="state">Opaque user state passed to the handle_initializer_func.</param>
+  /// <param name="model_proto">Output parameter set to the serialized onnx::ModelProto.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  common::Status ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                           void* state,
+                                                           /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) const;
 
   static common::Status Save(Model& model, const PathString& file_path);
 
@@ -209,32 +231,13 @@ class Model {
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold,
-                                                     const Graph::OffsetAlignmentInfo& align_info);
-
-  static common::Status SaveWithExternalInitializers(Model& model,
-                                                     const std::filesystem::path& file_path,
-                                                     const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold) {
-    Graph::OffsetAlignmentInfo default_align_info;
-    return SaveWithExternalInitializers(model, file_path, external_file_path, initializer_size_threshold, default_align_info);
-  }
+                                                     const ModelSavingOptions& save_options);
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold,
-                                                     const Graph::OffsetAlignmentInfo& align_info);
-
-  static common::Status SaveWithExternalInitializers(Model& model,
-                                                     int fd,
-                                                     const std::filesystem::path& file_path,
-                                                     const std::filesystem::path& external_file_path,
-                                                     size_t initializer_size_threshold) {
-    Graph::OffsetAlignmentInfo default_align_info;
-    return SaveWithExternalInitializers(model, fd, file_path, external_file_path, initializer_size_threshold, default_align_info);
-  }
+                                                     const ModelSavingOptions& save_options);
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
@@ -305,6 +308,12 @@ class Model {
                              const logging::Logger& logger,
                              const ModelOptions& options = {});
 
+  static common::Status LoadFromModelEditorApiModel(const OrtModel& graph_api_model,
+                                                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                                    const ModelOptions& options,
+                                                    const logging::Logger& logger,
+                                                    std::unique_ptr<Model>& model);
+
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
@@ -358,9 +367,11 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  const std::filesystem::path model_path_;
+  std::filesystem::path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;
+
+  CheckLoadCancellationFn check_load_cancellation_fn_;
 };
 }  // namespace onnxruntime

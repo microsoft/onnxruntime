@@ -1,4 +1,8 @@
 steps:
+- task: NodeTool@0
+  inputs:
+    # requires Node.js v22 for float16 testing (the V8 flag "--js-float16array")
+    versionSpec: '22.x'
 - script: |
     npm ci
   workingDirectory: '$(Build.SourcesDirectory)/js'
@@ -11,6 +15,10 @@ steps:
     npm test
   workingDirectory: '$(Build.SourcesDirectory)/js/common'
   displayName: 'run onnxruntime-common tests'
+- script: |
+    npm run test:f16
+  workingDirectory: '$(Build.SourcesDirectory)/js/common'
+  displayName: 'run onnxruntime-common tests (enable Float16Array)'
 - script: |
     npm ci
   workingDirectory: '$(Build.SourcesDirectory)/js/web'

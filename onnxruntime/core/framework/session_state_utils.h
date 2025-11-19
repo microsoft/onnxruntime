@@ -9,6 +9,7 @@
 
 #include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_allocator.h"
 #include "core/framework/session_options.h"
@@ -35,7 +36,7 @@ class Logger;
 
 namespace session_state_utils {
 using SaveTensorFunction = std::function<Status(const std::string& name, int idx, const OrtValue& value,
-                                                const OrtCallback& d, bool constant, bool sparse)>;
+                                                bool constant, bool sparse)>;
 using MemoryProfileFunction = std::function<void(ITensorAllocator& planner)>;
 
 common::Status SaveInitializedTensors(
@@ -50,11 +51,11 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors);
+    PrepackedWeightsForGraph& prepacked_for_graph);
 
 common::Status AllocateTensor(
-    const onnxruntime::MemBuffer* m,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    const onnxruntime::MemBuffer* memory_buffer,
+    Tensor& p_tensor,
     const onnxruntime::DataTypeImpl* const& type,
     onnxruntime::TensorShape& tensor_shape,
     bool use_device_allocator_for_initializers,
@@ -65,12 +66,12 @@ common::Status AllocateTensorOnDeviceOrMemory(
     onnxruntime::TensorShape& tensor_shape,
     const onnxruntime::DataTypeImpl* const& type,
     const onnxruntime::AllocatorPtr& alloc,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor);
+    Tensor& p_tensor);
 
 common::Status CopyTensorFromCPUToDevice(
     const onnxruntime::DataTransferManager& data_transfer_mgr,
-    std::unique_ptr<onnxruntime::Tensor>& p_deserialize_tensor,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    const Tensor& deserialized_tensor,
+    Tensor&& tensor,
     OrtValue& ort_value);
 
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,

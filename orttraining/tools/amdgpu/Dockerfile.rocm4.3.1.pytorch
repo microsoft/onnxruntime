@@ -46,7 +46,7 @@ RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
     rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 
 ENV PATH=${OLD_PATH}
-ENV unset OLD_PATH
+ENV unset=OLD_PATH
 
 # python env
 RUN pip3 install --upgrade setuptools

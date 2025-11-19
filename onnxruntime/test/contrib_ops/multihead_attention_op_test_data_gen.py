@@ -7,7 +7,6 @@
 # CUBLAS_WORKSPACE_CONFIG=:4096:8 python multihead_attention_op_test_data_gen.py
 
 import math
-from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -41,7 +40,7 @@ class Attention(nn.Module):
         self.verbose = False
 
     def transpose_for_scores(self, x: torch.Tensor, head_size) -> torch.Tensor:
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, head_size)
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, head_size)  # noqa: RUF005
         x = x.view(new_x_shape)
         return x.permute(0, 2, 1, 3)
 
@@ -56,12 +55,12 @@ class Attention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        output_attentions: Optional[bool] = False,
-    ) -> Tuple[torch.Tensor]:
+        attention_mask: torch.FloatTensor | None = None,
+        encoder_hidden_states: torch.FloatTensor | None = None,
+        encoder_attention_mask: torch.FloatTensor | None = None,
+        past_key_value: tuple[tuple[torch.FloatTensor]] | None = None,
+        output_attentions: bool | None = False,
+    ) -> tuple[torch.Tensor]:
         mixed_query_layer = self.query(hidden_states)
         if self.verbose:
             print("q", mixed_query_layer)
@@ -136,7 +135,7 @@ class Attention(nn.Module):
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
 
         if self.reshape_output:
-            new_context_layer_shape = context_layer.size()[:-2] + (self.v_hidden_size,)
+            new_context_layer_shape = context_layer.size()[:-2] + (self.v_hidden_size,)  # noqa: RUF005
             context_layer = context_layer.view(new_context_layer_shape)
 
         print("output", context_layer)

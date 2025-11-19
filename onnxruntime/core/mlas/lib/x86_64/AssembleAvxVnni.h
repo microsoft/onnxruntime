@@ -176,3 +176,153 @@ Arguments:
         VnniXmmXmmXmm 0x53, \DestReg\(), \Src1Reg\(), \Src2Reg\()
 
         .endm
+
+/*++
+
+Macro Description:
+
+    This macro builds a VNNI instruction of the form:
+
+        instr ymm1,ymm2,ymm3
+
+Arguments:
+
+    Opcode - Specifies the opcode for the VNNI instruction.
+
+    Prefix - Specifies the opcode prefix for payload 1
+
+    DestReg - Specifies the destination register.
+
+    Src1Reg - Specifies the first source register.
+
+    Src2Reg - Specifies the second source register.
+
+--*/
+        .macro Avx2VnniYmmYmmYmm Opcode, Prefix, DestReg, Src1Reg, Src2Reg
+
+        .set    Payload0, 0x02              # "0F 38" prefix
+        .set    Payload0, Payload0 + ((((.LYmmIndex_\DestReg\() >> 3) & 1) ^ 1) << 7)
+        .set    Payload0, Payload0 + (1 << 6)
+        .set    Payload0, Payload0 + ((((.LYmmIndex_\Src2Reg\() >> 3) & 1) ^ 1) << 5)
+
+        .set    Payload1, 0x04 + \Prefix\()     # 256-bit length and opcode prefix
+        .set    Payload1, Payload1 + (((.LYmmIndex_\Src1Reg\() & 15) ^ 15) << 3)
+
+        .set    ModRMByte, 0xC0             # register form
+        .set    ModRMByte, ModRMByte + ((.LYmmIndex_\DestReg\() & 7) << 3)
+        .set    ModRMByte, ModRMByte + (.LYmmIndex_\Src2Reg\() & 7)
+
+        .byte   0xC4, Payload0, Payload1, \Opcode\(), ModRMByte
+
+        .endm
+
+        .macro VpdpbssdYmmYmmYmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 0x50, 0x03, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbssdsYmmYmmYmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 0x51, 0x03, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbsudYmmYmmYmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 0x50, 0x02, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbsudsYmmYmmYmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 0x51, 0x02, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbuudYmmYmmYmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 0x50, 0x00, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbuudsYmmYmmYmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniYmmYmmYmm 0x51, 0x00, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+/*++
+
+Macro Description:
+
+    This macro builds a VNNI instruction of the form:
+
+        instr xmm1,xmm2,xmm3
+
+Arguments:
+
+    Opcode - Specifies the opcode for the VNNI instruction.
+
+    Prefix - Specifies the opcode prefix for payload 1
+
+    DestReg - Specifies the destination register.
+
+    Src1Reg - Specifies the first source register.
+
+    Src2Reg - Specifies the second source register.
+
+--*/
+        .macro Avx2VnniXmmXmmXmm Opcode, Prefix, DestReg, Src1Reg, Src2Reg
+
+        .set    Payload0, 0x02              # "0F 38" prefix
+        .set    Payload0, Payload0 + ((((.LYmmIndex_\DestReg\() >> 3) & 1) ^ 1) << 7)
+        .set    Payload0, Payload0 + (1 << 6)
+        .set    Payload0, Payload0 + ((((.LYmmIndex_\Src2Reg\() >> 3) & 1) ^ 1) << 5)
+
+        .set    Payload1, 0x00 + \Prefix\()     # 128-bit length and opcode prefix
+        .set    Payload1, Payload1 + (((.LYmmIndex_\Src1Reg\() & 15) ^ 15) << 3)
+
+        .set    ModRMByte, 0xC0             # register form
+        .set    ModRMByte, ModRMByte + ((.LYmmIndex_\DestReg\() & 7) << 3)
+        .set    ModRMByte, ModRMByte + (.LYmmIndex_\Src2Reg\() & 7)
+
+        .byte   0xC4, Payload0, Payload1, \Opcode\(), ModRMByte
+
+        .endm
+
+        .macro VpdpbssdXmmXmmXmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 0x50, 0x03, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbssdsXmmXmmXmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 0x51, 0x03, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbsudXmmXmmXmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 0x50, 0x02, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbsudsXmmXmmXmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 0x51, 0x02, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbuudXmmXmmXmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 0x50, 0x00, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+        .macro VpdpbuudsXmmXmmXmm DestReg, Src1Reg, Src2Reg
+
+        Avx2VnniXmmXmmXmm 0x51, 0x00, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm

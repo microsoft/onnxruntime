@@ -32,6 +32,7 @@ namespace Dml
     private:
         static constexpr size_t c_minChunkSize = 1024 * 1024; // 1MB
         static constexpr size_t c_allocationAlignment = 512; // In bytes; as per D3D12 requirement for buffers
+        static constexpr size_t c_maxChunkSize = 0xFFFF0000; // ~4 GiB limitation for DX12 CPU-visible resource
 
         // A suballoction from a chunk
         struct Allocation

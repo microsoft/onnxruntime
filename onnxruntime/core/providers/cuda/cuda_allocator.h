@@ -5,7 +5,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 
@@ -14,8 +14,9 @@ class CUDAAllocator : public IAllocator {
   CUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
-                          device_id, OrtMemTypeDefault)) {}
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                                    device_id),
+                          OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
@@ -42,7 +43,7 @@ class CUDAExternalAllocator : public CUDAAllocator {
   void* Reserve(size_t size) override;
 
  private:
-  mutable OrtMutex lock_;
+  mutable std::mutex lock_;
   ExternalAlloc alloc_;
   ExternalFree free_;
   ExternalEmptyCache empty_cache_;
@@ -52,11 +53,12 @@ class CUDAExternalAllocator : public CUDAAllocator {
 // TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {
  public:
-  CUDAPinnedAllocator(const char* name)
+  CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device always with id 0*/),
-                          0, OrtMemTypeCPUOutput)) {}
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                                    device_id),
+                          OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

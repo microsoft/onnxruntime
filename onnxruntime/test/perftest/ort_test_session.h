@@ -6,6 +6,11 @@
 #include <random>
 #include "test_configuration.h"
 #include "test_session.h"
+
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+#include <cuda_runtime.h>
+#endif
+
 class TestModelInfo;
 namespace onnxruntime {
 namespace perftest {
@@ -27,9 +32,9 @@ class OnnxRuntimeTestSession : public TestSession {
 
   bool PopulateGeneratedInputTestData(int32_t seed);
 
-  ~OnnxRuntimeTestSession() = default;
+  ~OnnxRuntimeTestSession();
 
-  std::chrono::duration<double> Run() override;
+  RunTiming Run() override;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
 
@@ -37,7 +42,11 @@ class OnnxRuntimeTestSession : public TestSession {
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
+  OrtAllocator* allocator_ = Ort::AllocatorWithDefaultOptions();
+  // Note: custom_allocator_, if used, must outlive the `Ort::Value`s allocated with it in test_inputs_ and outputs_.
+  Ort::Allocator custom_allocator_{nullptr};
   std::vector<std::vector<Ort::Value>> test_inputs_;
+  std::vector<Ort::Value> outputs_;
   std::vector<std::string> output_names_;
   // The same size with output_names_.
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
@@ -46,6 +55,10 @@ class OnnxRuntimeTestSession : public TestSession {
   std::vector<std::string> input_names_str_;
   const int input_length_;
   std::string provider_name_;
+  std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+  cudaStream_t stream_;  // Device stream if required by IO bindings
+#endif
 };
 
 }  // namespace perftest

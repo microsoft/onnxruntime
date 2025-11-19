@@ -111,9 +111,9 @@ template <typename Fn, typename T, int ThreadsPerBlock, int VecSize>
 Status ElementwiseOp<Fn, T, ThreadsPerBlock, VecSize>::operator()(const ElementwiseParams<T>* params) {
   dim3 blocks(CeilDiv(params->input_length, ThreadsPerBlock * VecSize));
   ElementwiseKernelVec<Fn, T, ThreadsPerBlock, VecSize><<<blocks, ThreadsPerBlock, 0, params->StreamHandle()>>>(
-          params->input, params->input_length,
-          params->bias, params->bias_length,
-          params->output);
+      params->input, params->input_length,
+      params->bias, params->bias_length,
+      params->output);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -239,18 +239,18 @@ ElementwiseTunableOp<Fn, T>::ElementwiseTunableOp() {
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#define ELEMENTWISE_KERNEL_IMPL(Fn, T)                        \
-  namespace onnxruntime {                                     \
-  namespace contrib {                                         \
-  namespace rocm {                                            \
-  template Status LaunchElementwiseKernel<Fn, T>(             \
-      RocmTuningContext * tuning_ctx, Stream* stream,     \
-      const T* input, int input_length,                       \
-      const T* bias, int bias_length,                         \
-      T* output);                                             \
-  namespace internal {                                        \
-  template class ElementwiseTunableOp<Fn, T>; \
-  }                                                           \
-  }                                                           \
-  }                                                           \
+#define ELEMENTWISE_KERNEL_IMPL(Fn, T)                \
+  namespace onnxruntime {                             \
+  namespace contrib {                                 \
+  namespace rocm {                                    \
+  template Status LaunchElementwiseKernel<Fn, T>(     \
+      RocmTuningContext * tuning_ctx, Stream* stream, \
+      const T* input, int input_length,               \
+      const T* bias, int bias_length,                 \
+      T* output);                                     \
+  namespace internal {                                \
+  template class ElementwiseTunableOp<Fn, T>;         \
+  }                                                   \
+  }                                                   \
+  }                                                   \
   }

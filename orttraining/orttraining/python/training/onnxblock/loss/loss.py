@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 import copy
-from typing import Optional
 
 import onnx
 
@@ -62,7 +61,7 @@ class CrossEntropyLoss(blocks.Block):
                       contribute to the input gradient.
     """
 
-    def __init__(self, weight=None, reduction: str = "mean", ignore_index: Optional[int] = None):
+    def __init__(self, weight=None, reduction: str = "mean", ignore_index: int | None = None):
         super().__init__()
 
         if reduction not in ["mean", "sum", "none"]:
@@ -230,7 +229,7 @@ class L1Loss(blocks.Block):
         self._abs = blocks.Abs()
         self._sub = blocks.Sub()
 
-    def build(self, loss_input_name: str, target_name: Optional[str] = "target"):
+    def build(self, loss_input_name: str, target_name: str | None = "target"):
         """Adds an L1 loss subgraph on top of the base_model.
 
         Args:

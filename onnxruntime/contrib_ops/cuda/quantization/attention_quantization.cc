@@ -179,6 +179,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_fused_cross_attention = false;
   constexpr bool use_memory_efficient_attention = false;
   constexpr bool use_flash_attention = false;
+  constexpr bool use_lean_attention = false;
   constexpr bool use_cudnn_flash_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
@@ -190,6 +191,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.total_sequence_length,
                                                    fused_runner,
                                                    use_flash_attention,
+                                                   use_lean_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention,
                                                    use_cudnn_flash_attention,

@@ -4,13 +4,10 @@
 #include <cassert>
 #include <limits>
 
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -96,14 +93,14 @@ static Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
 Status ClipOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   if (node_unit.Inputs().size() > 1) {
     const auto& min_input_name = node_unit.Inputs()[1].node_arg.Name();
-    if (!min_input_name.empty() && !qnn_model_wrapper.IsInitializerInput(min_input_name)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN desn't support dynamic min/max.");
+    if (!min_input_name.empty() && !qnn_model_wrapper.IsConstantInput(min_input_name)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic min/max.");
     }
   }
   if (node_unit.Inputs().size() > 2) {
     const auto& max_input_name = node_unit.Inputs()[2].node_arg.Name();
-    if (!max_input_name.empty() && !qnn_model_wrapper.IsInitializerInput(max_input_name)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN desn't support dynamic min/max.");
+    if (!max_input_name.empty() && !qnn_model_wrapper.IsConstantInput(max_input_name)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic min/max.");
     }
   }
   return Status::OK();

@@ -1,7 +1,9 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "hardware_core_enumerator.h"
+#include "core/platform/windows/env.h"
+#include "core/platform/check_intel.h"
 #include <memory>
 #include <Windows.h>
 #include <assert.h>
@@ -83,6 +85,19 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of physical cores = # of P cores + # of E Cores + # of Soc Cores.
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetCoreInfo();
+#if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
+
+  CheckIntelResult check_intel = CheckIntel();
+
+  if (check_intel.is_intel) {
+    if (check_intel.is_intel_specified_platform) {
+      // We want to exclude cores without an LLC
+      return cores.LLCCores;
+    } else {
+      return cores.PhysicalCores;
+    }
+  }
+#endif
 
   return cores.LLCCores;
 }

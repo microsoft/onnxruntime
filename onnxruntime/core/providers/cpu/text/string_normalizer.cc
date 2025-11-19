@@ -8,6 +8,7 @@
 #include "onnxruntime_config.h"
 
 #ifdef _MSC_VER
+#include <Windows.h>
 #include <locale.h>
 #endif  // _MSC_VER
 

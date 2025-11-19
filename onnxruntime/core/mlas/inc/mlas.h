@@ -20,6 +20,7 @@ Abstract:
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
+#include <stdexcept>
 
 //
 // Define the calling convention for Windows targets.
@@ -56,13 +57,19 @@ Abstract:
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
 #define MLAS_TARGET_ARM_ANY
 #endif
+#if defined(__s390x__)
+#define MLAS_TARGET_S390X
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
 #endif
 #if defined(__wasm__)
 #define MLAS_TARGET_WASM
-#if defined(__wasm_simd128__)
+#if defined(__wasm_relaxed_simd__)
+#define MLAS_TARGET_WASM_RELAXED_SIMD
+#define MLAS_TARGET_WASM_SIMD
+#elif defined(__wasm_simd128__)
 #define MLAS_TARGET_WASM_SIMD
 #else
 #define MLAS_TARGET_WASM_SCALAR
@@ -76,7 +83,7 @@ Abstract:
 // Define the support levels for the target architecture.
 //
 
-#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER) || defined (MLAS_TARGET_ZVECTOR)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
@@ -627,6 +634,52 @@ MlasGemm(
 {
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
+/**
+ * @brief Parameters that define the shape of a dynamically quantized GEMM operation.
+ *
+ * The structure holds the dimensions of the matrices involved in the GEMM
+ * computation:
+ *   C = A * B
+ */
+struct MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS {
+    size_t M = 0;                  /**< Row size of matrix A */
+    size_t N = 0;                  /**< Column size of matrix B */
+    size_t K = 0;                  /**< Column size of matrix A and Row size of matrix B */
+};
+/**
+ * @brief Parameters that define the data buffers and layout for a dynamic quant GEMM.
+ *
+ * This structure provides the memory pointers and strides for matrices
+ * involved in a dynamically quantized GEMM operation, along with the packed B format.
+ */
+struct MLAS_GEMM_DYN_QUANT_DATA_PARAMS {
+    const float* A = nullptr;       /**< Pointer to input matrix A in FP32 format**/
+    size_t lda = 0;                 /**< Number of elements between adjecent rows in A*/
+    const void* PackedB = 0;        /**< Points to packed weight matrix B */
+    float *C = nullptr;             /**< Points to output Matric C */
+    size_t ldc = 0;                 /**<  Number of elements between adjecent rows in Matrix C*/
+    void* Workspace = nullptr;    /**< Workspace buffer for LHS Packing Allocation */
+    size_t WorkspaceSize = 0;    /**< Workspace buffer size */
+};
+
+void
+MLASCALL
+MlasDynamicQGemmBatch (
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+inline void
+MlasDynamicQGemm (
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool);
+}
+
 
 //
 // Symmetric QGEMM has limited buffer overrun.
@@ -681,6 +734,8 @@ MlasSymmQgemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     );
@@ -688,6 +743,7 @@ MlasGemmPackBSize(
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -745,6 +801,26 @@ MlasSymmQgemmPackB(
     int32_t ZeroPointA,
     void* PackedB
     );
+
+
+size_t
+MLASCALL
+MlasDynamicQgemmPackBSize(
+    size_t N,
+    size_t K
+);
+
+void
+MLASCALL
+MlasDynamicQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    const float* Scales,
+    const float* Bias,
+    void* PackedB
+);
+
 
 //
 // Convolution routines.
@@ -989,11 +1065,12 @@ MlasComputeErf(
     size_t N
     );
 
+template <typename T>
 void
 MLASCALL
 MlasComputeExp(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N
     );
 
@@ -1005,86 +1082,62 @@ MlasComputeLogistic(
     size_t N
     );
 
+template <typename T>
 void
 MLASCALL
 MlasComputeSoftmax(
-    const float* Input,
-    float* Output,
+    const T* Input,
+    T* Output,
     size_t N,
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    float Sink,
     MLAS_THREADPOOL* ThreadPool
     );
 
+template <typename T>
 void
 MLASCALL
-MlasComputeTanh(
-    const float* Input,
-    float* Output,
+MlasComputeSoftcap(
+    const T* Input,
+    T* Output,
+    size_t N,
+    T cap
+    );
+
+template <typename T>
+void
+MLASCALL
+MlasEltwiseAdd(
+    const T* left,
+    const T* right,
+    T* output,
     size_t N
     );
 
-//
-// Half-precision floating-point routines.
-//
-
-extern "C"
+template<typename T>
 void
 MLASCALL
-MlasConvertHalfToFloatBuffer(
-    const unsigned short* Source,
-    float* Destination,
-    size_t Count
+MlasComputeTanh(
+    const T* Input,
+    T* Output,
+    size_t N
     );
 
 //
 // Transpose routines.
 //
 
+template<typename DataType>
 void
 MLASCALL
 MlasTranspose(
-    const uint8_t* Input,
-    uint8_t* Output,
+    const DataType* Input,
+    DataType* Output,
     size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const int8_t* Input,
-    int8_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint16_t* Input,
-    uint16_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint32_t* Input,
-    uint32_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const float* Input,
-    float* Output,
-    size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -1241,6 +1294,21 @@ MlasQuantizeLinearS4(
     size_t N,
     float Scale,
     int8_t ZeroPoint
+    );
+
+//
+// Linear dequantization routines.
+//
+
+template<typename InputType>
+void
+MLASCALL
+MlasDequantizeLinear(
+    const InputType* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    InputType ZeroPoint
     );
 
 /**
@@ -1426,6 +1494,180 @@ MlasQLinearMul(
 using MLAS_FP16 = onnxruntime::MLFloat16;
 
 constexpr size_t FP16_SIZE = sizeof(uint16_t);
+
+//
+// Half-precision floating-point routines.
+//
+
+void
+MLASCALL
+MlasConvertHalfToFloatBuffer(
+    const MLAS_FP16* Source,
+    float* Destination,
+    size_t Count
+);
+
+#define MLAS_MIN_TENSOR_SIZE_FOR_HALF_TO_FLOAT_CONVERSION_IN_PARALLEL 128000
+
+void
+MLASCALL
+MlasConvertHalfToFloatBufferInParallel(
+    const MLAS_FP16* Source,
+    float* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+void
+MLASCALL
+MlasConvertFloatToHalfBuffer(
+const float* Source,
+MLAS_FP16* Destination,
+size_t Count
+);
+
+void
+MLASCALL
+MlasConvertFloatToHalfBufferInParallel(
+    const float* Source,
+    MLAS_FP16* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief rotary embedding for one hidden state vector
+ *
+ * @tparam T: data type of input, sin, cos and output. Currently only float32/16 are supported.
+ * @param input:  input tensor, of shape [dim]
+ * @param sin:   sin tensor, of shape [dim/2]
+ * @param cos:   cos tensor, of shape [dim/2]
+ * @param dim:   dimension of rotary embedding
+ * @param interleaved:  whether the real part and imaginary parts are interleaved
+ * @param output:  output tensor, of shape [dim]
+ */
+template <typename T>
+void
+MLASCALL
+MlasRotaryEmbedOneRow(
+    const T* input,
+    const T* sin_data,
+    const T* cos_data,
+    size_t dim,
+    bool interleaved,
+    T* output
+);
+
+/**
+ * @brief Supply matrices data information to half precision gemm functions
+ */
+struct MLAS_HGEMM_DATA_PARAMS {
+    const MLAS_FP16* A; /**< Supplies the address of matrix A */
+    size_t lda;         /**< Supplies the first dimension of matrix A. */
+    const MLAS_FP16* B; /**< Supplies the address of matrix B */
+    size_t ldb;         /**< Supplies the first dimension of matrix B. */
+    MLAS_FP16* C;       /**< Supplies the address of matrix C */
+    size_t ldc;         /**< Supplies the first dimension of matrix C. */
+    uint16_t alpha;     /**< Supplies the scalar alpha multiplier (see GEMM definition). FP16 encoding. */
+    uint16_t beta;      /**< Supplies the scalar beta multiplier (see GEMM definition). FP16 encoding. */
+};
+
+/**
+ * @brief Check whether current CPU supports half precision gemm.
+ */
+bool
+MLASCALL
+MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
+ * @brief Check whether mlas supports GQA kernels with the type and transpose settings.
+ */
+template <typename T>
+bool
+MLASCALL
+MlasGQASupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
+ * @brief  Batched half precision matrix/matrix multiply operation (HGEMM)
+ *
+ * @param TransA     Supplies the transpose operation for matrix A.
+ * @param TransB     Supplies the transpose operation for matrix B.
+ * @param M          Supplies the number of rows of matrix A and matrix C.
+ * @param N          Supplies the number of columns of matrix B and matrix C.
+ * @param K          Supplies the number of columns of matrix A and the number of rows of matrix B.
+ * @param Data       A array of matrices data parameters
+ * @param BatchSize  Supplies number of multiplications in this batch
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                     base library threading support should be used.
+ */
+void
+MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief  half precision matrix/matrix multiply operation (HGEMM)
+ *         C = alpha * op(A) * op(B) + beta * C
+ *
+ * @param TransA  Supplies the transpose operation for matrix A. Currently only support CblasNoTrans.
+ * @param TransB  Supplies the transpose operation for matrix B. Currently only support CblasTrans.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number of rows of matrix B.
+ * @param A       Supplies the address of matrix A
+ * @param lda     Supplies the first dimension of matrix A.
+ * @param B       Supplies the address of matrix B
+ * @param ldb     Supplies the first dimension of matrix B.
+ * @param C       Supplies the address of matrix C
+ * @param ldc     Supplies the first dimension of matrix C.
+ * @param alpha   Supplies the scalar alpha multiplier (see GEMM definition)
+ * @param beta    Supplies the scalar beta multiplier (see GEMM definition)
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the base library threading support
+ *                   should be used.
+ */
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* A,
+    size_t lda,
+    const MLAS_FP16* B,
+    size_t ldb,
+    MLAS_FP16* C,
+    size_t ldc,
+    uint16_t alpha,
+    uint16_t beta,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    MLAS_HGEMM_DATA_PARAMS Data;
+    Data.A = A;
+    Data.lda = lda;
+    Data.B = B;
+    Data.ldb = ldb;
+    Data.C = C;
+    Data.ldc = ldc;
+    Data.alpha = alpha;
+    Data.beta = beta;
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+}
 
 /**
  * @brief Whether current CPU supports FP16 acceleration.
@@ -1772,21 +2014,24 @@ MlasConvDepthwise(
     MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     );
 
-
 inline
 void
 MlasTranspose(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     )
 {
     MlasTranspose(
         reinterpret_cast<const uint16_t*>(Input),
         reinterpret_cast<uint16_t*>(Output),
-        M, N);
+        M,
+        N,
+        ThreadPool);
 }
+
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 /**
@@ -1860,3 +2105,14 @@ MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
+
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+/**
+ * @brief Function to override the packing mechanism decision if kleidi ai is included
+ * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
+ * @return
+*/
+void
+MLASCALL
+MlasGemmBatchPackUseKleidi(bool enable);
+#endif

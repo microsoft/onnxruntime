@@ -14,7 +14,7 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
-    ORT_ENFORCE(current_device == Info().id);
+    ORT_ENFORCE(current_device == Info().device.Id());
   } else if (throw_when_fail) {
     CUDA_CALL_THROW(cuda_err);
   }
@@ -27,7 +27,7 @@ void CUDAAllocator::SetDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
-    int allocator_device_id = Info().id;
+    int allocator_device_id = Info().device.Id();
     if (current_device != allocator_device_id) {
       cuda_err = cudaSetDevice(allocator_device_id);
     }
@@ -69,7 +69,7 @@ void* CUDAExternalAllocator::Alloc(size_t size) {
 
 void CUDAExternalAllocator::Free(void* p) {
   free_(p);
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_.find(p);
   if (it != reserved_.end()) {
     reserved_.erase(it);
@@ -80,7 +80,7 @@ void CUDAExternalAllocator::Free(void* p) {
 void* CUDAExternalAllocator::Reserve(size_t size) {
   void* p = Alloc(size);
   if (!p) return nullptr;
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   ORT_ENFORCE(reserved_.find(p) == reserved_.end());
   reserved_.insert(p);
   return p;

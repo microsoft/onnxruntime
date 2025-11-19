@@ -58,5 +58,5 @@ SPECIALIZED_IMPL(double)
 SPECIALIZED_IMPL(half)
 
 }  // namespace cuda
-}  //namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

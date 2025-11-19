@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <onnx/onnx_pb.h>
+#include "core/graph/onnx_protobuf.h"
 
 #include <map>
 #include <memory>

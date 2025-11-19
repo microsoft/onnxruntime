@@ -550,7 +550,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var ortValue = OrtValue.CreateAllocatedTensorValue(allocator, elementType, shape);
             try
             {
-                // The endianess data in protobuf is little endian.
+                // The endianness data in protobuf is little endian.
                 // We simply copy raw memory into the tensor raw data.
                 var span = ortValue.GetTensorMutableRawData();
                 Assert.Equal(rawData.Length, span.Length);

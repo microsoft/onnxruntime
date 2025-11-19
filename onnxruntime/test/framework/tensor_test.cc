@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "test_utils.h"
+#include "core/framework/allocator_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -28,8 +29,8 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
   EXPECT_EQ(shape.GetDims(), tensor_shape.GetDims());
   EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<T>());
   auto& location = t.Location();
-  EXPECT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
+  EXPECT_STREQ(location.name.c_str(), CPU);
+  EXPECT_EQ(location.device.Id(), 0);
 
   const T* t_data = t.Data<T>();
   EXPECT_EQ(first_element, t_data);
@@ -46,8 +47,8 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
     EXPECT_EQ(shape.GetDims(), tensor_shape.GetDims());
     EXPECT_EQ(new_t.DataType(), DataTypeImpl::GetType<T>());
     auto& new_location = new_t.Location();
-    ASSERT_STREQ(new_location.name, CPU);
-    EXPECT_EQ(new_location.id, 0);
+    ASSERT_STREQ(new_location.name.c_str(), CPU);
+    EXPECT_EQ(new_location.device.Id(), 0);
   }
 }
 
@@ -134,15 +135,13 @@ TEST(TensorTest, EmptyTensorTest) {
   EXPECT_TRUE(!data);
 
   auto& location = t.Location();
-  ASSERT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
+  ASSERT_STREQ(location.name.c_str(), CPU);
+  EXPECT_EQ(location.device.Id(), 0);
 
-  // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC) && !defined(USE_MIMALLOC) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
-  EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtArenaAllocator);
-#else
-  EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtDeviceAllocator);
-#endif
+  const auto expected_allocator_type = DoesCpuAllocatorSupportArenaUsage()
+                                           ? OrtAllocatorType::OrtArenaAllocator
+                                           : OrtAllocatorType::OrtDeviceAllocator;
+  EXPECT_EQ(location.alloc_type, expected_allocator_type);
 }
 
 TEST(TensorTest, StringTensorTest) {
@@ -161,8 +160,8 @@ TEST(TensorTest, StringTensorTest) {
     EXPECT_EQ(shape, tensor_shape);
     EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<std::string>());
     auto& location = t.Location();
-    ASSERT_STREQ(location.name, CPU);
-    EXPECT_EQ(location.id, 0);
+    ASSERT_EQ(location.name, CPU);
+    EXPECT_EQ(location.device.Id(), 0);
 
     std::string* new_data = t.MutableData<std::string>();
     EXPECT_TRUE(new_data);

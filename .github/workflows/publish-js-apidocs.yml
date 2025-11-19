@@ -8,7 +8,7 @@ on:
     paths:
       - js/common/**
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1,15 * *'
   workflow_dispatch:
 
 concurrency:
@@ -21,14 +21,14 @@ permissions:
 jobs:
   build:
     name: Generate JS API docs
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 18
-      - name: Generate JS docs 
+      - name: Generate JS docs
         run: |
           cd js/
           npm ci
@@ -43,8 +43,8 @@ jobs:
           mkdir -p _site/docs/api
           mv js/common/docs _site/docs/api/js
       - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: onnxruntime-node-apidocs
           path: _site
-          retention-days: 60
+          retention-days: 30

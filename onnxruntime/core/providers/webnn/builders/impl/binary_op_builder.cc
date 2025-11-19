@@ -20,10 +20,8 @@ class BinaryOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -59,37 +57,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   return Status::OK();
 }
 
-bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
-                                        const Node& node,
-                                        const WebnnDeviceType device_type,
-                                        const logging::Logger& logger) const {
+bool BinaryOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
-
-  std::vector<int64_t> input0_shape;
-  std::vector<int64_t> input1_shape;
-  if (!GetShape(*input_defs[0], input0_shape, logger) ||
-      !GetShape(*input_defs[1], input1_shape, logger)) {
-    return false;
-  }
-
-  // 'prelu' op in WebNN CPU backend restricts the last dimension of input and slope to be same.
-  // TODO: Remove this workaround once the associated issue is resolved in Chromium:
-  // https://issues.chromium.org/issues/335517470.
-  if (op_type == "PRelu" && device_type == WebnnDeviceType::CPU) {
-    if (input0_shape.back() != input1_shape.back()) {
-      LOGS(logger, VERBOSE) << "The last dimension of input and slope for PRelu must be same for WebNN CPU backend.";
-      return false;
-    }
-  }
-
-  return true;
-}
-
-bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                                             const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;
   int32_t input1_type;
 
@@ -97,36 +68,15 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDevice
       !GetType(*input_defs[1], input1_type, logger))
     return false;
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  // WebNN prelu op only supports float32, float16, int32, int8 input data types.
-  if (op_type == "Prelu") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-        ONNX_NAMESPACE::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-    };
-    // WebNN CPU backend doesn't support int32 for prelu.
-    if (device_type == WebnnDeviceType::CPU) {
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    }
-  } else {
-    supported_data_types = webnn_supported_data_types;
-  }
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  std::array<int32_t, 2> input_types{input0_type, input1_type};
+  if (!AreDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  if (input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  const std::string_view webnn_input_name = GetWebNNOpFirstInputName(op_type);
+  std::string onnx_input_name = op_type == "PRelu" || op_type == "Pow" ? "X" : "A";
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, webnn_input_name, onnx_input_name, logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/layer_norm.cuh"
 #include "contrib_ops/cuda/bert/skip_layer_norm_impl.h"
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -47,6 +48,11 @@ float maybe2half(float x) {
 template <>
 half maybe2half(float x) {
   return __float2half_rn(x);
+}
+
+template <>
+nv_bfloat16 maybe2half(float x) {
+  return __float2bfloat16_rn(x);
 }
 
 // Using only power of 2 numbers will lead to waste of compute for same size such as 768, which is a very common case
@@ -206,7 +212,7 @@ void LaunchSkipLayerNormKernel(
 #define CASE_NEXT_SIZE(next_size_value)                                         \
   case next_size_value: {                                                       \
     static_assert(next_size_value >= kSizes[0] && next_size_value <= kMaxSize); \
-    if constexpr (next_size_value >= 320) {                                 \
+    if constexpr (next_size_value >= 320) {                                     \
       if (can_unroll_vec8) {                                                    \
         constexpr int block_size = next_size_value / 8;                         \
         LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(8);                                 \
@@ -263,7 +269,8 @@ SKIPLAYERNORM_IMPL(float, true);
 SKIPLAYERNORM_IMPL(float, false);
 SKIPLAYERNORM_IMPL(half, true);
 SKIPLAYERNORM_IMPL(half, false);
-
+SKIPLAYERNORM_IMPL(nv_bfloat16, true);
+SKIPLAYERNORM_IMPL(nv_bfloat16, false);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

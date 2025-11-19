@@ -69,6 +69,7 @@ table_headers = [model_title, *provider_list]
 disable = "disable"
 basic = "basic"
 extended = "extended"
+layout = "layout"
 enable_all = "all"
 
 
@@ -107,7 +108,7 @@ def get_output(command):
 
 
 def find(regex_string):
-    import glob
+    import glob  # noqa: PLC0415
 
     results = glob.glob(regex_string)
     results.sort()
@@ -183,13 +184,13 @@ def parse_single_file(f):
         print("------First run ops map (START)------")
         for key, map in provider_op_map_first_run.items():
             print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            pp.pprint(dict(sorted(map.items(), key=lambda item: item[1], reverse=True)))
 
         print("------First run ops map (END) ------")
         print("------Second run ops map (START)------")
         for key, map in provider_op_map.items():
             print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            pp.pprint(dict(sorted(map.items(), key=lambda item: item[1], reverse=True)))
         print("------Second run ops map (END) ------")
 
     if model_run_flag:

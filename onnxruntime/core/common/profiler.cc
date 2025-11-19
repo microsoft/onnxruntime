@@ -85,7 +85,7 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
     custom_logger_->SendProfileEvent(event);
   } else {
     // TODO: sync_gpu if needed.
-    std::lock_guard<OrtMutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     if (events_.size() < max_num_events_) {
       events_.emplace_back(std::move(event));
     } else {
@@ -115,7 +115,7 @@ std::string Profiler::EndProfiling() {
     LOGS(*session_logger_, INFO) << "Writing profiler data to file " << profile_stream_file_;
   }
 
-  std::lock_guard<OrtMutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   profile_stream_ << "[\n";
 
   for (const auto& ep_profiler : ep_profilers_) {

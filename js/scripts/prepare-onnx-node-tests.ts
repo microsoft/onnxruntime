@@ -10,6 +10,8 @@ import * as path from 'path';
 import { downloadZip, extractFile } from './utils';
 
 const TEST_DATA_OPSET_VERSIONS = [
+  ['opset21', '1.16.2'],
+  ['opset20', '1.15.0'],
   ['opset19', '1.14.0'],
   ['opset18', '1.13.1'],
   ['opset17', '1.12.1'],
@@ -30,6 +32,9 @@ const JS_TEST_ROOT = path.join(JS_ROOT, 'test');
 const JS_TEST_DATA_ROOT = path.join(JS_TEST_ROOT, 'data');
 const JS_TEST_DATA_NODE_ROOT = path.join(JS_TEST_DATA_ROOT, 'node');
 
+// Configuration for download retries
+const MAX_DOWNLOAD_RETRY_TIMES = 3;
+
 const main = async () => {
   log.info('PrepareTestData', 'Preparing node tests ...');
 
@@ -47,7 +52,7 @@ const main = async () => {
 
     const folderPrefix = `onnx-rel-${onnxVersion}/onnx/backend/test/data/node`;
 
-    const buffer = await downloadZip(resourceUri);
+    const buffer = await downloadZip(resourceUri, MAX_DOWNLOAD_RETRY_TIMES);
     const zip = await jszip.loadAsync(buffer);
     const entries = zip.filter((relativePath) => relativePath.startsWith(folderPrefix));
 

@@ -61,11 +61,11 @@ union U1S2 {
 };
 
 __device__ inline __half2 hmul2bk(const __half2 a, const __half2 b) {
-  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
-    return __hmul2(a, b);
-  #else
-    return __half2{(half)((float)a.x * (float)b.x), (half)((float)a.y * (float)b.y)};
-  #endif
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+  return __hmul2(a, b);
+#else
+  return __half2{(half)((float)a.x * (float)b.x), (half)((float)a.y * (float)b.y)};
+#endif
 }
 
 __device__ inline char2 QuantizeHalf2Char2(const __half2 xy, const __half2 inverse_scale2) {

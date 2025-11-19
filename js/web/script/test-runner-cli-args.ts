@@ -8,7 +8,6 @@ import { Env, InferenceSession } from 'onnxruntime-common';
 import { Logger } from '../lib/onnxjs/instrument';
 import { Test } from '../test/test-types';
 
-/* eslint-disable max-len */
 const HELP_MESSAGE = `
 test-runner-cli
 
@@ -48,6 +47,7 @@ Options:
                                  node
                                  bs         (for BrowserStack tests)
  -p, --profile                 Enable profiler.
+ -m, --download-model          Enable model download.
                                  Profiler will generate extra logs which include the information of events time consumption
  -t, --trace                   Enable trace.
  -P[=<...>], --perf[=<...>]    Generate performance number. Cannot be used with flag --debug.
@@ -57,11 +57,13 @@ Options:
 *** Session Options ***
  -u=<...>, --optimized-model-file-path=<...>        Specify whether to dump the optimized model.
  -o=<...>, --graph-optimization-level=<...>         Specify graph optimization level.
-                                                      Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'all'.
+                                                      Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'layout', 'all'.
  -i=<...>, --io-binding=<...>  Specify the IO binding testing type. Should be one of the following:
                                  none            (default)
                                  gpu-tensor      use pre-allocated GPU tensors for inputs and outputs
                                  gpu-location    use pre-allocated GPU tensors for inputs and set preferredOutputLocation to 'gpu-buffer'
+                                 ml-tensor       use pre-allocated MLTensor tensors for inputs and outputs
+                                 ml-location     use pre-allocated MLTensor tensors for inputs and set preferredOutputLocation to 'ml-tensor'
 
 *** Logging Options ***
 
@@ -126,14 +128,13 @@ Examples:
  Run perf testing of an ONNX model on WebGL backend
  > test-runner-cli model <model_folder> -b=webgl -P
  `;
-/* eslint-enable max-len */
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0' | 'suite1' | 'model' | 'unittest' | 'op';
   type Backend = 'cpu' | 'webgl' | 'webgpu' | 'wasm' | 'onnxruntime' | 'webnn';
   type Environment = 'chrome' | 'chromecanary' | 'edge' | 'firefox' | 'electron' | 'safari' | 'node' | 'bs';
   type BundleMode = 'dev' | 'perf';
-  type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location';
+  type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location' | 'ml-tensor' | 'ml-location';
 }
 
 export interface TestRunnerCliArgs {
@@ -170,6 +171,11 @@ export interface TestRunnerCliArgs {
   profile: boolean;
 
   /**
+   * whether to enable model download
+   */
+  downloadModel: boolean;
+
+  /**
    * Whether to enable file cache
    */
   fileCache: boolean;
@@ -187,7 +193,7 @@ export interface TestRunnerCliArgs {
   /**
    * Specify graph optimization level
    */
-  graphOptimizationLevel: 'disabled' | 'basic' | 'extended' | 'all';
+  graphOptimizationLevel: 'disabled' | 'basic' | 'extended' | 'layout' | 'all';
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
@@ -397,7 +403,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   //       and ChromeCanary is not in CI.
 
   const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm' /*, 'webnn'*/];
-  const nodejsBackends = ['cpu', 'wasm'];
+  const nodejsBackends = ['cpu', 'wasm', 'webgpu'];
   const backendArgs = args.backend || args.b;
   const backend =
     typeof backendArgs !== 'string'
@@ -429,6 +435,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logLevel = 'verbose';
   }
 
+  // Option: -m, --download-model
+  const downloadModel = args['download-model'] || args.m ? true : false;
+
   // Option: -t, --trace
   const trace = parseBooleanArg(args.trace || args.t, false);
 
@@ -455,7 +464,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: -i=<...>, --io-binding=<...>
   const ioBindingArg = args['io-binding'] || args.i;
   const ioBindingMode = typeof ioBindingArg !== 'string' ? 'none' : ioBindingArg;
-  if (['none', 'gpu-tensor', 'gpu-location'].indexOf(ioBindingMode) === -1) {
+  if (['none', 'gpu-tensor', 'gpu-location', 'ml-tensor', 'ml-location'].indexOf(ioBindingMode) === -1) {
     throw new Error(`not supported io binding mode ${ioBindingMode}`);
   }
 
@@ -469,7 +478,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const graphOptimizationLevel = args['graph-optimization-level'] || args.o || 'all';
   if (
     typeof graphOptimizationLevel !== 'string' ||
-    ['disabled', 'basic', 'extended', 'all'].indexOf(graphOptimizationLevel) === -1
+    ['disabled', 'basic', 'extended', 'layout', 'all'].indexOf(graphOptimizationLevel) === -1
   ) {
     throw new Error(`graph optimization level is invalid: ${graphOptimizationLevel}`);
   }
@@ -515,6 +524,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     env: env as TestRunnerCliArgs['env'],
     logConfig,
     profile,
+    downloadModel,
     times: perf ? times : undefined,
     ioBindingMode: ioBindingMode as TestRunnerCliArgs['ioBindingMode'],
     optimizedModelFilePath,

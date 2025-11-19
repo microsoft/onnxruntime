@@ -2180,10 +2180,13 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
         {22,23}
     }
 }";
+            // remove \r so the newlines are just \n on all platforms
+            expected = expected.Replace("\r", "");
+            var actual= tensor.GetArrayString().Replace("\r", "");
 
-            Assert.Equal(expected, tensor.GetArrayString());
+            Assert.Equal(expected, actual);
 
-            var expectedNoSpace = expected.Replace(Environment.NewLine, "").Replace(" ", "");
+            var expectedNoSpace = expected.Replace("\n", "").Replace(" ", "");
             Assert.Equal(expectedNoSpace, tensor.GetArrayString(false));
         }
 

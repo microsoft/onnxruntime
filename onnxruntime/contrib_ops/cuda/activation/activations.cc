@@ -44,7 +44,8 @@ namespace cuda {
 #define UNARY_ACTIVATION_OP_HFD(name, ver, domain)        \
   UNARY_ACTIVATION_OP_TYPED(name, ver, domain, MLFloat16) \
   UNARY_ACTIVATION_OP_TYPED(name, ver, domain, float)     \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, double)
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, double)    \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, BFloat16)
 
 UNARY_ACTIVATION_OP_HFD(Affine, 1, kOnnxDomain);
 UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1, kOnnxDomain);

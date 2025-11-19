@@ -450,7 +450,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   assert(sequence_length > 0);
   assert(hidden_size > 0);
 
-  Initializer old_initializer{*tensor, graph.ModelPath()};
+  Initializer old_initializer{graph, *tensor, graph.ModelPath()};
   auto data_type = tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
@@ -474,7 +474,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
-  NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);
+  NodeArg& node_arg = graph_utils::AddInitializerWithOrtValue(graph, initializer);
   modified = true;
   return &node_arg;
 }
@@ -823,6 +823,12 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders())) {
       continue;
     }
+
+    // The third input (beta) is optional in LayerNormalization-17 of onnx domain. Make sure 3 inputs are available.
+    if (!(layer_norm_node.InputDefs().size() == 3 && layer_norm_node.InputDefs()[2]->Exists())) {
+      continue;
+    }
+
     // Find Attention after LayerNormalization
     const Node* p_attention = graph_utils::FirstChildByType(layer_norm_node, "Attention");
     if (p_attention == nullptr) {

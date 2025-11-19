@@ -273,7 +273,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   while (current_length < parameters->max_length) {
 #ifdef DEBUG_GENERATION
     auto cur_len = std::to_string(current_length);
-    dumper->Print("***CurrentLength", cur_len, true);
+    dumper->Print(::onnxruntime::MakeString("***CurrentLength=", cur_len));
     dumper->Print("input_ids", feeds[0]);
     dumper->Print("position_ids", feeds[1]);
     dumper->Print("attention_mask", feeds[2]);

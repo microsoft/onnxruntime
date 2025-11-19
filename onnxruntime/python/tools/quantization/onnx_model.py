@@ -296,6 +296,26 @@ class ONNXModel:
 
         return suffix
 
+    def get_largest_initializer_name_suffix(self, initializer_name_prefix):
+        """
+        Gets the largest initializer name integer suffix for all initializer names that begin
+        with `initializer_name_prefix`. This can be used to create unique initializer names.
+
+        Example: for initializer names 'my_weight_0' and 'my_weight_3', this method returns 3 if
+                 `initializer_name_prefix` is 'my_weight_'.
+        """
+        suffix = -1
+
+        for initializer in self.model.graph.initializer:
+            if initializer.name.startswith(initializer_name_prefix):
+                try:
+                    index = int(initializer.name[len(initializer_name_prefix) :])
+                    suffix = max(index, suffix)
+                except ValueError:
+                    continue
+
+        return suffix
+
     def find_nodes_by_initializer(self, graph, initializer):
         """
         Find all nodes with given initializer as an input.
@@ -322,7 +342,7 @@ class ONNXModel:
         graph = graph_path[-1]
         for node in graph.node:
             graph_attrs = [attr for attr in node.attribute if attr.type == 5 or attr.type == 10]
-            if len(graph_attrs):
+            if graph_attrs:
                 kwargs = {}
                 for attr in node.attribute:
                     if attr.type == 5:
@@ -556,7 +576,7 @@ class ONNXModel:
         if init.data_type == onnx.TensorProto.FLOAT8E4M3FN:
             if init.HasField("raw_data"):
                 b = list(init.raw_data)
-                if any(map(lambda i: (i & 127) == 127, b)):
+                if any((i & 127) == 127 for i in b):
                     raise ValueError(f"Initializer {init.name!r} has nan.")
         return init
 

@@ -49,6 +49,49 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
   return data_type == actual_data_type;
 }
 
+// Return total mnumber of Elements.
+static uint64_t NumElements(const TensorShapeProto* tensor_shape) {
+  if (nullptr == tensor_shape || tensor_shape->dim_size() < 1) {
+    return 0;
+  }
+  uint64_t num_elements = 1;
+
+  for (int i = 0; i < tensor_shape->dim_size(); i++) {
+    num_elements *= tensor_shape->dim(i).dim_value();
+  }
+  return num_elements;
+}
+
+bool CheckMatMulLargeTensors(const Node& matmulinteger_node, const Node& cast_node) {
+  const auto a_def = matmulinteger_node.InputDefs()[0];
+  const auto b_def = matmulinteger_node.InputDefs()[1];
+  const int a_dim_size = a_def->Shape()->dim_size();
+  const int b_dim_size = b_def->Shape()->dim_size();
+  uint64_t a_num_elements = NumElements(a_def->Shape());
+  uint64_t b_num_elements = NumElements(b_def->Shape());
+
+  if (a_dim_size != b_dim_size) {
+    bool a_is_broadcasted = a_dim_size < b_dim_size;
+    if (a_is_broadcasted) {
+      for (int i = 0; i < b_dim_size - a_dim_size; i++) {
+        a_num_elements *= b_def->Shape()->dim(i).dim_value();
+      }
+    } else {
+      for (int i = 0; i < a_dim_size - b_dim_size; i++) {
+        b_num_elements *= a_def->Shape()->dim(i).dim_value();
+      }
+    }
+  }
+
+  int output_data_type = HasElementDataType(*cast_node.OutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) ? 2 : 4;
+  uint64_t total_bytes = (a_num_elements + b_num_elements) * output_data_type;
+
+  if (total_bytes > UINT32_MAX) {
+    return true;
+  }
+  return false;
+}
+
 /**
 MatMulIntegerToFloatFusion will fuse subgraph like below into MatMulIntegerToFloat:
 
@@ -114,15 +157,31 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
       continue;
     }
 
+    const Node* p_dynamicquantize_node = graph_utils::FirstParentByType(*p_matmulinteger_node, "DynamicQuantizeLinear");
+
+    // Check MatMulInteger Nodes' input is coming from DynamicQuantizeLinear
+    // For larger tensors DynamicQuantizeLinear -> MatMulInteger is used to be resource efficient
+    // And we have better MatMulInteger Metacommand coverage in DML
+    if (is_dml_ep && p_dynamicquantize_node) {
+      if (CheckMatMulLargeTensors(matmulinteger_node, cast_node)) {
+        continue;
+      }
+    }
+
     // Find bias node
     Node* p_add_node = nullptr;
+    int idx = 0;
     if (optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
       const Node* tmp_add_node = graph_utils::FirstChildByType(mul_node, "Add");
       if (nullptr != tmp_add_node) {
-        const NodeArg& tmp_add_node_B = *(tmp_add_node->InputDefs()[1]);
-        if (graph_utils::IsConstantInitializer(graph, tmp_add_node_B.Name(), true) &&
-            CheckBiasShape(tmp_add_node_B.Shape())) {
-          p_add_node = graph.GetNode(tmp_add_node->Index());
+        // check both "inputs" to find bias, caters for edge case where bias index in InputDefs is not what is expected
+        for (idx = 0; idx < 2; ++idx) {
+          const NodeArg& candidate = *(tmp_add_node->InputDefs()[idx]);
+          if (graph_utils::IsConstantInitializer(graph, candidate.Name(), true) &&
+              CheckBiasShape(candidate.Shape())) {
+            p_add_node = graph.GetNode(tmp_add_node->Index());
+            break;
+          }
         }
       }
     }
@@ -149,7 +208,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     }
 
     if (p_add_node != nullptr) {
-      input_defs.push_back(p_add_node->MutableInputDefs()[1]);
+      input_defs.push_back(p_add_node->MutableInputDefs()[idx]);
     }
 
     std::string op_type = "MatMulIntegerToFloat";

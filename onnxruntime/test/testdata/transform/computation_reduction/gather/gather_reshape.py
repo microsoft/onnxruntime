@@ -82,7 +82,7 @@ _create_model_proto(
     ["batch_size", 31, 16, 64],
     1,
     [31],
-    [i for i in range(31)],
+    list(range(31)),
     [4],
     [0, 128, 16, 64],
     "gather_reshape_seqlen_dim2",

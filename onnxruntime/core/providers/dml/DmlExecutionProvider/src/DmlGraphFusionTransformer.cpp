@@ -62,7 +62,8 @@ namespace Dml
         const auto kernel_type_str_resolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
         const auto kernel_lookup = onnxruntime::KernelLookup{provider_type,
                                                              gsl::make_span(&registry, 1),
-                                                             kernel_type_str_resolver};
+                                                             kernel_type_str_resolver,
+                                                             logger};
 
         std::vector<std::shared_ptr<CompiledPartitionInfo>> compiledPartitionInfos;
         std::vector<onnxruntime::NodeIndex> additionalSplittingNodes;

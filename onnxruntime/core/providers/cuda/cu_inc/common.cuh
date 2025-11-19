@@ -8,14 +8,12 @@
 #include <limits>
 #include <assert.h>
 #include <math.h>
+#include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
 
 namespace onnxruntime {
 namespace cuda {
@@ -347,17 +345,51 @@ __device__ __inline__ double _Pow(double a, double b) { return pow(a, b); }
 template <>
 __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (float)b)); }
 
+template <>
+__device__ __inline__ BFloat16 _Pow(BFloat16 a, BFloat16 b) { return BFloat16(powf((float)a, (float)b)); }
+
+#define ISNAN_HALF(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~MLFloat16::kSignMask) > MLFloat16::kPositiveInfinityBits
+
+#define ISNAN_BFLOAT16(v__) static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&v__) & ~BFloat16::kSignMask) > BFloat16::kPositiveInfinityBits
+
+// CUDART_NAN_BF16 and CUDART_NAN_FP16 constants were only added in CUDA 12.2,
+// so define our own equivalent constants to support older versions.
+// Note that there is no consistent canonical NaN for FP16 and BF16;
+// CUDA uses 0x7FFF for both, but ONNX Runtime uses 0x7E00 and 0x7FC1
+// for FP16 and BF16 respectively
+// (see Float16Impl::kPositiveQNaNBits and BFloat16Impl::kPositiveQNaNBits).
+#define NAN_HALF __ushort_as_half((unsigned short)0x7FFFU)
+#define NAN_BFLOAT16 BFloat16::FromBits((uint16_t)0x7FFFU)
+
 template <typename T>
 __device__ __inline__ T _Min(T a, T b) { return a < b ? a : b; }
 
 template <>
 __device__ __inline__ float _Min(float a, float b) {
-  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a < b ? a : b );
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : (a < b ? a : b);
 }
 
 template <>
 __device__ __inline__ double _Min(double a, double b) {
-  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a < b ? a : b );
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : (a < b ? a : b);
+}
+
+template <>
+__device__ __inline__ half _Min(half a, half b) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+  return (ISNAN_HALF(a) || ISNAN_HALF(b)) ? NAN_HALF : (a < b ? a : b);
+#else
+  return __hmin_nan(a, b);
+#endif
+}
+
+template <>
+__device__ __inline__ BFloat16 _Min(BFloat16 a, BFloat16 b) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+  return (ISNAN_BFLOAT16(a) || ISNAN_BFLOAT16(b)) ? NAN_BFLOAT16 : (a < b ? a : b);
+#else
+  return BFloat16(__hmin_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
+#endif
 }
 
 template <typename T>
@@ -365,13 +397,36 @@ __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
 
 template <>
 __device__ __inline__ float _Max(float a, float b) {
-  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a > b ? a : b );
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : (a > b ? a : b);
 }
 
 template <>
 __device__ __inline__ double _Max(double a, double b) {
-  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a > b ? a : b );
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : (a > b ? a : b);
 }
+
+template <>
+__device__ __inline__ half _Max(half a, half b) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+  return (ISNAN_HALF(a) || ISNAN_HALF(b)) ? NAN_HALF : (a > b ? a : b);
+#else
+  return __hmax_nan(a, b);
+#endif
+}
+
+template <>
+__device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800) && ((__CUDACC_VER_MAJOR__ < 12) || ((__CUDACC_VER_MAJOR__ == 12) && (__CUDACC_VER_MINOR__ < 2)))
+  return (ISNAN_BFLOAT16(a) || ISNAN_BFLOAT16(b)) ? NAN_BFLOAT16 : (a > b ? a : b);
+#else
+  return BFloat16(__hmax_nan((__nv_bfloat16)a, (__nv_bfloat16)b));
+#endif
+}
+
+#undef ISNAN_HALF
+#undef ISNAN_BFLOAT16
+#undef NAN_HALF
+#undef NAN_BFLOAT16
 
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
@@ -387,6 +442,9 @@ __device__ __inline__ T _Sign(T a) { return _Signum(a, std::is_signed<T>()); }
 
 template <>
 __device__ __inline__ half _Sign(half a) { return _Signum(a, std::true_type()); }
+
+template <>
+__device__ __inline__ BFloat16 _Sign(BFloat16 a) { return _Signum(static_cast<float>(a), std::true_type()); }
 
 template <typename T>
 __device__ __inline__ T _Normcdf(T a);
@@ -568,36 +626,34 @@ struct _IsNan {
 template <>
 struct _IsNan<half> {
   __device__ __inline__ bool operator()(half a) const {
-    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask)
-           > MLFloat16::kPositiveInfinityBits;
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask) > MLFloat16::kPositiveInfinityBits;
   }
 };
 
 template <>
 struct _IsNan<BFloat16> {
   __device__ __inline__ bool operator()(BFloat16 a) const {
-    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask)
-           > BFloat16::kPositiveInfinityBits;
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask) > BFloat16::kPositiveInfinityBits;
   }
 };
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-template<>
+template <>
 struct _IsNan<Float8E4M3FN> {
   __device__ __inline__ bool operator()(Float8E4M3FN a) const {
     return (*reinterpret_cast<const uint8_t*>(&a) & 0x7f) == 0x7f;
   }
 };
 
-template<>
+template <>
 struct _IsNan<Float8E4M3FNUZ> {
   __device__ __inline__ bool operator()(Float8E4M3FNUZ a) const {
     return *reinterpret_cast<const uint8_t*>(&a) == 0x80;
   }
 };
 
-template<>
+template <>
 struct _IsNan<Float8E5M2> {
   __device__ __inline__ bool operator()(Float8E5M2 a) const {
     uint8_t c = *reinterpret_cast<const uint8_t*>(&a);
@@ -605,7 +661,7 @@ struct _IsNan<Float8E5M2> {
   }
 };
 
-template<>
+template <>
 struct _IsNan<Float8E5M2FNUZ> {
   __device__ __inline__ bool operator()(Float8E5M2FNUZ a) const {
     return *reinterpret_cast<const uint8_t*>(&a) == 0x80;

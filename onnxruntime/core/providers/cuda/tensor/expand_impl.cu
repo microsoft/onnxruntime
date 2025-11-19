@@ -120,7 +120,7 @@ Status Expand2D(
     const int input_view_stride1) {
 #define EXPAND2D_ON(TYPE)                                                                   \
   case sizeof(TYPE):                                                                        \
-    ExpandKernel2D<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(                      \
+    ExpandKernel2D<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(              \
         N, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
         fdm_output_stride0, input_view_stride0, input_view_stride1);                        \
     break
@@ -165,7 +165,7 @@ Status ExpandImpl(
 #define EXPAND_ON(TYPE)                                                                                      \
   case sizeof(TYPE):                                                                                         \
     ExpandKernel<TYPE, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>                           \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(                                                 \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(                                         \
             rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
             output_strides, input_strides);                                                                  \
     break

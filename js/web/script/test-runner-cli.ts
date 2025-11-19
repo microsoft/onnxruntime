@@ -161,6 +161,7 @@ async function main() {
     op: opTestGroups,
     log: args.logConfig,
     profile: args.profile,
+    downloadModel: args.downloadModel,
     options: {
       sessionOptions: {
         graphOptimizationLevel: args.graphOptimizationLevel,
@@ -380,7 +381,7 @@ async function main() {
     }
 
     let ioBinding: Test.IOBindingMode;
-    if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+    if (!['webgpu', 'webnn'].includes(backend) && args.ioBindingMode !== 'none') {
       npmlog.warn(
         'TestRunnerCli.Init.Model',
         `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`,
@@ -657,7 +658,6 @@ async function main() {
           // delete the files stores in the specific folder to clean up the recovery page list.
           // see also: https://www.laptopmag.com/articles/edge-browser-stop-tab-restore
           const deleteEdgeActiveRecoveryCommand =
-            // eslint-disable-next-line max-len
             'del /F /Q % LOCALAPPDATA %\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\Recovery\\Active\\*';
           npmlog.info('TestRunnerCli.Run', `CMD: ${deleteEdgeActiveRecoveryCommand}`);
           spawnSync(deleteEdgeActiveRecoveryCommand, { shell: true, stdio: 'inherit' });

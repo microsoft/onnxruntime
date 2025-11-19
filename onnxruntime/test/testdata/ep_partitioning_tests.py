@@ -1,4 +1,3 @@
-import numpy as np  # noqa: F401
 import onnx
 from onnx import TensorProto, helper
 

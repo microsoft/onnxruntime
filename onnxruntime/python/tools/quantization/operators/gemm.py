@@ -3,9 +3,15 @@ import logging
 import numpy as np  # noqa: F401
 import onnx
 
-from ..quant_utils import find_by_name  # noqa: F401
-from ..quant_utils import get_mul_node  # noqa: F401
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    find_by_name,  # noqa: F401
+    get_mul_node,  # noqa: F401
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase  # noqa: F401
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
@@ -13,7 +19,7 @@ from .qdq_base_operator import QDQOperatorBase
 
 def is_B_transposed(gemm_node):  # noqa: N802
     transB_attribute = [attr for attr in gemm_node.attribute if attr.name == "transB"]  # noqa: N806
-    if len(transB_attribute):
+    if transB_attribute:
         return onnx.helper.get_attribute_value(transB_attribute[0]) > 0
 
     return False
@@ -21,7 +27,7 @@ def is_B_transposed(gemm_node):  # noqa: N802
 
 def get_beta(gemm_node):
     beta_attribute = [attr for attr in gemm_node.attribute if attr.name == "beta"]
-    if len(beta_attribute):
+    if beta_attribute:
         return onnx.helper.get_attribute_value(beta_attribute[0])
 
     return 1.0
@@ -29,7 +35,7 @@ def get_beta(gemm_node):
 
 def set_default_beta(gemm_node):
     beta_attribute = [attr for attr in gemm_node.attribute if attr.name == "beta"]
-    if len(beta_attribute):
+    if beta_attribute:
         beta_attribute[0].f = 1.0
 
     return 1.0

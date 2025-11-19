@@ -133,7 +133,8 @@ inline std::vector<BFloat16> ValueRange<BFloat16>(size_t count, BFloat16 start, 
   return result;
 }
 
-inline std::pair<float, float> MeanStdev(gsl::span<const float> v) {
+template <typename T>
+inline std::pair<float, float> MeanStdev(const T& v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
   float mean = sum / v.size();
 
@@ -169,6 +170,15 @@ inline std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
   return result;
 }
 
+inline std::vector<BFloat16> ToBFloat16(const std::vector<float>& data) {
+  std::vector<BFloat16> result;
+  result.reserve(data.size());
+  for (size_t i = 0; i < data.size(); i++) {
+    result.push_back(BFloat16(data[i]));
+  }
+  return result;
+}
+
 inline void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tensor, double rtol, double atol) {
   ORT_ENFORCE(expected_tensor.Shape() == output_tensor.Shape(),
               "Expected output shape [" + expected_tensor.Shape().ToString() +
@@ -191,6 +201,24 @@ inline void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tens
       ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: "
                                                                 << expected_value << ", actual: " << actual_value;
     }
+  }
+}
+
+template <typename T>
+std::vector<T> GetTypedArray(std::vector<float> inputs) {
+  static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value ||
+                    std::is_same<T, MLFloat16>::value || std::is_integral_v<T>,
+                "Only float, double, MLFloat16, and integral types are supported.");
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else if constexpr (std::is_integral_v<T> || std::is_same<T, double>::value) {
+    std::vector<T> result(inputs.size());
+    for (size_t i = 0; i < inputs.size(); i++) {
+      result[i] = static_cast<T>(inputs[i]);
+    }
+    return result;
+  } else {
+    return ToFloat16(inputs);
   }
 }
 

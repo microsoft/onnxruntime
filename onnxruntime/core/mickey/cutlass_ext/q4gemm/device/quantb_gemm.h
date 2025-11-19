@@ -330,9 +330,10 @@ class QuantBGemm {
         args.problem_size,
         {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
         args.split_k_slices);
-
-    if (kSplitKSerial && args.split_k_slices > 1) {
-      bytes += sizeof(int) * size_t(tiled_shape.m()) * size_t(tiled_shape.n());
+    if constexpr (kSplitKSerial) {
+      if (args.split_k_slices > 1) {
+        bytes += sizeof(int) * size_t(tiled_shape.m()) * size_t(tiled_shape.n());
+      }
     }
 
     return bytes;

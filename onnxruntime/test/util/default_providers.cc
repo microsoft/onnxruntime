@@ -1,18 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include "test/util/include/default_providers.h"
+
 #include <memory>
-#include "default_providers.h"
-#include "providers.h"
+
+#include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_CUDA
-#include <core/providers/cuda/cuda_provider_options.h>
+#include "core/providers/cuda/cuda_provider_options.h"
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/session_options.h"
+#include "test/util/include/providers.h"
 
 namespace onnxruntime {
 
@@ -49,6 +52,14 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider() {
+#ifdef USE_NV
+  if (auto factory = NvProviderFactoryCreator::Create(0))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
@@ -71,18 +82,7 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
 
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 #ifdef USE_MIGRAPHX
-  OrtMIGraphXProviderOptions params{
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      1,
-      "./compiled_model.mxr",
-      1,
-      "./compiled_model.mxr",
-      1};
-  return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
+  return MIGraphXProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -90,7 +90,7 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params) {
 #ifdef USE_MIGRAPHX
-  if (auto factory = MIGraphXProviderFactoryCreator::Create(params))
+  if (const auto factory = MIGraphXProviderFactoryCreator::Create(params); factory != nullptr)
     return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
@@ -98,11 +98,13 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params) {
+std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const ProviderOptions* params,
+                                                                         const SessionOptions* session_options) {
 #ifdef USE_OPENVINO
-  return OpenVINOProviderFactoryCreator::Create(params)->CreateProvider();
+  return OpenVINOProviderFactoryCreator::Create(params, session_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
+  ORT_UNUSED_PARAMETER(session_options);
   return nullptr;
 #endif
 }
@@ -173,14 +175,6 @@ std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDn
   return nullptr;
 }
 
-// std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
-// #ifdef USE_TVM
-//   return TVMProviderFactoryCreator::Create("")->CreateProvider();
-// #else
-//   return nullptr;
-// #endif
-// }
-
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
 // Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.
@@ -207,11 +201,11 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena) {
+std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast_math) {
 #ifdef USE_ACL
-  return ACLProviderFactoryCreator::Create(enable_arena)->CreateProvider();
+  return ACLProviderFactoryCreator::Create(enable_fast_math)->CreateProvider();
 #else
-  ORT_UNUSED_PARAMETER(enable_arena);
+  ORT_UNUSED_PARAMETER(enable_fast_math);
   return nullptr;
 #endif
 }
@@ -225,33 +219,19 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op) {
-#ifdef USE_ROCM
-  OrtROCMProviderOptions provider_options{};
-  provider_options.do_copy_in_default_stream = true;
-  provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_max_tuning_duration_ms = 0;
-  if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
-#endif
-  ORT_UNUSED_PARAMETER(test_tunable_op);
-  return nullptr;
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
-  uint32_t coreml_flags = 0;
-  coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+  auto option = ProviderOptions();
+  option[kCoremlProviderOption_MLComputeUnits] = "CPUOnly";
 
   if (use_mlprogram) {
-    coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+    option[kCoremlProviderOption_ModelFormat] = "MLProgram";
   }
 
-  return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
+  return CoreMLProviderFactoryCreator::Create(option)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
@@ -301,6 +281,35 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
+#ifdef USE_WEBGPU
+  ConfigOptions config_options{};
+  // Disable storage buffer cache
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
+                                            webgpu::options::kBufferCacheMode_Disabled)
+                  .IsOK());
+  if (!is_nhwc) {
+    // Enable NCHW support
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout,
+                                              webgpu::options::kPreferredLayout_NCHW)
+                    .IsOK());
+  }
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(is_nhwc);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
+#ifdef USE_WEBGPU
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(config_options);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 #ifdef USE_CANN
   OrtCANNProviderOptions provider_options{};
@@ -317,6 +326,10 @@ std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
     return factory->CreateProvider();
   }
 #endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool) {
   return nullptr;
 }
 

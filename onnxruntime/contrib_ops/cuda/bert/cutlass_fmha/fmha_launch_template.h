@@ -10,7 +10,7 @@
 #endif
 
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "41_fused_multi_head_attention/kernel_forward.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -42,7 +42,6 @@ struct RightPaddingBatchHook {
 
     auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
 
-    // Advance to current batch - in case of different sequence lengths
     if (p.seqlen_k_ptr) {
       p.num_keys = p.seqlen_k_ptr[batch_id];
     }
@@ -143,15 +142,16 @@ template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, 
 void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   constexpr bool dropout = false;
   using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, max_head_size, dropout>;
+
   typename Attention::Params p;
   {  // set parameters
     p.query_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.query));
     p.key_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.key));
     p.value_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.value));
     p.attn_bias_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.attn_bias));
-    p.seqstart_q_ptr = params.seqstart_q_ptr;
-    p.seqstart_k_ptr = params.seqstart_k_ptr;
-    p.seqlen_k_ptr = params.seqlen_k_ptr;
+    p.seqstart_q_ptr = const_cast<int32_t*>(params.seqstart_q_ptr);
+    p.seqstart_k_ptr = const_cast<int32_t*>(params.seqstart_k_ptr);
+    p.seqlen_k_ptr = const_cast<int32_t*>(params.seqlen_k_ptr);
 
     p.logsumexp_ptr = nullptr;  // [num_heads, num_queries] for backward or nullptr for forward
     p.output_ptr = reinterpret_cast<T*>(params.output);
@@ -223,6 +223,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     }
 
     p.use_smooth_softmax = params.use_smooth_softmax;
+    p.window_size = params.local_window_size;
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;
@@ -258,7 +259,7 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
 
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
-                  LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, max_head_size>(params);
+                  LaunchCutlassFmha<T, ArchTag, kIsAligned::value, queries_per_block, keys_per_block, max_head_size>(params);
                 }));
 
 #if defined(_MSC_VER) && !defined(__clang__)

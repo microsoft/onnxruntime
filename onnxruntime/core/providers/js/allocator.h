@@ -14,8 +14,8 @@ class WebGpuAllocator : public IAllocator {
   WebGpuAllocator()
       : IAllocator(
             OrtMemoryInfo(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0),
-                          0, OrtMemTypeDefault)) {
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0),
+                          OrtMemTypeDefault)) {
   }
 
   virtual void* Alloc(size_t size) override;

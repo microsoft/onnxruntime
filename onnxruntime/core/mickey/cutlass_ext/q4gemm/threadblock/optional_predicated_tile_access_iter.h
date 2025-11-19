@@ -81,7 +81,7 @@ class OptionalPredicatedTileAccessIterator {
   Base base_;
 
   /// Default constructor
-  OptionalPredicatedTileAccessIterator() : base_(){};
+  OptionalPredicatedTileAccessIterator() : base_() {};
 
   /// Constructs a TileIterator from its precomputed state, threadblock offset,
   /// and thread ID
@@ -222,7 +222,7 @@ class OptionalPredicatedTileAccessIterator<Shape_, std::monostate, Layout_, Adva
   std::monostate base_;
 
   /// Default constructor
-  OptionalPredicatedTileAccessIterator() : base_(){};
+  OptionalPredicatedTileAccessIterator() : base_() {};
 
   /// Constructs a TileIterator from its precomputed state, threadblock offset,
   /// and thread ID

@@ -13,7 +13,16 @@ import { Logger } from '../lib/onnxjs/instrument';
 
 import { Test } from './test-types';
 
-if (ORT_WEB_TEST_CONFIG.model.some((testGroup) => testGroup.tests.some((test) => test.backend === 'cpu'))) {
+if (
+  // when NPM test is launched with `-e=node` and (`-b=cpu` or `-b=webgpu`), load ONNXRuntime Node.js binding.
+  platform.name === 'Node.js' &&
+  (ORT_WEB_TEST_CONFIG.model.some((testGroup) =>
+    testGroup.tests.some((test) => test.backend === 'cpu' || test.backend === 'webgpu'),
+  ) ||
+    ORT_WEB_TEST_CONFIG.op.some((testGroup) =>
+      testGroup.tests.some((test) => test.backend === 'cpu' || test.backend === 'webgpu'),
+    ))
+) {
   // require onnxruntime-node
   require('../../node');
 }
@@ -99,7 +108,11 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
 
         before('Initialize Context', async () => {
           context = useProtoOpTest
-            ? new ProtoOpTestContext(test, ORT_WEB_TEST_CONFIG.options.sessionOptions)
+            ? new ProtoOpTestContext(
+                test,
+                ORT_WEB_TEST_CONFIG.downloadModel,
+                ORT_WEB_TEST_CONFIG.options.sessionOptions,
+              )
             : new OpTestContext(test);
           await context.init();
           if (ORT_WEB_TEST_CONFIG.profile) {

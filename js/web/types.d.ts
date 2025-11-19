@@ -21,6 +21,6 @@ declare module 'onnxruntime-web/webgpu' {
   export * from 'onnxruntime-web';
 }
 
-declare module 'onnxruntime-web/training' {
+declare module 'onnxruntime-web/jspi' {
   export * from 'onnxruntime-web';
 }

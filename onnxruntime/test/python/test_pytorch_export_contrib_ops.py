@@ -18,7 +18,7 @@ from onnxruntime.tools import pytorch_export_contrib_ops
 
 
 def _torch_version_lower_than(version: str):
-    from packaging.version import Version as LooseVersion  # pylint: disable=C0415
+    from packaging.version import Version as LooseVersion  # pylint: disable=C0415  # noqa: PLC0415
 
     return LooseVersion(torch.__version__) < LooseVersion(version)
 
@@ -43,7 +43,10 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
     assert len(outputs) == len(ort_outs), "number of outputs differ"
 
     # compare onnxruntime and PyTorch results
-    [np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol) for out, ort_out in zip(outputs, ort_outs)]
+    [
+        np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol)
+        for out, ort_out in zip(outputs, ort_outs, strict=False)
+    ]
 
 
 # These set of tests verify ONNX model export and compares outputs between

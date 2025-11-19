@@ -102,6 +102,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 
 bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
+                   bool trans_a,
                    bool trans_b,
                    IAllocatorUniquePtr<void>& packed_b,
                    size_t& packed_b_size,
@@ -116,7 +117,7 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-  packed_b_size = MlasGemmPackBSize(N, K);
+  packed_b_size = MlasGemmPackBSize(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans, N, K);
   if (packed_b_size == 0) {
     return false;
   }
@@ -129,7 +130,8 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_b_data, 0, packed_b_size);
 
-  MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
+  MlasGemmPackB(trans_a ? CblasTrans : CblasNoTrans,
+                trans_b ? CblasTrans : CblasNoTrans,
                 N,
                 K,
                 tensor_b.Data<float>(),
@@ -154,6 +156,14 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   // Broadcast the bias as needed if bias is given
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
+  if (K == 0) {
+    if (beta == 0 || c_data == nullptr) {
+      EigenMatrixMapRowMajor<T> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
+      dest.setZero();
+    }
+    return;
+  }
+
   math::Gemm<T>(trans_a, trans_b,
                 M, N, K,
                 alpha,
@@ -166,29 +176,30 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                 thread_pool);
 }
 
-template <>
-void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                                  ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
-                                  MLFloat16 alpha,
-                                  const MLFloat16* a_data, const MLFloat16* b_data,
-                                  MLFloat16 beta,
-                                  const MLFloat16* c_data, const TensorShape* c_shape,
-                                  MLFloat16* y_data,
-                                  concurrency::ThreadPool* thread_pool) {
+void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                    ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                    MLFloat16 alpha,
+                    const MLFloat16* a_data, const MLFloat16* b_data,
+                    MLFloat16 beta,
+                    const MLFloat16* c_data, const TensorShape* c_shape,
+                    MLFloat16* y_data,
+                    concurrency::ThreadPool* thread_pool) {
   // if input is empty tensor, return directly as nothing need to be calculated.
   if (M == 0 || N == 0)
     return;
 
-#if defined(__GNUC__) && defined(HAS_CLASS_MEMACCESS)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wclass-memaccess"
-#endif
-  // MLFloat16's constructor is explicit, so here we need to use memset
+  if (K == 0) {
+    if (beta != onnxruntime::MLFloat16::Zero && c_data != nullptr) {
+      GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+    } else {
+      auto output_span = gsl::make_span(y_data, SafeInt<size_t>(M) * N);
+      std::fill(output_span.begin(), output_span.end(), onnxruntime::MLFloat16::Zero);
+    }
+    return;
+  }
+
   if (c_data == nullptr)
-    memset(&beta, 0, sizeof(MLFloat16));
-#if defined(__GNUC__) && defined(HAS_CLASS_MEMACCESS)
-#pragma GCC diagnostic pop
-#endif
+    beta = onnxruntime::MLFloat16::Zero;
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   bool support_mlas = false;
   if (c_shape == nullptr) {
@@ -227,6 +238,18 @@ void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans
 #endif
 }
 
+template <>
+void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                                  ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                  MLFloat16 alpha,
+                                  const MLFloat16* a_data, const MLFloat16* b_data,
+                                  MLFloat16 beta,
+                                  const MLFloat16* c_data, const TensorShape* c_shape,
+                                  MLFloat16* y_data,
+                                  concurrency::ThreadPool* thread_pool) {
+  Gemm_MLFloat16(trans_a, trans_b, M, N, K, alpha, a_data, b_data, beta, c_data, c_shape, y_data, thread_pool);
+}
+
 template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                                        ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                        float alpha,
@@ -253,7 +276,7 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
   // only pack Matrix B
   if (input_idx == 1) {
     size_t packed_b_size;
-    is_packed = GemmPackBFp32(alloc, tensor, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_);
+    is_packed = GemmPackBFp32(alloc, tensor, trans_A_ != CblasNoTrans, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_);
     bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (is_packed && share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
@@ -413,19 +436,24 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
                 c_data, c_shape, y_data, thread_pool);
   } else {
     GemmBroadcastBias(M, N, beta_, c_data, c_shape, y_data);
-    MlasGemm(
-        trans_A_,
-        static_cast<size_t>(M),
-        static_cast<size_t>(N),
-        static_cast<size_t>(K),
-        alpha_,
-        A->Data<float>(),
-        static_cast<size_t>(trans_A_ != CblasNoTrans ? M : K),
-        packed_b_.get(),
-        c_data != nullptr ? beta_ : 0.0f,
-        y_data,
-        static_cast<size_t>(N),
-        thread_pool);
+    if (K > 0) {
+      MlasGemm(
+          trans_A_,
+          static_cast<size_t>(M),
+          static_cast<size_t>(N),
+          static_cast<size_t>(K),
+          alpha_,
+          A->Data<float>(),
+          static_cast<size_t>(trans_A_ != CblasNoTrans ? M : K),
+          packed_b_.get(),
+          c_data != nullptr ? beta_ : 0.0f,
+          y_data,
+          static_cast<size_t>(N),
+          thread_pool);
+    } else if (beta_ == 0 || c_data == nullptr) {
+      EigenMatrixMapRowMajor<float> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
+      dest.setZero();
+    }
   }
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);

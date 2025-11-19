@@ -21,11 +21,11 @@ Do not modify directly.*
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
 | Attention | com.microsoft(1+) | need implementing mask and past/present |
-| AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(7-9,10,11+) | need perf optimization; need implementing activation |
+| AveragePool | ai.onnx(7-9,10,11-18,19+); com.ms.internal.nhwc(7-9,10,11-18,19+) | need perf optimization; need implementing activation |
 | BatchNormalization | ai.onnx(7-8,9-13,14,15+); com.ms.internal.nhwc(7-8,9-13,14,15+) |  |
 | BiasAdd | com.microsoft(1+) |  |
 | BiasSplitGelu | com.microsoft(1+) |  |
-| Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
+| Cast | ai.onnx(6-8,9-12,13-18,19-20,21+) |  |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
 | Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
@@ -44,21 +44,23 @@ Do not modify directly.*
 | Exp | ai.onnx(6-12,13+) |  |
 | Expand | ai.onnx(8-12,13+) |  |
 | FastGelu | com.microsoft(1+) |  |
-| Flatten | ai.onnx(1-8,9-10,11-12,13+) |  |
+| Flatten | ai.onnx(1-8,9-10,11-12,13-20,21+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
 | FusedConv | com.microsoft(1+) |  |
 | Gather | ai.onnx(1-10,11-12,13+) |  |
 | GatherBlockQuantized | com.microsoft(1+) |  |
 | GatherElements | ai.onnx(11-12,13+) |  |
+| GatherND | ai.onnx(11,12,13+) |  |
 | Gelu | ai.onnx(20+); com.microsoft(1+) |  |
 | Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
 | GreaterOrEqual | ai.onnx(12-15,16+) |  |
+| GridSample | ai.onnx(16-19); com.ms.internal.nhwc(16-19) |  |
 | GroupQueryAttention | com.microsoft(1+) |  |
 | HardSigmoid | ai.onnx(6+) |  |
-| If | ai.onnx(1-10,11-12,13-18,19+) |  |
+| If | ai.onnx(1-10,11-12,13-18,19-20,21+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
 | LayerNormalization | ai.onnx(1-16,17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
@@ -74,7 +76,7 @@ Do not modify directly.*
 | MultiHeadAttention | com.microsoft(1+) | need implementing mask and past/present |
 | Neg | ai.onnx(6-12,13+) |  |
 | Not | ai.onnx(1+) |  |
-| Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
+| Pad | ai.onnx(2-10,11-12,13-17,18,19-20,21+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | QuickGelu | com.microsoft(1+) |  |
 | Range | ai.onnx(11+) |  |
@@ -83,9 +85,9 @@ Do not modify directly.*
 | ReduceL2 | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceLogSum | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceLogSumExp | ai.onnx(1-10,11-12,13-17,18+) |  |
-| ReduceMax | ai.onnx(1-10,11,12,13-17,18+) |  |
+| ReduceMax | ai.onnx(1-10,11,12,13-17,18-19,20+) |  |
 | ReduceMean | ai.onnx(1-10,11-12,13-17,18+) |  |
-| ReduceMin | ai.onnx(1-10,11,12,13-17,18+) |  |
+| ReduceMin | ai.onnx(1-10,11,12,13-17,18-19,20+) |  |
 | ReduceProd | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceSum | ai.onnx(1-10,11-12,13+) |  |
 | ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
@@ -93,6 +95,7 @@ Do not modify directly.*
 | Reshape | ai.onnx(5-12,13,14-18,19-20,21+) | no GPU kernel |
 | Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
 | RotaryEmbedding | com.microsoft(1+) |  |
+| ScatterND | ai.onnx(11-12,13-15,16-17,18+) |  |
 | Shape | ai.onnx(1-12,13-14,15-18,19-20,21+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | SimplifiedLayerNormalization | ai.onnx(1+) |  |
@@ -104,12 +107,12 @@ Do not modify directly.*
 | Softmax | ai.onnx(1-10,11-12,13+) |  |
 | Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
 | Sqrt | ai.onnx(6-12,13+) |  |
-| Squeeze | ai.onnx(1-10,11-12,13+) |  |
+| Squeeze | ai.onnx(1-10,11-12,13-20,21+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |
 | Tan | ai.onnx(7+) |  |
 | Tanh | ai.onnx(6-12,13+) |  |
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Tile | ai.onnx(6-12,13+) |  |
-| Transpose | ai.onnx(1-12,13+) | need perf optimization |
-| Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
+| Transpose | ai.onnx(1-12,13-20,21+) | need perf optimization |
+| Unsqueeze | ai.onnx(1-10,11-12,13-20,21+) |  |
 | Where | ai.onnx(9-15,16+) |  |

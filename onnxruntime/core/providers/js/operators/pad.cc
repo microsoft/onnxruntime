@@ -56,10 +56,23 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPU, 3),
     Pad);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Pad,
     kOnnxDomain,
     19,
+    20,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", JsepSupportedFloatTypes())
+        .InputMemoryType(OrtMemTypeCPU, 1)
+        .InputMemoryType(OrtMemTypeCPU, 2)
+        .InputMemoryType(OrtMemTypeCPU, 3),
+    Pad);
+
+ONNX_OPERATOR_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    21,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedFloatTypes())

@@ -24,7 +24,7 @@ if args.dim is None or args.dim == 2:
     test_count = 0
 
     for align_corners in align_corners_options:
-        for angle, translation, scale in zip(angles, translations, scales):
+        for angle, translation, scale in zip(angles, translations, scales, strict=False):
             for size in sizes:
                 theta = np.array([], dtype=np.float32)
                 for _ in range(size[0]):
@@ -49,13 +49,13 @@ if args.dim is None or args.dim == 2:
                 print(f'  OpTester test("AffineGrid", {opset_version});')
                 print(f'  test.AddAttribute("align_corners", (int64_t){1 if align_corners else 0});')
                 print(
-                    f"  test.AddInput<float>(\"theta\", {{{theta.shape[0]}, {theta.shape[1]}, {theta.shape[2]}}}, {{{', '.join([f'{x:.6f}f' for x in theta.flatten()])}}});"
+                    f'  test.AddInput<float>("theta", {{{theta.shape[0]}, {theta.shape[1]}, {theta.shape[2]}}}, {{{", ".join([f"{x:.6f}f" for x in theta.flatten()])}}});'
                 )
                 print(
                     f'  test.AddInput<int64_t>("size", {{{len(size)}}}, {{{size[0]}, {size[1]}, {size[2]}, {size[3]}}});'
                 )
                 print(
-                    f"  test.AddOutput<float>(\"grid\", {{{size[0]}, {size[2]}, {size[3]}, 2}}, {{{', '.join([f'{x:.4f}f' for x in grid.flatten()])}}});"
+                    f'  test.AddOutput<float>("grid", {{{size[0]}, {size[2]}, {size[3]}, 2}}, {{{", ".join([f"{x:.4f}f" for x in grid.flatten()])}}});'
                 )
                 print("  test.Run();")
                 print("}\n")
@@ -71,7 +71,7 @@ if args.dim is None or args.dim == 3:
     test_count = 0
 
     for align_corners in align_corners_options:
-        for angle, translation, scale in zip(angles, translations, scales):
+        for angle, translation, scale in zip(angles, translations, scales, strict=False):
             for size in sizes:
                 theta = np.array([], dtype=np.float32)
                 for _ in range(size[0]):
@@ -104,13 +104,13 @@ if args.dim is None or args.dim == 3:
                 print(f'  OpTester test("AffineGrid", {opset_version});')
                 print(f'  test.AddAttribute("align_corners", (int64_t){1 if align_corners else 0});')
                 print(
-                    f"  test.AddInput<float>(\"theta\", {{{theta.shape[0]}, {theta.shape[1]}, {theta.shape[2]}}}, {{{', '.join([f'{x:.6f}f' for x in theta.flatten()])}}});"
+                    f'  test.AddInput<float>("theta", {{{theta.shape[0]}, {theta.shape[1]}, {theta.shape[2]}}}, {{{", ".join([f"{x:.6f}f" for x in theta.flatten()])}}});'
                 )
                 print(
                     f'  test.AddInput<int64_t>("size", {{{len(size)}}}, {{{size[0]}, {size[1]}, {size[2]}, {size[3]}, {size[4]}}});'
                 )
                 print(
-                    f"  test.AddOutput<float>(\"grid\", {{{size[0]}, {size[2]}, {size[3]}, {size[4]}, 3}}, {{{', '.join([f'{x:.4f}f' for x in grid.flatten()])}}});"
+                    f'  test.AddOutput<float>("grid", {{{size[0]}, {size[2]}, {size[3]}, {size[4]}, 3}}, {{{", ".join([f"{x:.4f}f" for x in grid.flatten()])}}});'
                 )
                 print("  test.Run();")
                 print("}\n")

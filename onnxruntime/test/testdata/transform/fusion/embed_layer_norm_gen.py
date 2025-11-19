@@ -1,5 +1,3 @@
-from enum import Enum  # noqa: F401
-
 import onnx
 from onnx import TensorProto, helper
 from packaging import version

@@ -31,10 +31,18 @@ namespace cuda {
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Conv<T, NHWC>);                                                                      \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Conv,                                                                                \
+      DOMAIN,                                                                              \
+      11, 21,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Conv<T, NHWC>);                                                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       Conv,                                                                                \
       DOMAIN,                                                                              \
-      11,                                                                                  \
+      22,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -43,6 +51,7 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)
 REGISTER_KERNEL_TYPED(double, kOnnxDomain, false)
 REGISTER_KERNEL_TYPED(MLFloat16, kOnnxDomain, false)
+REGISTER_KERNEL_TYPED(BFloat16, kOnnxDomain, false)
 
 #ifdef ENABLE_CUDA_NHWC_OPS
 REGISTER_KERNEL_TYPED(float, kMSInternalNHWCDomain, true)
@@ -122,6 +131,10 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   s_.cudnn_fe_graph->set_io_data_type(data_type).set_intermediate_data_type(data_type);
   if (data_type == cudnn_frontend::DataType_t::HALF) {
     s_.cudnn_fe_graph->set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+#if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8200
+  } else if (data_type == cudnn_frontend::DataType_t::BFLOAT16) {
+    s_.cudnn_fe_graph->set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+#endif
   } else {
     s_.cudnn_fe_graph->set_compute_data_type(data_type);
   }
@@ -385,7 +398,7 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
       if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
         x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
         y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
-        w_dims_cudnn.insert(w_dims.begin() + 2, 1);
+        w_dims_cudnn.insert(w_dims_cudnn.begin() + 2, 1);
         pads.insert(pads.begin() + kernel_rank, 0);
         pads.insert(pads.begin(), 0);
         kernel_shape.insert(kernel_shape.begin(), 1);
@@ -457,7 +470,7 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
 
 template <typename T, bool Layout>
 Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
-  std::lock_guard<OrtMutex> lock(s_.mutex);
+  std::lock_guard<std::mutex> lock(s_.mutex);
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
@@ -537,9 +550,16 @@ Status CudnnConvolutionDescriptor::Set(
   }
 
   // This piece of code is copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
-  // Setting math_type to CUDNN_DATA_FLOAT for half input
+  // Setting math_type to CUDNN_DATA_FLOAT for half or bfloat16 input
   cudnnDataType_t math_type = data_type;
-  if (data_type == CUDNN_DATA_HALF) math_type = CUDNN_DATA_FLOAT;
+  if (data_type == CUDNN_DATA_HALF) {
+    math_type = CUDNN_DATA_FLOAT;
+  }
+#if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8200
+  else if (data_type == CUDNN_DATA_BFLOAT16) {
+    math_type = CUDNN_DATA_FLOAT;
+  }
+#endif
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
       desc_,
       gsl::narrow_cast<int>(rank),
@@ -556,6 +576,10 @@ Status CudnnConvolutionDescriptor::Set(
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
   if (data_type == CUDNN_DATA_HALF) {
     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+#if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8200
+  } else if (data_type == CUDNN_DATA_BFLOAT16) {
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+#endif
   } else if (data_type == CUDNN_DATA_FLOAT && !use_tf32) {
     CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_FMA_MATH));
   }

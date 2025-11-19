@@ -48,13 +48,13 @@ Status AddBiasTranspose(const Tensor* qkv,                   // Input: Q/K/V dat
   constexpr size_t element_size = sizeof(T);
   ProcessBroadcastSpanFuncs add_funcs{
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.ScalarInput0<float>() + per_iter_bh.EigenInput1<float>().array();
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>().array() + per_iter_bh.ScalarInput1<float>();
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>() + per_iter_bh.EigenInput1<float>();
       }};  // For element-wise add
 
   // Allocate space for output of Q(BS, D) + bias(D)
@@ -132,13 +132,13 @@ Status AddBiasReshape(const Tensor* qkv,        // Input: Q/K/V data - query is 
   constexpr size_t element_size = sizeof(T);
   ProcessBroadcastSpanFuncs add_funcs{
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.ScalarInput0<float>() + per_iter_bh.EigenInput1<float>().array();
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>().array() + per_iter_bh.ScalarInput1<float>();
       },
       [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+        per_iter_bh.OutputEigen<float>() = per_iter_bh.EigenInput0<float>() + per_iter_bh.EigenInput1<float>();
       }};  // For element-wise add
 
   // Get Q's bias from combined bias
@@ -219,6 +219,10 @@ template Status MaybeTransposeToBNSHAndAddBias<float>(OpKernelContext* context, 
                                                       int batch_size, int num_heads, int sequence_length, int head_size,
                                                       const Tensor* in, const Tensor* bias, int bias_offset, OrtValue& out);
 
+template Status MaybeTransposeToBNSHAndAddBias<MLFloat16>(OpKernelContext* context, AllocatorPtr allocator,
+                                                          int batch_size, int num_heads, int sequence_length, int head_size,
+                                                          const Tensor* in, const Tensor* bias, int bias_offset, OrtValue& out);
+
 template <typename T>
 Status MaybeTransposeToBNSH(AllocatorPtr allocator,
                             int batch_size, int num_heads, int sequence_length, int head_size,
@@ -241,6 +245,10 @@ Status MaybeTransposeToBNSH(AllocatorPtr allocator,
 template Status MaybeTransposeToBNSH<float>(AllocatorPtr allocator,
                                             int batch_size, int num_heads, int sequence_length, int head_size,
                                             const Tensor* in, OrtValue& out);
+
+template Status MaybeTransposeToBNSH<MLFloat16>(AllocatorPtr allocator,
+                                                int batch_size, int num_heads, int sequence_length, int head_size,
+                                                const Tensor* in, OrtValue& out);
 
 }  // namespace contrib
 }  // namespace onnxruntime

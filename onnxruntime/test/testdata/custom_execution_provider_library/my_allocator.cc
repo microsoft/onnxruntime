@@ -7,7 +7,8 @@
 namespace onnxruntime {
 MyEPAllocator::MyEPAllocator(OrtDevice::DeviceId device_id)
     : IAllocator(OrtMemoryInfo(MyEP, OrtAllocatorType::OrtArenaAllocator,
-                               OrtDevice(MyEPDevice, OrtDevice::MemType::DEFAULT, device_id))) {
+                               OrtDevice(MyEPDevice, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
+                                         device_id))) {
 }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26400)

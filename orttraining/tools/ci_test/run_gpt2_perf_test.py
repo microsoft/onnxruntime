@@ -60,7 +60,7 @@ def main():
         ]
 
         if c.use_mixed_precision:
-            cmds.append("--use_mixed_precision"),
+            (cmds.append("--use_mixed_precision"),)
 
         subprocess.run(cmds).check_returncode()  # noqa: PLW1510
 

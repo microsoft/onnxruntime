@@ -9,6 +9,14 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
+#if NET8_0_OR_GREATER
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using SystemNumericsTensors = System.Numerics.Tensors;
+using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
+#endif
+
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
@@ -26,6 +34,147 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Interface for all readonly methods implemented by OrtValue.
+    /// </summary>
+    public interface IReadOnlyOrtValue
+    {
+        /// <summary>
+        /// Get the ONNX value type for the OrtValue (e.g., OnnxValueType.ONNX_TYPE_TENSOR).
+        /// </summary>
+        /// <value>OnnxValueType</value>
+        OnnxValueType OnnxType { get; }
+
+        /// <summary>
+        /// Returns true if OrtValue contains a tensor
+        /// </summary>
+        /// <returns>true if tensor</returns>
+        bool IsTensor { get; }
+
+        /// <summary>
+        /// Returns true if OrtValue contains a sparse tensor
+        /// </summary>
+        /// <returns>true if sparse tensor</returns>
+        bool IsSparseTensor { get; }
+
+        /// <summary>
+        /// Returns type information about the contained OnnxValue.
+        /// </summary>
+        /// <returns>a disposable instance of OrtTypeInfo</returns>
+        OrtTypeInfo GetTypeInfo();
+
+        /// <summary>
+        /// Obtains Tensor And Type Information from the OrtValue iff it contains a tensor.
+        /// Valid only for OrtValues that contain a tensor.
+        /// </summary>
+        /// <returns>A disposable instance of OrtTensorTypeAndShapeInfo</returns>
+        OrtTensorTypeAndShapeInfo GetTensorTypeAndShape();
+
+        /// <summary>
+        /// Returns the size of the tensor data in bytes.
+        /// </summary>
+        /// <returns>size of the tensor data in bytes</returns>
+        long GetTensorSizeInBytes();
+
+        /// <summary>
+        /// Returns OrtMemoryInfo iff this OrtValue contains a tensor or a sparse tensor.
+        /// </summary>
+        /// <returns>OrtMemoryInfo that describes the underlying memory allocation</returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        OrtMemoryInfo GetTensorMemoryInfo();
+
+        /// <summary>
+        /// Returns a ReadOnlySpan<typeparamref name="T"/> over tensor native buffer that
+        /// provides a read-only view.
+        ///
+        /// Note, that the memory may be device allocated and, therefore, not accessible from the CPU.
+        /// To get memory descriptor use GetTensorMemoryInfo().
+        ///
+        /// OrtValue must contain a non-string tensor.
+        /// The span is valid as long as the OrtValue instance is alive (not disposed).
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns>ReadOnlySpan<typeparamref name="T"/></returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        ReadOnlySpan<T> GetTensorDataAsSpan<T>() where T : unmanaged;
+
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// Returns a ReadOnlyTensorSpan<typeparamref name="T"/> over tensor native buffer that
+        /// provides a read-only view.
+        ///
+        /// Note, that the memory may be device allocated and, therefore, not accessible from the CPU.
+        /// To get memory descriptor use GetTensorMemoryInfo().
+        ///
+        /// OrtValue must contain a non-string tensor.
+        /// The span is valid as long as the OrtValue instance is alive (not disposed).
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns>ReadOnlySpan<typeparamref name="T"/></returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        [Experimental("SYSLIB5001")]
+        SystemNumericsTensors.ReadOnlyTensorSpan<T> GetTensorDataAsTensorSpan<T>() where T : unmanaged;
+#endif
+
+        /// <summary>
+        /// Valid for composite ML types like map, sequence.
+        /// Returns 2 for map (keys, values) and N for sequence, where N is the number of elements
+        /// in the sequence.
+        /// </summary>
+        /// <returns>Element count</returns>
+        int GetValueCount();
+
+        /// <summary>
+        /// For non tensors return OrtValue element at the specified index.
+        /// For maps only indices 0 and 1 are valid. For sequences, [0..N) are valid.
+        /// See GetValueCount() to determine the valid range.
+        /// </summary>
+        /// <param name="index"></param>
+        /// <param name="allocator">allocator to use</param>
+        /// <returns>OrtValue disposable instance that points to the corresponding element of the composite type</returns>
+        OrtValue GetValue(int index, OrtAllocator allocator);
+
+        /// <summary>
+        /// Fetch string tensor element buffer pointer at the specified index,
+        /// convert/copy to UTF-16 char[] and return a ReadOnlyMemory{char} instance.
+        ///
+        /// Obtain TensorTypeAndShape to get shape and element count.
+        /// </summary>
+        /// <param name="index">flat string tensor element index</param>
+        /// <returns>ReadOnlyMemory{char} backed by a managed char[]. Its lifespan is not
+        /// tied to the native buffer of OrtValue.</returns>
+        ReadOnlyMemory<char> GetStringElementAsMemory(int index);
+
+        /// <summary>
+        /// Fetch string tensor element buffer pointer at the specified index,
+        /// copy/convert UTF-8 into a UTF-16 string and return it.
+        ///
+        /// Obtain TensorTypeAndShape to get shape and element count.
+        /// </summary>
+        /// <param name="index">flat string tensor element index</param>
+        /// <returns>UTF-16 string instance</returns>
+        string GetStringElement(int index);
+
+        /// <summary>
+        /// Get a span over the native memory of the string tensor element.
+        /// The span is valid as long as the OrtValue is valid.
+        ///
+        /// This is useful if you want to perform your own UTF-8 decoding or
+        /// you do not care about decoding.
+        /// Obtain TensorTypeAndShape to get shape and element count.
+        /// </summary>
+        /// <param name="index">flat element index</param>
+        /// <returns>ReadOnlySpan over UTF-8 bytes of the string tensor element</returns>
+        ReadOnlySpan<byte> GetStringElementAsSpan(int index);
+
+        /// <summary>
+        /// Convenience method to obtain all string tensor elements as a string array.
+        /// </summary>
+        /// <returns>string[]</returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        string[] GetStringTensorAsArray();
+    }
+
+    /// <summary>
     /// Represents a disposable OrtValue.
     /// This class exposes a native instance of OrtValue.
     /// The class implements IDisposable and must
@@ -36,7 +185,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// disposed properly, the pinned memory will continue to be pinned and interfere
     /// with GC operation.
     /// </summary>
-    public class OrtValue : IOrtValueOwner, IDisposable
+    public class OrtValue : IOrtValueOwner, IDisposable, IReadOnlyOrtValue
     {
         // OrtValues that are members of Sequences or Maps that map. They potentially map managed memory and we need to keep them around.
         // this exists only when we deal with compose ML types.
@@ -44,11 +193,20 @@ namespace Microsoft.ML.OnnxRuntime
         private IntPtr _handle;
         private MemoryHandle? _memHandle; // Present when the OrtValue is created on top of managed memory
         private bool _disposed;
+        private bool _owned = true;
 
-        internal OrtValue(IntPtr handle)
+        /// <summary>
+        /// Constructs OrtValue from a native handle. If `owned` is true, the OrtValue instance takes
+        /// ownership of the native handle and disposes it when the OrtValue instance is disposed.
+        /// </summary>
+        /// <param name="handle">The native OrtValue handle.</param>
+        /// <param name="owned">True if this class instance owns the handle. If false, the handle
+        /// will not be released. Defaults to true.</param>
+        internal OrtValue(IntPtr handle, bool owned = true)
         {
             _handle = handle;
             InitOnnxType();
+            _owned = owned;
         }
 
         /// <summary>
@@ -205,6 +363,33 @@ namespace Microsoft.ML.OnnxRuntime
             return MemoryMarshal.Cast<byte, T>(byteSpan);
         }
 
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// Returns a ReadOnlyTensorSpan<typeparamref name="T"/> over tensor native buffer that
+        /// provides a read-only view.
+        ///
+        /// Note, that the memory may be device allocated and, therefore, not accessible from the CPU.
+        /// To get memory descriptor use GetTensorMemoryInfo().
+        ///
+        /// OrtValue must contain a non-string tensor.
+        /// The span is valid as long as the OrtValue instance is alive (not disposed).
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns>ReadOnlySpan<typeparamref name="T"/></returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        [Experimental("SYSLIB5001")]
+        public SystemNumericsTensors.ReadOnlyTensorSpan<T> GetTensorDataAsTensorSpan<T>() where T : unmanaged
+        {
+            var byteSpan = GetTensorBufferRawData(typeof(T));
+
+            var typeSpan = MemoryMarshal.Cast<byte, T>(byteSpan);
+            var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
+            nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
+
+            return new SystemNumericsTensors.ReadOnlyTensorSpan<T>(typeSpan, nArray, []);
+        }
+#endif
+
         /// <summary>
         /// Returns a Span<typeparamref name="T"/> over tensor native buffer.
         /// This enables you to safely and efficiently modify the underlying
@@ -225,6 +410,32 @@ namespace Microsoft.ML.OnnxRuntime
             return MemoryMarshal.Cast<byte, T>(byteSpan);
         }
 
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// Returns a TensorSpan<typeparamref name="T"/> over tensor native buffer.
+        ///
+        /// Note, that the memory may be device allocated and, therefore, not accessible from the CPU.
+        /// To get memory descriptor use GetTensorMemoryInfo().
+        ///
+        /// OrtValue must contain a non-string tensor.
+        /// The span is valid as long as the OrtValue instance is alive (not disposed).
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns>ReadOnlySpan<typeparamref name="T"/></returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        [Experimental("SYSLIB5001")]
+        public SystemNumericsTensors.TensorSpan<T> GetTensorMutableDataAsTensorSpan<T>() where T : unmanaged
+        {
+            var byteSpan = GetTensorBufferRawData(typeof(T));
+
+            var typeSpan = MemoryMarshal.Cast<byte, T>(byteSpan);
+            var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
+            nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
+
+            return new SystemNumericsTensors.TensorSpan<T>(typeSpan, nArray, []);
+        }
+#endif
+
         /// <summary>
         /// Provides mutable raw native buffer access.
         /// </summary>
@@ -232,6 +443,34 @@ namespace Microsoft.ML.OnnxRuntime
         public Span<byte> GetTensorMutableRawData()
         {
             return GetTensorBufferRawData(typeof(byte));
+        }
+
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// Provides mutable raw native buffer access.
+        /// </summary>
+        /// <returns>TensorSpan over the native buffer bytes</returns>
+        [Experimental("SYSLIB5001")]
+        public SystemNumericsTensors.TensorSpan<byte> GetTensorSpanMutableRawData<T>() where T : unmanaged
+        {
+            var byteSpan = GetTensorBufferRawData(typeof(T));
+
+            var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
+            nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
+
+            return new SystemNumericsTensors.TensorSpan<byte>(byteSpan, nArray, []);
+        }
+#endif
+
+        /// <summary>
+        /// This API computes and returns the size of the tensor data in bytes.
+        /// </summary>
+        /// <returns>size of the tensor data in bytes</returns>
+        public long GetTensorSizeInBytes()
+        {
+            // The native API verifies that this is a non-string tensor
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorSizeInBytes(Handle, out UIntPtr size));
+            return (long)size;
         }
 
         /// <summary>
@@ -604,6 +843,80 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, new Memory<T>(data), shape);
         }
+
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor on top of the existing tensor managed memory.
+        /// The method will attempt to pin managed memory so no copying occurs when data is passed down
+        /// to native code.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="tensor">Tensor object</param>
+        /// <returns>And instance of OrtValue constructed on top of the object</returns>
+        [Experimental("SYSLIB5001")]
+        public static OrtValue CreateTensorValueFromSystemNumericsTensorObject<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged
+        {
+            if (!IsContiguousAndDense(tensor))
+            {
+                var newTensor = SystemNumericsTensors.Tensor.Create<T>(tensor.Lengths);
+                tensor.CopyTo(newTensor);
+                tensor = newTensor;
+            }
+            unsafe
+            {
+                var backingData = (T[])tensor.GetType().GetField("_values", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(tensor);
+                GCHandle handle = GCHandle.Alloc(backingData, GCHandleType.Pinned);
+                var memHandle = new MemoryHandle(Unsafe.AsPointer(ref tensor.GetPinnableReference()), handle);
+
+                try
+                {
+                    IntPtr dataBufferPointer = IntPtr.Zero;
+                    unsafe
+                    {
+                        dataBufferPointer = (IntPtr)memHandle.Pointer;
+                    }
+
+                    var bufferLengthInBytes = tensor.FlattenedLength * sizeof(T);
+                    long[] shape = Array.ConvertAll(tensor.Lengths.ToArray(), new Converter<nint, long>(x => (long)x));
+
+                    var typeInfo = TensorBase.GetTypeInfo(typeof(T)) ??
+                        throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Tensor of type: {typeof(T)} is not supported");
+
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorWithDataAsOrtValue(
+                        OrtMemoryInfo.DefaultInstance.Pointer,
+                        dataBufferPointer,
+                        (UIntPtr)(bufferLengthInBytes),
+                        shape,
+                        (UIntPtr)tensor.Rank,
+                        typeInfo.ElementType,
+                        out IntPtr nativeValue));
+
+                    return new OrtValue(nativeValue, memHandle);
+                }
+                catch (Exception)
+                {
+                    memHandle.Dispose();
+                    throw;
+                }
+            }
+        }
+
+        [Experimental("SYSLIB5001")]
+        private static bool IsContiguousAndDense<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged 
+        {
+            // Right most dimension must be 1 for a dense tensor.
+            if (tensor.Strides[^1] != 1)
+                return false;
+
+            // For other dimensions, the stride must be equal to the product of the dimensions to the right.
+            for (int i = tensor.Rank - 2; i >= 0; i--)
+            {
+                if (tensor.Strides[i] != TensorPrimitives.Product(tensor.Lengths.Slice(i + 1, tensor.Lengths.Length - i - 1)))
+                    return false;
+            }
+            return true;
+        }
+#endif
 
         /// <summary>
         /// The factory API creates an OrtValue with memory allocated using the given allocator
@@ -1205,7 +1518,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// This API helps the user to process a map OrtValue without
         /// having to deal with the lifespan of intermediate OrtValues.
         ///
-        /// each API value is fed to the vistor functor.
+        /// each API value is fed to the visitor functor.
         /// </summary>
         /// <param name="visitor">visitor function</param>
         /// <param name="allocator">Allocator to use for intermediate values</param>
@@ -1301,7 +1614,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             Debug.Assert(_handle != IntPtr.Zero);
-            NativeMethods.OrtReleaseValue(_handle);
+            if (_owned)
+            {
+                NativeMethods.OrtReleaseValue(_handle);
+            }
             _handle = IntPtr.Zero;
             _disposed = true;
         }

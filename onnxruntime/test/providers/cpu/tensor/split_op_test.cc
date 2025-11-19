@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -222,6 +223,26 @@ TEST(SplitOperatorTest, Axis1EqualSplitFloat) {
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
+TEST(SplitOperatorTest, Axis1EqualSplitFloat16) {
+  constexpr int64_t axis = 1;
+  std::vector<ShapeAndData<MLFloat16>> outputs;
+
+  // input shape and data
+  ShapeAndData<MLFloat16> input = {{2, 4},
+                                   GetTypedArray<MLFloat16>({1.f, 2.f, 3.f, 4.f,
+                                                             5.f, 6.f, 7.f, 8.f})};
+
+  outputs.push_back({{2, 2},
+                     GetTypedArray<MLFloat16>({1.f, 2.f,
+                                               5.f, 6.f})});
+
+  outputs.push_back({{2, 2},
+                     GetTypedArray<MLFloat16>({3.f, 4.f,
+                                               7.f, 8.f})});
+  RunTest<MLFloat16>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
+  RunTest<MLFloat16>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
+}
+
 TEST(SplitOperatorTest, Axis1EqualSplitString) {
   constexpr int64_t axis = 1;
   std::vector<ShapeAndStringData> outputs;
@@ -374,6 +395,23 @@ TEST(SplitOperatorTest, ZeroSizeInput) {
   ShapeAndFloatData input = CreateInput<float>({0, 2});
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
+}
+
+TEST(SplitOperatorTest, ZeroSizeOutput) {
+  constexpr int64_t axis = 1;
+  std::vector<ShapeAndFloatData> outputs;
+
+  // Non-zero input that will be split to produce zero-size outputs
+  ShapeAndFloatData input = {{2, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}};
+
+  // Split sizes: 0, 2, 1 - first output will have zero size
+  std::vector<int64_t> splits{0, 2, 1};
+
+  outputs.push_back({{2, 0}, {}});  // Zero-size output
+  outputs.push_back({{2, 2}, {1.f, 2.f, 4.f, 5.f}});
+  outputs.push_back({{2, 1}, {3.f, 6.f}});
+
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider}, false, true);
 }
 
 // test a split of a dimension that has leading and trailing dimensions

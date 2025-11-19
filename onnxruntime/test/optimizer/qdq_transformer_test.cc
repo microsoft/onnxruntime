@@ -11,6 +11,8 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
+#include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
+#include "core/optimizer/qdq_transformer/where_dummy_dq.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
@@ -23,14 +25,15 @@
 
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/common/dnnl_op_test_utils.h"
 
 #include "gtest/gtest.h"
-#include "graph_transform_test_builder.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 
-#include "qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4127)
@@ -115,6 +118,8 @@ void QDQTransformerConvTests() {
 }
 
 TEST(QDQTransformerTests, Conv_U8X8U8) {
+  DNNL_GTEST_SKIP();
+
   QDQTransformerConvTests<uint8_t, uint8_t, int32_t, uint8_t>();
   QDQTransformerConvTests<uint8_t, int8_t, int32_t, uint8_t>();
 }
@@ -144,6 +149,8 @@ TEST(QDQTransformerTests, Conv_S8X8S8) {
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        int opset_version, bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -215,6 +222,8 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -1520,6 +1529,52 @@ TEST(QDQTransformerTests, DoubleQDQ) {
                    bad_float_point, good_float_point_2, true);  // Use com.microsoft QDQ ops
 }
 
+// Verifies fix for bug in the IsQDQPairSupported utility function, which is used by
+// various optimizers such as DoubleQDQPairsRemover. The bug causes an exception when
+// IsQDQPairIsSupported() is called with a Q -> DQ sequence that uses different scale types.
+TEST(QDQTransformerTests, DoubleQDQPairsRemover_Bug_RejectDifferentScaleTypes) {
+  // Function that builds a model with a QDQ nodes that use different scale data types:
+  // input_fp32 -> Q(scale_fp32) -> DQ(scale_fp16) -> Mul(fp16) -> Q(scale_fp16) -> DQ(scale_fp32) -> output_fp32
+  auto build_model_func = [](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, {1.0f, 2.0f, 3.0f});
+    NodeArg* q1_output = builder.MakeIntermediate();
+    NodeArg* dq1_output = builder.MakeIntermediate();
+    NodeArg* mul_output = builder.MakeIntermediate();
+    NodeArg* q2_output = builder.MakeIntermediate();
+    NodeArg* dq2_output = builder.MakeOutput();
+    NodeArg* const_arg = builder.MakeScalarInitializer(MLFloat16(10.0f));
+
+    const float scale_fp32 = 1.0f;
+    const MLFloat16 scale_fp16 = MLFloat16(scale_fp32);
+    const uint8_t zp = 127;
+
+    builder.AddQuantizeLinearNode<uint8_t, float>(input0_arg, scale_fp32, zp, q1_output);
+    builder.AddDequantizeLinearNode<uint8_t, MLFloat16>(q1_output, scale_fp16, zp, dq1_output);
+    builder.AddNode("Mul", {dq1_output, const_arg}, {mul_output});
+    builder.AddQuantizeLinearNode<uint8_t, MLFloat16>(mul_output, scale_fp16, zp, q2_output);
+    builder.AddDequantizeLinearNode<uint8_t, float>(q2_output, scale_fp32, zp, dq2_output);
+  };
+
+  // Previously, using different scale data types caused an exception in IsQDQPairSupported.
+  // Now, we just reject the sequence. The DoubleQDQPairsRemover optimizer should not change the
+  // graph.
+  auto graph_checker = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+    EXPECT_EQ(op_to_count["Mul"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+  };
+  TransformerTester(
+      build_model_func,
+      graph_checker,
+      TransformerLevel::Default,
+      TransformerLevel::Level1,
+      21,
+      /*per_sample_tolerance*/ 0.0,
+      /*relative_per_sample_tolerance*/ 0.0,
+      std::make_unique<DoubleQDQPairsRemover>());
+}
+
 template <typename QuantType>
 static void RunDoubleQDQWithoutLastNodeBeingOutput(int output_index, int expected_Q_count, int expected_DQ_count,
                                                    bool use_contrib_qdq = false, int opset = 12) {
@@ -2265,6 +2320,8 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
 }
 
 TEST(QDQTransformerTests, ConvRelu) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool is_zp_zero, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2320,6 +2377,8 @@ TEST(QDQTransformerTests, ConvRelu) {
 }
 
 TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2389,6 +2448,8 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
 }
 
 TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2707,6 +2768,8 @@ TEST(QDQTransformerTests, Sigmoid_U8S8) {
 }
 
 TEST(QDQTransformerTests, ConvTranspose_QBackward) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        const std::vector<int64_t>& perms, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2757,6 +2820,8 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
 }
 
 TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2839,6 +2904,8 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
 }
 
 TEST(QDQTransformerTests, ConvTranspose_DQForward) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        const std::vector<int64_t>& perms, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2905,6 +2972,8 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
 }
 
 TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
+  DNNL_GTEST_SKIP();
+
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
                        const std::vector<int64_t>& perms, bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -3150,6 +3219,79 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   test_case(TransformerLevel::Level2, -128);  // Will fuse Relu into QuantizeLinear.
   test_case(TransformerLevel::Level3, -128);  // Will fuse Relu into QuantizeLinear.
   test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
+}
+
+template <typename ScaleType, typename ZpType>
+void TestWhereWithDqInput(bool is_dq_1,
+                          bool is_dq_2,
+                          int expected_num_where,
+                          int expected_num_dq,
+                          int expected_num_q,
+                          bool expected_modified) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("WhereDummyDqTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* where_in1 = nullptr;
+  NodeArg* where_in2 = nullptr;
+  if (is_dq_1) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    where_in1 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in1});
+  } else {
+    where_in1 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+  if (is_dq_2) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    where_in2 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in2});
+  } else {
+    where_in2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+
+  // Where
+  auto* where_cond = builder.MakeInputBool({4, 3, 32});
+  auto* where_out = builder.MakeIntermediate();
+  builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+
+  // Q
+  auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<uint16_t>({}, 0.0, 1.0);
+  auto* q_out = builder.MakeOutput();
+  builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto where_optimizer = std::make_unique<WhereDummyDq>();
+  bool modified = false;
+  ASSERT_STATUS_OK(where_optimizer->Apply(graph, modified, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Where"], expected_num_where);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], expected_num_dq);
+  ASSERT_EQ(op_to_count["QuantizeLinear"], expected_num_q);
+  ASSERT_EQ(modified, expected_modified);
+
+  return;
+};
+
+TEST(QDQTransformerTests, WhereDummyDqTest) {
+  TestWhereWithDqInput<float, uint8_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint8_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t>(false, false, 1, 0, 1, false);
+  TestWhereWithDqInput<float, uint16_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint16_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t>(false, false, 1, 0, 1, false);
 }
 
 TEST(QDQTransformerTests, Concat) {
@@ -3925,8 +4067,33 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_SliceMultipleConsumers) {
   run_test_case(/*slice_has_graph_output*/ true);
 }
 
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+static void VerifyIODef(const NodeUnitIODef& io_def, const Node& node) {
+  const auto& op_type = node.OpType();
+  const bool is_dq = op_type == "DequantizeLinear";
+  const bool is_q = op_type == "QuantizeLinear";
+  ASSERT_TRUE(is_dq || is_q);
+  const auto input_defs = node.InputDefs();
+  if (is_dq) {
+    ASSERT_EQ(&io_def.node_arg, input_defs[0]);
+  } else {  // is_q
+    ASSERT_EQ(&io_def.node_arg, node.OutputDefs()[0]);
+  }
+
+  ASSERT_EQ(&io_def.quant_param->scale, input_defs[1]);
+
+  // [optional] zero point should be consistent between NodeUnitIODef and Input/OutputDefs
+  ASSERT_EQ(input_defs.size() == 3, io_def.quant_param->zero_point != nullptr);
+  if (input_defs.size() == 3) {
+    // we have zero point
+    ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
+  }
+}
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
 
   SessionOptions so;
   // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
@@ -3961,7 +4128,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
   // Check if SelectorManager get a conv qdq group selection as expected
   {
-    const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer);
+    const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer, logger);
     ASSERT_FALSE(result.empty());
     const auto& qdq_group = result.at(0);
     ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
@@ -3976,7 +4143,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
     std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
 
-    std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer);
+    std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer, logger);
 
     // We should get a single QDQ Node unit in the result
     ASSERT_EQ(1, node_unit_holder.size());
@@ -3988,31 +4155,11 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_EQ(1, qdq_node_unit.Outputs().size());
     ASSERT_EQ(conv_node, &qdq_node_unit.GetNode());
 
-    const auto verify_io_def = [](const NodeUnitIODef& io_def, const Node& node) {
-      const auto& op_type = node.OpType();
-      const bool is_dq = op_type == "DequantizeLinear";
-      const bool is_q = op_type == "QuantizeLinear";
-      ASSERT_TRUE(is_dq || is_q);
-      const auto input_defs = node.InputDefs();
-      if (is_dq) {
-        ASSERT_EQ(&io_def.node_arg, input_defs[0]);
-      } else {  // is_q
-        ASSERT_EQ(&io_def.node_arg, node.OutputDefs()[0]);
-      }
-
-      ASSERT_EQ(&io_def.quant_param->scale, input_defs[1]);
-
-      // [optional] zero point should be consistent between NodeUnitIODef and Input/OutputDefs
-      ASSERT_EQ(input_defs.size() == 3, !!io_def.quant_param->zero_point);
-      if (input_defs.size() == 3)  // we have zero point
-        ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
-    };
-
     // We know the graph has 5 nodes, DQ_input, DQ_weight, DQ_bias, Conv, Q_output (index 0-4)
-    verify_io_def(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input
-    verify_io_def(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_weight
-    verify_io_def(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
-    verify_io_def(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
+    VerifyIODef(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input
+    VerifyIODef(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_weight
+    VerifyIODef(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
+    VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
   }
 #endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
 
@@ -4044,9 +4191,504 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
     // Check SelectorManager will get empty result
     {
-      const auto result = selector_mgr.GetQDQSelections(partial_graph_viewer);
+      const auto result = selector_mgr.GetQDQSelections(partial_graph_viewer, logger);
       ASSERT_TRUE(result.empty());
     }
+  }
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClip) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+    auto* weight_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                  std::numeric_limits<uint8_t>::max());
+    auto* bias_arg =
+        builder.MakeInput<int32_t>({2}, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+    auto* dq_input = builder.MakeIntermediate();
+    auto* dq_weight = builder.MakeIntermediate();
+    auto* dq_bias = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
+    builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
+    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+
+    // Conv
+    auto* conv_output = builder.MakeIntermediate();
+    Node& conv_node = builder.AddNode("Conv", {dq_input, dq_weight, dq_bias}, {conv_output});
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+    conv_node.AddAttribute("group", int64_t(2));
+    conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+    // Clip
+    NodeArg* clip_min = builder.MakeScalarInitializer<uint8_t>(128);  // -> 0.0f
+    NodeArg* clip_max = builder.MakeScalarInitializer<uint8_t>(255);  // -> 0.6f
+    NodeArg* min_dq = builder.MakeIntermediate();
+    NodeArg* max_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(clip_min, 0.00784313772f, static_cast<uint8_t>(128), min_dq, false);
+    builder.AddDequantizeLinearNode<uint8_t>(clip_max, 0.0235293377f, static_cast<uint8_t>(0), max_dq, false);
+    NodeArg* clip_fp32 = builder.MakeIntermediate();
+    builder.AddNode("Clip", {conv_output, min_dq, max_dq}, {clip_fp32});
+    NodeArg* clip_q = builder.MakeIntermediate();
+    NodeArg* clip_dq = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(clip_fp32, 0.0082940589f, static_cast<uint8_t>(0), clip_q, false);
+    builder.AddDequantizeLinearNode<uint8_t>(clip_q, 0.0082940589f, static_cast<uint8_t>(0), clip_dq, false);
+  };
+  // Build the model for this test.
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 18;
+  domain_to_version[kMSDomain] = 1;
+  Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  const GraphViewer whole_graph_viewer(graph);
+
+  // Make sure node 3 is the conv node
+  const auto* conv_node = graph.GetNode(3);
+  ASSERT_TRUE(nullptr != conv_node);
+  ASSERT_EQ("Conv", conv_node->OpType());
+
+  // Make sure the conv QDQ group is selected
+  onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
+  const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
+  ASSERT_TRUE(result.has_value());
+  const auto& qdq_group = *result;
+  ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+  ASSERT_EQ(NodeIndex(6), qdq_group.redundant_clip_node);
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClipNonScalar) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+    auto* weight_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                  std::numeric_limits<uint8_t>::max());
+    auto* bias_arg =
+        builder.MakeInput<int32_t>({2}, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+    auto* dq_input = builder.MakeIntermediate();
+    auto* dq_weight = builder.MakeIntermediate();
+    auto* dq_bias = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
+    builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
+    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+
+    // Conv
+    auto* conv_output = builder.MakeIntermediate();
+    Node& conv_node = builder.AddNode("Conv", {dq_input, dq_weight, dq_bias}, {conv_output});
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+    conv_node.AddAttribute("group", int64_t(2));
+    conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+    // Clip
+    NodeArg* clip_min = builder.Make1DInitializer<uint8_t>({128});  // -> 0.0f
+    NodeArg* clip_max = builder.Make1DInitializer<uint8_t>({255});  // -> 0.6f
+    NodeArg* min_dq = builder.MakeIntermediate();
+    NodeArg* max_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(clip_min, 0.00784313772f, static_cast<uint8_t>(128), min_dq, false);
+    builder.AddDequantizeLinearNode<uint8_t>(clip_max, 0.0235293377f, static_cast<uint8_t>(0), max_dq, false);
+    NodeArg* clip_fp32 = builder.MakeIntermediate();
+    builder.AddNode("Clip", {conv_output, min_dq, max_dq}, {clip_fp32});
+    NodeArg* clip_q = builder.MakeIntermediate();
+    NodeArg* clip_dq = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(clip_fp32, 0.0082940589f, static_cast<uint8_t>(0), clip_q, false);
+    builder.AddDequantizeLinearNode<uint8_t>(clip_q, 0.0082940589f, static_cast<uint8_t>(0), clip_dq, false);
+  };
+  // Build the model for this test.
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 18;
+  domain_to_version[kMSDomain] = 1;
+  Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  const GraphViewer whole_graph_viewer(graph);
+
+  // Make sure node 3 is the conv node
+  const auto* conv_node = graph.GetNode(3);
+  ASSERT_TRUE(nullptr != conv_node);
+  ASSERT_EQ("Conv", conv_node->OpType());
+
+  // Make sure the conv QDQ group is selected
+  onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
+  const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
+  ASSERT_TRUE(result.has_value());
+  const auto& qdq_group = *result;
+  ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+  ASSERT_EQ(NodeIndex(6), qdq_group.redundant_clip_node);
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Relu is redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* weight_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                    std::numeric_limits<uint8_t>::max());
+      auto* bias_arg =
+          builder.MakeInput<int32_t>({2}, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+      // DQ
+      auto* dq_input = builder.MakeIntermediate();
+      auto* dq_weight = builder.MakeIntermediate();
+      auto* dq_bias = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
+      builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
+      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+
+      // Conv
+      auto* conv_output = builder.MakeIntermediate();
+      Node& conv_node = builder.AddNode("Conv", {dq_input, dq_weight, dq_bias}, {conv_output});
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", int64_t(2));
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+      // Relu
+      auto* relu_output = builder.MakeIntermediate();
+      builder.AddNode("Relu", {conv_output}, {relu_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(relu_output, 0.02348f, uint8_t(0), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    // Make sure node 3 is the conv node
+    const auto* conv_node = graph.GetNode(3);
+    ASSERT_TRUE(nullptr != conv_node);
+    ASSERT_EQ("Conv", conv_node->OpType());
+
+    // Make sure the conv QDQ group is selected for the full graph
+    {
+      onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
+      const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
+      ASSERT_TRUE(result.has_value());
+      const auto& qdq_group = *result;
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(4), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({5}), qdq_group.q_nodes);
+    }
+
+    // Check if SelectorManager get a conv qdq group selection as expected
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer, logger);
+      ASSERT_FALSE(result.empty());
+      const auto& qdq_group = result.at(0);
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(4), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({5}), qdq_group.q_nodes);
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      // Get all the NodeUnits in the graph_viewer
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer, logger);
+
+      // We should get a single QDQ Node unit in the result
+      ASSERT_EQ(1, node_unit_holder.size());
+      ASSERT_EQ(6, node_unit_map.size());
+      const auto& qdq_node_unit = *node_unit_holder[0];
+      ASSERT_EQ(NodeUnit::Type::QDQGroup, qdq_node_unit.UnitType());
+
+      ASSERT_EQ(3, qdq_node_unit.Inputs().size());
+      ASSERT_EQ(1, qdq_node_unit.Outputs().size());
+      ASSERT_EQ(conv_node, &qdq_node_unit.GetNode());
+      ASSERT_EQ(whole_graph_viewer.GetNode(4), qdq_node_unit.GetRedundantClipNode());
+
+      // We know the graph has 5 nodes, DQ_input, DQ_weight, DQ_bias, Conv, Relu, Q_output (index 0-5)
+      VerifyIODef(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input
+      VerifyIODef(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_weight
+      VerifyIODef(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
+      VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(5));  // Q_output
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+  }
+
+  // Relu is NOT redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* weight_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                    std::numeric_limits<uint8_t>::max());
+      auto* bias_arg =
+          builder.MakeInput<int32_t>({2}, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+      // DQ
+      auto* dq_input = builder.MakeIntermediate();
+      auto* dq_weight = builder.MakeIntermediate();
+      auto* dq_bias = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
+      builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
+      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+
+      // Conv
+      auto* conv_output = builder.MakeIntermediate();
+      Node& conv_node = builder.AddNode("Conv", {dq_input, dq_weight, dq_bias}, {conv_output});
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", int64_t(2));
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+      // Relu
+      auto* relu_output = builder.MakeIntermediate();
+      builder.AddNode("Relu", {conv_output}, {relu_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(relu_output, 0.02348f, uint8_t(127), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    // Make sure node 3 is the conv node
+    const auto* conv_node = graph.GetNode(3);
+    ASSERT_TRUE(nullptr != conv_node);
+    ASSERT_EQ("Conv", conv_node->OpType());
+
+    // Make sure the conv QDQ group is selected for the full graph
+    {
+      onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
+      const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
+      ASSERT_FALSE(result.has_value());
+    }
+
+    // Check if SelectorManager get a conv qdq group selection as expected
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer, logger);
+      ASSERT_TRUE(result.empty());
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer, logger);
+      ASSERT_EQ(6, node_unit_holder.size());
+      ASSERT_EQ(6, node_unit_map.size());
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+  }
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_Add_Clip) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Clip is redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<uint8_t>({2, 3, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+      auto* input_1_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+
+      // DQ
+      auto* dq_input_0 = builder.MakeIntermediate();
+      auto* dq_input_1 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_0_arg, 0.02348f, uint8_t(0), dq_input_0, false);
+      builder.AddDequantizeLinearNode(input_1_arg, 0.307f, uint8_t(0), dq_input_1, false);
+
+      // Add
+      auto* add_output = builder.MakeIntermediate();
+      builder.AddNode("Add", {dq_input_0, dq_input_1}, {add_output});
+
+      // Clip
+      auto* clip_min_arg = builder.MakeInitializer<float>({}, {0.0f});
+      auto* clip_max_arg = builder.MakeInitializer<float>({}, {6.0f});
+      auto* clip_output = builder.MakeIntermediate();
+      builder.AddNode("Clip", {add_output, clip_min_arg, clip_max_arg}, {clip_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(clip_output, 0.02348f, uint8_t(0), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const auto* add_node = graph.GetNode(2);
+    ASSERT_TRUE(nullptr != add_node);
+    ASSERT_EQ("Add", add_node->OpType());
+
+    // Make sure the add QDQ group is selected for the full graph
+    {
+      onnxruntime::QDQ::BinaryNodeGroupSelector add_selector;
+      const auto result = add_selector.GetQDQSelection(whole_graph_viewer, *add_node);
+      ASSERT_TRUE(result.has_value());
+      const auto& qdq_group = *result;
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(2), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(3), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+    }
+
+    // Check if SelectorManager get a add qdq group selection as expected
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer, logger);
+      ASSERT_FALSE(result.empty());
+      const auto& qdq_group = result.at(0);
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(2), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(3), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      // Get all the NodeUnits in the graph_viewer
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer, logger);
+
+      // We should get a single QDQ Node unit in the result
+      ASSERT_EQ(1, node_unit_holder.size());
+      ASSERT_EQ(5, node_unit_map.size());
+      const auto& qdq_node_unit = *node_unit_holder[0];
+      ASSERT_EQ(NodeUnit::Type::QDQGroup, qdq_node_unit.UnitType());
+
+      ASSERT_EQ(2, qdq_node_unit.Inputs().size());
+      ASSERT_EQ(1, qdq_node_unit.Outputs().size());
+      ASSERT_EQ(add_node, &qdq_node_unit.GetNode());
+
+      // We know the graph has 5 nodes, DQ_input_0, DQ_input_1, Add, Clip, Q_output (index 0-4)
+      VerifyIODef(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input_0
+      VerifyIODef(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_input_1
+      VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+  }
+
+  // Clip is NOT redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<uint8_t>({2, 3, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+      auto* input_1_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+
+      // DQ
+      auto* dq_input_0 = builder.MakeIntermediate();
+      auto* dq_input_1 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_0_arg, 0.02348f, uint8_t(0), dq_input_0, false);
+      builder.AddDequantizeLinearNode(input_1_arg, 0.307f, uint8_t(0), dq_input_1, false);
+
+      // Add
+      auto* add_output = builder.MakeIntermediate();
+      builder.AddNode("Add", {dq_input_0, dq_input_1}, {add_output});
+
+      // Clip
+      auto* clip_min_arg = builder.MakeInitializer<float>({}, {1.0f});
+      auto* clip_max_arg = builder.MakeInitializer<float>({}, {5.0f});
+      auto* clip_output = builder.MakeIntermediate();
+      builder.AddNode("Clip", {add_output, clip_min_arg, clip_max_arg}, {clip_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(clip_output, 0.02348f, uint8_t(0), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const auto* add_node = graph.GetNode(2);
+    ASSERT_TRUE(nullptr != add_node);
+    ASSERT_EQ("Add", add_node->OpType());
+
+    {
+      onnxruntime::QDQ::BinaryNodeGroupSelector add_selector;
+      const auto result = add_selector.GetQDQSelection(whole_graph_viewer, *add_node);
+      ASSERT_FALSE(result.has_value());
+    }
+
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer, logger);
+      ASSERT_TRUE(result.empty());
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      // Get all the NodeUnits in the graph_viewer
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer, logger);
+      ASSERT_EQ(5, node_unit_holder.size());
+      ASSERT_EQ(5, node_unit_map.size());
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
   }
 }
 
@@ -4844,6 +5486,453 @@ TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
   test_case({1, 4, 8}, -1, true, false);
   test_case({1, 4, 8}, -1, true, true);  // Use contrib QDQ ops
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
+TEST(QDQTransformerTests, WeightBiasQuantization_Conv_Bias) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg = builder.MakeInput<uint8_t>({1, 24, 128, 128}, std::numeric_limits<uint8_t>::min(),
+                                                      std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<uint8_t>({24, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                             std::numeric_limits<uint8_t>::max());
+      NodeArg* bias_arg = builder.MakeInitializer<float>({24}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* weight_dq_arg = builder.MakeIntermediate();
+      NodeArg* conv_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.07f, static_cast<uint8_t>(0), input_dq_arg,
+                                               use_contrib_qdq);
+      auto& weight_dq_node = builder.AddDequantizeLinearNode<uint8_t>(weight_arg, std::vector<float>(24, 0.05f),
+                                                                      std::vector<uint8_t>(24, static_cast<uint8_t>(0)),
+                                                                      weight_dq_arg, nullptr, use_contrib_qdq);
+      weight_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
+      auto& conv_node = builder.AddNode("Conv", {input_dq_arg, weight_dq_arg, bias_arg}, {conv_dq_arg});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(24));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      builder.AddQuantizeLinearNode<uint8_t>(conv_dq_arg, 0.14f, static_cast<uint8_t>(127), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
+TEST(QDQTransformerTests, WeightBiasQuantization_Conv_Weight_Bias) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg = builder.MakeInput<uint8_t>({1, 24, 67, 67}, std::numeric_limits<uint8_t>::min(),
+                                                      std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<float>({24, 1, 5, 5}, -0.1f, 0.1f);
+      NodeArg* bias_arg = builder.MakeInitializer<float>({24}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* conv_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg,
+                                               use_contrib_qdq);
+      auto& conv_node = builder.AddNode("Conv", {input_dq_arg, weight_arg, bias_arg}, {conv_dq_arg});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{5, 5});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+      conv_node.AddAttribute("group", static_cast<int64_t>(24));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+      builder.AddQuantizeLinearNode<uint8_t>(conv_dq_arg, 0.014f, static_cast<uint8_t>(127), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["QLinearConv"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
+// Tests that the WeightBiasQuantization optimizer still processes nodes that contain a type-preserving no
+// branch ReLU op to QuantizeLinear e.g., Q -> DQ -> Conv (w/ float weight initializer) -> ReLU -> Q -> DQ
+TEST(QDQTransformerTests, WeightBiasQuantization_ConvWithReLU) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_fp32 = builder.MakeInput<float>({1, 1, 4, 4}, -1.0f, 1.0f);
+      NodeArg* weight_fp32 = builder.MakeInitializer<float>({2, 1, 3, 3}, -1.0f, 1.0f);
+      NodeArg* input_q = builder.MakeIntermediate();
+      NodeArg* input_dq = builder.MakeIntermediate();
+      NodeArg* conv_fp32 = builder.MakeIntermediate();
+      NodeArg* relu_fp32 = builder.MakeIntermediate();
+      NodeArg* relu_q = builder.MakeIntermediate();
+      NodeArg* relu_dq = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(input_fp32, 0.18f, static_cast<uint8_t>(127), input_q, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(input_q, 0.18f, static_cast<uint8_t>(127), input_dq, use_contrib_qdq);
+      auto& conv_node = builder.AddNode("Conv", {input_dq, weight_fp32}, {conv_fp32});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+      builder.AddNode("Relu", {conv_fp32}, {relu_fp32});
+      builder.AddQuantizeLinearNode<uint8_t>(relu_fp32, 0.69f, static_cast<uint8_t>(127), relu_q, use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(relu_q, 0.69f, static_cast<uint8_t>(127), relu_dq, use_contrib_qdq);
+    };
+
+    // Conv's weights should be quantized and folded, one additional Q/DQ pair inserted for weight
+    auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"] + op_to_count["com.microsoft.QuantizeLinear"], 2 + 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 2 + 1);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count["Relu"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      /*opset_version=*/20,
+                      /*per_sample_tolerance=*/0.01,
+                      /*relative_per_sample_tolerance=*/0.01,
+                      /*transformer=*/std::make_unique<WeightBiasQuantization>());
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
+// Tests that the WeightBiasQuantization optimizer does not process nodes that do not
+// already have an output that is consumed by a valid path to QuantizeLinear node.
+TEST(QDQTransformerTests, WeightBiasQuantization_SkipIfOutputNotQuantized) {
+  auto test_case = [](bool add_final_reshape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg = builder.MakeInput<uint8_t>({1, 24, 67, 67}, std::numeric_limits<uint8_t>::min(),
+                                                      std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<float>({24, 1, 5, 5}, -0.1f, 0.1f);
+      NodeArg* bias_arg = builder.MakeInitializer<float>({24}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* conv_output_arg = add_final_reshape ? builder.MakeIntermediate() : builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg);
+      auto& conv_node = builder.AddNode("Conv", {input_dq_arg, weight_arg, bias_arg}, {conv_output_arg});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{5, 5});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+      conv_node.AddAttribute("group", static_cast<int64_t>(24));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+      // Make adding a final Reshape node configurable to test two cases:
+      //  - Conv produces a graph output
+      //  - Conv output is consumed by some node that is NOT a QuantizeLinear
+      // In either case, the WeightBiasQuantization optimizer should skip this node.
+      if (add_final_reshape) {
+        NodeArg* reshape_output_arg = builder.MakeOutput();
+        NodeArg* new_shape_arg = builder.Make1DInitializer<int64_t>({1, -1});
+        builder.AddNode("Reshape", {conv_output_arg, new_shape_arg}, {reshape_output_arg});
+      }
+    };
+
+    auto check_graph = [add_final_reshape](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+
+      // Should retain the same nodes in the original graph.
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+      EXPECT_EQ(op_to_count["Conv"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count["Reshape"], static_cast<int>(add_final_reshape));
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      21,
+                      /*per_sample_tolerance*/ 0.0,
+                      /*relative_per_sample_tolerance*/ 0.0,
+                      std::make_unique<WeightBiasQuantization>());
+  };
+
+  test_case(false);  // Conv produces a graph output directly
+  test_case(true);   // Conv -> Reshape -> graph_output
+}
+
+TEST(QDQTransformerTests, WeightBiasQuantization_ConvTranspose_Weight) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg = builder.MakeInput<uint8_t>({1, 3, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                      std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<float>({3, 3, 3, 3}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* conv_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg,
+                                               use_contrib_qdq);
+      auto& conv_node = builder.AddNode("ConvTranspose", {input_dq_arg, weight_arg}, {conv_dq_arg});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+      builder.AddQuantizeLinearNode<uint8_t>(conv_dq_arg, 0.014f, static_cast<uint8_t>(127), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      // No QLinearConvTranspose CPU kernel. Check the graph only.
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 2);
+      EXPECT_EQ(op_to_count["ConvTranspose"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
+TEST(QDQTransformerTests, WeightBiasQuantization_ConvTransposePerChannelWeight) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg = builder.MakeInput<uint8_t>({1, 3, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                      std::numeric_limits<uint8_t>::max());
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* weight_arg = builder.MakeInitializer<uint8_t>({3, 3, 3, 3}, 0, 255);
+      NodeArg* weight_dq_arg = builder.MakeIntermediate();
+      NodeArg* bias_arg = builder.MakeInitializer<float>({3}, -0.1f, 0.1f);
+      NodeArg* conv_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg,
+                                               use_contrib_qdq);
+      std::vector<float> scales = std::vector<float>(3, 0.05f);
+      std::vector<uint8_t> zp = std::vector<uint8_t>(3, static_cast<uint8_t>(0));
+      auto& dq_node = builder.AddDequantizeLinearNode<uint8_t>(weight_arg, scales, zp, weight_dq_arg, nullptr, use_contrib_qdq);
+      dq_node.AddAttribute("axis", static_cast<int64_t>(1));
+
+      auto& conv_node = builder.AddNode("ConvTranspose", {input_dq_arg, weight_dq_arg, bias_arg}, {conv_dq_arg});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+      builder.AddQuantizeLinearNode<uint8_t>(conv_dq_arg, 0.014f, static_cast<uint8_t>(127), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      // No QLinearConvTranspose CPU kernel. Check the graph only.
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 3);
+      EXPECT_EQ(op_to_count["ConvTranspose"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true);
+#endif
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+
+TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Bias) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg =
+          builder.MakeInput<uint8_t>({1, 32}, std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<uint8_t>({16, 32}, std::numeric_limits<uint8_t>::min(),
+                                                             std::numeric_limits<uint8_t>::max());
+      NodeArg* bias_arg = builder.MakeInitializer<float>({16}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* weight_dq_arg = builder.MakeIntermediate();
+      NodeArg* gemm_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(0), input_dq_arg,
+                                               use_contrib_qdq);
+      builder.AddDequantizeLinearNode<uint8_t>(weight_arg, 0.26f, static_cast<uint8_t>(0), weight_dq_arg,
+                                               use_contrib_qdq);
+      auto& gemm_node = builder.AddNode("Gemm", {input_dq_arg, weight_dq_arg, bias_arg}, {gemm_dq_arg});
+      gemm_node.AddAttribute("transB", static_cast<int64_t>(1));
+      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.144f, static_cast<uint8_t>(69), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+  test_case(true);
+}
+
+TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg =
+          builder.MakeInput<uint8_t>({1, 32}, std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<float>({32, 16}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* gemm_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(127), input_dq_arg,
+                                               use_contrib_qdq);
+      builder.AddNode("Gemm", {input_dq_arg, weight_arg}, {gemm_dq_arg});
+      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.144f, static_cast<uint8_t>(127), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+  test_case(true);
+}
+
+TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_HandleNegativeDqAxis) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg =
+          builder.MakeInput<uint8_t>({2, 16}, std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<uint8_t>({16, 16}, std::numeric_limits<uint8_t>::min(),
+                                                             std::numeric_limits<uint8_t>::max());
+      NodeArg* bias_arg = builder.MakeInitializer<float>({16}, -0.1f, 0.1f);
+
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* weight_dq_arg = builder.MakeIntermediate();
+      NodeArg* gemm_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(0), input_dq_arg, use_contrib_qdq);
+
+      // Per-channel quantized weight with negative axis as DQ attribute
+      std::vector<float> scales = std::vector<float>(16, 0.05f);
+      std::vector<uint8_t> zp = std::vector<uint8_t>(16, static_cast<uint8_t>(0));
+      auto& dq_node = builder.AddDequantizeLinearNode<uint8_t>(weight_arg, scales, zp, weight_dq_arg, nullptr, use_contrib_qdq);
+      dq_node.AddAttribute("axis", static_cast<int64_t>(-1));
+
+      builder.AddNode("Gemm", {input_dq_arg, weight_dq_arg, bias_arg}, {gemm_dq_arg});
+      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.144f, static_cast<uint8_t>(69), output_arg, use_contrib_qdq);
+    };
+
+    auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"] + op_to_count["com.microsoft.QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"] + op_to_count["com.microsoft.DequantizeLinear"], 2 + 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      /*opset_version=*/20,
+                      /*per_sample_tolerance=*/0.01,
+                      /*relative_per_sample_tolerance=*/0.01,
+                      /*transformer=*/std::make_unique<WeightBiasQuantization>());
+  };
+
+  test_case(false);
+  test_case(true);
+}
+
+TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight_Bias) {
+  auto test_case = [](bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* input_arg =
+          builder.MakeInput<uint8_t>({1, 32}, std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
+      NodeArg* weight_arg = builder.MakeInitializer<float>({16, 32}, -0.1f, 0.1f);
+      NodeArg* bias_arg = builder.MakeInitializer<float>({16}, -0.1f, 0.1f);
+      NodeArg* input_dq_arg = builder.MakeIntermediate();
+      NodeArg* gemm_dq_arg = builder.MakeIntermediate();
+      NodeArg* output_arg = builder.MakeOutput();
+
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(127), input_dq_arg,
+                                               use_contrib_qdq);
+      auto& gemm_node = builder.AddNode("Gemm", {input_dq_arg, weight_arg, bias_arg}, {gemm_dq_arg});
+      gemm_node.AddAttribute("transB", static_cast<int64_t>(1));
+      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.144f, static_cast<uint8_t>(127), output_arg,
+                                             use_contrib_qdq);
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 1);
+    };
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 18);
+
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 19);
+  };
+
+  test_case(false);
+  test_case(true);
+}
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace test

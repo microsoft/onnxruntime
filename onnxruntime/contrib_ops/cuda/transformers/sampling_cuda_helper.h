@@ -68,7 +68,7 @@ Status Sample(AllocatorPtr& allocator,
   gsl::span<int>& d_index_out = sampling_state->d_index_out;
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("temp_storage_bytes", sampling_state->temp_storage_bytes, true);
+  dumper->Print(::onnxruntime::MakeString("temp_storage_bytes=", sampling_state->temp_storage_bytes));
 #endif
 
   cuda::LaunchSortPairs<CudaT>(storage_buffer.get(),

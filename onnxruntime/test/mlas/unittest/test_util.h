@@ -115,24 +115,24 @@ class MatrixGuardBuffer {
       return GetFilledBuffer(
           Elements,
           [](T* start, size_t size) {
-            std::fill_n(start, size, T(0));
+            std::fill_n(start, size, T(0.0f));
           });
     }
 
     return GetFilledBuffer(
         Elements,
         [](T* start, size_t size) {
-          constexpr int offset = -21;
-          constexpr int range = 43;
+          constexpr float offset = -21.f;
+          constexpr float range = 43.f;
 
-          int FillValue = 11;
+          float FillValue = 11.f;
           T* FillAddress = start;
           for (size_t i = 0; i < size; i++) {
             auto itemv = FillValue - offset;
             *FillAddress++ = (T)(itemv);
 
-            FillValue += 7;
-            FillValue %= range;
+            FillValue += 7.f;
+            FillValue = FillValue >= range ? FillValue - range : FillValue;
           }
         });
   }

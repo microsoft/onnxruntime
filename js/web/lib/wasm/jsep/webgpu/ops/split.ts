@@ -71,7 +71,7 @@ const writeBufferDataImpl = (outputs: readonly IndicesHelper[]) => {
       }`;
 };
 
-const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfo => {
+export const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfo => {
   const inputShape = inputs[0].dims;
   const inputSize = ShapeUtil.size(inputShape);
   const dataType = inputs[0].dataType;
@@ -140,7 +140,7 @@ export const parseSplitAttributes = (attributes: Record<string, unknown>): Split
   const splitSizes: number[] = attributes.splitSizes as number[];
   const numOutputs = (attributes.numOutputs as number) < 0 ? splitSizes.length : (attributes.numOutputs as number);
   if (numOutputs !== splitSizes.length) {
-    throw new Error('numOutputs and splitSizes lengh must be equal');
+    throw new Error('numOutputs and splitSizes length must be equal');
   }
   return createAttributeWithCacheKey({ axis, numOutputs, splitSizes });
 };

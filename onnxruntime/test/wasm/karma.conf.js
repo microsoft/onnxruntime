@@ -38,6 +38,10 @@ const gtestReporter = {'reporter:gtest': ['type', function() {
   };
 }]};
 
+// In Node.js v16 and below, 'localhost' is using IPv4, so need to listen to '0.0.0.0'
+// In Node.js v17+, 'localhost' is using IPv6, so need to listen to '::'
+const listenAddress = Number.parseInt(process.versions.node.split('.')[0]) >= 17 ? '::' : '0.0.0.0';
+
 module.exports = function(config) {
     config.set({
       basePath: '.',
@@ -60,6 +64,7 @@ module.exports = function(config) {
       browserDisconnectTimeout: 600000,
       // allow running tests for 30 minutes
       browserNoActivityTimeout: 30 * 60 * 1000,
+      listenAddress,
       customLaunchers: {
         ChromeTest: {
           base: 'ChromeCanary',

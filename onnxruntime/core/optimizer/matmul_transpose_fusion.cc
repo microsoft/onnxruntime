@@ -310,6 +310,19 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       continue;
     }
 
+    NodeArg* right_input = node.MutableInputDefs()[1];
+    auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
+      continue;
+    }
+
+    if (left_input == right_input) {
+      // If both inputs are the same, we skip the fusion.
+      // Currently, this situation is not handled correctly in the code below.
+      // Otherwise, the model initialization may fail. See https://github.com/microsoft/onnxruntime/issues/24341.
+      continue;
+    }
+
     bool is_trans_left = false;
     bool is_trans_batch_left = false;
     Node* left = nullptr;
@@ -323,12 +336,6 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                          is_trans_batch_left);
         }
       }
-    }
-
-    NodeArg* right_input = node.MutableInputDefs()[1];
-    auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
-    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
-      continue;
     }
 
     bool is_trans_right = false;
@@ -405,13 +412,6 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     matmul_node.AddAttribute("alpha", alpha);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
-#ifdef USE_ROCM
-    // forward the __backwardpass, if present
-    auto& attrs = node.GetAttributes();
-    if (attrs.count("__backwardpass")) {
-      matmul_node.AddAttribute("__backwardpass", static_cast<int64_t>(attrs.at("__backwardpass").i()));
-    }
-#endif
 
     graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
 

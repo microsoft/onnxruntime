@@ -8,6 +8,13 @@
 #include "ml_common.h"
 #include <math.h>
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(_DEBUG)
+// This prints out the tree structure in DEBUG mode.
+// Method AddNodes can fuse multiple node BRANCH_EQ into a single
+// BRANCH_MEMBER to be more efficient. This shows what was done by the method.
+// #define _TREE_DEBUG
+#endif
+
 namespace onnxruntime {
 namespace ml {
 namespace detail {
@@ -16,14 +23,16 @@ struct TreeNodeElementId {
   int64_t tree_id;
   int64_t node_id;
   bool operator==(const TreeNodeElementId& xyz) const {
-    return (tree_id == xyz.tree_id) && (node_id == xyz.node_id);
+    return (node_id == xyz.node_id) && (tree_id == xyz.tree_id);
   }
   bool operator<(const TreeNodeElementId& xyz) const {
-    return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
+    return (tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id);
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
-      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) << 32 | static_cast<uint64_t>(key.node_id));
+      // unordered_map has poor performance on Windows when inserting consecutive keys.
+      // keys are usually inserted with key.node_id being incremented at each iteration.
+      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) | static_cast<uint64_t>(key.node_id) << 32);
     }
   };
 };
@@ -39,9 +48,9 @@ struct ScoreValue {
   T score;
   unsigned char has_score;
   operator T() const { return has_score ? score : 0; }
-  T operator-() { return has_score ? -score : 0; }
-  T operator*(float val) { return has_score ? score * static_cast<T>(val) : 0; }
-  T operator*(double val) { return has_score ? score * static_cast<T>(val) : 0; }
+  T operator-() const { return has_score ? -score : 0; }
+  T operator*(float val) const { return has_score ? score * static_cast<T>(val) : 0; }
+  T operator*(double val) const { return has_score ? score * static_cast<T>(val) : 0; }
   ScoreValue<T>& operator=(ScoreValue<T> v) {
     this->score = v.score;
     this->has_score = v.has_score;
@@ -60,7 +69,7 @@ struct ScoreValue {
 };
 
 enum MissingTrack : uint8_t {
-  kTrue = 16,
+  kTrue = 32,
   kFalse = 0
 };
 
@@ -75,6 +84,75 @@ union PtrOrWeight {
     int32_t n_weights;
   } weight_data;
 };
+
+// The value must be less or equal than 31 or it will collide with the MissingTrack bits.
+enum NODE_MODE_ORT : uint8_t {
+  LEAF = 1,
+  BRANCH_LEQ = 2,
+  BRANCH_LT = 4,
+  BRANCH_GTE = 6,
+  BRANCH_GT = 8,
+  BRANCH_EQ = 10,
+  BRANCH_NEQ = 12,
+  BRANCH_MEMBER = 14,
+  // This rule is not part of ONNX standard. BRANCH_MEMBER has different implementations
+  // based on the set size. The first one is for small sets (< 31 categories),
+  // the second one is for big sets. All trees are defined with the first one.
+  // The kernel decides to switch to the second one if the set is too big.
+  BRANCH_MEMBER_BIGSET = 16,
+};
+
+inline NODE_MODE_ORT Convert_NODE_MODE_ONNX_to_ORT(NODE_MODE_ONNX node_mode) {
+  switch (node_mode) {
+    case NODE_MODE_ONNX::LEAF:
+      return NODE_MODE_ORT::LEAF;
+    case NODE_MODE_ONNX::BRANCH_LEQ:
+      return NODE_MODE_ORT::BRANCH_LEQ;
+    case NODE_MODE_ONNX::BRANCH_LT:
+      return NODE_MODE_ORT::BRANCH_LT;
+    case NODE_MODE_ONNX::BRANCH_GTE:
+      return NODE_MODE_ORT::BRANCH_GTE;
+    case NODE_MODE_ONNX::BRANCH_GT:
+      return NODE_MODE_ORT::BRANCH_GT;
+    case NODE_MODE_ONNX::BRANCH_EQ:
+      return NODE_MODE_ORT::BRANCH_EQ;
+    case NODE_MODE_ONNX::BRANCH_NEQ:
+      return NODE_MODE_ORT::BRANCH_NEQ;
+    case NODE_MODE_ONNX::BRANCH_MEMBER:
+      return NODE_MODE_ORT::BRANCH_MEMBER;
+    case NODE_MODE_ONNX::BRANCH_MEMBER_BIGSET:
+      return NODE_MODE_ORT::BRANCH_MEMBER_BIGSET;
+    default:
+      ORT_THROW("Unexpected value for node_mode");
+  };
+}
+
+#if defined(_TREE_DEBUG)
+inline const char* Convert_NODE_MODE_ONNX_to_string(NODE_MODE_ORT node_mode) {
+  switch (node_mode) {
+    case NODE_MODE_ORT::LEAF:
+      return "LEAF";
+    case NODE_MODE_ORT::BRANCH_LEQ:
+      return "LEQ";
+    case NODE_MODE_ORT::BRANCH_LT:
+      return "LT";
+    case NODE_MODE_ORT::BRANCH_GTE:
+      return "GTE";
+    case NODE_MODE_ORT::BRANCH_GT:
+      return "GT";
+    case NODE_MODE_ORT::BRANCH_EQ:
+      return "EQ";
+    case NODE_MODE_ORT::BRANCH_NEQ:
+      return "NEQ";
+    case NODE_MODE_ORT::BRANCH_MEMBER:
+      return "MEMBER";
+    case NODE_MODE_ORT::BRANCH_MEMBER_BIGSET:
+      return "MEMBER_BIGSET";
+    default:
+      ORT_THROW("Unexpected value for node_mode");
+  };
+}
+#endif
 
 template <typename T>
 struct TreeNodeElement {
@@ -96,11 +174,25 @@ struct TreeNodeElement {
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
   // stored in `value_or_unique_weight`.
   PtrOrWeight<T> truenode_or_weight;
-  uint8_t flags;
+  NODE_MODE_ORT flags;
 
-  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
-  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
-  inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
+  inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0x1F); }
+  inline bool is_not_leaf() const { return !(flags & NODE_MODE_ORT::LEAF); }
+  inline bool is_missing_track_true() const { return static_cast<uint8_t>(flags) & static_cast<uint8_t>(MissingTrack::kTrue); }
+
+#if defined(_TREE_DEBUG)
+  std::string str() const {
+    std::ostringstream msg;
+    msg << (&feature_id) << ":" << Convert_NODE_MODE_ONNX_to_string(mode())
+        << (is_missing_track_true() ? ":MT" : ":MF")
+        << ":F" << feature_id
+        << ":[" << value_or_unique_weight << "]"
+        << "->" << truenode_or_weight.ptr
+        << ":" << truenode_or_weight.weight_data.weight
+        << ":" << truenode_or_weight.weight_data.weight;
+    return msg.str();
+  }
+#endif
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -326,11 +418,10 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
-  TreeAggregatorMax<InputType, ThresholdType, OutputType>(size_t n_trees,
-                                                          const int64_t& n_targets_or_classes,
-                                                          POST_EVAL_TRANSFORM post_transform,
-                                                          const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
-                                                                                                                                                                post_transform, base_values) {}
+  TreeAggregatorMax(size_t n_trees,
+                    const int64_t& n_targets_or_classes,
+                    POST_EVAL_TRANSFORM post_transform,
+                    const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes, post_transform, base_values) {}
 
   // 1 output
 

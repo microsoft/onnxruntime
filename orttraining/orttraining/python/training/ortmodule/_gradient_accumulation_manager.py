@@ -37,8 +37,8 @@ class GradientAccumulationManager:
             # Since named_parameters() is a generator function, need to avoid overhead and
             # populate the params in memory to avoid generating the param map every
             # step. This will not work if the user adds or removes params between steps
-            self._param_name_value_map = {name: param for name, param in module.named_parameters()}
-            self._param_version_map = dict()
+            self._param_name_value_map = dict(module.named_parameters())
+            self._param_version_map = {}
             self._frontier_node_arg_map = graph_info.frontier_node_arg_map
             self._cached_node_arg_names = graph_info.cached_node_arg_names
             self._cache_start = len(graph_info.user_output_names)

@@ -24,7 +24,6 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            const Tensor& Weight, const Tensor* Bias,
                            XnnpackOperator& op_uptr,
-                           xnn_code_cache_t code_cache,
                            xnn_weights_cache_t weights_cache,
                            const OpQuantParam& quant_param,
                            OpComputeType conv_type,
@@ -34,18 +33,18 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   // if this is 1D input, we fake all the height related dims being 1 to make it 2D. so {W} -> {1, W}
   const auto is_1D = kernel_shape.size() == 1;
 
-  const uint32_t kernel_height = is_1D ? 1 : gsl::narrow<uint32_t>(kernel_shape[0]);
-  const uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[is_1D ? 0 : 1]);
+  const uint32_t kernel_height = is_1D ? 1 : narrow<uint32_t>(kernel_shape[0]);
+  const uint32_t kernel_width = narrow<uint32_t>(kernel_shape[is_1D ? 0 : 1]);
 
-  const uint32_t input_padding_top = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[0]);
-  const uint32_t input_padding_left = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 0 : 1]);
-  const uint32_t input_padding_bottom = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[2]);
-  const uint32_t input_padding_right = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 1 : 3]);
+  const uint32_t input_padding_top = is_1D ? 0 : narrow<uint32_t>(conv_attrs.pads[0]);
+  const uint32_t input_padding_left = narrow<uint32_t>(conv_attrs.pads[is_1D ? 0 : 1]);
+  const uint32_t input_padding_bottom = is_1D ? 0 : narrow<uint32_t>(conv_attrs.pads[2]);
+  const uint32_t input_padding_right = narrow<uint32_t>(conv_attrs.pads[is_1D ? 1 : 3]);
 
-  const uint32_t subsampling_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.strides[0]);
-  const uint32_t subsampling_width = gsl::narrow<uint32_t>(conv_attrs.strides[is_1D ? 0 : 1]);
-  const uint32_t dilation_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.dilations[0]);
-  const uint32_t dilation_width = gsl::narrow<uint32_t>(conv_attrs.dilations[is_1D ? 0 : 1]);
+  const uint32_t subsampling_height = is_1D ? 1 : narrow<uint32_t>(conv_attrs.strides[0]);
+  const uint32_t subsampling_width = narrow<uint32_t>(conv_attrs.strides[is_1D ? 0 : 1]);
+  const uint32_t dilation_height = is_1D ? 1 : narrow<uint32_t>(conv_attrs.dilations[0]);
+  const uint32_t dilation_width = narrow<uint32_t>(conv_attrs.dilations[is_1D ? 0 : 1]);
 
   uint32_t flags = 0;
   if (conv_attrs.auto_pad == AutoPadType::SAME_UPPER) {
@@ -54,17 +53,17 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
 
   xnn_status status = xnn_status::xnn_status_uninitialized;
   p = nullptr;
-  float foutput_min = clip_min_max ? clip_min_max->first : -INFINITY;
-  float foutput_max = clip_min_max ? clip_min_max->second : INFINITY;
+  float foutput_min = clip_min_max ? clip_min_max->first : -std::numeric_limits<float>::infinity();
+  float foutput_max = clip_min_max ? clip_min_max->second : std::numeric_limits<float>::infinity();
   // with the following IC and OC number, we can cover depthwise and regular conv at the same time
   // the equation 'IC (group_input_channels) == C ' set up when group_count==1 (regular convolution)
   // and OC (group_output_channels) follows the same rule.
   // also, in the case of DepthWiseConv, group_count = C, IC is 1 constantly, OC is what DPconv require.
   // So we can unify it with IC and OC.
   // group is either 1 (for regular conv) or C (for depth-wise conv), and hence M % group == 0 so M/group is safe
-  uint32_t group_count = gsl::narrow<uint32_t>(conv_attrs.group);
-  size_t group_input_channels = gsl::narrow<size_t>(C / group_count);   // either C or 1
-  size_t group_output_channels = gsl::narrow<size_t>(M / group_count);  // either M or M/C
+  uint32_t group_count = narrow<uint32_t>(conv_attrs.group);
+  size_t group_input_channels = narrow<size_t>(C / group_count);   // either C or 1
+  size_t group_output_channels = narrow<size_t>(M / group_count);  // either M or M/C
   if (conv_type == OpComputeType::op_compute_type_fp32) {
     auto* B_data = Bias ? Bias->Data<float>() : nullptr;
     auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f32
@@ -79,7 +78,25 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         C, M,                                         // input channel stride, output channel stride
         Weight.Data<float>(), B_data,
         foutput_min, foutput_max, flags,
-        code_cache, weights_cache,
+        weights_cache,
+        &p);
+  } else if (conv_type == OpComputeType::op_compute_type_fp16) {
+    const auto* B_data = Bias ? Bias->Data<MLFloat16>() : nullptr;
+    auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f16
+                                    : xnn_create_convolution2d_nhwc_f16;
+    status = create_func(
+        input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
+        kernel_height, kernel_width,
+        subsampling_height, subsampling_width,
+        dilation_height, dilation_width,
+        group_count,
+        group_input_channels,
+        group_output_channels,
+        C, M,                              // input channel stride, output channel stride
+        Weight.Data<MLFloat16>(), B_data,  // kernel, bias
+        foutput_min, foutput_max,
+        flags,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     const float output_scale = quant_param[2].first[0];
@@ -103,7 +120,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -127,7 +144,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
     const auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -152,7 +169,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   }
 
@@ -234,6 +251,13 @@ OpComputeType GetConvCompType(
           (!bias_datatype || *bias_datatype == TensorTypeInt32) &&
           output_datatype == TensorTypeUint8) {
         return op_compute_type_qu8;
+      }
+      break;
+    case TensorTypeFp16:
+      if (input_datatype == TensorTypeFp16 &&
+          (!bias_datatype || *bias_datatype == TensorTypeInt32) &&
+          output_datatype == TensorTypeFp16) {
+        return op_compute_type_fp16;
       }
       break;
     default:
@@ -326,10 +350,7 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 
     // we only support float and u8 currently
     const auto* x_type = x_arg.TypeAsProto();
-    if (x_type == nullptr ||
-        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+    if (x_type == nullptr || !IsComputeTypeSupported(x_type->tensor_type().elem_type())) {
       break;
     }
     // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute
@@ -420,9 +441,11 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
              input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     weight_index = 3;
     conv_type_ = ParseQuantParamAndConType(info, quant_param_, input_dtype);
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    conv_type_ = OpComputeType::op_compute_type_fp16;
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X.TypeAsProto()));
-    ORT_THROW("unsupported Conv in XnnpackEP, we have FLOAT|UINT8|INT8, but got ", stype);
+    ORT_THROW("unsupported Conv in XnnpackEP, we have FLOAT|UINT8|INT8|FLOAT16, but got ", stype);
   }
 
   ORT_ENFORCE(info.TryGetConstantInput(weight_index, &Weight),
@@ -491,14 +514,13 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
 
     output_shape_.push_back(M_);
   }
-
   // have to delay creating the xnnpack kernel until after the weights are pre-packed.
 }
 
 Status ConvBase::CreateKernel() {
   auto ret = CreateXnnpackKernel(convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
                                  B_, op0_,
-                                 GetCodeCache(), GetWeightsCache(),
+                                 GetWeightsCache(),
                                  quant_param_, conv_type_, is_transpose_);
   return ret;
 }

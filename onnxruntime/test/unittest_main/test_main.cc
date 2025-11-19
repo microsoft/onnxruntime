@@ -5,6 +5,10 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#ifdef _WIN32
+#include <iostream>
+#include <locale>
+#endif
 
 #ifndef USE_ONNXRUNTIME_DLL
 #ifdef __GNUC__
@@ -20,30 +24,87 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/common.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
-#include "test/test_environment.h"
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+#define TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+#endif  // !defined(ORT_MINIMAL_BUILD) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
 std::unique_ptr<Ort::Env> ort_env;
 
-// ortenv_setup is used by /onnxruntime/test/xctest/xcgtest.mm so can't be file local
-void ortenv_setup() {
-  OrtThreadingOptions tpo;
+// define environment variable name constants here
+namespace env_var_names {
+// Set ORT log level to the specified numeric log level.
+constexpr const char* kLogLevel = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
 
-  // allow verbose logging to be enabled by setting this environment variable to a numeric log level
-  constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
-  OrtLoggingLevel log_level = ORT_LOGGING_LEVEL_WARNING;
-  if (auto log_level_override = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
-      log_level_override.has_value()) {
-    *log_level_override = std::clamp(*log_level_override,
-                                     static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
-                                     static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
-    std::cout << "Setting log level to " << *log_level_override << "\n";
-    log_level = static_cast<OrtLoggingLevel>(*log_level_override);
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+// Specify dynamic plugin EP configuration JSON.
+// Refer to `onnxruntime::test::dynamic_plugin_ep_infra::ParseInitializationConfig()` for more information.
+constexpr const char* kDynamicPluginEpConfigJson = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON";
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+}  // namespace env_var_names
+
+// ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
+extern "C" void ortenv_setup() {
+  ORT_TRY {
+#ifdef _WIN32
+    // Set the locale to UTF-8 to ensure proper handling of wide characters on Windows
+    std::wclog.imbue(std::locale(".UTF-8", std::locale::ctype));
+#endif
+
+    OrtThreadingOptions tpo;
+
+    OrtLoggingLevel log_level = ORT_LOGGING_LEVEL_WARNING;
+    if (auto log_level_override = onnxruntime::ParseEnvironmentVariable<int>(env_var_names::kLogLevel);
+        log_level_override.has_value()) {
+      *log_level_override = std::clamp(*log_level_override,
+                                       static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
+                                       static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
+      std::cout << "Setting log level to " << *log_level_override << "\n";
+      log_level = static_cast<OrtLoggingLevel>(*log_level_override);
+    }
+
+    ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
+
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+    {
+      namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
+      if (auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
+              env_var_names::kDynamicPluginEpConfigJson);
+          dynamic_plugin_ep_config_json.has_value()) {
+        std::cout << "Initializing dynamic plugin EP infrastructure with configuration:\n"
+                  << *dynamic_plugin_ep_config_json << "\n";
+        dynamic_plugin_ep_infra::InitializationConfig config{};
+        ORT_THROW_IF_ERROR(dynamic_plugin_ep_infra::ParseInitializationConfig(*dynamic_plugin_ep_config_json, config));
+        ORT_THROW_IF_ERROR(dynamic_plugin_ep_infra::Initialize(*ort_env, config));
+      }
+    }
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::cerr << ex.what();
+      std::exit(1);
+    });
+  }
+}
 
-  ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
+extern "C" void ortenv_teardown() {
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  {
+    namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
+    dynamic_plugin_ep_infra::Shutdown();
+  }
+#endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
+  ort_env.reset();
 }
 
 #ifdef USE_TENSORRT
@@ -101,7 +162,7 @@ int TEST_MAIN(int argc, char** argv) {
   }
 
   // TODO: Fix the C API issue
-  ort_env.reset();  // If we don't do this, it will crash
+  ortenv_teardown();  // If we don't do this, it will crash
 
 #ifndef USE_ONNXRUNTIME_DLL
   // make memory leak checker happy

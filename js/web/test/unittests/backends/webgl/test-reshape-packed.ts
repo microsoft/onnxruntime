@@ -134,7 +134,7 @@ describe('#UnitTest# - reshape - packed', () => {
       const inputData = createAscendingArray(elementCount);
       const inputTensorA = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
 
-      // run kernal and get output
+      // run kernel and get output
       const resultTensor = webglInferenceHandler.reshapePacked(inputTensorA, outputTensorShape);
       const result = resultTensor.data;
 

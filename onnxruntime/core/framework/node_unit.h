@@ -27,12 +27,14 @@ struct NodeGroup {
   std::vector<NodeIndex> dq_nodes;
   std::vector<NodeIndex> q_nodes;
   NodeIndex target_node;
+  std::optional<NodeIndex> redundant_clip_node;
 
   // Validator to check if the set of nodes can form a valid QDQ NodeGroup.
   // Checks target node is only consumer of each DQ, and that the outputs remain valid if the QDQ node group was to
   // be converted into a single node with a quantized operator.
   static Status CanCreateNodeGroup(const GraphViewer& graph_viewer,
                                    const Node& target_node,
+                                   const Node* redundant_clip_node,
                                    gsl::span<const Node* const> dq_nodes,
                                    gsl::span<const Node* const> q_nodes);
 };
@@ -68,7 +70,7 @@ class NodeUnit {
  public:
   explicit NodeUnit(const Node& node);
   explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
-  NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node,
+  NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node, const Node* redundant_clip_node,
            gsl::span<const Node* const> q_nodes, Type unit_type,
            gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
            size_t input_edge_count, Node::EdgeSet output_edges);
@@ -87,6 +89,7 @@ class NodeUnit {
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }
+  const Node* GetRedundantClipNode() const noexcept { return redundant_clip_node_; }
   const std::vector<const Node*>& GetDQNodes() const noexcept { return dq_nodes_; }
   const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
   std::vector<const Node*> GetAllNodesInGroup() const noexcept;
@@ -106,6 +109,7 @@ class NodeUnit {
 
   const std::vector<const Node*> dq_nodes_;  // dq nodes for this NodeUnit, not necessarily all inputs
   const Node& target_node_;
+  const Node* redundant_clip_node_;         // Optional redundant clip node for the QDQ group, nullptr if not present.
   const std::vector<const Node*> q_nodes_;  // q-nodes for this NodeUnit. not necessarily all outputs
   const Type type_;
 

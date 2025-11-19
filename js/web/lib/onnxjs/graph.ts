@@ -2,12 +2,10 @@
 // Licensed under the MIT License.
 
 import { Attribute } from './attribute';
-import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import * as ortFbs from './ort-schema/flatbuffers/ort-generated';
 import { onnx } from './ort-schema/protobuf/onnx';
 import { Tensor } from './tensor';
 import { LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil } from './util';
-
-import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Graph {
   export interface Shape {
@@ -787,7 +785,7 @@ class GraphImpl implements Graph, Graph.Transformer {
                   child.attributes.getFloat('min'),
                   child.attributes.getFloat('max'),
                 ]);
-              } catch (e) {
+              } catch {
                 node.attributes.set('activation_params', 'floats', [MIN_CLIP, MAX_CLIP]);
               }
             } else if (

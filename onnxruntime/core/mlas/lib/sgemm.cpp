@@ -1061,7 +1061,7 @@ Return Value:
 
         size_t RowsHandled;
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
+#if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {
@@ -1158,6 +1158,7 @@ Return Value:
 
     if (M == 1 && TransA == CblasNoTrans && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 
+#if !defined(FORCE_GENERIC_ALGORITHMS)
 #if defined(MLAS_TARGET_AMD64)
 
         MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
@@ -1181,6 +1182,7 @@ Return Value:
         }
 
 #endif
+#endif // !defined(FORCE_GENERIC_ALGORITHMS)
 
     }
 
@@ -1193,7 +1195,7 @@ Return Value:
 
     if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) && !defined(FORCE_GENERIC_ALGORITHMS)
 
         MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 
@@ -1570,7 +1572,13 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-
+    // Override
+    if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
+        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        return;
+    }
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1578,14 +1586,7 @@ MlasGemmBatch(
 
     const double Complexity = double(M) * double(N) * double(K);
 
-    ptrdiff_t TargetThreadCount;
-
-    if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
-        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
-    } else {
-        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
-    }
-
+    ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
     ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if (TargetThreadCount >= MaximumThreadCount) {
@@ -1642,6 +1643,8 @@ MlasGemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     )
@@ -1666,6 +1669,22 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+    // KleidiAI or other override
+    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans) {
+        size_t bytes_required;
+        //TODO pass status by reference to indicate success/fail
+        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
+        if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
+            return bytes_required;
+        }
+    }
+    #endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1681,6 +1700,7 @@ Return Value:
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -1717,6 +1737,17 @@ Return Value:
 
 --*/
 {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+        // TODO: Remove once KAI supports transposing for A
+        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
+        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+         return;
+    }
+#endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+
+
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
 

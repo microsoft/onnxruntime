@@ -7,7 +7,6 @@ import glob
 import logging
 import os
 import re
-import typing
 
 logging.basicConfig(format="[%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger()
@@ -30,7 +29,7 @@ def parse_args():
     return args
 
 
-def get_call_args_from_file(filename: str, function_or_declaration: str) -> typing.List[str]:
+def get_call_args_from_file(filename: str, function_or_declaration: str) -> list[str]:
     """
     Search a file for all function calls or declarations that match the provided name.
     Requires both the opening '(' and closing ')' to be on the same line.
@@ -63,7 +62,7 @@ def get_call_args_from_file(filename: str, function_or_declaration: str) -> typi
     return results
 
 
-def get_multiline_call_args_from_file(filename: str, function_or_declaration: str) -> typing.List[str]:
+def get_multiline_call_args_from_file(filename: str, function_or_declaration: str) -> list[str]:
     """
     Search a file for all function calls or declarations that match the provided name.
     Allows the opening '(' and closing ')' to be split across multiple lines.
@@ -96,7 +95,7 @@ def get_multiline_call_args_from_file(filename: str, function_or_declaration: st
     return results
 
 
-def _add_if_newer(domain: str, op: str, opset: int, op_to_opset: typing.Dict[str, int]):
+def _add_if_newer(domain: str, op: str, opset: int, op_to_opset: dict[str, int]):
     key = domain + "." + op
     if key not in op_to_opset or op_to_opset[key] < opset:
         op_to_opset[key] = opset

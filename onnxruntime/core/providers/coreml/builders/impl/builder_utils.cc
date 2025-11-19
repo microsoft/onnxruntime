@@ -96,6 +96,9 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<MLFloat16>());
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<int32_t>());
       break;
@@ -114,6 +117,11 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
   weight.mutable_floatvalue()->Assign(data.begin(), data.end());
 }
 
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<const MLFloat16> data) {
+  const char* data_byte_ptr = reinterpret_cast<const char*>(data.data());
+  weight.mutable_float16value()->assign(data_byte_ptr, data_byte_ptr + data.size_bytes());
+}
+
 namespace {
 template <typename T>
 void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParams& weight, gsl::span<const T> data) {
@@ -122,6 +130,15 @@ void CreateCoreMLWeightConvertingDataToFloats(CoreML::Specification::WeightParam
   std::transform(data.begin(), data.end(), google::protobuf::RepeatedFieldBackInserter(&weight_floats),
                  [](T v) { return narrow<float>(v); });
   *weight.mutable_floatvalue() = std::move(weight_floats);
+}
+
+template <typename T>
+void CreateCoreMLWeightConvertingDataToFloat16s(CoreML::Specification::WeightParams& weight, gsl::span<const T> data) {
+  std::vector<MLFloat16> weight_float16s{};
+  weight_float16s.reserve(data.size());
+  std::transform(data.begin(), data.end(), std::back_inserter(weight_float16s),
+                 [](T v) { return MLFloat16(float(v)); });
+  CreateCoreMLWeight(weight, weight_float16s);
 }
 }  // namespace
 
@@ -133,7 +150,6 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
   CreateCoreMLWeightConvertingDataToFloats(weight, data);
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 //
 // ML Program Utils
 //
@@ -196,6 +212,13 @@ void CopyDataToTensorValue<float>(MILSpec::TensorValue& tensor_value, gsl::span<
 }
 
 template <>
+void CopyDataToTensorValue<MLFloat16>(MILSpec::TensorValue& tensor_value, gsl::span<const MLFloat16> data) {
+  const char* begin = reinterpret_cast<const char*>(data.data());
+  const char* end = begin + (data.size() * sizeof(MLFloat16));
+  tensor_value.mutable_bytes()->mutable_values()->assign(begin, end);
+}
+
+template <>
 void CopyDataToTensorValue<int32_t>(MILSpec::TensorValue& tensor_value, gsl::span<const int32_t> data) {
   tensor_value.mutable_ints()->mutable_values()->Add(data.begin(), data.end());
 }
@@ -238,9 +261,10 @@ MILSpec::DataType OnnxDataTypeToMILSpec(int onnx_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:
       return MILSpec::DataType::INT16;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return MILSpec::DataType::INT32;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return MILSpec::DataType::INT64;
+      // CoreML only supports int32 for its operations and can only produce int32 values so
+      // we convert any int64 to int32.
+      return MILSpec::DataType::INT32;
 
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       return MILSpec::DataType::UINT8;
@@ -290,6 +314,14 @@ MILSpec::Value CreateScalarTensorValue(const T& data) {
 // explicit specializations for types we handle so the implementation can be in the .cc file
 template MILSpec::Value CreateTensorValue<int64_t, int32_t>(gsl::span<const int64_t> data,
                                                             std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<float, float>(gsl::span<const float> data,
+                                                        std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<MLFloat16, MLFloat16>(gsl::span<const MLFloat16> data,
+                                                                std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<bool, bool>(gsl::span<const bool> data,
+                                                      std::optional<gsl::span<const int64_t>> shape);
+template MILSpec::Value CreateTensorValue<std::string, std::string>(gsl::span<const std::string> data,
+                                                                    std::optional<gsl::span<const int64_t>> shape);
 
 template MILSpec::Value CreateScalarTensorValue(const float& data);
 template MILSpec::Value CreateScalarTensorValue(const int32_t& data);
@@ -336,8 +368,7 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::st
   SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(element_type), shape, /*convert_scalar*/ true);
 }
 
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
-                        std::optional<int32_t> override_element_type) {
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
   output_arg.set_name(output.Name());
@@ -345,10 +376,7 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
 
-  auto elem_type = override_element_type ? *override_element_type
-                                         : output.TypeAsProto()->tensor_type().elem_type();
-
-  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
+  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(output.TypeAsProto()->tensor_type().elem_type()), output.Shape(), /*convert_scalar*/ true);
 }
 
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
@@ -416,6 +444,5 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
     }
   }
 }
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace coreml
 }  // namespace onnxruntime

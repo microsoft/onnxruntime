@@ -15,13 +15,13 @@ from onnxruntime import InferenceSession, SessionOptions, get_available_provider
 
 class TestTimestampProcessor(unittest.TestCase):
     def generate_model(self, arguments: str):
-        from onnxruntime.transformers.models.whisper.convert_to_onnx import main as whisper_to_onnx
+        from onnxruntime.transformers.models.whisper.convert_to_onnx import main as whisper_to_onnx  # noqa: PLC0415
 
         whisper_to_onnx(arguments.split())
 
     def generate_dataset(self):
-        from datasets import load_dataset
-        from transformers import AutoProcessor
+        from datasets import load_dataset  # noqa: PLC0415
+        from transformers import AutoProcessor  # noqa: PLC0415
 
         processor = AutoProcessor.from_pretrained("openai/whisper-tiny")
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")

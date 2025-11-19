@@ -1,14 +1,35 @@
+parameters:
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.8'
+  values:
+    - 12.8
+    - 13.0
+
+variables:
+  - template: templates/common-variables.yml
+  - name: win_trt_folder
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: ${{ variables.win_trt_folder_cuda12 }}
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: ${{ variables.win_trt_folder_cuda13 }}
+  - name: setup_env_script
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: 'setup_env_cuda12.bat'
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: 'setup_env_cuda13.bat'
+
 stages:
-- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-  - template: templates/web-ci.yml
-    parameters:
-      NpmPackagingMode: 'dev'
-      IsReleasePipeline: true
-      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-      BuildStaticLib: true
-      ExtraBuildArgs: ''
-      UseWebPoolName: true
-      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
+- template: templates/web-ci.yml
+  parameters:
+    NpmPackagingMode: 'dev'
+    IsReleasePipeline: true
+    PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
+    BuildStaticLib: true
+    ExtraBuildArgs: ''
+    UseWebPoolName: true
+    WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
 
 # The follow section has 15 different build jobs that can be divided into 3 groups:
 # 1. Default CPU build with normal win32 linking, without ORT extension
@@ -32,7 +53,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -42,11 +63,11 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --arm64  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -56,11 +77,11 @@ stages:
     buildArch: x64
     msbuildPlatform: ARM64EC
     packageName: arm64ec
-    buildparameter: --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --arm64ec  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -74,7 +95,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -89,7 +110,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -100,11 +121,11 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --enable_wcos --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --enable_wcos --arm64  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -115,11 +136,11 @@ stages:
     buildArch: x64
     msbuildPlatform: ARM64EC
     packageName: arm64ec
-    buildparameter: --enable_wcos --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --enable_wcos --arm64ec  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -134,7 +155,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -149,7 +170,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -160,11 +181,11 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 #- template: templates/win-ci.yml
 #  parameters:
@@ -175,11 +196,11 @@ stages:
 #    buildArch: x64
 #    msbuildPlatform: ARM64EC
 #    packageName: arm64ec
-#    buildparameter: --arm64ec --use_extensions --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+#    buildparameter: --arm64ec --use_extensions --enable_onnx_tests
 #    runTests: false
 #    buildJava: false
 #    buildNodejs: false
-#    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+#    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - template: templates/win-ci.yml
   parameters:
@@ -194,19 +215,24 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
-- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
-  - stage: cuda_multi_gpu
-    dependsOn: []
-    jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
-      parameters:
+
+# The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+- stage: cuda_multi_gpu
+  dependsOn: []
+  jobs:
+  - template: templates/jobs/win-ci-vs-2022-job.yml
+    parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda.bat
+        EnvSetupScript: '${{ variables.setup_env_script }}'
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        CudaVersion: ${{ parameters.CudaVersion }}
+        additionalBuildFlags: --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
+          --enable_cuda_profiling --enable_transformers_tool_test
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+          --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -216,25 +242,25 @@ stages:
         MachinePool: onnxruntime-Win2022-GPU-MultiA10
         OnnxruntimeTestGpuDeviceId: 1
 
-- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
-  - stage: trt_multi_gpu
-    dependsOn: []
-    jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
-      parameters:
-        BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_trt.bat
-        buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
-        msbuildPlatform: x64
-        isX86: false
-        job_name_suffix: x64_RelWithDebInfo
-        RunOnnxRuntimeTests: true
-        ORT_EP_NAME: TRT
-        WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-MultiA10
-        OnnxruntimeTestGpuDeviceId: 1
+# The settings below is the same as Windows GPU CI pipeline's TensorRT job except here we set OnnxruntimeTestGpuDeviceId to 1
+- stage: trt_multi_gpu
+  dependsOn: []
+  jobs:
+  - template: templates/jobs/win-ci-vs-2022-job.yml
+    parameters:
+      BuildConfig: 'RelWithDebInfo'
+      EnvSetupScript: '${{ variables.setup_env_script }}'
+      buildArch: x64
+      CudaVersion: ${{ parameters.CudaVersion }}
+      additionalBuildFlags: --config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+      msbuildPlatform: x64
+      isX86: false
+      job_name_suffix: x64_RelWithDebInfo
+      RunOnnxRuntimeTests: true
+      ORT_EP_NAME: TRT
+      WITH_CACHE: true
+      MachinePool: onnxruntime-Win2022-GPU-MultiA10
+      OnnxruntimeTestGpuDeviceId: 1
 
 - stage: Mimalloc
   dependsOn: [ ]
@@ -244,7 +270,7 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --disable_memleak_checker --use_mimalloc
+      additionalBuildFlags: --disable_memleak_checker --use_mimalloc --use_vcpkg --use_vcpkg_ms_internal_asset_cache
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_mimalloc
@@ -253,7 +279,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - stage: MemoryProfiling
   dependsOn: [ ]
@@ -263,7 +289,7 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --cmake_extra_defines onnxruntime_ENABLE_MEMORY_PROFILE=ON
+      additionalBuildFlags: --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines onnxruntime_ENABLE_MEMORY_PROFILE=ON
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_no_memory_profiling
@@ -272,7 +298,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
@@ -291,7 +317,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
@@ -301,7 +327,7 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --build_shared_lib --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
+      additionalBuildFlags: --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_shared_lib --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_debug_node_input_output
@@ -310,26 +336,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
-
-- stage: NeuralSpeed
-  dependsOn: [ ]
-  jobs:
-  - template: templates/jobs/win-ci-vs-2022-job.yml
-    parameters:
-      BuildConfig: 'RelWithDebInfo'
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      additionalBuildFlags: --cmake_extra_defines onnxruntime_USE_NEURAL_SPEED=ON
-      msbuildPlatform: x64
-      isX86: false
-      job_name_suffix: x64_neural_speed
-      RunOnnxRuntimeTests: true
-      isTraining: false
-      ORT_EP_NAME: CPU
-      GenerateDocumentation: false
-      EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 #Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage
@@ -341,7 +348,7 @@ stages:
     timeoutInMinutes: 150
     variables:
       skipComponentGovernanceDetection: true
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
     steps:
     - template: templates/set-version-number-variables-step.yml
 
@@ -351,35 +358,32 @@ stages:
           set -e
           ln -s /data/models .
           #Build onnxruntime and run the instrumented program(unitests)
-          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
+          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
 
           cd Debug
           ./onnxruntime_mlas_test
           #Merge the multiple prof data into a single indexed profile data file
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
-          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_provider_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
 
-          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
+          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_provider_test $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
 
-    - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-      - task: AzureCLI@2
-        displayName: 'Azure CLI'
-        inputs:
+    - task: AzureCLI@2
+      displayName: 'Azure CLI'
+      inputs:
           azureSubscription: AIInfraBuildOnnxRuntimeOSS
           scriptType: bash
           scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
           arguments: '"$(Build.BinariesDirectory)/report.json" "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" x64 linux default'
           workingDirectory: '$(Build.BinariesDirectory)'
 
-      - task: PublishPipelineArtifact@1
-        displayName: 'Publish Pipeline Artifact'
-        inputs:
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: html
-  - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-    - template: templates/upload-code-coverage-data.yml
 
 - stage: AndroidCustomBuildScript
   dependsOn: [ ]
@@ -387,7 +391,7 @@ stages:
   - job: AndroidCustomBuildScript
     workspace:
       clean: all
-    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
     variables:
       dockerImageTag: onnxruntime-android-custom-build
     steps:
@@ -396,7 +400,7 @@ stages:
 
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.8'
+        versionSpec: '3.12'
         addToPath: true
         architecture: x64
 
@@ -425,18 +429,16 @@ stages:
   - job: IosDynamicFramework
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-14"
 
     steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
@@ -453,43 +455,5 @@ stages:
         python tools/ci_build/github/apple/test_apple_packages.py \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Full \
-          --skip_macos_test
-      displayName: "Test pod with iOS framework"
-
-- stage: IosMinimalTrainingBuild
-  dependsOn: []
-  jobs:
-  - job: IosMinimalTrainingBuild
-    timeoutInMinutes: 120
-    pool:
-      vmImage: "macOS-latest"
-
-    steps:
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: "3.9"
-        addToPath: true
-        architecture: "x64"
-
-    - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
-
-    - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
-      displayName: "Install Python requirements"
-
-    - script: |
-        python tools/ci_build/github/apple/build_apple_framework.py \
-          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
-          tools/ci_build/github/apple/test_minimal_training_ios_simulator_framework_build_settings.json
-      displayName: "Build iOS framework with minimal build and training enabled"
-
-    - script: |
-        python tools/ci_build/github/apple/test_apple_packages.py \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Training \
           --skip_macos_test
       displayName: "Test pod with iOS framework"

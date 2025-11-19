@@ -4,7 +4,6 @@
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 import onnx
 import torch
@@ -31,7 +30,7 @@ class ONNXModels:
       It has further optimizations done by the InferenceSession and is saved by the InferenceSession.
     """
 
-    optimized_model: Optional[onnx.ModelProto] = None
+    optimized_model: onnx.ModelProto | None = None
 
     def save_optimized_model(self, path, name_prefix, export_mode):
         # save the ortmodule optimized model

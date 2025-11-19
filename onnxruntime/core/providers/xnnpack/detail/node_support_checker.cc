@@ -90,6 +90,17 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
 }  // namespace
 
 bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
+#ifndef XNNPACK_FP16_SUPPORTED
+  // check whether the hardware support XNNPack FP16
+  // Note. In CI, ios pipeline on ADO doesn't support XNNPack FP16. Because ADO mac pool is still x64.
+  const auto& inputs = nodeunit.Inputs();
+  const auto& x_arg = inputs[0].node_arg;
+  const auto* x_type = x_arg.TypeAsProto();
+  if (x_type == nullptr || x_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return false;
+  }
+#endif
+
   static std::unordered_map<std::string, CheckerFn> checkers{
       {"Conv", Conv::IsOnnxNodeSupported},
       {"ConvTranspose", ConvTranspose::IsOnnxNodeSupported},

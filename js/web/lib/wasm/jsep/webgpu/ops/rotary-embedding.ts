@@ -75,7 +75,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
   }
 };
 
-const createRotaryEmbeddingProgramInfo = (
+export const createRotaryEmbeddingProgramInfo = (
   inputs: readonly TensorView[],
   attributes: RotaryEmbeddingAttributes,
 ): ProgramInfo => {

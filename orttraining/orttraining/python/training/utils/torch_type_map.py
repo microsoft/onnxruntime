@@ -4,8 +4,6 @@
 # --------------------------------------------------------------------------
 
 
-from typing import Union
-
 import torch
 
 # Mapping from pytorch scalar type to onnx scalar type.
@@ -36,7 +34,7 @@ _DTYPE_TO_ONNX = {torch_dtype: onnx_dtype for k, (onnx_dtype, torch_dtype) in _C
 _ONNX_TO_DTYPE = {onnx_dtype: torch_dtype for torch_dtype, onnx_dtype in _DTYPE_TO_ONNX.items()}
 
 
-def pytorch_type_to_onnx_dtype(dtype_or_scalar_type: Union[torch.dtype, str]) -> torch.onnx.TensorProtoDataType:
+def pytorch_type_to_onnx_dtype(dtype_or_scalar_type: torch.dtype | str) -> torch.onnx.TensorProtoDataType:
     """Converts a pytorch dtype or scalar type string to an onnx dtype.
     PyTorch type can be either a dtype or a scalar type string.
     """

@@ -331,7 +331,7 @@ def run_hf_inference(args, inputs, model):
 def run_ort_inference(args, inputs, model):
     def prepare_ort_inputs(inputs, warmup=False):
         # Check that all model inputs will be provided
-        model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
+        model_inputs = {model_input.name for model_input in model.get_inputs()}
         user_inputs = set(inputs.keys())
         missing_inputs = model_inputs - user_inputs
         if len(missing_inputs):
@@ -449,7 +449,7 @@ def parse_args():
         type=str,
         required=True,
         default="fp32",
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision for model. For ONNX models, the model's precision should be set before running this script.",
     )
 
@@ -579,7 +579,7 @@ def main():
     config = WhisperConfig.from_pretrained(args.model_name)
     processor = WhisperProcessor.from_pretrained(args.model_name)
     target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
-    use_fp16 = args.precision == "fp16"
+    use_fp16 = args.precision == "fp16" or (args.precision in {"int8", "int4"} and args.device != "cpu")
 
     setattr(args, "processor", processor)  # noqa: B010
     setattr(args, "target_device", target_device)  # noqa: B010
@@ -593,7 +593,7 @@ def main():
     model = get_model(args)
     if args.benchmark_type == "ort":
         # Check for optional inputs that could have been added during export
-        ort_model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
+        ort_model_inputs = {model_input.name for model_input in model.get_inputs()}
         args.has_audio_stream = "audio_stream" in ort_model_inputs
         setattr(args, "has_decoder_input_ids", "decoder_input_ids" in ort_model_inputs)  # noqa: B010
         setattr(args, "has_logits_processor", "logits_processor" in ort_model_inputs)  # noqa: B010

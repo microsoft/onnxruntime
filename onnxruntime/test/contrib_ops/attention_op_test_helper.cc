@@ -520,6 +520,75 @@ void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& da
   data.fp16_output_data = data.fp32_output_data;
 }
 
+void GetSelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA(AttentionTestData& data) {
+  int num_heads = 2;
+  int head_size = 32;
+  data.hidden_size = num_heads * head_size;
+  data.v_hidden_size = num_heads * head_size;
+  data.num_heads = num_heads;
+  data.batch_size = 2;
+  data.sequence_length = 1;
+  data.kv_sequence_length = 1;
+  data.mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+
+  data.past_seq_len_data = {4};
+  data.cache_indir_data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  data.num_beams = 1;
+  data.max_sequence_length = 6;
+
+  data.skip_kernel_types = {
+      AttentionKernelType::AttentionKernel_TrtFlashAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedAttention,
+      AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
+  };
+
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.query_data", data.query_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.key_data", data.key_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.value_data", data.value_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.bias_data", data.bias_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.past_key_data", data.past_key_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.past_value_data", data.past_value_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.fp32_output_data", data.fp32_output_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.present_key_data", data.present_key_data);
+  LoadTensor("SelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA.present_value_data", data.present_value_data);
+  data.is_static_kv = false;
+  data.buffer_share = true;
+}
+
+void GetCrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA(AttentionTestData& data) {
+  int num_heads = 2;
+  int head_size = 32;
+  data.hidden_size = num_heads * head_size;
+  data.v_hidden_size = num_heads * head_size;
+  data.num_heads = num_heads;
+  data.batch_size = 2;
+  data.sequence_length = 1;
+  data.kv_sequence_length = 10;
+  data.mask_type = AttentionMaskType::MASK_NONE;
+
+  data.past_seq_len_data = {4};
+  data.cache_indir_data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  data.num_beams = 1;
+  data.max_sequence_length = 6;
+
+  data.skip_kernel_types = {
+      AttentionKernelType::AttentionKernel_TrtFlashAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedAttention,
+      AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
+  };
+
+  LoadTensor("CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA.query_data", data.query_data);
+  LoadTensor("CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA.past_key_data", data.past_key_data);
+  LoadTensor("CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA.past_value_data", data.past_value_data);
+  LoadTensor("CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA.bias_data", data.bias_data);
+  LoadTensor("CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA.fp32_output_data", data.fp32_output_data);
+  LoadTensor("CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA.fp32_output_qk_data", data.fp32_output_qk_data);
+  data.is_static_kv = true;
+  data.buffer_share = false;
+}
+
 void GetCausal_EmptyPastState(std::vector<float>& input, std::vector<float>& output, std::vector<float>& present) {
   LoadTensor("Causal_EmptyPastState.input_data", input);
   LoadTensor("Causal_EmptyPastState.output_data", output);

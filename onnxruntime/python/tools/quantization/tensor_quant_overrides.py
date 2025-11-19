@@ -16,7 +16,7 @@ from .quant_utils import QuantType
 
 
 @dataclass
-class QuantTypeInfo:
+class QuantTypeInfo:  # noqa: PLW1641
     """
     The quantization type information for a tensor override.
     """
@@ -77,6 +77,10 @@ class TensorQuantOverridesHelper(MutableMapping):
     def has_per_channel_overrides(self, tensor_name: str) -> bool:
         overrides_list = self.overrides.get(tensor_name)
         return overrides_list and "axis" in overrides_list[0]
+
+    def overrides_scale_zp(self, tensor_name: str) -> bool:
+        overrides_list = self.overrides.get(tensor_name)
+        return overrides_list and ("scale" in overrides_list[0]) and ("zero_point" in overrides_list[0])
 
     def get_per_tensor_overrides(
         self,

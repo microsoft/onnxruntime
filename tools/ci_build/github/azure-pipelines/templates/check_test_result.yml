@@ -9,6 +9,12 @@ steps:
       addToPath: true
       architecture: 'x64'
 
+  - task: PipAuthenticate@1
+    displayName: 'Pip Authenticate'
+    inputs:
+      artifactFeeds: 'Lotus'
+
+
   - task: PythonScript@0
     displayName: 'Check test result yml'
     inputs:

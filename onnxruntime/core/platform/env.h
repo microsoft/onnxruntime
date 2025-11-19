@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
-#include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -179,7 +178,7 @@ class Env {
   virtual common::Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                                             gsl::span<char> buffer) const = 0;
 
-  using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
+  using MappedMemoryPtr = std::unique_ptr<char[], std::function<void(void*)>>;
 
   /**
    * Maps the content of the file into memory.
@@ -197,6 +196,7 @@ class Env {
 #ifdef _WIN32
   /// \brief Returns true if the directory exists.
   virtual bool FolderExists(const std::wstring& path) const = 0;
+  virtual bool FileExists(const std::wstring& path) const = 0;
   /// \brief Recursively creates the directory, if it doesn't exist.
   virtual common::Status CreateFolder(const std::wstring& path) const = 0;
   // Mainly for use with protobuf library
@@ -206,6 +206,7 @@ class Env {
 #endif
   /// \brief Returns true if the directory exists.
   virtual bool FolderExists(const std::string& path) const = 0;
+  virtual bool FileExists(const std::string& path) const = 0;
   /// \brief Recursively creates the directory, if it doesn't exist.
   virtual common::Status CreateFolder(const std::string& path) const = 0;
   // Recursively deletes the directory and its contents.
@@ -244,9 +245,9 @@ class Env {
 
   // \brief Gets the file path of the onnx runtime code
   //
-  // Used to help load other shared libraries that live in the same folder as the core code, for example
-  // The DNNL provider shared library. Without this path, the module won't be found on windows in all cases.
-  virtual PathString GetRuntimePath() const { return PathString(); }
+  // Used to help load other shared libraries that live in the same folder as the core code.
+  // For example, the DNNL provider shared library.
+  virtual PathString GetRuntimePath() const = 0;
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //

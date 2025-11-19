@@ -3,7 +3,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -299,7 +299,9 @@ void RunWithOneSessionMultiThreadsInference(PathString model_name, std::string s
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
 
-TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
+// The test is disabled due to the issue described at
+// https://github.com/microsoft/onnxruntime/issues/26366
+TEST(TensorrtExecutionProviderTest, DISABLED_SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";
@@ -342,8 +344,12 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   Graph& graph = model->MainGraph();
   GraphViewer viewer(graph);
 
+  std::string trt_version = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+  std::string cuda_version = std::to_string(CUDA_VERSION);
+  std::string ort_version = ORT_VERSION;
+
   // get the hash for the model when loaded from file
-  HashValue model_hash = TRTGenerateId(viewer);
+  HashValue model_hash = TRTGenerateId(viewer, trt_version, cuda_version);
   ASSERT_NE(model_hash, 0);
 
   // now load the model from bytes and check the hash differs
@@ -358,7 +364,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   // Test loading same model from file and byte steam. Hash values should be different
   Graph& graph2 = model2->MainGraph();
   GraphViewer viewer2(graph2);
-  HashValue model_hash2 = TRTGenerateId(viewer2);
+  HashValue model_hash2 = TRTGenerateId(viewer2, trt_version, cuda_version);
   ASSERT_NE(model_hash, model_hash2);
 
   // Test loading same model from different path, see if hash values are same as well
@@ -367,7 +373,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   ASSERT_TRUE(Model::Load(model_path, model3, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph3 = model3->MainGraph();
   GraphViewer viewer3(graph3);
-  HashValue model_hash3 = TRTGenerateId(viewer3);
+  HashValue model_hash3 = TRTGenerateId(viewer3, trt_version, cuda_version);
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
 }
 
@@ -567,6 +573,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params7.trt_dump_ep_context_model = 1;
   params7.trt_ep_context_embed_mode = 1;
   params7.trt_weight_stripped_engine_enable = 1;
+  params7.trt_onnx_bytestream = model_bytes.data();
+  params7.trt_onnx_bytestream_size = model_bytes.size();
   params7.trt_ep_context_file_path = ctx_model_name_str.c_str();
   execution_provider = TensorrtExecutionProviderWithOptions(&params7);
   EXPECT_TRUE(session_object7.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -612,6 +620,63 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   RunSession(session_object9, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
+TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
+  /* The mnist.onnx looks like this:
+   *        Conv
+   *         |
+   *        Add
+   *         .
+   *         .
+   *         |
+   *      MaxPool
+   *         |
+   *         .
+   *         .
+   *      MaxPool
+   *         |
+   *      Reshape
+   *         |
+   *      MatMul
+   *         .
+   *         .
+   *
+   */
+  PathString model_name = ORT_TSTR("testdata/mnist.onnx");
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderExcludeOpsTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_op_x = {1, 1, 28, 28};
+  std::vector<float> values_op_x(784, 1.0f);  // 784=1*1*28*28
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("Input3", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Plus214_Output_0");
+  std::vector<OrtValue> fetches;
+
+  RemoveCachesByType("./", ".engine");
+  OrtTensorRTProviderOptionsV2 params;
+  params.trt_engine_cache_enable = 1;
+  params.trt_op_types_to_exclude = "MaxPool";
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object.Load(model_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  std::vector<fs::path> engine_files;
+  engine_files = GetCachesByType("./", ".engine");
+  // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
+  ASSERT_EQ(engine_files.size(), 3);
+}
+
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   PathString model_name = ORT_TSTR("testdata/trt_plugin_custom_op_test.onnx");
   SessionOptions so;
@@ -622,7 +687,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_op_x = {12, 256, 256};
-  std::vector<float> values_op_x(1.0f, 786432);  // 786432=12*256*256
+  std::vector<float> values_op_x(786432, 1.0f);  // 786432=12*256*256
   OrtValue ml_value_x;
   CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
   OrtValue ml_value_y;
@@ -646,6 +711,52 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+}
+
+TEST(TensorrtExecutionProviderTest, DDSOutputTest) {
+  PathString model_name = ORT_TSTR("testdata/ort_github_issue_26272_dds.onnx");
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderRunWithDDSOutput";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_op_x = {3, 4};
+  std::vector<float> values_op_x(12, 0.f);  // 12=3*4
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  std::vector<OrtValue> fetches;
+
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // First pass run
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+
+  // Second pass run with new shape
+  dims_op_x = {6, 4};
+  values_op_x.resize(24, 0.f);  // 24=6*4
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+  feeds.clear();
+
+  feeds.insert(std::make_pair("data", ml_value_x));
+
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
 }

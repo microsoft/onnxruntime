@@ -130,6 +130,8 @@ namespace AttrName
     static constexpr const char* UppercaseN = "N";
     static constexpr const char* UppercaseK = "K";
     static constexpr const char* MatMulNBitsBlockSize = "block_size";
+    static constexpr const char* RotaryEmbeddingDim = "rotary_embedding_dim";
+    static constexpr const char* IsPackedBatching = "is_packed_batching";
 
 } // namespace AttrName
 

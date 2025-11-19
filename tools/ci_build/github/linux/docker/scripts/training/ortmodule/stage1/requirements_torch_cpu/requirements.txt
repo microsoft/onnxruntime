@@ -1,3 +1,0 @@
--f https://download.pytorch.org/whl/torch_stable.html
-torch==2.3.0+cpu
-setuptools>=68.2.2

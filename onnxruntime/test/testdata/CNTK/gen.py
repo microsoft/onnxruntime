@@ -23,7 +23,7 @@ def SaveTensorProto(file_path, variable, data, name):  # noqa: N802
 def SaveData(test_data_dir, prefix, variables, data_list, name_replacements=None):  # noqa: N802
     if isinstance(data_list, np.ndarray):
         data_list = [data_list]
-    for (i, d), v in zip(enumerate(data_list), variables):
+    for (i, d), v in zip(enumerate(data_list), variables, strict=False):
         SaveTensorProto(
             os.path.join(test_data_dir, f"{prefix}_{i}.pb"),
             v,

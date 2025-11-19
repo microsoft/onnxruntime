@@ -6,10 +6,10 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include "gtest/gtest.h"
 
@@ -64,12 +64,12 @@ static void RunCPULRNOpTest(const TestInputDef<float>& input_def, int64_t size,
   ProviderOptions provider_options;
   float fp32_abs_err = 1e-5f;  // default tolerance
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
+#if !defined(_WIN32)
   fp32_abs_err = 1.5e-5f;  // On linux we need slightly larger tolerance.
 #endif
+
+  provider_options["backend_type"] = "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildLRNTestCase(input_def, size, alpha, beta, bias),
                   provider_options,
@@ -86,11 +86,8 @@ static void RunQDQLRNOpTest(const TestInputDef<float>& input_def, int64_t size,
                             float alpha = 0.0001f, float beta = 0.75f, float bias = 1.0f,
                             int opset = 13, QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildLRNTestCase(input_def, size, alpha, beta, bias),
                        BuildQDQLRNTestCase<QuantType>(input_def, size, alpha, beta, bias),
@@ -127,45 +124,56 @@ TEST_F(QnnCPUBackendTests, LRN_size_larger_than_channel) {
 // HTP tests:
 //
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 309
+// output_range=19.910608291625977, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -9.4876022338867188
+// qdq@QNN_EP val: -9.3696985244750977 (err: 0.11790370941162109, err/output_range: 0.59216529130935669%)
+// qdq@CPU_EP val: -9.5258598327636719 (err: 0.038257598876953125, err/output_range: 0.19214680790901184%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 0.40001851320266724%
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_LRNSize3) {
+#else
 TEST_F(QnnHTPBackendTests, LRNSize3) {
+#endif
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            3,  // Size
                            ExpectedEPNodeAssignment::All,
                            0.0001f,  // alpha
                            0.75f,    // beta
                            1.0f,     // bias
-                           13,       // opset
-                           // Need to use tolerance of 0.8% of output range after QNN SDK 2.22
-                           QDQTolerance(0.008f));
+                           13);      // opset
 }
 
+// Broken on v79 devices:
+// Inaccuracy detected for output 'output_0', element 185
+// output_range=19.911705017089844, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -5.3502998352050781
+// qdq@QNN_EP val: -5.2317028045654297 (err: 0.11859703063964844, err/output_range: 0.59561461210250854%)
+// qdq@CPU_EP val: -5.3878731727600098 (err: 0.037573337554931641, err/output_range: 0.18869975209236145%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 0.40691488981246948%
+#if defined(__aarch64__)
+TEST_F(QnnHTPBackendTests, DISABLED_LRNSize5) {
+#else
 TEST_F(QnnHTPBackendTests, LRNSize5) {
+#endif
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            5,  // Size
                            ExpectedEPNodeAssignment::All,
                            0.0001f,  // alpha
                            0.75f,    // beta
                            1.0f,     // bias
-                           13,       // opset
-                           // Need to use tolerance of 0.8% of output range after QNN SDK 2.22
-                           QDQTolerance(0.008f));
+                           13);      // opset
 }
 
 TEST_F(QnnHTPBackendTests, LRN_size_larger_than_channel) {
-#ifdef __linux__
-  // On Linux QNN SDK 2.17: Need a tolerance of 0.407% of output range to pass.
-  QDQTolerance tolerance = QDQTolerance(0.00407f);
-#else
-  QDQTolerance tolerance = QDQTolerance();
-#endif
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            255,  // Size
                            ExpectedEPNodeAssignment::All,
                            0.0001f,  // alpha
                            0.75f,    // beta
                            1.0f,     // bias
-                           13,       // opset
-                           tolerance);
+                           13);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

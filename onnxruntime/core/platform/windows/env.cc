@@ -29,6 +29,7 @@ limitations under the License.
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
@@ -39,20 +40,14 @@ limitations under the License.
 #include <wil/Resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()
+#include "core/platform/windows/dll_load_error.h"
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 namespace onnxruntime {
 
-class UnmapFileParam {
- public:
-  void* addr;
-  size_t len;
-};
-
-static void UnmapFile(void* param) noexcept {
-  std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
-  bool ret = UnmapViewOfFile(p->addr);
+static void UnmapFile(void* addr) noexcept {
+  bool ret = UnmapViewOfFile(addr);
   if (!ret) {
     const auto error_code = GetLastError();
     LOGS_DEFAULT(ERROR) << "unmap view of file failed. error code: " << error_code
@@ -445,30 +440,31 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
   SYSTEM_INFO sysinfo;
   GetSystemInfo(&sysinfo);
 
-  static const DWORD page_size = sysinfo.dwPageSize;
   static const DWORD allocation_granularity = sysinfo.dwAllocationGranularity;
-  const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-  const size_t mapped_length = length + static_cast<size_t>(offset_to_page);
-  const FileOffsetType mapped_offset = offset - offset_to_page;
-  if (mapped_offset % allocation_granularity != 0) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "mapped offset must be a multiple of the allocation granularity",
-                           " , mapped_offset = ", mapped_offset,
-                           " , allocation_granularity = ", allocation_granularity,
-                           " , errcode = ", error_code,
-                           " - ", std::system_category().message(error_code));
-  }
+  const FileOffsetType offset_to_granularity = offset % static_cast<FileOffsetType>(allocation_granularity);
+  const SIZE_T mapped_length = SafeInt<SIZE_T>(offset_to_granularity) + length;
+  const FileOffsetType mapped_offset = offset - offset_to_granularity;
+  assert((mapped_offset % allocation_granularity) == 0);
 
   void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
                                           FILE_MAP_READ,
                                           static_cast<DWORD>((mapped_offset >> 32) & 0xFFFFFFFF),
                                           static_cast<DWORD>(mapped_offset & 0xFFFFFFFF),
                                           mapped_length);
-  GSL_SUPPRESS(r.11)
+
+  if (mapped_base == nullptr) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "MapViewOfFile ", ToUTF8String(Basename(file_path)),
+                           " fail, errcode = ", error_code,
+                           " - ", std::system_category().message(error_code));
+  }
+
   mapped_memory =
-      MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
-                      OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+      MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
+                      [mapped_base](void*) {
+                        UnmapFile(mapped_base);
+                      }};
 
   return Status::OK();
 }
@@ -481,6 +477,16 @@ bool WindowsEnv::FolderExists(const std::wstring& path) const {
 bool WindowsEnv::FolderExists(const std::string& path) const {
   DWORD attributes = GetFileAttributesA(path.c_str());
   return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+bool WindowsEnv::FileExists(const std::wstring& path) const {
+  DWORD attributes = GetFileAttributesW(path.c_str());
+  return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_NORMAL);
+}
+
+bool WindowsEnv::FileExists(const std::string& path) const {
+  DWORD attributes = GetFileAttributesA(path.c_str());
+  return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_NORMAL);
 }
 
 common::Status WindowsEnv::CreateFolder(const std::wstring& path) const {
@@ -694,17 +700,18 @@ Status WindowsEnv::LoadDynamicLibrary(const PathString& wlibrary_filename, bool 
     static constexpr DWORD bufferLength = 64 * 1024;
     std::wstring s(bufferLength, '\0');
     FormatMessageW(
-        FORMAT_MESSAGE_FROM_SYSTEM |
-            FORMAT_MESSAGE_IGNORE_INSERTS,
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL,
         error_code,
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPWSTR)s.data(),
-        0, NULL);
+        bufferLength, NULL);
+    s.erase(std::remove(s.begin(), s.end(), L'\r'), s.end());
+    s.erase(std::remove(s.begin(), s.end(), L'\n'), s.end());
     std::wostringstream oss;
-    oss << L"LoadLibrary failed with error " << error_code << L" \"" << s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
+    oss << DetermineLoadLibraryError(wlibrary_filename.c_str(), LOAD_WITH_ALTERED_SEARCH_PATH)
+        << L" (Error " << error_code << ": \"" << s.c_str() << "\")";
     std::wstring errmsg = oss.str();
-    // TODO: trim the ending '\r' and/or '\n'
     common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
     return status;
   }

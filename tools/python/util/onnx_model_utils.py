@@ -1,9 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import logging
 import pathlib
-from typing import Optional
 
 import onnx
 from onnx import version_converter
@@ -62,8 +62,8 @@ def get_opsets_imported(model: onnx.ModelProto):
 def update_onnx_opset(
     model_path: pathlib.Path,
     opset: int,
-    out_path: Optional[pathlib.Path] = None,
-    logger: Optional[logging.Logger] = None,
+    out_path: pathlib.Path | None = None,
+    logger: logging.Logger | None = None,
 ):
     """
     Helper to update the opset of a model using onnx version_converter. Target opset must be greater than current opset.
@@ -227,7 +227,7 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape:
 
     raise ValueError(
         f"Input {input_name} was not found in graph inputs. "
-        f'Valid input names are: {",".join([i.name for i in graph.input])}'
+        f"Valid input names are: {','.join([i.name for i in graph.input])}"
     )
 
 
@@ -284,7 +284,7 @@ def _map_node_dependencies(graph: onnx.GraphProto, node_to_producers: dict, node
         return value in producers or value in initializers or value in graph_inputs
 
     for node in graph.node:
-        inputs = [i for i in node.input]
+        inputs = list(node.input)
 
         for attr in node.attribute:
             if attr.HasField("g"):
@@ -337,7 +337,7 @@ def get_producer_consumer_maps(graph: onnx.GraphProto):
     # top level graph should have no implicit inputs
     if implicit_inputs:
         raise ValueError(
-            f'This appears to be an invalid model with missing inputs of {",".join(sorted(implicit_inputs))}'
+            f"This appears to be an invalid model with missing inputs of {','.join(sorted(implicit_inputs))}"
         )
 
     return node_to_producers, node_to_consumers
@@ -376,6 +376,9 @@ def get_optimization_level(level):
     if level == "extended":
         # Optimizations using custom operators, excluding NCHWc and NHWC layout optimizers
         return ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    if level == "layout":
+        # NCHWc and NHWC layout optimizers
+        return ort.GraphOptimizationLevel.ORT_ENABLE_LAYOUT
     if level == "all":
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 

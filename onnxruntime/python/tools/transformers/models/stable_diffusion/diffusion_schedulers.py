@@ -21,7 +21,6 @@
 # limitations under the License.
 # --------------------------------------------------------------------------
 
-from typing import List, Optional
 
 import numpy as np
 import torch
@@ -156,8 +155,7 @@ class DDIMScheduler:
             model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or"
-                " `v_prediction`"
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v_prediction`"
             )
 
         # 4. Clip "predicted x_0"
@@ -392,8 +390,8 @@ class UniPCMultistepScheduler:
         predict_x0: bool = True,
         solver_type: str = "bh2",
         lower_order_final: bool = True,
-        disable_corrector: Optional[List[int]] = None,
-        use_karras_sigmas: Optional[bool] = False,
+        disable_corrector: list[int] | None = None,
+        use_karras_sigmas: bool | None = False,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
         sigma_min=None,
@@ -628,7 +626,7 @@ class UniPCMultistepScheduler:
         model_output: torch.FloatTensor,
         *args,
         sample: torch.FloatTensor = None,
-        order: Optional[int] = None,
+        order: int | None = None,
         **kwargs,
     ) -> torch.FloatTensor:
         prev_timestep = args[0] if len(args) > 0 else kwargs.pop("prev_timestep", None)
@@ -735,7 +733,7 @@ class UniPCMultistepScheduler:
         *args,
         last_sample: torch.FloatTensor = None,
         this_sample: torch.FloatTensor = None,
-        order: Optional[int] = None,
+        order: int | None = None,
         **kwargs,
     ) -> torch.FloatTensor:
         this_timestep = args[0] if len(args) > 0 else kwargs.pop("this_timestep", None)
@@ -1085,7 +1083,7 @@ class LCMScheduler:
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ):
         if self.num_inference_steps is None:
             raise ValueError(

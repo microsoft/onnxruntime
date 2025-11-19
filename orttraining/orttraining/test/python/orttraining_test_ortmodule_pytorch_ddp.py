@@ -112,7 +112,7 @@ def demo_checkpoint(rank, world_size, use_ort_module):
     # 0 saves it.
     dist.barrier()
     # configure map_location properly
-    map_location = {"cuda:%d" % 0: "cuda:%d" % rank}
+    map_location = {"cuda:0": f"cuda:{rank}"}
     ddp_model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=map_location))
 
     optimizer.zero_grad()

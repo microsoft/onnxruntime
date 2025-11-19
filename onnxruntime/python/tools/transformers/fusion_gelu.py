@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Dict, Optional
 
 from fusion_base import Fusion
 from onnx import helper
@@ -16,14 +15,14 @@ class FusionGelu(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "Gelu", "Erf")
 
-    def fuse(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict):
         if self.fuse_1(erf_node, input_name_to_nodes, output_name_to_node):
             return
         if self.fuse_2(erf_node, input_name_to_nodes, output_name_to_node):
             return
         self.fuse_3(erf_node, input_name_to_nodes, output_name_to_node)
 
-    def fuse_1(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
+    def fuse_1(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
         """
         This pattern is from PyTorch model
         Fuse Gelu with Erf into one node:
@@ -98,13 +97,16 @@ class FusionGelu(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node("Gelu", inputs=[subgraph_input], outputs=[subgraph_output])
+        fused_node = helper.make_node(
+            "Gelu", inputs=[subgraph_input], outputs=[subgraph_output], name=self.model.create_node_name("Gelu")
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.increase_counter("Gelu")
         return True
 
-    def fuse_2(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
+    def fuse_2(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
         """
         This pattern is from Keras model
         Fuse Gelu with Erf into one node:
@@ -172,13 +174,16 @@ class FusionGelu(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[mul.output[0]])
+        fused_node = helper.make_node(
+            "Gelu", inputs=[root_node.output[0]], outputs=[mul.output[0]], name=self.model.create_node_name("Gelu")
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.increase_counter("Gelu")
         return True
 
-    def fuse_3(self, erf_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
+    def fuse_3(self, erf_node, input_name_to_nodes: dict, output_name_to_node: dict) -> bool | None:
         """
         This pattern is from TensorFlow model
         Fuse Gelu with Erf into one node:
@@ -243,8 +248,11 @@ class FusionGelu(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
+        fused_node = helper.make_node(
+            "Gelu", inputs=[root_node.output[0]], outputs=[last_mul.output[0]], name=self.model.create_node_name("Gelu")
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.increase_counter("Gelu")
         return True

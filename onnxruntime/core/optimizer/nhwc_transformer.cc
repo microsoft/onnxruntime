@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <deque>
@@ -43,7 +44,9 @@ NhwcConvLookup(
   return &(iter->second);
 }
 
-NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry) noexcept
+NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
+                                 std::shared_ptr<KernelRegistry> cpu_kernel_registry,
+                                 const logging::Logger& logger) noexcept
     : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator)) {
   if (!cpu_kernel_registry) {
     // This is a CPU op nodes optimizer, not useful if cpu EP is not available.
@@ -63,7 +66,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     const KernelCreateInfo* kernel_create_info{};
     const auto status = cpu_kernel_registry->TryFindKernel(
         kCpuExecutionProvider, qconv_int8.op_type_, qconv_int8.domain_,
-        qconv_int8.version_, qconv_int8.type_constraints_, &kernel_create_info);
+        qconv_int8.version_, qconv_int8.type_constraints_, logger, &kernel_create_info);
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
@@ -82,7 +85,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     const KernelCreateInfo* kernel_create_info{};
     const auto status = cpu_kernel_registry->TryFindKernel(
         kCpuExecutionProvider, qconv_uint8.op_type_, qconv_uint8.domain_,
-        qconv_uint8.version_, qconv_uint8.type_constraints_, &kernel_create_info);
+        qconv_uint8.version_, qconv_uint8.type_constraints_, logger, &kernel_create_info);
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
@@ -102,7 +105,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     const KernelCreateInfo* kernel_create_info{};
     const auto status = cpu_kernel_registry->TryFindKernel(
         kCpuExecutionProvider, nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_,
-        nhwc_conv_fp16.version_, nhwc_conv_fp16.type_constraints_, &kernel_create_info);
+        nhwc_conv_fp16.version_, nhwc_conv_fp16.type_constraints_, logger, &kernel_create_info);
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
@@ -122,7 +125,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     const KernelCreateInfo* kernel_create_info{};
     const auto status = cpu_kernel_registry->TryFindKernel(
         kCpuExecutionProvider, nhwc_maxpool_fp16.op_type_, nhwc_maxpool_fp16.domain_,
-        nhwc_maxpool_fp16.version_, nhwc_maxpool_fp16.type_constraints_, &kernel_create_info);
+        nhwc_maxpool_fp16.version_, nhwc_maxpool_fp16.type_constraints_, logger, &kernel_create_info);
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
@@ -139,7 +142,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     const KernelCreateInfo* kernel_create_info{};
     const auto status = cpu_kernel_registry->TryFindKernel(
         kCpuExecutionProvider, nhwc_avgpool_fp16.op_type_, nhwc_avgpool_fp16.domain_,
-        nhwc_avgpool_fp16.version_, nhwc_avgpool_fp16.type_constraints_, &kernel_create_info);
+        nhwc_avgpool_fp16.version_, nhwc_avgpool_fp16.type_constraints_, logger, &kernel_create_info);
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
@@ -156,7 +159,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<Ker
     const KernelCreateInfo* kernel_create_info{};
     const auto status = cpu_kernel_registry->TryFindKernel(
         kCpuExecutionProvider, nhwc_gavgpool_fp16.op_type_, nhwc_gavgpool_fp16.domain_,
-        nhwc_gavgpool_fp16.version_, nhwc_gavgpool_fp16.type_constraints_, &kernel_create_info);
+        nhwc_gavgpool_fp16.version_, nhwc_gavgpool_fp16.type_constraints_, logger, &kernel_create_info);
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
       conv_table_.emplace(
@@ -183,7 +186,8 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
     // If the node is not supported in the CPU EP, skip it
-    if (node->GetExecutionProviderType() != kCpuExecutionProvider) {
+    const auto ep = node->GetExecutionProviderType();
+    if ((ep != kCpuExecutionProvider) && (ep != kAclExecutionProvider)) {
       continue;
     }
 

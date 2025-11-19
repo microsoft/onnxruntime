@@ -8,6 +8,14 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "api.h"
 
+#ifdef USE_WEBGPU
+namespace onnxruntime {
+namespace webgpu {
+WGPUDevice GetDevice(int);
+}
+}  // namespace onnxruntime
+#endif
+
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -23,11 +31,14 @@ enum DataLocation {
   DATA_LOCATION_CPU = 1,
   DATA_LOCATION_CPU_PINNED = 2,
   DATA_LOCATION_TEXTURE = 3,
-  DATA_LOCATION_GPU_BUFFER = 4
+  DATA_LOCATION_GPU_BUFFER = 4,
+  DATA_LOCATION_ML_TENSOR = 5
 };
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
+#ifndef ORT_WASM64
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
+#endif
 
 OrtErrorCode CheckStatus(OrtStatusPtr status) {
   if (status) {
@@ -93,9 +104,10 @@ int OrtInit(int num_threads, int logging_level) {
 #endif
 }
 
-void OrtGetLastError(int* error_code, const char** error_message) {
+int OrtGetLastError(int* error_code, const char** error_message) {
   *error_code = g_last_error_code;
   *error_message = g_last_error_message.empty() ? nullptr : g_last_error_message.c_str();
+  return ORT_OK;
 }
 
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
@@ -160,8 +172,12 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   return UNREGISTER_AUTO_RELEASE(session_options);
 }
 
-int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, const char* name) {
-  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, nullptr, nullptr, 0);
+int OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
+                               const char* name,
+                               const char* const* provider_options_keys,
+                               const char* const* provider_options_values,
+                               size_t num_keys) {
+  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, provider_options_keys, provider_options_values, num_keys);
 }
 
 int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
@@ -176,8 +192,9 @@ int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,
   return CHECK_STATUS(AddSessionConfigEntry, session_options, config_key, config_value);
 }
 
-void OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
+int OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
   Ort::GetApi().ReleaseSessionOptions(session_options);
+  return ORT_OK;
 }
 
 OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* session_options) {
@@ -195,13 +212,121 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
              : nullptr;
 }
 
-void OrtReleaseSession(OrtSession* session) {
+int OrtReleaseSession(OrtSession* session) {
   Ort::GetApi().ReleaseSession(session);
+  return ORT_OK;
 }
 
 int OrtGetInputOutputCount(OrtSession* session, size_t* input_count, size_t* output_count) {
   RETURN_ERROR_CODE_IF_ERROR(SessionGetInputCount, session, input_count);
   RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputCount, session, output_count);
+  return ORT_OK;
+}
+
+int OrtGetInputOutputMetadata(ort_session_handle_t session, size_t index, char** name_cstr_ptr, void** type_info_ptr) {
+  OrtAllocator* allocator = nullptr;
+  RETURN_ERROR_CODE_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
+
+  size_t input_count, output_count;
+  int error_code = OrtGetInputOutputCount(session, &input_count, &output_count);
+  if (error_code != ORT_OK) {
+    return error_code;
+  }
+
+  if (index >= input_count + output_count) {
+    std::ostringstream ostr;
+    ostr << "Invalid index: " << index << ", input count: " << input_count << ", output count: " << output_count;
+    return CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
+  }
+
+  char* name_cstr;
+  if (index < input_count) {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetInputName, session, index, allocator, &name_cstr);
+  } else {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputName, session, index - input_count, allocator, &name_cstr);
+  }
+  REGISTER_AUTO_RELEASE_BUFFER(char, name_cstr, allocator);
+
+  OrtTypeInfo* type_info;
+  if (index < input_count) {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetInputTypeInfo, session, index, &type_info);
+  } else {
+    RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputTypeInfo, session, index - input_count, &type_info);
+  }
+  REGISTER_AUTO_RELEASE_HANDLE(TypeInfo, type_info);
+
+  const OrtTensorTypeAndShapeInfo* tensor_info;
+  RETURN_ERROR_CODE_IF_ERROR(CastTypeInfoToTensorInfo, type_info, &tensor_info);
+
+  size_t type_info_size = 4;
+  ONNXTensorElementDataType element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  size_t dim_count = 0;
+  if (tensor_info != nullptr) {
+    RETURN_ERROR_CODE_IF_ERROR(GetTensorElementType, tensor_info, &element_type);
+    RETURN_ERROR_CODE_IF_ERROR(GetDimensionsCount, tensor_info, &dim_count);
+
+    // byte [0, 4): [i32] element type
+    // byte [4, 8): [u32] dimension count
+    // byte [8, 8 + dim_count * ptr_size): [ptr] symbolic dimension names for dim[0], dim[1], ..., dim[dim_count - 1]
+    // byte [8 + dim_count * ptr_size, 8 + dim_count * ptr_size * 2): [size_t] dimension values for dim[0], dim[1], ..., dim[dim_count - 1]
+    // from byte 8 + dim_count * ptr_size * 2: optional string copies for symbolic dimension names
+    type_info_size = 8 + dim_count * (sizeof(size_t) * 2);
+  }
+
+  std::vector<int64_t> dim_values(dim_count);
+  std::vector<const char*> dim_params(dim_count);
+  std::vector<size_t> dim_params_str_len(dim_count);
+  if (dim_count > 0) {
+    size_t str_len_total = 0;
+    RETURN_ERROR_CODE_IF_ERROR(GetDimensions, tensor_info, dim_values.data(), dim_count);
+    RETURN_ERROR_CODE_IF_ERROR(GetSymbolicDimensions, tensor_info, dim_params.data(), dim_count);
+    for (size_t i = 0; i < dim_count; ++i) {
+      size_t str_size = dim_params[i] ? strlen(dim_params[i]) : 0;
+      if (str_size > 0) {
+        str_len_total += str_size + 1;
+        dim_params_str_len[i] = str_size + 1;
+      } else {
+        dim_params_str_len[i] = 0;
+      }
+    }
+    type_info_size += str_len_total;
+  }
+
+  uint8_t* type_info_buffer = reinterpret_cast<uint8_t*>(allocator->Alloc(allocator, type_info_size));
+  // write to buffer @ byte [0, 4)
+  int32_t* p_type_info_element_type = reinterpret_cast<int32_t*>(type_info_buffer);
+  *p_type_info_element_type = static_cast<int32_t>(element_type);
+
+  if (tensor_info != nullptr) {
+    // write to buffer @ byte [4, 8)
+    uint32_t* p_type_info_dim_count = reinterpret_cast<uint32_t*>(type_info_buffer + 4);
+    *p_type_info_dim_count = static_cast<uint32_t>(dim_count);
+
+    if (dim_count > 0) {
+      // write to buffer @ byte [8, 8 + dim_count * ptr_size)
+      const char** p_dim_params = reinterpret_cast<const char**>(type_info_buffer + 8);
+      char* p_str_copy_dest = reinterpret_cast<char*>(type_info_buffer + 8 + dim_count * sizeof(size_t) * 2);
+      for (size_t i = 0; i < dim_count; ++i) {
+        if (dim_params_str_len[i] > 0) {
+          p_dim_params[i] = p_str_copy_dest;
+          memcpy(p_str_copy_dest, dim_params[i], dim_params_str_len[i]);
+          p_str_copy_dest += dim_params_str_len[i];
+        } else {
+          p_dim_params[i] = nullptr;
+        }
+      }
+
+      // write to buffer @ byte [8 + dim_count * ptr_size, 8 + dim_count * ptr_size + dim_count * 4 + dim_count * 4)
+      size_t* p_dim_values = reinterpret_cast<size_t*>(type_info_buffer + 8 + dim_count * sizeof(size_t));
+      for (size_t i = 0; i < dim_count; ++i) {
+        p_dim_values[i] = static_cast<size_t>(dim_values[i]);
+      }
+    }
+  }
+
+  UNREGISTER_AUTO_RELEASE(name_cstr);
+  *name_cstr_ptr = name_cstr;
+  *type_info_ptr = type_info_buffer;
   return ORT_OK;
 }
 
@@ -225,17 +350,19 @@ char* OrtGetOutputName(OrtSession* session, size_t index) {
              : nullptr;
 }
 
-void OrtFree(void* ptr) {
+int OrtFree(void* ptr) {
   OrtAllocator* allocator = nullptr;
   if (CHECK_STATUS(GetAllocatorWithDefaultOptions, &allocator) == ORT_OK) {
     allocator->Free(allocator, ptr);
   }
+  return ORT_OK;
 }
 
 OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location) {
   if (data_location != DATA_LOCATION_CPU &&
       data_location != DATA_LOCATION_CPU_PINNED &&
-      data_location != DATA_LOCATION_GPU_BUFFER) {
+      data_location != DATA_LOCATION_GPU_BUFFER &&
+      data_location != DATA_LOCATION_ML_TENSOR) {
     std::ostringstream ostr;
     ostr << "Invalid data location: " << data_location;
     CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
@@ -264,10 +391,15 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     return UNREGISTER_AUTO_RELEASE(value);
   } else {
     OrtMemoryInfo* memory_info = nullptr;
-    if (data_location != DATA_LOCATION_GPU_BUFFER) {
-      RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
-    } else {
-      RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+    switch (data_location) {
+      case DATA_LOCATION_GPU_BUFFER:
+        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+        break;
+      case DATA_LOCATION_ML_TENSOR:
+        RETURN_NULLPTR_IF_ERROR(CreateMemoryInfo, "WebNN_Tensor", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
+        break;
+      default:
+        RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
     }
     REGISTER_AUTO_RELEASE_HANDLE(MemoryInfo, memory_info);
 
@@ -280,7 +412,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
   }
 }
 
-int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
+int OrtGetTensorData(OrtValue* tensor, size_t* data_type, void** data, size_t** dims, size_t* dims_length) {
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
   if (tensor_type != ONNX_TYPE_TENSOR) {
@@ -350,14 +482,15 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     *data = p_tensor_raw_data;
   }
 
-  *data_type = static_cast<int>(type);
+  *data_type = static_cast<size_t>(type);
   *dims_length = dims_len;
   *dims = UNREGISTER_AUTO_RELEASE(p_dims);
   return ORT_OK;
 }
 
-void OrtReleaseTensor(OrtValue* tensor) {
+int OrtReleaseTensor(OrtValue* tensor) {
   Ort::GetApi().ReleaseValue(tensor);
+  return ORT_OK;
 }
 
 OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
@@ -392,8 +525,9 @@ int OrtAddRunConfigEntry(OrtRunOptions* run_options,
   return CHECK_STATUS(AddRunConfigEntry, run_options, config_key, config_value);
 }
 
-void OrtReleaseRunOptions(OrtRunOptions* run_options) {
+int OrtReleaseRunOptions(OrtRunOptions* run_options) {
   Ort::GetApi().ReleaseRunOptions(run_options);
+  return ORT_OK;
 }
 
 OrtIoBinding* OrtCreateBinding(OrtSession* session) {
@@ -418,15 +552,18 @@ int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
     if (output_location != DATA_LOCATION_NONE &&
         output_location != DATA_LOCATION_CPU &&
         output_location != DATA_LOCATION_CPU_PINNED &&
-        output_location != DATA_LOCATION_GPU_BUFFER) {
+        output_location != DATA_LOCATION_GPU_BUFFER &&
+        output_location != DATA_LOCATION_ML_TENSOR) {
       std::ostringstream ostr;
       ostr << "Invalid data location (" << output_location << ") for output: \"" << name << "\".";
       return CheckStatus(Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str()));
     }
 
     OrtMemoryInfo* memory_info = nullptr;
-    if (output_location != DATA_LOCATION_GPU_BUFFER) {
+    if (output_location != DATA_LOCATION_GPU_BUFFER && output_location != DATA_LOCATION_ML_TENSOR) {
       RETURN_ERROR_CODE_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memory_info);
+    } else if (output_location == DATA_LOCATION_ML_TENSOR) {
+      RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebNN_Tensor", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
     } else {
       RETURN_ERROR_CODE_IF_ERROR(CreateMemoryInfo, "WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault, &memory_info);
     }
@@ -435,12 +572,14 @@ int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
   }
 }
 
-void OrtClearBoundOutputs(OrtIoBinding* io_binding) {
+int OrtClearBoundOutputs(OrtIoBinding* io_binding) {
   Ort::GetApi().ClearBoundOutputs(io_binding);
+  return ORT_OK;
 }
 
-void OrtReleaseBinding(OrtIoBinding* io_binding) {
+int OrtReleaseBinding(OrtIoBinding* io_binding) {
   Ort::GetApi().ReleaseIoBinding(io_binding);
+  return ORT_OK;
 }
 
 int OrtRunWithBinding(OrtSession* session,
@@ -487,6 +626,16 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              : nullptr;
 }
 
+// WebGPU API Section
+
+#ifdef USE_WEBGPU
+
+WGPUDevice OrtGetWebGpuDevice(int device_id) {
+  return onnxruntime::webgpu::GetDevice(device_id);
+}
+
+#endif
+
 // Training API Section
 
 #ifdef ENABLE_TRAINING_APIS
@@ -510,8 +659,9 @@ ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(
              : nullptr;
 }
 
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
+int EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
   Ort::GetTrainingApi().ReleaseCheckpointState(training_checkpoint_state_handle);
+  return ORT_OK;
 }
 
 ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(const ort_session_options_handle_t options,
@@ -630,8 +780,9 @@ char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputName(ort_training_sessi
   }
 }
 
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
+int EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
   Ort::GetTrainingApi().ReleaseTrainingSession(training_handle);
+  return ORT_OK;
 }
 
 #endif

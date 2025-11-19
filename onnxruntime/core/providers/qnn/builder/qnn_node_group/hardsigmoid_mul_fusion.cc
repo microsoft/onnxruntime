@@ -6,9 +6,8 @@
 #include <limits>
 #include <optional>
 #include <utility>
-#include "core/graph/graph_utils.h"
-#include "core/framework/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -107,7 +106,7 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& mul_node_unit,
                                     bool validate) {
   assert(hardsigmoid_node_unit.OpType() == "HardSigmoid" && mul_node_unit.OpType() == "Mul");
-  const auto& node_name = utils::GetNodeName(hardsigmoid_node_unit);
+  const auto& node_name = utils::GetUniqueName(hardsigmoid_node_unit);
   const NodeUnitIODef& input_def = hardsigmoid_node_unit.Inputs()[0];
   const NodeUnitIODef& output_def = mul_node_unit.Outputs()[0];
 

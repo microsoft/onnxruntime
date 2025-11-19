@@ -43,11 +43,33 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 // Opset 21 added support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
 // TODO(adrianlizarraga): Add support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Flatten,
     21,
+    22,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Flatten);
+
+// Opset 23 added support for float4e2m1.
+// TODO: Add support for float4e2m1.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Flatten,
+    23,
+    23,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Flatten);
+
+// Opset 24
+ONNX_CPU_OPERATOR_KERNEL(
+    Flatten,
+    24,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Flatten);
+
 }  // namespace onnxruntime

@@ -4,7 +4,7 @@
 #include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
 #include "core/providers/shared_library/provider_api.h"
 #include <core/platform/env.h>
-#if !defined(__CUDACC__)
+#if !defined(__CUDACC__) && !defined(USE_CUDA_MINIMAL)
 #include <cudnn_frontend.h>
 #endif
 #ifdef _WIN32
@@ -22,7 +22,7 @@ const char* CudaErrString(ERRTYPE) {
   ORT_NOT_IMPLEMENTED();
 }
 
-#if !defined(__CUDACC__)
+#if !defined(__CUDACC__) && !defined(USE_CUDA_MINIMAL)
 #define CASE_ENUM_TO_STR_CUDNN_FE(x)    \
   case cudnn_frontend::error_code_t::x: \
     return #x

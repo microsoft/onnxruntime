@@ -5,7 +5,7 @@
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 #include "core/common/status.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -14,7 +14,7 @@ namespace blas {
 
 #define GEMMFASTGELU(T, ScalarT)                                                 \
   common::Status GemmFastGelu(                                                   \
-      RocmTuningContext* tuning_ctx, Stream* stream, rocblas_handle handle,      \
+      RocmTuningContext* tuning_ctx, Stream* stream, hipblasHandle_t handle,     \
       BlasOp opa, BlasOp opb,                                                    \
       std::int64_t m, std::int64_t n, std::int64_t k,                            \
       ScalarT alpha, const T* a, std::int64_t lda, const T* b, std::int64_t ldb, \

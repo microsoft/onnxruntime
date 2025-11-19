@@ -7,7 +7,6 @@ import copy
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
-from typing import Dict, List, Optional, Tuple
 
 import onnx
 import torch
@@ -30,7 +29,7 @@ from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp
 
 
 class _RunStateInfo:
-    def __init__(self, state, output_info: List[Tuple[torch.Size, torch.device, torch.dtype]]):
+    def __init__(self, state, output_info: list[tuple[torch.Size, torch.device, torch.dtype]]):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
         :param output_info: Output info.
@@ -74,7 +73,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._flattened_module = module
 
         self._onnx_models = _onnx_models.ONNXModels()
-        self._graph_transition_manager: Optional[GraphTransitionManager] = None
+        self._graph_transition_manager: GraphTransitionManager | None = None
 
         # Model after inference optimization and then gradient building.
         self._graph_builder = None
@@ -110,14 +109,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._get_torch_gpu_allocator_function_addresses()
 
         if self._runtime_options.enable_triton:
-            from onnxruntime.training.ort_triton import register_triton_op_executor
+            from onnxruntime.training.ort_triton import register_triton_op_executor  # noqa: PLC0415
 
             register_triton_op_executor()
 
         self._zero_stage3_param_map = {}
         if self._runtime_options.enable_zero_stage3_support:
             # Move import to here to avoid circular dependency error
-            from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3  # type: ignore[import]
+            from onnxruntime.training.utils.hooks import (  # type: ignore[import]  # noqa: PLC0415
+                configure_ort_compatible_zero_stage3,
+            )
 
             # Cannot toggle feature enabling/disabling after the first time enabled.
 
@@ -128,7 +129,7 @@ class GraphExecutionManager(GraphExecutionInterface):
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
-            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator  # noqa: PLC0415
 
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
@@ -290,7 +291,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         input_names_require_grad = post_export_processed_model_info.onnx_graph_input_names_require_grad_user_defined
         if self._runtime_options.enable_zero_stage3_support:
-            from ._zero_stage3_compatibility import STAGE3_PULL_WEIGHT_TRIGGER_NAME
+            from ._zero_stage3_compatibility import STAGE3_PULL_WEIGHT_TRIGGER_NAME  # noqa: PLC0415
 
             # Add stage3 pull weight trigger name to require_grad_names, so that it will be included in the gradient graph.
             input_names_require_grad.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
@@ -341,7 +342,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         return self._graph_transition_manager._device
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.DETECTION)
-    def _detect_from_inputs(self, inputs: Tuple, kwargs: Dict):
+    def _detect_from_inputs(self, inputs: tuple, kwargs: dict):
         """
         Based on runtime inspection, enable conditional optimizations if applicable.
 
@@ -381,9 +382,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                 [f"{k}:{v:.0f}%" for k, v in self._runtime_inspector._embedding_module_to_padding_density_map.items()]
             )
 
-    def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
+    def _append_pull_weight_trigger_as_input(self, kwargs: dict, device: torch.device):
         if self._runtime_options.enable_zero_stage3_support:
-            from ._zero_stage3_compatibility import (
+            from ._zero_stage3_compatibility import (  # noqa: PLC0415
                 STAGE3_PULL_WEIGHT_TRIGGER_NAME,
                 STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
                 STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,

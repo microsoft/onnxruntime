@@ -26,7 +26,7 @@ def run_once_aten_op_executor(f):
 
 @run_once_aten_op_executor
 def load_aten_op_executor_cpp_extension():
-    from onnxruntime.training.ortmodule.torch_cpp_extensions import aten_op_executor
+    from onnxruntime.training.ortmodule.torch_cpp_extensions import aten_op_executor  # noqa: PLC0415
 
     _C.register_aten_op_executor(
         str(aten_op_executor.is_tensor_argument_address()), str(aten_op_executor.execute_aten_operator_address())

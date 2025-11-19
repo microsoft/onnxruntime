@@ -97,7 +97,7 @@ def get_args():
         "--precision",
         type=str,
         required=True,
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision to run model",
     )
 
@@ -245,7 +245,7 @@ def process_log_file(device_id, log_file, base_results):
 
 
 def save_results(results, filename):
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     df = pd.DataFrame(
         results,
@@ -287,15 +287,11 @@ def save_results(results, filename):
     df["Real Time Factor (RTF)"] = df["Real Time Factor (RTF)"].astype("float")
 
     # get package name and version
-    import pkg_resources
+    import pkg_resources  # noqa: PLC0415
 
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted(
-        [
-            f"{i.key}=={i.version}"
-            for i in installed_packages
-            if i.key in ["ort-nightly-gpu", "ort-nightly", "onnxruntime", "onnxruntime-gpu"]
-        ]
+        [f"{i.key}=={i.version}" for i in installed_packages if i.key in ["onnxruntime", "onnxruntime-gpu"]]
     )
     ort_pkg_name = ""
     ort_pkg_version = ""
@@ -376,9 +372,7 @@ def main():
 
     # Calculate forced decoder input ids
     hf_forced_decoder_ids = processor.get_decoder_prompt_ids(language=args.language, task=args.task)
-    ort_forced_decoder_ids = [config.decoder_start_token_id] + list(  # noqa: RUF005
-        map(lambda token_id: token_id[1], hf_forced_decoder_ids)
-    )
+    ort_forced_decoder_ids = [config.decoder_start_token_id] + [token_id[1] for token_id in hf_forced_decoder_ids]
     hf_decoder_input_ids_cmd = (
         ["--decoder-input-ids", str(hf_forced_decoder_ids)] if args.language and args.task else []
     )

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <ctime>
 #include <iomanip>
+#include <iterator>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
@@ -138,7 +139,8 @@ class PlannerImpl {
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
-              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
+              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan,
+              [[maybe_unused]] const logging::Logger& logger)
       : context_(&context),
         plan_(plan),
         parent_node_(parent_node),
@@ -148,14 +150,20 @@ class PlannerImpl {
         kernel_create_info_map_(kernel_create_info_map),
         subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
-        ort_value_name_idx_map_(ort_value_name_idx_map) {}
+        ort_value_name_idx_map_(ort_value_name_idx_map)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+        ,
+        logger_(logger) {
+#else
+  {
+#endif
+  }
 
   Status CreatePlan(
 #ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-      const PathString& partition_config_file,
-      const logging::Logger& logger);
+      const PathString& partition_config_file);
 
  private:
   gsl::not_null<const ISequentialPlannerContext*> context_;
@@ -182,6 +190,11 @@ class PlannerImpl {
   // upstream_node_2 is the immediate nodes ahead of downstream_node in the same logic stream
   InlinedHashMap<onnxruntime::NodeIndex, InlinedHashSet<onnxruntime::NodeIndex>> dependence_graph_;
   InlinedHashMap<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
+
+  // logger_ is not currently used in a minimal build
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const logging::Logger& logger_;
+#endif
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -213,6 +226,7 @@ class PlannerImpl {
     FreeBufferInfo(OrtValueIndex ort_value, size_t dealloc_point)
         : ml_value(ort_value), deallocate_point(dealloc_point) {}
   };
+
   // freelist_ : a list of ml-values whose buffers are free to be reused, sorted by when
   // they became free (more recently freed earlier in the list).
   std::list<FreeBufferInfo> freelist_;
@@ -225,7 +239,8 @@ class PlannerImpl {
   }
 
   int& UseCount(OrtValueIndex n) {
-    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size(), "invalid value index: ", n, " against size ", ort_value_info_.size());
+    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size(),
+                "invalid value index: ", n, " against size ", ort_value_info_.size());
     return ort_value_info_[n].usecount;
   }
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
@@ -335,9 +350,9 @@ class PlannerImpl {
             // we cannot.
             const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
             if (producer_node && HasExternalOutputs(*producer_node)) {
-              LOGS_DEFAULT(VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
-                                    << producer_node->Name() << " which has external outputs. "
-                                    << "Be cautious the reuse MUST be a read-only usage.";
+              LOGS(logger_, VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
+                                     << producer_node->Name() << " which has external outputs. "
+                                     << "Be cautious the reuse MUST be a read-only usage.";
             }
 #endif
             *reusable_input = Index(p_input_arg->Name());
@@ -361,9 +376,9 @@ class PlannerImpl {
           // we cannot.
           const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
           if (producer_node && HasExternalOutputs(*producer_node)) {
-            LOGS_DEFAULT(VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
-                                  << producer_node->Name() << " which has external outputs. "
-                                  << "Be cautious the reuse MUST be a read-only usage.";
+            LOGS(logger_, VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
+                                   << producer_node->Name() << " which has external outputs. "
+                                   << "Be cautious the reuse MUST be a read-only usage.";
           }
 #endif
           *reusable_input = Index(p_input_arg->Name());
@@ -397,8 +412,8 @@ class PlannerImpl {
                 }
               } else {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-                LOGS_DEFAULT(VERBOSE) << "Node " << node.Name() << " cannot reuse input buffer for node "
-                                      << producer_node->Name() << " as it has external outputs";
+                LOGS(logger_, VERBOSE) << "Node " << node.Name() << " cannot reuse input buffer for node "
+                                       << producer_node->Name() << " as it has external outputs";
 #endif
               }
             }
@@ -448,8 +463,8 @@ class PlannerImpl {
             return true;
           } else {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-            LOGS_DEFAULT(VERBOSE) << "Node " << node.Name() << " cannot reuse strided output buffer for node "
-                                  << producer_node->Name() << " as it has external outputs.";
+            LOGS(logger_, VERBOSE) << "Node " << node.Name() << " cannot reuse strided output buffer for node "
+                                   << producer_node->Name() << " as it has external outputs.";
 #endif
           }
         }
@@ -715,6 +730,28 @@ class PlannerImpl {
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
+    // If both devices are OrtDevice::CPU or both are HOST_ACCESSIBLE we use the one with the higher alignment.
+    // If one is OrtDevice::CPU and one is HOST_ACCESSIBLE memory, we use the HOST_ACCESSIBLE one as that would
+    // typically have a page alignment and would satisfy the alignment requirement of any other CPU consumers.
+    // If one device is not on CPU, we default to the one that is CPU.
+    auto determine_device = [](const OrtDevice& output_device, const OrtDevice& suggested_device) -> OrtDevice {
+      const bool output_is_cpu = output_device.UsesCpuMemory();  // CPU or HOST_ACCESSIBLE memory
+      const bool suggested_is_cpu = suggested_device.UsesCpuMemory();
+      if (output_is_cpu && suggested_is_cpu) {
+        // if both are CPU or both are HOST_ACCESSIBLE pick based on alignment.
+        if ((output_device.Type() == OrtDevice::CPU && suggested_device.Type() == OrtDevice::CPU) ||
+            (output_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE &&
+             suggested_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE)) {
+          return (output_device.GetAlignment() >= suggested_device.GetAlignment()) ? output_device : suggested_device;
+        } else {
+          // prefer host accessible memory device allocator as it most likely has the higher alignment requirement
+          return (output_device.Type() != OrtDevice::CPU) ? output_device : suggested_device;
+        }
+      } else {
+        return (output_is_cpu) ? output_device : suggested_device;
+      }
+    };
+
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     InlinedHashMap<OrtValueIndex, const IExecutionProvider*> map_implicitly_consumed_node_arg_to_ep;
@@ -746,6 +783,7 @@ class PlannerImpl {
         // Add location information if applicable for the provided input def
         auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
                               &set_node_arg_has_explicit_consumer,
+                              &determine_device,
                               &map_implicitly_consumed_node_arg_to_ep,
                               &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
                               this](const NodeArg& input, size_t arg_idx) {
@@ -846,9 +884,12 @@ class PlannerImpl {
                     // we have seen
                     plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                   } else {
-                    // Default the location to CPU
-                    plan_.SetLocation(static_cast<size_t>(index),
-                                      execution_providers_.Get(CPU)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                    // We want to minimize the amount of copies, so we want at least one
+                    // device to match or match both if they are CPU based.
+                    OrtDevice result = determine_device(
+                        already_seen_ep_for_node_arg->second->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault),
+                        exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                    plan_.SetLocation(static_cast<size_t>(index), result);
                     set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
                   }
                 }
@@ -871,7 +912,35 @@ class PlannerImpl {
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-          plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i)));
+          OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          // Downstream nodes of certain providers may require a CPU accessible location override
+          // to make sure the EP does not incur an unnecessary copy.
+          // We only do it for CPU based EPs. We are not likely to encounter
+          // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
+          // However, we still ignore them.
+          if (output_device.Type() == OrtDevice::CPU) {
+            const auto& output_name = node_output->Name();
+            const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
+            for (const auto* consumer : consumers) {
+              if (consumer != nullptr) {
+                const auto& ep_type = consumer->GetExecutionProviderType();
+                auto suggested_device = execution_providers_.Get(ep_type)
+                                            ->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeCPUInput);
+                if (suggested_device.Type() == OrtDevice::CPU) {
+                  output_device = determine_device(output_device, suggested_device);
+                } else if (suggested_device.UsesCpuMemory()) {
+                  // Edge case: there are more than one downstream nodes that suggest their own CPU accessible
+                  // memory. In that case, we can not win them all, but the chosen device would still make it run
+                  // and reduce a number of copies for some.
+                  output_device = suggested_device;
+                  break;
+                }
+              }
+            }
+          }
+#endif
+          plan_.SetLocation(static_cast<size_t>(index), output_device);
         }
       }
     }
@@ -1198,9 +1267,9 @@ class PlannerImpl {
                 // Otherwise, we cannot reuse the buffer.
                 const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
                 if (producer_node && HasExternalOutputs(*producer_node)) {
-                  LOGS_DEFAULT(VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
-                                        << producer_node->Name() << " which has external outputs is reused. "
-                                        << "Be cautious the reuse MUST be a read-only usage.";
+                  LOGS(logger_, VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
+                                         << producer_node->Name() << " which has external outputs is reused. "
+                                         << "Be cautious the reuse MUST be a read-only usage.";
                 }
 #endif
 
@@ -1241,9 +1310,9 @@ class PlannerImpl {
               // Otherwise, we cannot reuse the buffer.
               const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
               if (producer_node && HasExternalOutputs(*producer_node)) {
-                LOGS_DEFAULT(VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
-                                      << producer_node->Name() << " which has external outputs is reused. "
-                                      << "Be cautious the reuse MUST be a read-only usage.";
+                LOGS(logger_, VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
+                                       << producer_node->Name() << " which has external outputs is reused. "
+                                       << "Be cautious the reuse MUST be a read-only usage.";
               }
 #endif
 
@@ -1290,8 +1359,8 @@ class PlannerImpl {
                   }
                 } else {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-                  LOGS_DEFAULT(VERBOSE) << "Node " << node->Name() << " cannot reuse input buffer for node "
-                                        << producer_node->Name() << " as it has external outputs";
+                  LOGS(logger_, VERBOSE) << "Node " << node->Name() << " cannot reuse input buffer for node "
+                                         << producer_node->Name() << " as it has external outputs";
 #endif
                 }
               }
@@ -1869,8 +1938,7 @@ class PlannerImpl {
   }
 
 #ifndef ORT_ENABLE_STREAM
-  void PartitionIntoStreams(const logging::Logger& /*logger*/,
-                            const ExecutionProviders& /*execution_providers*/,
+  void PartitionIntoStreams(const ExecutionProviders& /*execution_providers*/,
                             const PathString& /*partition_config_file*/) {
     if (graph_viewer_.NumberOfNodes() > 0) {
       stream_nodes_.push_back({});
@@ -1915,11 +1983,11 @@ class PlannerImpl {
 
 #else
 
-  void
-  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                       const PathString& partition_config_file) {
-    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
-    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
+  void PartitionIntoStreams(const ExecutionProviders& execution_providers,
+                            const PathString& partition_config_file) {
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger_, partition_config_file);
+    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_,
+                                              context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
@@ -1950,6 +2018,7 @@ class PlannerImpl {
         execution_plan.emplace_back(nullptr);
       }
     }
+
     // 2. Determining following things:
     //    a. which node needs to generate the notification
     //    b. which node needs to trigger downstream
@@ -1978,10 +2047,16 @@ class PlannerImpl {
       return producer_topoindex < yieldOp_index_in_toposort && yieldOp_index_in_toposort < consumer_topoindex;
     };
 #endif
+
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
+
+    // map of node that will generate a notification to plan_.notification_owners entry
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
+
+    // map of waiting node index to pairs of nodes + notification fn that it is waiting on
     std::map<NodeIndex, std::map<NodeIndex, WaitNotificationFn>> node_to_wait;
+
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
@@ -2000,17 +2075,24 @@ class PlannerImpl {
         }
       }
     }
+
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-        auto stream_device = execution_plan[i]->device_.Type();
-        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
-        // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
-        if (node->OpType() != "Shape" && stream_device != OrtDevice::CPU) {
+        auto stream_device = execution_plan[i]->device_;
+        // We don't need an ActivateNotificationStep or WaitOnEPStep for Shape as it always runs on CPU and isn't
+        // dependent on input from other devices.
+        // We also skip CPU streams as there is no wait function for CPU -> Device, so GetWaitHandle will always return
+        // null. EPs only register Device -> Device and Device -> CPU wait handlers currently.
+        if (node->OpType() != "Shape" && !stream_device.UsesCpuMemory()) {
+          // for each node consuming one or more outputs from the current node
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             bool output_consumed_in_subgraph = true;
+
+            // find the output/s the downstream node consumes
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
+                // TODO: is this correct or do we need to iterate ImplicitInputDefs as well?
                 if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
                   output_consumed_in_subgraph = false;  // output directly consumed in current graph
                   OrtValueIndex output_arg_idx;
@@ -2018,30 +2100,35 @@ class PlannerImpl {
                   // there are two cases we need notification:
                   // 1. the consumer is not in the same stream
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
-                  //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                  //    for example, a resize cuda kernel consumes a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
-                  OrtDevice::DeviceType output_arg_device = AllocPlan(output_arg_idx).location.Type();
-                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
-                  if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
+                  const auto& output_arg_device = AllocPlan(output_arg_idx).location;
+                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device,
+                                                                                        output_arg_device);
+                  if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device.UsesCpuMemory()) &&
+                      wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                      node_to_notification[node_index] = plan_.notification_owners.size();
-                      plan_.notification_owners.push_back(i);
+                      node_to_notification[node_index] = plan_.notification_owner_stream.size();
+                      plan_.notification_owner_stream.push_back(i);
                     }
+
                     // if node_index is already in the map, it will NOT be overwritten by insert()
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
               }
             }
+
             if (output_consumed_in_subgraph) {
               const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
-                auto downstream_device = execution_plan[downstream]->device_.Type();
-                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
+                const auto& downstream_device = execution_plan[downstream]->device_;
+                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device,
+                                                                                      downstream_device);
                 if (wait_handle) {
                   if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                    node_to_notification[node_index] = plan_.notification_owners.size();
-                    plan_.notification_owners.push_back(i);
+                    node_to_notification[node_index] = plan_.notification_owner_stream.size();
+                    plan_.notification_owner_stream.push_back(i);
                   }
                   node_to_wait[it->Index()].insert({node_index, wait_handle});
                 }
@@ -2072,6 +2159,7 @@ class PlannerImpl {
           // add dependency for current logic stream
           dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
         }
+
         auto* node = graph_viewer_.GetNode(node_index);
         std::unordered_set<NodeIndex> visited;  // TODO(leca): See the bug description in PlannerTest.MultiStreamMultiOutput. Can remove this variable once this bug is fixed
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
@@ -2079,7 +2167,8 @@ class PlannerImpl {
             continue;
           }
           visited.insert(it->Index());
-          //  check whether we need to add barrier
+
+          // add barrier if input node is not in this logic stream
           if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()
 #ifdef ENABLE_TRAINING
               && !AreNodesSeparatedByYield(it->Index(), node_index)
@@ -2091,17 +2180,21 @@ class PlannerImpl {
             size_t trigger_point_index = trigger_point_it->second;
             // push a barrier
             size_t barrier_id = plan_.num_barriers++;
-            plan_.downstream_map[trigger_point_index].push_back({i,
-                                                                 static_cast<int>(execution_plan[i]->steps_.size())});
+            // we add to the downstream map which causes TriggerDownstreamStep to run which decrements the
+            // barrier from the downstream stream when the downstream node is ready.
+            plan_.downstream_map[trigger_point_index].push_back(
+                {i, static_cast<int>(execution_plan[i]->steps_.size())});
             execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id, node_index));
           }
         }
 
+        // if current node has a waiter for a notification add WaitOnEPStep.
         auto wait_it = node_to_wait.find(node_index);
         if (wait_it != node_to_wait.end()) {
-          for (auto wait_param : wait_it->second) {
-            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second,
-                                                                                  node_to_notification[wait_param.first], node_index));
+          for (const auto& [node_producing_notification, notification_fn] : wait_it->second) {
+            execution_plan[i]->steps_.emplace_back(
+                std::make_unique<WaitOnEPStep>(notification_fn,
+                                               node_to_notification[node_producing_notification], node_index));
           }
         }
 
@@ -2109,6 +2202,7 @@ class PlannerImpl {
           // add dependency for model graph
           dependence_graph_[it->Index()].insert(node_index);
         }
+
 // push launch kernel command
 #if defined(ORT_MINIMAL_BUILD)
         execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
@@ -2282,10 +2376,9 @@ Status PlannerImpl::CreatePlan(
 #ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-    const PathString& partition_config_file,
-    const logging::Logger& logger) {
+    const PathString& partition_config_file) {
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, execution_providers_, this->parent_node_ ? PathString{} : partition_config_file);
+  PartitionIntoStreams(execution_providers_, parent_node_ ? PathString{} : partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2354,14 +2447,13 @@ Status SequentialPlanner::CreatePlan(
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, subgraphs_kernel_create_info_maps,
                       outer_scope_node_arg_to_location_map,
-                      ort_value_name_idx_map, context, *plan);
+                      ort_value_name_idx_map, context, *plan, logger);
 
   return planner.CreatePlan(
 #ifdef ORT_ENABLE_STREAM
       stream_handle_registry,
 #endif
-      partition_config_file,
-      logger);
+      partition_config_file);
 }
 
 #ifdef ORT_ENABLE_STREAM

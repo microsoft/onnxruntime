@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import os
@@ -21,7 +22,7 @@ def optimize_model_helper():
     parser.add_argument(
         "--opt_level",
         default="basic",
-        choices=["disable", "basic", "extended", "all"],
+        choices=["disable", "basic", "extended", "layout", "all"],
         help="Optimization level to use.",
     )
     parser.add_argument(

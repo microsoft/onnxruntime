@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/shape_utils.h"
@@ -18,6 +19,7 @@ class GatherOpBuilder : public BaseOpBuilder {
 
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+  bool SupportsMLProgram() const override { return true; }
 };
 
 namespace {
@@ -29,12 +31,27 @@ int64_t GetAxisAttribute(const Node& node) {
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& /*logger*/) const {
-  auto layer = model_builder.CreateNNLayer(node);
-  layer->mutable_gather()->set_axis(GetAxisAttribute(node));
-  *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();    // data
-  *layer->mutable_input()->Add() = node.InputDefs()[1]->Name();    // indices
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();  // output
-  model_builder.AddLayer(std::move(layer));
+  if (model_builder.CreateMLProgram()) {
+    using CoreML::Specification::MILSpec::Operation;
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "gather");
+
+    const auto axis = GetAxisAttribute(node);
+    // coreml docs claims validate_indices is optional but in practice it is required
+    const auto validate_indices = false;
+    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());                                   // data
+    AddOperationInput(*op, "indices", node.InputDefs()[1]->Name());                             // indices
+    AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));  // axis attr
+    AddOperationInput(*op, "validate_indices", model_builder.AddScalarConstant(op->type(), "validate_indices", validate_indices));
+    AddOperationOutput(*op, *node.OutputDefs()[0]);  // output
+    model_builder.AddOperation(std::move(op));
+  } else {
+    auto layer = model_builder.CreateNNLayer(node);
+    layer->mutable_gather()->set_axis(GetAxisAttribute(node));
+    *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();    // data
+    *layer->mutable_input()->Add() = node.InputDefs()[1]->Name();    // indices
+    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();  // output
+    model_builder.AddLayer(std::move(layer));
+  }
   return Status::OK();
 }
 

@@ -13,7 +13,7 @@ With ONNX Runtime React Native, React Native developers can score pre-trained ON
 ### Installation
 
 ```sh
-yarn add onnxruntime-react-native
+npm install onnxruntime-react-native
 ```
 
 ### Usage

@@ -33,6 +33,32 @@ TEST(DequantizeLinearOpTest, Int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// scalar zero & scale with uint8 (large enough input to execute MLAS vectorized loop)
+TEST(DequantizeLinearOpTest, Uint8_Large) {
+  OpTester test("DequantizeLinear", 10);
+  std::vector<int64_t> dims{1, 1039};  // not evenly divisible by 16 (loop unroll amount) to test handling of leftover inputs
+  test.AddInput<uint8_t>("x", dims, std::vector<uint8_t>(1039, 1));
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<uint8_t>("x_zero_point", {}, {1});
+  test.AddOutput<float>("y", dims, std::vector<float>(1039, 0.0f));
+  // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable WebGPU EP because it requires dims.Size() to be multiple of 4. Fails with error: needs at least component size 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// scalar zero & scale with int8 (large enough input to execute MLAS vectorized loop)
+TEST(DequantizeLinearOpTest, Int8_Large) {
+  OpTester test("DequantizeLinear", 10);
+  std::vector<int64_t> dims{1, 1039};  // not evenly divisible by 16 (loop unroll amount) to test handling of leftover inputs
+  test.AddInput<int8_t>("x", dims, std::vector<int8_t>(1039, 1));
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<int8_t>("x_zero_point", {}, {1});
+  test.AddOutput<float>("y", dims, std::vector<float>(1039, 0.0f));
+  // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable WebGPU EP because it requires dims.Size() to be multiple of 4. Fails with error: needs at least component size 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
 // scalar zero & scale with int4
 TEST(DequantizeLinearOpTest, Int4) {
   OpTester test("DequantizeLinear", 21);
@@ -111,13 +137,24 @@ TEST(DequantizeLinearOpTest, Uint16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// scalar zero & scale with int8
+// scalar zero & scale with int32
 TEST(DequantizeLinearOpTest, Int32) {
   OpTester test("DequantizeLinear", 10);
   std::vector<int64_t> dims{4};
   test.AddInput<int32_t>("x", dims, {-30, -3, 100, 127});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", dims, {-60.f, -6.f, 200.f, 254.f});
+  test.Run();
+}
+
+// non-zero zero point with int32
+TEST(DequantizeLinearOpTest, Int32_Non_Zero_Zero_Point) {
+  OpTester test("DequantizeLinear", 10);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<float>("x_scale", {}, {2.0f}, true);
+  test.AddInput<int32_t>("x_zero_point", {}, {1}, true);
+  test.AddOutput<float>("y", dims, {-62.f, -8.f, 198.f, 252.f});
   test.Run();
 }
 
@@ -156,7 +193,8 @@ TEST(DequantizeLinearOpTest, Scalar) {
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<float>("y", {}, {220.0f});
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 0.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable WebGPU EP due to error: needs at least component size 4
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // dequantize with scalar data
@@ -167,7 +205,8 @@ TEST(DequantizeLinearOpMLFloat16Test, Scalar) {
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<MLFloat16>("y", {}, {MLFloat16(220.0f)});
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 0.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable WebGPU EP due to error: needs at least component size 4
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // dequantize without zero point
@@ -176,6 +215,45 @@ TEST(DequantizeLinearOpTest, Without_Zero_Point) {
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", {}, {200.0f});
+  // No DQ allowed without corresponding Q. Skip since TRT10
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// dequantize without zero point int8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, No_Zero_Point_int8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<int8_t>("x", {1, 8}, {-10, 50, 100, 120, -9, 49, 99, 119});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddOutput<float>("y", {1, 8}, {-20.0f, 100.0f, 200.0f, 240.0f, -18.0f, 98.0f, 198.0f, 238.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
+}
+
+// dequantize without zero point uint8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, No_Zero_Point_uint8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<uint8_t>("x", {1, 8}, {10, 50, 100, 180, 9, 49, 99, 179});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddOutput<float>("y", {1, 8}, {20.0f, 100.0f, 200.0f, 360.0f, 18.0f, 98.0f, 198.0f, 358.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
+}
+
+// dequantize zero point int8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, Zero_Point_int8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<int8_t>("x", {1, 8}, {-10, 50, 100, 120, -9, 49, 99, 119});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<int8_t>("zero_point", {}, {-10});
+  test.AddOutput<float>("y", {1, 8}, {0.0f, 120.0f, 220.0f, 260.0f, 2.0f, 118.0f, 218.0f, 258.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
+}
+
+// dequantize zero point uint8 (testing 8 elements for webgpu)
+TEST(DequantizeLinearOpTest, Zero_Point_uint8) {
+  OpTester test("DequantizeLinear", 10);
+  test.AddInput<uint8_t>("x", {1, 8}, {10, 50, 100, 180, 9, 49, 99, 119});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("zero_point", {}, {10});
+  test.AddOutput<float>("y", {1, 8}, {0.0f, 80.0f, 180.0f, 340.0f, -2.0f, 78.0f, 178.0f, 218.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // No DQ allowed without corresponding Q. Skip since TRT10
 }
 
@@ -853,7 +931,7 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   for (int64_t i = 0, n = 2 * zero_point_block_count; i < n; ++i) x_zero_point.push_back(0);
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) {
-    x.push_back(i);
+    x.push_back(static_cast<Tin>(i));
     y.push_back(Tout(static_cast<float>(i) * 2.0f));
   }
 
@@ -895,10 +973,11 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   so.session_log_verbosity_level = 1;
   so.graph_optimization_level = TransformerLevel::Default;
 
+  using UnpackedType = typename Tin::UnpackedType;
   for (int64_t i = 0, n = zero_point_block_count; i < n; ++i) x_zero_point.push_back(Tin(0, 0));
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tout(2.0f));
   for (int i = 0; i < 8; ++i) {
-    if (i & 1) x.push_back(Tin(i - 1, i));
+    if (i & 1) x.push_back(Tin(static_cast<UnpackedType>(i - 1), static_cast<UnpackedType>(i)));
     y.push_back(Tout(static_cast<float>(i) * 2.0f));
   }
 
@@ -1120,14 +1199,16 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
     x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
 
+  using UnpackedType = typename Tin::UnpackedType;
   size_t i = 0, n = x_.size();
-  for (; i < n - 1; i += 2) x.push_back(Tin(x_[i], x_[i + 1]));
-  if (i < n) x.push_back(Tin(x_[i], 0xF));
+  for (; i < n - 1; i += 2) x.push_back(Tin(static_cast<UnpackedType>(x_[i]), static_cast<UnpackedType>(x_[i + 1])));
+  if (i < n) x.push_back(Tin(static_cast<UnpackedType>(x_[i]), 0xF));
 
   if (use_zero_point) {
     i = 0, n = x_zero_point_.size();
-    for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(x_zero_point_[i], x_zero_point_[i + 1]));
-    if (i < n) x_zero_point.push_back(Tin(x_zero_point_[i], 0xF));
+    for (; i < n - 1; i += 2) x_zero_point.push_back(Tin(static_cast<UnpackedType>(x_zero_point_[i]),
+                                                         static_cast<UnpackedType>(x_zero_point_[i + 1])));
+    if (i < n) x_zero_point.push_back(Tin(static_cast<UnpackedType>(x_zero_point_[i]), 0xF));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -1162,9 +1243,9 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   for (size_t i = 0, n = dims.size(); i < n; ++i) {
     x_scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
-  for (auto v : x_) x.push_back(v);
+  for (auto v : x_) x.push_back(static_cast<Tin>(v));
   if (use_zero_point)
-    for (auto v : x_zero_point_) x_zero_point.push_back(v);
+    for (auto v : x_zero_point_) x_zero_point.push_back(static_cast<Tin>(v));
 
   test.AddInput<Tin>("x", dims, x);
   test.AddAttribute<int64_t>("axis", axis);
@@ -1835,7 +1916,7 @@ void QuantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tin(2.0f));
   for (int i = 0; i < 8; ++i) {
     x.push_back(Tin(static_cast<float>(i) * 2.0f));
-    y.push_back(i);
+    y.push_back(static_cast<Tout>(i));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -1876,10 +1957,11 @@ void QuantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   so.session_log_verbosity_level = 1;
   so.graph_optimization_level = TransformerLevel::Default;
 
+  using UnpackedType = typename Tout::UnpackedType;
   for (int64_t i = 0, n = zero_point_block_count; i < n; ++i) x_zero_point.push_back(Tout(0, 0));
   for (int64_t i = 0, n = 2 * scale_block_count; i < n; i++) x_scale.push_back(Tin(2.0f));
   for (int i = 0; i < 8; ++i) {
-    if (i & 1) y.push_back(Tout(i - 1, i));
+    if (i & 1) y.push_back(Tout(static_cast<UnpackedType>(i - 1), static_cast<UnpackedType>(i)));
     x.push_back(Tin(static_cast<float>(i) * 2.0f));
   }
 
@@ -2101,14 +2183,17 @@ void QuantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
     scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
 
+  using UnpackedType = typename Tout::UnpackedType;
   size_t i = 0, n = y_.size();
-  for (; i < n - 1; i += 2) y.push_back(Tout(y_[i], y_[i + 1]));
-  if (i < n) y.push_back(Tout(y_[i], 0xF));
+  for (; i < n - 1; i += 2) y.push_back(Tout(static_cast<UnpackedType>(y_[i]),
+                                             static_cast<UnpackedType>(y_[i + 1])));
+  if (i < n) y.push_back(Tout(static_cast<UnpackedType>(y_[i]), 0xF));
 
   if (use_zero_point) {
     i = 0, n = zero_point_.size();
-    for (; i < n - 1; i += 2) zero_point.push_back(Tout(zero_point_[i], zero_point_[i + 1]));
-    if (i < n) zero_point.push_back(Tout(zero_point_[i], 0xF));
+    for (; i < n - 1; i += 2) zero_point.push_back(Tout(static_cast<UnpackedType>(zero_point_[i]),
+                                                        static_cast<UnpackedType>(zero_point_[i + 1])));
+    if (i < n) zero_point.push_back(Tout(static_cast<UnpackedType>(zero_point_[i]), 0xF));
   }
 
   test.AddInput<Tin>("x", dims, x);
@@ -2143,9 +2228,9 @@ void QuantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   for (size_t i = 0, n = dims.size(); i < n; ++i) {
     scale_shape.push_back((int64_t)i == non_neg_axis ? (dims[i] + block_size - 1) / block_size : dims[i]);
   }
-  for (auto v : y_) y.push_back(v);
+  for (auto v : y_) y.push_back(static_cast<Tout>(v));
   if (use_zero_point)
-    for (auto v : zero_point_) zero_point.push_back(v);
+    for (auto v : zero_point_) zero_point.push_back(static_cast<Tout>(v));
 
   test.AddInput<Tin>("x", dims, x);
   test.AddAttribute<int64_t>("axis", axis);

@@ -163,11 +163,10 @@ export class ShapeUtil {
       // size cannot be negative.
       if (dims[i] < 0) {
         throw new Error(
-          // eslint-disable-next-line max-len
           'cannot get valid size from specified dimension range. Most likely the range contains negative values in them.',
         );
       }
-      size *= dims[i];
+      size *= Number(dims[i]);
     }
     return size;
   }
@@ -189,7 +188,7 @@ export class ShapeUtil {
   }
 
   /**
-   * normailze axis of range [-r, r) into [0, r).
+   * normalize axis of range [-r, r) into [0, r).
    */
   static normalizeAxis(axis: number, tensorRank: number): number {
     if (axis < -tensorRank && axis >= tensorRank) {

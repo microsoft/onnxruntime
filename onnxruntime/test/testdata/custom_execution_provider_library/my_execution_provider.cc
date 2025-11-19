@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Confidential and Proprietary.
+// Licensed under the MIT License.
 
 #include "my_execution_provider.h"
 #include "my_allocator.h"

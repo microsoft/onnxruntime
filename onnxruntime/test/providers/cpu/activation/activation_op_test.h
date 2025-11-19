@@ -20,7 +20,8 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
                              const std::unordered_map<std::string, float> float_attribs = {},
                              const std::unordered_map<std::string, std::string> string_attribs = {},
                              bool is_tensorrt_supported = true, int opset_version = 7,
-                             const char* domain = kOnnxDomain) {
+                             const char* domain = kOnnxDomain,
+                             BaseTester::CustomOutputVerifierFn custom_output_verifier = nullptr) {
   for (const std::vector<T>& input_vals : input_vals_vec) {
     OpTester test(szOp, opset_version, domain);
 
@@ -57,6 +58,14 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kQnnExecutionProvider);
     }
 #endif
+// Disabled because QNN SDK 2.17 Relu treats inf as FLT_MAX.
+// QNN lowers ThresholdedRelu to sub -> relu -> sign -> mul.
+#if defined(USE_QNN)
+    int thresholdedrelu = strcmp(szOp, "ThresholdedRelu");
+    if (thresholdedrelu == 0) {
+      excluded_providers.insert(kQnnExecutionProvider);
+    }
+#endif
 // Use relative error because of computation error for float::max
 #if defined(USE_DNNL)
     int gelu = strcmp(szOp, "Gelu");
@@ -72,6 +81,10 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
 
     if (strcmp(szOp, "QuickGelu") == 0) {
       test.SetOutputTolerance(0.0001f);
+    }
+
+    if (custom_output_verifier) {
+      test.SetCustomOutputVerifier(custom_output_verifier);
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
@@ -90,7 +103,6 @@ class ActivationOpTest : public ::testing::Test {
                                                         DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};            // max, -max, inf
   std::vector<std::vector<int8_t>> input_values_int8{{-1, -5, 0, 1, 5, 100, -100,                                                // normal input values for activation
                                                       std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max()}};  // min, max
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   std::vector<std::vector<MLFloat16>> input_values_fp16{{MLFloat16(-1.0f),
                                                          MLFloat16(-5.f),
                                                          MLFloat16(),
@@ -100,14 +112,18 @@ class ActivationOpTest : public ::testing::Test {
                                                          MLFloat16(-100.f),
                                                          MLFloat16(65504.f),
                                                          MLFloat16(-65504.f)}};
-#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dist(low, high);
+#ifdef USE_COREML
+    // please check onnxruntime/onnxruntime/core/providers/coreml/builders/helper.cc:81
+    std::vector<std::size_t> batch_size_list = {1, 2, 4, 9, 100};
+#else
     std::vector<std::size_t> batch_size_list = {1, 2, 4, 9, 100000};
+#endif
     for (auto batch_size : batch_size_list) {
       std::vector<float> vec(batch_size);
       for (size_t i = 0; i != batch_size; ++i) {

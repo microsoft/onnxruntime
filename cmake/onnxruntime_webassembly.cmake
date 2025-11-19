@@ -84,6 +84,10 @@ function(bundle_static_library bundled_target_name)
   add_dependencies(${bundled_target_name} bundling_target)
 endfunction()
 
+if (onnxruntime_USE_JSEP AND onnxruntime_USE_WEBGPU)
+  message(FATAL_ERROR "onnxruntime_USE_JSEP and onnxruntime_USE_WEBGPU cannot be enabled at the same time.")
+endif()
+
 if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   add_compile_definitions(
     BUILD_MLAS_NO_ONNXRUNTIME
@@ -93,15 +97,20 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 endif()
 
-target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+if (NOT onnxruntime_USE_VCPKG)
+  target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+endif()
+
+# Include the Node.js helper for finding and validating Node.js and NPM
+include(node_helper.cmake)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
-      nsync::nsync_cpp
       ${PROTOBUF_LIB}
       onnx
       onnx_proto
       onnxruntime_common
+      onnxruntime_lora
       onnxruntime_flatbuffers
       onnxruntime_framework
       onnxruntime_graph
@@ -111,6 +120,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
+      ${PROVIDERS_WEBGPU}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -141,11 +151,6 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
         GTest::gtest
       )
 
-      find_program(NODE_EXECUTABLE node required)
-      if (NOT NODE_EXECUTABLE)
-        message(FATAL_ERROR "Node is required for a test")
-      endif()
-
       add_test(NAME onnxruntime_webassembly_test
         COMMAND ${NODE_EXECUTABLE} onnxruntime_webassembly_test.js
         WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_webassembly_test>
@@ -168,17 +173,17 @@ else()
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
     )
-    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
     message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
-    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
+    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS "-sDISABLE_EXCEPTION_CATCHING=0")
+    target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_CATCHING=0")
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
-    nsync::nsync_cpp
     ${PROTOBUF_LIB}
     onnx
     onnx_proto
     onnxruntime_common
+    onnxruntime_lora
     onnxruntime_flatbuffers
     onnxruntime_framework
     onnxruntime_graph
@@ -188,13 +193,12 @@ else()
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
+    ${PROVIDERS_WEBGPU}
     onnxruntime_session
     onnxruntime_util
     re2::re2
   )
-
-  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8'")
-
+  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','getValue','setValue','HEAP8','HEAPU8','HEAP32','HEAPU32'")
   if (onnxruntime_USE_XNNPACK)
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
     string(APPEND EXPORTED_RUNTIME_METHODS ",'addFunction'")
@@ -209,16 +213,24 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  if (onnxruntime_USE_JSEP)
-    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput,_JsepGetNodeName")
-  else()
-    set(EXPORTED_FUNCTIONS "_malloc,_free")
-  endif()
+  set(onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre.js")
 
+  set(EXPORTED_FUNCTIONS "_malloc,_free")
+  if (onnxruntime_USE_JSEP)
+    string(APPEND EXPORTED_FUNCTIONS ",_JsepOutput,_JsepGetNodeName")
+  endif()
+  if (onnxruntime_USE_WEBGPU)
+    string(APPEND EXPORTED_FUNCTIONS ",_wgpuBufferRelease,_wgpuCreateInstance")
+  endif()
+  set(MAXIMUM_MEMORY "4294967296")
+  target_link_options(onnxruntime_webassembly PRIVATE
+    "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js.js\""
+  )
+  list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js")
   target_link_options(onnxruntime_webassembly PRIVATE
     "SHELL:-s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}]"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
-    "SHELL:-s MAXIMUM_MEMORY=4294967296"
+    "SHELL:-s MAXIMUM_MEMORY=${MAXIMUM_MEMORY}"
     "SHELL:-s EXIT_RUNTIME=0"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s MODULARIZE=1"
@@ -227,24 +239,56 @@ else()
     "SHELL:-s FILESYSTEM=0"
     "SHELL:-s INCOMING_MODULE_JS_API=[locateFile,instantiateWasm,wasmBinary]"
     "SHELL:-s WASM_BIGINT=1"
-    ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
     "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
   )
-  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
 
   if (onnxruntime_USE_JSEP)
-    # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
-    #       This flag allows async functions to be called from sync functions, in the cost of binary size and
-    #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
-
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
-    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
+    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js")
+
+  endif()
+
+  if (onnxruntime_USE_WEBGPU)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBGPU=1)
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js\""
+    )
+    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js")
+  endif()
+
+  if (onnxruntime_USE_WEBNN)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBNN=1)
+    if (NOT onnxruntime_USE_JSEP)
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/post-webnn.js\""
+      )
+      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webnn.js")
+    endif()
+  endif()
+
+  if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:-s JSPI=1"
+        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
+      )
+    else()
+      # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
+      #       This flag allows async functions to be called from sync functions, in the cost of binary size and
+      #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
+      #
+      # if any of the above is enabled, we need to use the asyncify library
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      )
+      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
+    endif()
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -254,14 +298,21 @@ else()
   endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_link_options(onnxruntime_webassembly PRIVATE
-      # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
-      #       However, it may be very slow.
-      # "SHELL:-s ASSERTIONS=2"
-      "SHELL:-s ASSERTIONS=1"
-      "SHELL:-s SAFE_HEAP=1"
-      "SHELL:-s STACK_OVERFLOW_CHECK=2"
-    )
+    if (CMAKE_CXX_FLAGS MATCHES "sanitize=address")
+        # The integer value below might often need be adjusted.
+        target_link_options(onnxruntime_webassembly PRIVATE "-sINITIAL_MEMORY=786432000")
+        target_link_options(onnxruntime_webassembly PRIVATE "-sASSERTIONS=2")
+    else()
+        # Enable SAFE_HEAP in debug build
+        target_link_options(onnxruntime_webassembly PRIVATE
+          # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
+          #       However, it may be very slow.
+          # "SHELL:-s ASSERTIONS=2"
+          "SHELL:-s ASSERTIONS=1"
+          "SHELL:-s SAFE_HEAP=1"
+          "SHELL:-s STACK_OVERFLOW_CHECK=2"
+        )
+    endif()
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ASSERTIONS=0"
@@ -278,8 +329,12 @@ else()
     endif()
   endif()
 
-  # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+    # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s DISABLE_EXCEPTION_THROWING=0"
+    )
+  endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)
@@ -297,6 +352,21 @@ else()
     )
   endif()
 
+  #
+  # Apply post-processing script for the generated JavaScript file
+  #
+  list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/wasm_post_build.js")
+  add_custom_command(
+    TARGET onnxruntime_webassembly
+    POST_BUILD
+    # Backup file at $<TARGET_FILE_NAME:onnxruntime_webassembly>.bak
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_NAME:onnxruntime_webassembly>" "$<TARGET_FILE_NAME:onnxruntime_webassembly>.bak"
+    COMMAND ${CMAKE_COMMAND} -E echo "Performing post-process for $<TARGET_FILE_NAME:onnxruntime_webassembly>"
+    COMMAND ${NODE_EXECUTABLE} "${ONNXRUNTIME_ROOT}/wasm/wasm_post_build.js" "$<TARGET_FILE_NAME:onnxruntime_webassembly>"
+  )
+
+  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS "${onnxruntime_webassembly_script_deps}")
+
   set(target_name_list ort)
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -305,7 +375,9 @@ else()
 
   list(APPEND target_name_list  "wasm")
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+    list(APPEND target_name_list  "relaxedsimd")
+  elseif (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     list(APPEND target_name_list  "simd")
   endif()
 
@@ -317,6 +389,12 @@ else()
 
   if (onnxruntime_USE_JSEP)
     string(APPEND target_name ".jsep")
+  elseif (onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      string(APPEND target_name ".jspi")
+    else()
+      string(APPEND target_name ".asyncify")
+    endif()
   endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_execution_provider.h"
@@ -45,7 +45,7 @@ class CannKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
     if (count_or_bytes == 0) return nullptr;
-    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, WaitCannNotificationOnDevice);
+    return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream);
   }
 
   template <typename T>

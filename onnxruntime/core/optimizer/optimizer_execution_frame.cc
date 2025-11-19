@@ -7,7 +7,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
 #include "core/common/status.h"
-#include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/data_types.h"
 #include "core/framework/fuse_nodes_funcs.h"
@@ -32,10 +31,12 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
                                     const std::filesystem::path& model_path,
                                     const IExecutionProvider& execution_provider,
-                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func)
+                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func,
+                                    const logging::Logger& logger)
     : execution_provider_(execution_provider),
-      is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = std::make_shared<CPUAllocator>();
+      is_sparse_initializer_func_(is_sparse_initializer_func),
+      logger_(logger) {
+  allocator_ptr_ = CPUAllocator::DefaultInstance();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -79,10 +80,12 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
                                     const std::filesystem::path& /* model_path */,
                                     const IExecutionProvider& execution_provider,
-                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func)
+                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func,
+                                    const logging::Logger& logger)
     : execution_provider_(execution_provider),
-      is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = std::make_shared<CPUAllocator>();
+      is_sparse_initializer_func_(is_sparse_initializer_func),
+      logger_(logger) {
+  allocator_ptr_ = CPUAllocator::DefaultInstance();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -117,7 +120,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const {
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
-  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), kernel_type_str_resolver, out);
+  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), kernel_type_str_resolver, logger_, out);
 }
 
 static Status TryCreateKernel(const Node& node,
@@ -128,10 +131,11 @@ static Status TryCreateKernel(const Node& node,
                               FuncManager& funcs_mgr,
                               const DataTransferManager& data_transfer_mgr,
                               const ConfigOptions& config_options,
+                              const logging::Logger& logger,
                               /*out*/ std::unique_ptr<OpKernel>& op_kernel) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelCreateInfo* kernel_create_info = nullptr;
-  ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver,
+  ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver, logger,
                                                     &kernel_create_info));
 
   static const AllocatorMap dummy_allocators;
@@ -154,7 +158,7 @@ OptimizerExecutionFrame::Info::CreateKernel(const Node* node, const ConfigOption
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
   FuncManager func;
   auto status = TryCreateKernel(*node, *kernel_registry, execution_provider_, initializers_,
-                                ort_value_name_idx_map_, func, data_transfer_mgr_, config_options,
+                                ort_value_name_idx_map_, func, data_transfer_mgr_, config_options, logger_,
                                 op_kernel);
 
   // Kernel found in the CPU kernel registry

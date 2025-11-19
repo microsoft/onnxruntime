@@ -49,25 +49,25 @@ def parse_arg_remove_string(argv, arg_name_equal):
 # Any combination of the following arguments can be applied
 
 if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
-    package_name = "ort-nightly"
     nightly_build = True
 
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
+cuda_major_version = None
 rocm_version = None
 is_migraphx = False
-is_rocm = False
 is_openvino = False
+is_qnn = False
+qnn_version = None
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
-    # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
-elif parse_arg_remove_boolean(sys.argv, "--use_rocm"):
-    is_rocm = True
-    rocm_version = parse_arg_remove_string(sys.argv, "--rocm_version=")
+    if cuda_version:
+        cuda_major_version = cuda_version.split(".")[0]
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
+    package_name = "onnxruntime-migraphx"
 elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
     is_openvino = True
     package_name = "onnxruntime-openvino"
@@ -87,10 +87,12 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
     pass
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
+    is_qnn = True
     package_name = "onnxruntime-qnn"
+    qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
+elif parse_arg_remove_boolean(sys.argv, "--use_webgpu"):
+    package_name = "onnxruntime-webgpu"
 
-if is_rocm or is_migraphx:
-    package_name = "onnxruntime-rocm" if not nightly_build else "ort-rocm-nightly"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -158,16 +160,20 @@ try:
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
-                    for library in to_preload:
-                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines(
+                        '_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
 
         def _rewrite_ld_preload_cuda(self, to_preload):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines(
+                        '    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
@@ -177,11 +183,26 @@ try:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines(
+                        '    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
+
+        def _rewrite_ld_preload_nv_tensorrt_rtx(self, to_preload):
+            with open("onnxruntime/capi/_ld_preload.py", "a", encoding="ascii") as f:
+                if len(to_preload) > 0:
+                    f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
+                    f.write("try:\n")
+                    f.writelines(
+                        '    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
+                        for library in to_preload
+                    )
+                    f.write("except OSError:\n")
+                    f.write("    import os\n")
+                    f.write('    os.environ["ORT_NV_TENSORRT_RTX_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
@@ -193,39 +214,34 @@ try:
                 to_preload = []
                 to_preload_cuda = []
                 to_preload_tensorrt = []
+                to_preload_nv_tensorrt_rtx = []
                 to_preload_cann = []
 
                 cuda_dependencies = [
                     "libcuda.so.1",
                     "libcublas.so.11",
                     "libcublas.so.12",
+                    "libcublas.so.13",
                     "libcublasLt.so.11",
                     "libcublasLt.so.12",
+                    "libcublasLt.so.13",
                     "libcudart.so.11.0",
                     "libcudart.so.12",
+                    "libcudart.so.13",
                     "libcudnn.so.8",
                     "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
+                    "libcufft.so.12",
                     "libcurand.so.10",
-                    "libcudnn_adv_infer.so.8",
-                    "libcudnn_adv_train.so.8",
-                    "libcudnn_cnn_infer.so.8",
-                    "libcudnn_cnn_train.so.8",
-                    "libcudnn_ops_infer.so.8",
-                    "libcudnn_ops_train.so.8",
-                    "libcudnn_adv.so.9",
-                    "libcudnn_cnn.so.9",
-                    "libcudnn_engines_precompiled.so.9",
-                    "libcudnn_engines_runtime_compiled.so.9",
-                    "libcudnn_graph.so.9",
-                    "libcudnn_heuristic.so.9",
-                    "libcudnn_ops.so.9",
                     "libnvJitLink.so.12",
-                    "libnvrtc.so.11",
+                    "libnvJitLink.so.13",
+                    "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
                     "libnvrtc.so.12",
+                    "libnvrtc.so.13",
                     "libnvrtc-builtins.so.11",
                     "libnvrtc-builtins.so.12",
+                    "libnvrtc-builtins.so.13",
                 ]
 
                 rocm_dependencies = [
@@ -242,6 +258,7 @@ try:
                     "libMIOpen.so.1",
                     "libnuma.so.1",
                     "librccl.so.1",
+                    "libhipblas.so.2",
                     "librocblas.so.3",
                     "librocblas.so.4",
                     "librocfft.so.0",
@@ -272,13 +289,13 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
+                self._rewrite_ld_preload_tensorrt(to_preload_nv_tensorrt_rtx)
                 self._rewrite_ld_preload(to_preload_cann)
-
             else:
                 pass
 
             _bdist_wheel.run(self)
-            if is_manylinux and not disable_auditwheel_repair and not is_openvino:
+            if is_manylinux and not disable_auditwheel_repair and not is_openvino and not is_qnn:
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
@@ -305,21 +322,27 @@ class InstallCommand(InstallCommandBase):
         return ret
 
 
-providers_cuda_or_rocm = "onnxruntime_providers_" + ("rocm" if is_rocm else "cuda")
+providers_cuda_or_rocm = "onnxruntime_providers_cuda"
 providers_tensorrt_or_migraphx = "onnxruntime_providers_" + ("migraphx" if is_migraphx else "tensorrt")
+providers_nv_tensorrt_rtx = "onnxruntime_providers_nv_tensorrt_rtx"
 providers_openvino = "onnxruntime_providers_openvino"
 providers_cann = "onnxruntime_providers_cann"
+providers_qnn = "onnxruntime_providers_qnn"
 
 if platform.system() == "Linux":
     providers_cuda_or_rocm = "lib" + providers_cuda_or_rocm + ".so"
     providers_tensorrt_or_migraphx = "lib" + providers_tensorrt_or_migraphx + ".so"
+    providers_nv_tensorrt_rtx = "lib" + providers_nv_tensorrt_rtx + ".so"
     providers_openvino = "lib" + providers_openvino + ".so"
     providers_cann = "lib" + providers_cann + ".so"
+    providers_qnn = "lib" + providers_qnn + ".so"
 elif platform.system() == "Windows":
     providers_cuda_or_rocm = providers_cuda_or_rocm + ".dll"
     providers_tensorrt_or_migraphx = providers_tensorrt_or_migraphx + ".dll"
+    providers_nv_tensorrt_rtx = providers_nv_tensorrt_rtx + ".dll"
     providers_openvino = providers_openvino + ".dll"
     providers_cann = providers_cann + ".dll"
+    providers_qnn = providers_qnn + ".dll"
 
 # Additional binaries
 dl_libs = []
@@ -339,15 +362,31 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     dl_libs.append(providers_cuda_or_rocm)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
+    dl_libs.append(providers_qnn)
     dl_libs.append("libonnxruntime.so*")
-    # DNNL, TensorRT & OpenVINO EPs are built as shared libs
+    # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
     libs.extend(["libonnxruntime_providers_vitisai.so"])
     libs.append(providers_cuda_or_rocm)
+    libs.append(providers_nv_tensorrt_rtx)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
+    libs.append(providers_qnn)
+    # QNN
+    qnn_deps = [
+        "libQnnCpu.so",
+        "libQnnHtp.so",
+        "libQnnSaver.so",
+        "libQnnSystem.so",
+        "libHtpPrepare.so",
+    ]
+    dl_libs.extend(qnn_deps)
+    # NV TensorRT RTX
+    nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
+    dl_libs.extend(nv_tensorrt_rtx_deps)
+    libs.extend(nv_tensorrt_rtx_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -373,25 +412,35 @@ else:
         "libiomp5md.dll",
         providers_cuda_or_rocm,
         providers_tensorrt_or_migraphx,
+        providers_nv_tensorrt_rtx,
         providers_cann,
         "onnxruntime.dll",
     ]
-    # DNNL, TensorRT & OpenVINO EPs are built as shared libs
+    # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
     libs.extend(["onnxruntime_providers_tensorrt.dll"])
+    libs.extend(["onnxruntime_providers_nv_tensorrt_rtx.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
+    libs.extend(["onnxruntime_providers_migraphx.dll"])
     libs.extend(["onnxruntime_providers_vitisai.dll"])
+    libs.extend(["onnxruntime_providers_qnn.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
-    # QNN V68/V73 dependencies
+    # WebGPU/Dawn Libs
+    libs.extend(["dxcompiler.dll", "dxil.dll"])
+    # QNN V68/V73/V81 dependencies
     qnn_deps = [
         "QnnCpu.dll",
+        "QnnGpu.dll",
         "QnnHtp.dll",
         "QnnSaver.dll",
         "QnnSystem.dll",
         "QnnHtpPrepare.dll",
+        "QnnHtpV81Stub.dll",
+        "libQnnHtpV81Skel.so",
+        "libqnnhtpv81.cat",
         "QnnHtpV73Stub.dll",
         "libQnnHtpV73Skel.so",
         "libqnnhtpv73.cat",
@@ -401,6 +450,29 @@ else:
     libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
+    migraphx_deps = [
+        "amd_comgr0602.dll",
+        "amd_comgr0604.dll",
+        "amd_comgr0700.dll",
+        "hiprtc0602.dll",
+        "hiprtc0604.dll",
+        "hiprtc0700.dll",
+        "hiprtc-builtins0602.dll",
+        "hiprtc-builtins0604.dll",
+        "hiprtc-builtins0700.dll",
+        "migraphx-hiprtc-driver.exe",
+        "migraphx.dll",
+        "migraphx_c.dll",
+        "migraphx_cpu.dll",
+        "migraphx_device.dll",
+        "migraphx_gpu.dll",
+        "migraphx_onnx.dll",
+        "migraphx_tf.dll",
+    ]
+    libs.extend(migraphx_deps)
+    # NV TensorRT RTX Libs
+    nv_tensorrt_rtx_deps = ["tensorrt_onnxparser_rtx_*.dll", "tensorrt_rtx_*.dll"]
+    libs.extend(nv_tensorrt_rtx_deps)
 
 if is_manylinux:
     if is_openvino:
@@ -443,8 +515,15 @@ else:
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm AI Hub Proprietary License.pdf"]
+# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)(and TensorRT RTX License and Acknowledgements for TRT RTX EP)
+extra = [
+    "LICENSE",
+    "ThirdPartyNotices.txt",
+    "Privacy.md",
+    "Qualcomm_LICENSE.pdf",
+    "TRT_RTX_LICENSE.txt",
+    "TRT_RTX_Acknowledgements.txt",
+]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
@@ -465,10 +544,10 @@ with open(README, encoding="utf-8") as fdesc:
 if path.isdir(path.join("onnxruntime", "external")):
     # Gather all files under onnxruntime/external directory.
     extra.extend(
-        list(
+        [
             str(Path(*Path(x).parts[1:]))
             for x in list(iglob(path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))
-        )
+        ]
     )
 
 packages = [
@@ -482,11 +561,13 @@ packages = [
     "onnxruntime.tools.ort_format_model.ort_flatbuffers_py",
     "onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs",
     "onnxruntime.tools.qdq_helpers",
+    "onnxruntime.tools.qnn",
     "onnxruntime.quantization",
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
     "onnxruntime.quantization.fusions",
     "onnxruntime.quantization.execution_providers.qnn",
+    "onnxruntime.quantization.neural_compressor",
     "onnxruntime.transformers",
     "onnxruntime.transformers.models.bart",
     "onnxruntime.transformers.models.bert",
@@ -494,8 +575,9 @@ packages = [
     "onnxruntime.transformers.models.llama",
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.phi2",
-    "onnxruntime.transformers.models.t5",
+    "onnxruntime.transformers.models.sam2",
     "onnxruntime.transformers.models.stable_diffusion",
+    "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.whisper",
 ]
 
@@ -507,7 +589,6 @@ requirements_file = "requirements.txt"
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
 enable_training_apis = parse_arg_remove_boolean(sys.argv, "--enable_training_apis")
-enable_rocm_profiling = parse_arg_remove_boolean(sys.argv, "--enable_rocm_profiling")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
@@ -516,6 +597,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -524,14 +607,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Operating System :: Microsoft :: Windows",
-    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 if enable_training or enable_training_apis:
@@ -690,8 +769,6 @@ if nightly_build:
 
 if local_version:
     version_number = version_number + local_version
-    if is_rocm and enable_rocm_profiling:
-        version_number = version_number + ".profiling"
 
 if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):
@@ -713,22 +790,27 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
+# Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
+if package_name == "onnxruntime-trt-rtx":
+    major = cuda_major_version or "12"  # Default to CUDA 12
+    install_requires.append(f"nvidia-cuda-runtime-cu{major}~={major}.0")
 
-if enable_training:
 
-    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
-        sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
-        from onnxruntime_collect_build_info import find_cudart_versions
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
+    sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
+    from onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
 
-        version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
-        with open(version_path, "w") as f:
-            f.write(f"package_name = '{package_name}'\n")
-            f.write(f"__version__ = '{version_number}'\n")
+    version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
+    with open(version_path, "w") as f:
+        f.write(f"package_name = '{package_name}'\n")
+        f.write(f"__version__ = '{version_number}'\n")
 
-            if cuda_version:
-                f.write(f"cuda_version = '{cuda_version}'\n")
+        if cuda_version:
+            f.write(f"cuda_version = '{cuda_version}'\n")
 
-                # cudart_versions are integers
+            # The cudart version used in building training packages in Linux.
+            # It is possible to parse version.json at cuda_home in build.py, then pass in the parameter directly.
+            if enable_training and platform.system().lower() == "linux":
                 cudart_versions = find_cudart_versions(build_env=True)
                 if cudart_versions and len(cudart_versions) == 1:
                     f.write(f"cudart_version = {cudart_versions[0]}\n")
@@ -741,12 +823,30 @@ if enable_training:
                             else "found multiple cudart libraries"
                         ),
                     )
-            elif rocm_version:
-                f.write(f"rocm_version = '{rocm_version}'\n")
+        elif rocm_version:
+            f.write(f"rocm_version = '{rocm_version}'\n")
+        elif qnn_version:
+            f.write(f"qnn_version = '{qnn_version}'\n")
 
-    save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
-# Setup
+save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version)
+
+extras_require = {}
+if package_name == "onnxruntime-gpu" and cuda_major_version:
+    # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11
+    cufft_version = "12.0" if cuda_major_version == "13" else "11.0"
+    extras_require = {
+        "cuda": [
+            f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
+            f"nvidia-cuda-runtime-cu{cuda_major_version}~={cuda_major_version}.0",
+            f"nvidia-cufft-cu{cuda_major_version}~={cufft_version}",
+            f"nvidia-curand-cu{cuda_major_version}~=10.0",
+        ],
+        "cudnn": [
+            f"nvidia-cudnn-cu{cuda_major_version}~=9.0",
+        ],
+    }
+
 setup(
     name=package_name,
     version=version_number,
@@ -763,6 +863,8 @@ setup(
     download_url="https://github.com/microsoft/onnxruntime/tags",
     data_files=data_files,
     install_requires=install_requires,
+    extras_require=extras_require,
+    python_requires=">=3.10",
     keywords="onnx machine learning",
     entry_points={
         "console_scripts": [

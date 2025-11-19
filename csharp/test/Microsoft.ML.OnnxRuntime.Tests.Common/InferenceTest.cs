@@ -4,13 +4,10 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Runtime.CompilerServices;
 
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
@@ -93,18 +90,35 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, opt.GraphOptimizationLevel);
 
-                Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; },
+                    "Set an invalid Graph Optimization Level.");
 
                 opt.AddSessionConfigEntry("key", "value");
 
-                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
-                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AddSessionConfigEntry("", "invalid key"); },
+                    "Added an invalid config entry.",
+                    "[ErrorCode:InvalidArgument] Config key is empty");
 
                 // SessionOptions.RegisterOrtExtensions can be manually tested by referencing the
                 // Microsoft.ML.OnnxRuntime.Extensions nuget package. After that is done, this should not throw.
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.RegisterOrtExtensions(); });
-                Assert.Contains("Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced", ex.Message);
+                AssertUtils.AssertThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.RegisterOrtExtensions(); },
+                    "RegisterOrtExtensions should throw if the Extensions package is not referenced",
+                    "Microsoft.ML.OnnxRuntime.Extensions NuGet package must be referenced");
 
+                // The below tests what happens when various execution providers are added
+                // to the session options.
+
+                // We can only check what EPs the package was built with for the
+                // Microsoft.ML.OnnxRuntime.Managed package because the managed package defines
+                // the C# preprocessor symbols (such as USE_CUDA) for the EPs that it was built with.
+
+                // The Microsoft.ML.OnnxRuntime package will use the appropriate platform bindings
+                // (ie the native Android bindings) where the C# preprocessor symbols
+                // identifying the EPs included in the build may not be available, so we use
+                // IfThrowsCheckException instead of using ifdefs.
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
@@ -146,10 +160,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
-#if USE_TVM
-                opt.AppendExecutionProvider_Tvm("Vulkan -device=amd_apu");
-#endif
-
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
 #endif
@@ -161,24 +171,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
-#if USE_XNNPACK
-                opt.AppendExecutionProvider("XNNPACK");
-#else
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("XNNPACK"); });
-                Assert.Contains("XNNPACK execution provider is not supported in this build", ex.Message);
-#endif
-#if USE_SNPE
-                opt.AppendExecutionProvider("SNPE");
-#else
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("SNPE"); });
-                Assert.Contains("SNPE execution provider is not supported in this build", ex.Message);
-#endif
-#if USE_QNN
-                opt.AppendExecutionProvider("QNN");
-#else
-                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("QNN"); });
-                Assert.Contains("QNN execution provider is not supported in this build", ex.Message);
-#endif
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("CoreML"); },
+                    "Appending CoreML EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "CoreML execution provider is not supported in this build");
+
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("XNNPACK"); },
+                    "Appending XNNPACK EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "XNNPACK execution provider is not supported in this build");
+
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("SNPE"); },
+                    "Appending SNPE EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "SNPE execution provider is not supported in this build");
+
+                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
+                    () => { opt.AppendExecutionProvider("QNN"); },
+                    "Appending QNN EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
+                    "QNN execution provider is not supported in this build");
 
                 opt.AppendExecutionProvider_CPU(1);
             }
@@ -823,7 +834,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(res, expectedOut, (IEqualityComparer<float>)new FloatComparer());
                     }
                 }));
-            };
+            }
             await Task.WhenAll(tasks);
             session.Dispose();
         }
@@ -1678,37 +1689,53 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+
         void TestCPUAllocatorInternal(InferenceSession session)
+
         {
             int device_id = 0;
-            using (var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
-            {
-                Assert.Equal("Cpu", info_cpu.Name);
-                Assert.Equal(device_id, info_cpu.Id);
-                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
-                Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
+            using var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
+                OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default);
+            Assert.Equal("Cpu", info_cpu.Name);
+            Assert.Equal(device_id, info_cpu.Id);
+            Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
+            Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
+            var deviceMemoryType = info_cpu.GetDeviceMemoryType();
+            Assert.Equal(OrtDeviceMemoryType.DEFAULT, deviceMemoryType);
+            Assert.Equal(0U, info_cpu.GetVendorId());
 
-                using (var allocator = new OrtAllocator(session, info_cpu))
-                {
-                    var alloc_info = allocator.Info;
-                    // Allocator type returned may be different on x86 so we don't compare.
-                    Assert.Equal(info_cpu.Name, alloc_info.Name);
-                    Assert.Equal(info_cpu.GetMemoryType(), alloc_info.GetMemoryType());
-                    Assert.Equal(info_cpu.Id, alloc_info.Id);
+            using var allocator = new OrtAllocator(session, info_cpu);
+            using var alloc_info = allocator.Info;
+            // Allocator type returned may be different on x86 so we don't compare.
+            Assert.Equal(info_cpu.Name, alloc_info.Name);
+            Assert.Equal(info_cpu.GetMemoryType(), alloc_info.GetMemoryType());
+            Assert.Equal(info_cpu.Id, alloc_info.Id);
 
-                    uint size = 1024;
-                    OrtMemoryAllocation chunk = allocator.Allocate(size);
-                    Assert.Equal(chunk.Size, size);
-                    var chunk_info = chunk.Info;
-                    // Allocator type returned may be different on x86 so we don't compare.
-                    Assert.Equal(chunk_info.Name, alloc_info.Name);
-                    Assert.Equal(chunk_info.GetMemoryType(), alloc_info.GetMemoryType());
-                    Assert.Equal(chunk_info.Id, alloc_info.Id);
-                    chunk.Dispose();
-                    alloc_info.Dispose();
-                }
-            }
+            uint size = 1024;
+            using OrtMemoryAllocation chunk = allocator.Allocate(size);
+            Assert.Equal(chunk.Size, size);
+            var chunk_info = chunk.Info;
+            // Allocator type returned may be different on x86 so we don't compare.
+            Assert.Equal(chunk_info.Name, alloc_info.Name);
+            Assert.Equal(chunk_info.GetMemoryType(), alloc_info.GetMemoryType());
+            Assert.Equal(chunk_info.Id, alloc_info.Id);
         }
+
+        [Fact(DisplayName = "TestMemoryInfoCreateV2")]
+        void TestMemoryInfoCreateV2()
+        {
+            const int device_id = 0;
+            const uint vendor_id = 1234U;
+            using var info_cpu = new OrtMemoryInfo("Test_CPU", OrtMemoryInfoDeviceType.CPU, vendor_id, device_id,
+                OrtDeviceMemoryType.DEFAULT, 0, OrtAllocatorType.DeviceAllocator);
+            Assert.Equal("Test_CPU", info_cpu.Name);
+            Assert.Equal(device_id, info_cpu.Id);
+            Assert.Equal(OrtAllocatorType.DeviceAllocator, info_cpu.GetAllocatorType());
+            Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
+            Assert.Equal(OrtDeviceMemoryType.DEFAULT, info_cpu.GetDeviceMemoryType());
+            Assert.Equal(vendor_id, info_cpu.GetVendorId());
+        }
+
 
 #if USE_CUDA
         void TestCUDAAllocatorInternal(InferenceSession session)
@@ -1881,81 +1908,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(DisplayName = "TestSharedAllocatorUsingCreateAndRegisterAllocator")]
-        private void TestSharedAllocatorUsingCreateAndRegisterAllocator()
-        {
-            var model = TestDataLoader.LoadModelFromEmbeddedResource("mul_1.onnx");
-
-            using (var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
-                                                   OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default))
-            using (var arenaCfg = new OrtArenaCfg(0, -1, -1, -1))
-            {
-                var env = OrtEnv.Instance();
-                // Create and register the arena based allocator
-                env.CreateAndRegisterAllocator(memInfo, arenaCfg);
-
-                using (var sessionOptions = new SessionOptions())
-                {
-                    // Key must match kOrtSessionOptionsConfigUseEnvAllocators in onnxruntime_session_options_config_keys.h
-                    sessionOptions.AddSessionConfigEntry("session.use_env_allocators", "1");
-
-                    // Create two sessions to share the allocator
-                    // Create a third session that DOES NOT use the allocator in the environment
-                    using (var session1 = new InferenceSession(model, sessionOptions))
-                    using (var session2 = new InferenceSession(model, sessionOptions))
-                    using (var session3 = new InferenceSession(model)) // Use the default SessionOptions instance
-                    {
-                        // Input data
-                        var inputDims = new long[] { 3, 2 };
-                        var input = new float[] { 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F };
-
-                        // Output data
-                        int[] outputDims = { 3, 2 };
-                        float[] output = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
-
-                        // Run inference on all three models
-                        var inputMeta = session1.InputMetadata;
-                        var container = new List<NamedOnnxValue>();
-
-                        foreach (var name in inputMeta.Keys)
-                        {
-                            Assert.Equal(typeof(float), inputMeta[name].ElementType);
-                            Assert.True(inputMeta[name].IsTensor);
-                            var tensor = new DenseTensor<float>(input, inputMeta[name].Dimensions);
-                            container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
-                        }
-
-                        // Run inference with named inputs and outputs created with in Run()
-                        using (var results = session1.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
-                        {
-                            foreach (var r in results)
-                            {
-                                ValidateRunResultData(r.AsTensor<float>(), output, outputDims);
-                            }
-                        }
-
-                        // Run inference with named inputs and outputs created with in Run()
-                        using (var results = session2.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
-                        {
-                            foreach (var r in results)
-                            {
-                                ValidateRunResultData(r.AsTensor<float>(), output, outputDims);
-                            }
-                        }
-
-                        // Run inference with named inputs and outputs created with in Run()
-                        using (var results = session3.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
-                        {
-                            foreach (var r in results)
-                            {
-                                ValidateRunResultData(r.AsTensor<float>(), output, outputDims);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         internal static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? deviceId = null)
         {
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
@@ -2040,7 +1992,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         // Test hangs on mobile.
-#if !(ANDROID || IOS)  
+#if !(ANDROID || IOS)
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async Task TestModelRunAsyncTask()
         {

@@ -36,20 +36,24 @@ constexpr int kPresentOutputIndex = 1;
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   kernel_options_ = this->GetAttentionKernelOptions();
 
-  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
+  constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
+  constexpr bool kIsBf16 = std::is_same<T, BFloat16>::value;
+  constexpr bool kIs16bit = kIsFp16 || kIsBf16;
 
-  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
+  // We only support FP16 for TRT fused/flash/causal attention.
+  disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
+  enable_fused_causal_attention_ = kIsFp16 && kernel_options_->UseTrtCausalAttention();
 
-  enable_fused_causal_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtCausalAttention();
+  disable_memory_efficient_attention_ = kIsBf16 || !kernel_options_->UseEfficientAttention();
 
-  disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
-
-  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
+  disable_flash_attention_ = !kIs16bit || !kernel_options_->UseFlashAttention();
 }
 
 template <typename T>
@@ -102,6 +106,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const int sm = device_prop.major * 10 + device_prop.minor;
   const bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  AttentionData<CudaT> data;
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
                              (nullptr == attention_bias) &&
@@ -118,21 +125,26 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     use_flash_attention = false;
   }
   // Allocate buffers
+  size_t softmax_lse_bytes = 0;
   size_t softmax_lse_accum_bytes = 0;
   size_t out_accum_bytes = 0;
   if (use_flash_attention) {
+    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, parameters.num_heads);
+
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = static_cast<int>(num_splits);
+    data.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
   auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
@@ -247,6 +259,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;
   constexpr bool use_cudnn_flash_attention = false;
+  constexpr bool use_lean_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -257,14 +270,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.total_sequence_length,
                                                    fused_runner,
                                                    use_flash_attention,
+                                                   use_lean_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention,
                                                    use_cudnn_flash_attention,
                                                    false);
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   if (nullptr != bias) {
     data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
@@ -289,6 +301,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (softmax_lse_buffer != nullptr) {
+    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
+  }
+
   if (softmax_lse_accum_buffer != nullptr) {
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
   }

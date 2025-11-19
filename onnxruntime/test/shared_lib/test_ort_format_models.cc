@@ -17,7 +17,7 @@
 extern std::unique_ptr<Ort::Env> ort_env;
 
 [[maybe_unused]] static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                                           const std::vector<Input>& inputs, const char* output_name,
+                                           const std::vector<Input<float>>& inputs, const char* output_name,
                                            const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
                                            Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
@@ -100,8 +100,8 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   }
 
   // now load the ORT format model and execute it
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -130,8 +130,8 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   custom_op_domain.Add(&custom_op);
 
   //  load the ORT format model and execute it
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {3, 2};
   input.values = {6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
@@ -151,8 +151,8 @@ TEST(OrtFormatCustomOpTests, LoadOrtModelStandaloneCustomOpImplementation) {
   custom_op_domain.Add(&standalone_op);
 
   // load the ORT format model and execute it
-  std::vector<Input> inputs(1);
-  Input& input = inputs[0];
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
   input.name = "X";
   input.dims = {3, 2};
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};

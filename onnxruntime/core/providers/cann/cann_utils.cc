@@ -4,6 +4,7 @@
 
 #include <unistd.h>
 #include <algorithm>
+#include <string>
 
 #include "core/providers/cann/cann_utils.h"
 
@@ -220,9 +221,37 @@ bool FileExist(const std::string& file_name) {
 
 void GenerateHashValue(const std::string string, HashValue& hash_value) {
   uint32_t hash[4] = {0, 0, 0, 0};
-  MurmurHash3::x86_128(string.data(), gsl::narrow_cast<int32_t>(string.size()), hash[0], &hash);
+  MurmurHash3::x86_128(string.data(), string.size(), hash[0], &hash);
   hash_value = hash[0] | (uint64_t(hash[1]) << 32);
 }
 
+bool is_dynamic_shape(const aclmdlIODims& dims) {
+  return std::find(dims.dims, dims.dims + dims.dimCount, -1) != dims.dims + dims.dimCount;
+}
+
+namespace fs = std::filesystem;
+std::string MatchFile(const std::string& file_name) {
+  fs::path current_dir = fs::current_path();
+
+  for (const auto& entry : fs::directory_iterator(current_dir)) {
+    if (entry.is_regular_file()) {
+      std::string name = entry.path().filename().string();
+      if (name.find(file_name) != std::string::npos && entry.path().extension() == ".om") {
+        return name;
+      }
+    }
+  }
+  return "";
+}
+
+static bool repeat_acl_init_flag = false;
+
+bool GetRepeatInitFlag() {
+  return repeat_acl_init_flag;
+}
+
+void SetRepeatInitFlag(bool val) {
+  repeat_acl_init_flag = val;
+}
 }  // namespace cann
 }  // namespace onnxruntime

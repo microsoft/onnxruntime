@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import logging
@@ -61,8 +62,7 @@ def upload_whl(python_wheel_path, final_storage=False):
         lines.sort()
 
         with open(download_path_to_html, "w") as f:
-            for item in lines:
-                f.write(f"{item}\n")
+            f.writelines(f"{item}\n" for item in lines)
     else:
         warnings.warn(f"'{new_line}' exists in {download_path_to_html}. The html file is not updated.")
     run_subprocess(
