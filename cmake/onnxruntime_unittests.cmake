@@ -1530,11 +1530,11 @@ endif()
 
       if (CMAKE_SYSTEM_NAME MATCHES "AIX")
         target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
-                            onnxruntime_common ${CMAKE_DL_LIBS})
+                              onnxruntime_common ${CMAKE_DL_LIBS})
         set_target_properties(onnxruntime_runtime_path_test_shared_library PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
       else()
         target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
-                            onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
+                              onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
       endif()
       target_include_directories(onnxruntime_runtime_path_test_shared_library PRIVATE ${ONNXRUNTIME_ROOT})
 

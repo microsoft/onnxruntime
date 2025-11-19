@@ -190,9 +190,6 @@ struct CpuVendorInfo {
 };
 
 constexpr auto kUnknownCpuVendorInfo = CpuVendorInfo{cpuinfo_vendor_unknown, "unknown", 0x0000};
-#if defined(_AIX)
-constexpr auto kIBMCpuVendorInfo = CpuVendorInfo{cpuinfo_vendor_ibm, "IBM", 0x1014};
-#endif
 
 constexpr std::array kCpuVendorInfos{
     CpuVendorInfo{cpuinfo_vendor_amd, "AMD", 0x1022},
@@ -232,7 +229,7 @@ void CPUIDInfo::VendorInfoInit() {
     }
 #endif  // defined(CPUINFO_SUPPORTED)
 #if defined(_AIX)
-    result = kIBMCpuVendorInfo.vendor;
+    result = cpuinfo_vendor_ibm;
 #endif
     return result;
   }();
