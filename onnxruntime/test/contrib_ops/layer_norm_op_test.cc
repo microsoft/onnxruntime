@@ -443,21 +443,161 @@ TEST(LayerNormTest, LayerNorm_InvalidNormSize) {
   RunTestOnCpuAndCuda(test, kLayerNormInvalidSize);
 }
 
-TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
+TEST(LayerNormTest, LayerNorm_ValidScaleBias_Broadcast) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
-  // as axis is 1, the scale and bias should have size 6
+  // With axis = 1, scale and bias of shape {2} are NumPy-broadcastable
+  // to X.shape[axis:] = {3, 2}, so this configuration is now valid.
   std::vector<int64_t> dims{1, 3, 2};
   test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f});
   test.AddInput<float>("gamma", {2}, {-0.6953f, 5.1824f});
   test.AddInput<float>("bias", {2}, {0.6435f, -0.3964f});
   test.AddAttribute<int64_t>("axis", 1);
-  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
+  test.AddOutput<float>("output", dims,
+                        {1.063606f, -3.716114f,
+                         0.042961f, -4.087264f,
+                         -0.639629f, -4.294445f});
 
-  // CPU and CUDA EPs have check for unexpected scale or bias sizes. Exclude other EPs with a LayerNormalization
-  // implementation for which we don't control the check or error message.
-  RunTestOnCpuAndCuda(test, kLayerNormInputShapeMismatchError);
+  // This configuration used to be rejected, but with generic NumPy-style
+  // broadcasting support it is now valid and should run successfully.
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Scalar_NoBias_Axis2) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 2);
+  std::vector<float> x(2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {2, 2, 2}, x);
+
+  test.AddInput<float>("Scale", {}, {1.5f}, true);
+  test.AddOutput<float>("Y", {2, 2, 2},
+                        {
+                            -1.5f,
+                            1.5f,
+                            -1.5f,
+                            1.5f,
+                            -1.5f,
+                            1.5f,
+                            -1.5f,
+                            1.5f,
+                        });
+
+  test.SetOutputAbsErr("Y", 1e-4f);
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Scalar_Axis2) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 2);
+  std::vector<float> x(2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {2, 2, 2}, x);
+
+  test.AddInput<float>("Scale", {}, {1.5f}, true);
+
+  test.AddInput<float>("B", {}, {0.1f}, true);
+  test.AddOutput<float>("Y", {2, 2, 2},
+                        {
+                            -1.4f,
+                            1.6f,
+                            -1.4f,
+                            1.6f,
+                            -1.4f,
+                            1.6f,
+                            -1.4f,
+                            1.6f,
+                        });
+
+  test.SetOutputAbsErr("Y", 1e-4f);
+
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Axis2) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 2);
+  std::vector<float> x(2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {2, 2, 2}, x);
+  test.AddInput<float>("Scale", {2}, {1.0f, 2.0f}, true);
+  test.AddInput<float>("B", {2}, {0.0f, 0.5f}, true);
+  test.AddOutput<float>("Y", {2, 2, 2},
+                        {
+                            -1.0f,
+                            2.5f,
+                            -1.0f,
+                            2.5f,
+                            -1.0f,
+                            2.5f,
+                            -1.0f,
+                            2.5f,
+                        });
+
+  test.SetOutputAbsErr("Y", 1e-4f);
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
+TEST(LayerNormTest,  LayerNorm_Scale_Bias_4D_OuterInnerBroadcast_Axis3) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 3);
+  std::vector<float> x(1 * 2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {1, 2, 2, 2}, x);
+  test.AddInput<float>("Scale", {1, 2, 1, 2},
+                       {
+                           1.0f,
+                           1.1f,
+                           1.2f,
+                           1.3f,
+                       },
+                       true);
+  test.AddInput<float>("B", {1, 2, 1, 2},
+                       {
+                           0.0f,
+                           0.5f,
+                           1.0f,
+                           1.5f,
+                       },
+                       true);
+  test.AddOutput<float>("Y", {1, 2, 2, 2},
+                        {
+                            -1.0f,
+                            1.6f,
+                            -1.0f,
+                            1.6f,
+
+                            -0.2f,
+                            2.8f,
+                            -0.2f,
+                            2.8f,
+                        });
+
+  test.SetOutputAbsErr("Y", 1e-4f);
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 #if defined(USE_DNNL)
@@ -478,6 +618,184 @@ TEST(LayerNormTest, LayerNorm17_Scale_Bias_bfloat16) {
   test.AddOutput<BFloat16>("output", dims, MakeBFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
   test.Run();
 }
+//
+TEST(LayerNormTest, LayerNorm_Scale_Scalar_NoBias) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 2);  // normalize over last dim
+
+  // X: shape = {2, 2, 2}, values 0..7
+  std::vector<float> x(2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {2, 2, 2}, x);
+
+  // Scale: scalar
+  test.AddInput<float>("Scale", {}, {1.5f}, /*is_initializer*/ true);
+
+  // Expected Y ( לפי ONNX LayerNormalization: standardization + scale )
+  // מחושב בפייתון בהתאם לספציפיקציה:
+  //
+  // Normalized = (X - Mean) / sqrt(Var + eps)
+  // Y = Normalized * Scale
+  //
+  test.AddOutput<float>("Y", {2, 2, 2},
+                        {
+                            -1.5f,
+                            1.5f,
+                            -1.5f,
+                            1.5f,
+                            -1.5f,
+                            1.5f,
+                            -1.5f,
+                            1.5f,
+                        });
+
+  // הפרש קטן בגלל חישובי float
+  test.SetOutputAbsErr("Y", 1e-4f);
+
+  test.Run();
+}
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Scalar) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 2);  // normalize over last dim
+
+  // X: shape = {2, 2, 2}, values 0..7
+  std::vector<float> x(2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {2, 2, 2}, x);
+
+  // Scale: scalar
+  test.AddInput<float>("Scale", {}, {1.5f}, /*is_initializer*/ true);
+
+  // Bias: scalar
+  test.AddInput<float>("B", {}, {0.1f}, /*is_initializer*/ true);
+
+  // Y = Normalized * 1.5 + 0.1
+  test.AddOutput<float>("Y", {2, 2, 2},
+                        {
+                            -1.4f,
+                            1.6f,
+                            -1.4f,
+                            1.6f,
+                            -1.4f,
+                            1.6f,
+                            -1.4f,
+                            1.6f,
+                        });
+
+  test.SetOutputAbsErr("Y", 1e-4f);
+
+  test.Run();
+}
+TEST(LayerNormTest, LayerNorm_Scale_Bias_PerLastDim) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 2);  // normalize over last dim
+
+  // X: shape = {2, 2, 2}, values 0..7
+  std::vector<float> x(2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {2, 2, 2}, x);
+
+  // Scale: shape = {2} -> broadcast לממד האחרון
+  // scale[0] לכל העמודות במיקום 0, scale[1] למיקום 1
+  test.AddInput<float>("Scale", {2}, {1.0f, 2.0f}, /*is_initializer*/ true);
+
+  // Bias: shape = {2} -> broadcast זהה
+  test.AddInput<float>("B", {2}, {0.0f, 0.5f}, /*is_initializer*/ true);
+
+  // Y = Normalized * Scale + B
+  // מחושב לפי הספציפיקציה (Python reference):
+  // יוצא:
+  // [[[-1.0, 2.5],
+  //   [-1.0, 2.5]],
+  //  [[-1.0, 2.5],
+  //   [-1.0, 2.5]]]
+  test.AddOutput<float>("Y", {2, 2, 2},
+                        {
+                            -1.0f,
+                            2.5f,
+                            -1.0f,
+                            2.5f,
+                            -1.0f,
+                            2.5f,
+                            -1.0f,
+                            2.5f,
+                        });
+
+  test.SetOutputAbsErr("Y", 1e-4f);
+
+  test.Run();
+}
+TEST(LayerNormTest, LayerNorm_Scale_Bias_4D_OuterInnerBroadcast) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 3);  // normalize over last dim (W)
+
+  // X: shape = {1, 2, 2, 2}, values 0..7
+  std::vector<float> x(1 * 2 * 2 * 2);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[static_cast<size_t>(i)] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {1, 2, 2, 2}, x);
+
+  // Scale: shape = {1, 2, 1, 2}
+  // S=0: [1.0, 1.1]
+  // S=1: [1.2, 1.3]
+  test.AddInput<float>("Scale", {1, 2, 1, 2},
+                       {
+                           1.0f,
+                           1.1f,
+                           1.2f,
+                           1.3f,
+                       },
+                       /*is_initializer*/ true);
+
+  // Bias: shape = {1, 2, 1, 2}
+  // S=0: [0.0, 0.5]
+  // S=1: [1.0, 1.5]
+  test.AddInput<float>("B", {1, 2, 1, 2},
+                       {
+                           0.0f,
+                           0.5f,
+                           1.0f,
+                           1.5f,
+                       },
+                       /*is_initializer*/ true);
+
+  // Expected Y (מחושב בפייתון לפי ה־spec):
+  //
+  // [[[[ -1.0,  1.6],
+  //    [ -1.0,  1.6]],
+  //
+  //   [[ -0.2,  2.8],
+  //    [ -0.2,  2.8]]]]
+  //
+  test.AddOutput<float>("Y", {1, 2, 2, 2},
+                        {
+                            -1.0f,
+                            1.6f,
+                            -1.0f,
+                            1.6f,
+
+                            -0.2f,
+                            2.8f,
+                            -0.2f,
+                            2.8f,
+                        });
+
+  test.SetOutputAbsErr("Y", 1e-4f);
+
+  test.Run();
+}
+
 #endif  //  USE_DNNL
 }  // namespace test
 }  // namespace onnxruntime
