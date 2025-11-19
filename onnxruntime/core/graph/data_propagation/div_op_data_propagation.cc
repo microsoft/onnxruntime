@@ -16,7 +16,7 @@ Status DivOpDataPropagation::infer() {
   const auto* input_1 = node_.InputDefs()[1];
 
   // Return and do nothing if input doesn't exist
-  if (!input_0 || !input_1) {
+  if (!input_0 || !input_1 || !input_0->Exists() || !input_1->Exists()) {
     return Status::OK();
   }
 

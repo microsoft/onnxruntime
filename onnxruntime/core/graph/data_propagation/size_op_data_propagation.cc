@@ -13,7 +13,7 @@ Status SizeOpDataPropagation::infer() {
   const auto* input_0 = node_.InputDefs()[0];
 
   // Return and do nothing if input doesn't exist
-  if (!input_0) {
+  if (!input_0 || !input_0->Exists()) {
     return Status::OK();
   }
 
