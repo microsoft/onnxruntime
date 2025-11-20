@@ -214,15 +214,11 @@ TEST(NvExecutionProviderTest, TestSessionOutputs) {
    *                     |--- Mod ---> "labels"
    */
   {
-    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
     Ort::SessionOptions session_options;
     session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
 
-    auto model_path = ORT_TSTR("model_with_topk_and_multiple_graph_outputs.onnx");
-    Ort::Status status(CreateModelWithTopKWhichContainsGraphOutput(model_path));
-    ASSERT_TRUE(status.IsOK());
-
-    Ort::Session session(env, model_path, session_options);
+    auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
 
     size_t output_count = session.GetOutputCount();
     ASSERT_TRUE(output_count == 4);
@@ -238,15 +234,11 @@ TEST(NvExecutionProviderTest, TestSessionOutputs) {
    *
    */
   {
-    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
     Ort::SessionOptions session_options;
     session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
 
-    auto model_path = ORT_TSTR("model_with_node_output_not_used.onnx");
-    Ort::Status status(CreateModelWithNodeOutputNotUsed(model_path));
-    ASSERT_TRUE(status.IsOK());
-
-    Ort::Session session(env, model_path, session_options);
+    auto model_path = ORT_TSTR("testdata/node_output_not_used.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
 
     size_t output_count = session.GetOutputCount();
     ASSERT_TRUE(output_count == 1);

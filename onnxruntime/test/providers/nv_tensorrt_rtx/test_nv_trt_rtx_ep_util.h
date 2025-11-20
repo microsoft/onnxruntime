@@ -119,9 +119,6 @@ void CreateBaseModel(const PathString& model_name,
 
 void CreateLargeLLMModel(const PathString& model_path, const PathString& external_data_path);
 
-OrtStatus* CreateModelWithTopKWhichContainsGraphOutput(const PathString& model_name);
-OrtStatus* CreateModelWithNodeOutputNotUsed(const PathString& model_name);
-
 Ort::IoBinding generate_io_binding(
     Ort::Session& session,
     std::map<std::string, std::vector<int64_t>> shape_overwrites = {},
