@@ -304,6 +304,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     disable_cpu_ep_fallback_ = config_options->GetConfigOrDefault(
                                    kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
 
+    qnn_htp_batch_multiplier_ = config_options->GetConfigOrDefault(
+                                    kOrtSessionOptionsQnnHtpBatchMultiplier, "0") == "1";
+
     context_cache_enabled_ = config_options->GetConfigOrDefault(
                                  kOrtSessionOptionEpContextEnable, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
@@ -959,6 +962,20 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   if (disable_cpu_ep_fallback_ && qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::CPU) {
     LOGS(logger, ERROR) << "Qnn CPU backend is loaded while CPU fallback is disabled.";
     return result;
+  }
+
+  // Report error if QNN HTP batch multiplier is used while do not disable cpu ep fallback.
+  // Since QNN HTP batch multiplier only supports whole graph running on HTP backend.
+  if (qnn_htp_batch_multiplier_) {
+    if (!disable_cpu_ep_fallback_) {
+      LOGS(logger, ERROR) << "Qnn HTP batch multiplier is used while CPU fallback is not disabled.\n Please add session options 'session.disable_cpu_ep_fallback|1'";
+      return result;
+    }
+    const auto& backend_type = qnn_backend_manager_->GetQnnBackendType();
+    if (backend_type != qnn::QnnBackendType::HTP && backend_type != qnn::QnnBackendType::HTP_FP16) {
+      LOGS(logger, ERROR) << "Qnn HTP batch multiplier is used while not using HTP backend.\n Please use HTP backend type";
+      return result;
+    }
   }
 
   if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsQpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
