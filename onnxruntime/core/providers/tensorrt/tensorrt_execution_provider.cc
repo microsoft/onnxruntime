@@ -2054,6 +2054,11 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   std::unordered_set<const NodeArg*> erased;
 
+  // This is the relative ordering that ensures node's input or output being added to the 'fused_inputs',
+  // 'fused_outputs', 'fused_outputs_to_add' and 'graph_outputs_to_add' maps is associated with a relative order index.
+  // Items added earlier receive a smaller order index than items added later.
+  // When constructing the final sub_graph's input or output lists, entries with smaller
+  // order indices will appear before those with larger indices.
   int input_order = 0;
   int output_order = 0;
 
@@ -2108,20 +2113,8 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
         } else {
           output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
         }
-        if (node_set.find(node_idx) != node_set.end()) {
-          const auto& iter = fused_inputs.find(output);
-          if (iter != fused_inputs.end()) {
-            fused_inputs.erase(iter);
-            erased.insert(output);
-          } else if (erased.find(output) == erased.end()) {
-            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
-              // This output is the graph's output.
-              // So the output should be put into the subgraph's output list.
-              graph_outputs_to_add.insert({output, output_order});
-            }
-            fused_outputs.insert({output, output_order++});
-          }
-        } else {
+
+        if (node_set.find(node_idx) == node_set.end()) {
           // This output will be consumed by another node outside of this subgraph.
           // So the output should be put into the subgraph's output list.
           fused_outputs_to_add.insert({output, output_order++});
