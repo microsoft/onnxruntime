@@ -653,6 +653,14 @@ class InferenceSession {
     return session_id_;
   }
 
+  void RegisterOrtFenceForCleanup(std::shared_ptr<SemaphoreEpMap>* ortFence) {
+    if(!ortFence) {
+      ORT_THROW("Cannot register null fence for cleanup");
+    }
+    std::lock_guard<std::mutex> lock(ort_fences_mutex_);
+    ort_fences_for_cleanup_.push_back(ortFence);
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -1045,6 +1053,8 @@ class InferenceSession {
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
+  mutable std::mutex ort_fences_mutex_;
+  std::vector<std::shared_ptr<SemaphoreEpMap>*> ort_fences_for_cleanup_;
 };
 
 struct SessionIOBinding {

@@ -451,6 +451,10 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Graph_GetModelMetadata;
         public IntPtr GetModelCompatibilityForEpDevices;
         public IntPtr CreateExternalInitializerInfo;
+        
+        public IntPtr GetOrtFenceForGraphicsInterop;
+        public IntPtr InteropEpWait;
+        public IntPtr InteropEpSignal;
     }
 
     internal static class NativeMethods
@@ -482,7 +486,7 @@ namespace Microsoft.ML.OnnxRuntime
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 #endif
 
-            const uint ORT_API_VERSION = 14;
+            const uint ORT_API_VERSION = 15;
 #if NETSTANDARD2_0
             IntPtr ortApiPtr = OrtGetApi(ORT_API_VERSION);
             api_ = (OrtApi)Marshal.PtrToStructure(ortApiPtr, typeof(OrtApi));
@@ -847,7 +851,7 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
 
-            OrtSyncStream_GetHandle = 
+            OrtSyncStream_GetHandle =
                 (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
                     api_.SyncStream_GetHandle,
                     typeof(DOrtSyncStream_GetHandle));
@@ -861,6 +865,21 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCopyTensors)Marshal.GetDelegateForFunctionPointer(
                     api_.CopyTensors,
                     typeof(DOrtCopyTensors));
+
+            OrtGetOrtFenceForGraphicsInterop =
+                (DOrtGetOrtFenceForGraphicsInterop)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetOrtFenceForGraphicsInterop,
+                    typeof(DOrtGetOrtFenceForGraphicsInterop));
+
+            OrtInteropEpWait =
+                (DOrtInteropEpWait)Marshal.GetDelegateForFunctionPointer(
+                    api_.InteropEpWait,
+                    typeof(DOrtInteropEpWait));
+
+            OrtInteropEpSignal =
+                (DOrtInteropEpSignal)Marshal.GetDelegateForFunctionPointer(
+                    api_.InteropEpSignal,
+                    typeof(DOrtInteropEpSignal));
         }
 
         internal class NativeLib
@@ -2644,7 +2663,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                  byte[] /* const char* */ value);
 
         /// <summary>
-        /// Get the value for the provided key. 
+        /// Get the value for the provided key.
         /// </summary>
         /// <returns>Value. Returns IntPtr.Zero if key was not found.</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -2744,6 +2763,30 @@ namespace Microsoft.ML.OnnxRuntime
             );
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetOrtFenceForGraphicsInterop(
+            IntPtr /* OrtSession* */ session,
+            IntPtr /* struct GraphicsInteropParams* */ graphicsInteropParams,
+            IntPtr /* struct FenceInteropParams* */ fenceInteropParams,
+            out IntPtr /* void** */ ortFence
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtInteropEpWait(
+            IntPtr /* OrtSession* */ session,
+            IntPtr /* void* */ ortFence,
+            IntPtr /* OrtSyncStream* */ stream,
+            uint /* uint64_t */ fenceValue
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtInteropEpSignal(
+            IntPtr /* OrtSession* */ session,
+            IntPtr /* void* */ ortFence,
+            IntPtr /* OrtSyncStream* */ stream,
+            uint /* uint64_t */ fenceValue
+            );
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* void* */ DOrtSyncStream_GetHandle(
             IntPtr /* OrtSyncStream* */ stream
             );
@@ -2760,6 +2803,9 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtEpDevice_Device OrtEpDevice_Device;
         public static DOrtEpDevice_MemoryInfo OrtEpDevice_MemoryInfo;
         public static DOrtCreateSyncStreamForEpDevice OrtCreateSyncStreamForEpDevice;
+        public static DOrtGetOrtFenceForGraphicsInterop OrtGetOrtFenceForGraphicsInterop;
+        public static DOrtInteropEpWait OrtInteropEpWait;
+        public static DOrtInteropEpSignal OrtInteropEpSignal;
         public static DOrtSyncStream_GetHandle OrtSyncStream_GetHandle;
         public static DOrtReleaseSyncStream OrtReleaseSyncStream;
 
@@ -2767,7 +2813,7 @@ namespace Microsoft.ML.OnnxRuntime
         // Auto Selection EP registration and selection customization
 
         /// <summary>
-        /// Register an execution provider library. 
+        /// Register an execution provider library.
         /// The library must implement CreateEpFactories and ReleaseEpFactory.
         /// </summary>
         /// <param name="env">Environment to add the EP library to.</param>

@@ -33,6 +33,13 @@
 #include <filesystem>
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
+#include "core/providers/cuda/cuda_common.h"
+
+#if VULKAN_FOR_INTEROP
+#if _WIN32
+typedef VkResult (VKAPI_PTR *PFN_vkGetSemaphoreWin32HandleKHR)(VkDevice device, const VkSemaphoreGetWin32HandleInfoKHR* pGetWin32HandleInfo, HANDLE* pHandle);
+#endif
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -102,6 +109,112 @@ static bool IsSupportedInputOutputDataType(ONNXTensorElementDataType data_type) 
     default:
       return false;
   }
+}
+
+Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, struct FenceInteropParams* fenceInteropParams, void** extSemFence)
+{
+  if (!info_.has_user_compute_stream) 
+  {
+    (void)GetPerThreadContext();
+  }
+  cudaExternalSemaphore_t cSemFence;
+  cudaExternalSemaphoreHandleDesc semHandleDesc = {};
+
+  assert(graphicsInteropParams->extSyncPrimitive == fenceInteropParams->extSyncPrimitive && 
+    "ExternalSyncPrimitive mismatch between graphicsInteropParams and fenceInteropParams");
+  (void)graphicsInteropParams;
+  
+  ExternalSyncPrimitive extSyncPrimitive = fenceInteropParams->extSyncPrimitive;
+
+  if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
+  {
+#if DX_FOR_INTEROP && _WIN32
+      fenceInteropParams->FencePtr.pFence = reinterpret_cast<ID3D12Fence*>(fenceInteropParams->FencePtr.pFence);
+      HANDLE sharedFenceHandle = nullptr;
+      if(reinterpret_cast<ID3D12Device*>(graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice)->CreateSharedHandle(reinterpret_cast<ID3D12Fence*>(fenceInteropParams->FencePtr.pFence), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create shared handle for D3D12 fence");
+      }
+      semHandleDesc.type = cudaExternalSemaphoreHandleTypeD3D12Fence;
+      semHandleDesc.handle.win32.handle = sharedFenceHandle;
+#endif
+  }
+  else if(extSyncPrimitive == ExternalSyncPrimitive_VulkanSemaphore)
+  {
+#if VULKAN_FOR_INTEROP
+#if _WIN32
+      VkSemaphoreGetWin32HandleInfoKHR handleInfo = {};
+      handleInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR;
+      handleInfo.semaphore = reinterpret_cast<VkSemaphore>(fenceInteropParams->FencePtr.VkSemaphore);
+      handleInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+
+      HANDLE sharedFenceHandle = nullptr;
+
+      // Get the function pointer for vkGetSemaphoreWin32HandleKHR
+      PFN_vkGetSemaphoreWin32HandleKHR pfnVkGetSemaphoreWin32HandleKHR = reinterpret_cast<PFN_vkGetSemaphoreWin32HandleKHR>(
+          reinterpret_cast<PFN_vkGetDeviceProcAddr>(graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkGetDeviceProcAddr)(
+              reinterpret_cast<VkDevice>(graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkDevice), "vkGetSemaphoreWin32HandleKHR"));
+
+      if (pfnVkGetSemaphoreWin32HandleKHR &&
+        pfnVkGetSemaphoreWin32HandleKHR(reinterpret_cast<VkDevice>(graphicsInteropParams->DevicePtr.VulkanDeviceParams.pVkDevice), &handleInfo, &sharedFenceHandle) == VK_SUCCESS)
+      {
+        semHandleDesc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
+        semHandleDesc.handle.win32.handle = sharedFenceHandle;
+      }
+      else
+      {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get shared semaphore handle");
+      }
+#endif
+#endif
+  }
+  if(cudaImportExternalSemaphore(&cSemFence, &semHandleDesc) != cudaSuccess)
+  {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to import external semaphore");
+  }
+#ifdef _WIN32
+  CloseHandle(semHandleDesc.handle.win32.handle);
+#endif
+  *extSemFence = cSemFence;
+
+  return Status::OK();
+}
+
+Status NvExecutionProvider::SetupInteropEpWait(void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue)
+{
+  LOGS_DEFAULT(VERBOSE) << "NvExecutionProvider::SetupInteropEpWait() called.";
+
+  // make CUDA wait for the upload by Graphics API to finish
+  cudaExternalSemaphoreWaitParams waitParams = {};
+  waitParams.params.fence.value = fenceValue;
+  cudaExternalSemaphore_t cSemFence = static_cast<cudaExternalSemaphore_t>(extSemFence);
+  cudaStream_t cudaStream = static_cast<cudaStream_t>(Ort::GetApi().SyncStream_GetHandle(stream));
+  cudaError_t result = cudaWaitExternalSemaphoresAsync(&cSemFence, &waitParams, 1, cudaStream);
+  if(result != cudaSuccess)
+  {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for external semaphore");
+  }
+
+  return Status::OK();
+}
+
+Status NvExecutionProvider::SetupInteropEpSignal(const OrtEpApi* ortEpApi, void* extSemFence, OrtSyncStream* stream, uint64_t fenceValue)
+{
+  LOGS_DEFAULT(VERBOSE) << "NvExecutionProvider::SetupInteropEpSignal() called.";
+
+  cudaStream_t cudaStream = static_cast<cudaStream_t>(Ort::GetApi().SyncStream_GetHandle(stream));
+
+  // make Graphics API wait for the CUDA kernel to finish
+  cudaExternalSemaphoreSignalParams signalParams = {};
+  signalParams.params.fence.value = fenceValue;
+  cudaExternalSemaphore_t cSemFence = static_cast<cudaExternalSemaphore_t>(extSemFence);
+  cudaError_t result = cudaSignalExternalSemaphoresAsync(&cSemFence, &signalParams, 1, cudaStream);
+  if(result != cudaSuccess)
+  {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to signal external semaphore");
+  }
+
+  ORT_UNUSED_PARAMETER(ortEpApi);
+  return Status::OK();
 }
 
 // Helper function to check if a data type is supported by NvTensorRTRTX EP

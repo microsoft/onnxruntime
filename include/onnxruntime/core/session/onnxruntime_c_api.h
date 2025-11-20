@@ -329,6 +329,7 @@ ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
 ORT_RUNTIME_CLASS(SyncStream);  // Opaque class to create an onnxruntime::Stream.
+ORT_RUNTIME_CLASS(Fence);
 ORT_RUNTIME_CLASS(ExternalInitializerInfo);
 
 #ifdef _MSC_VER
@@ -506,6 +507,43 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
+
+typedef enum ExternalSyncPrimitive {
+  ExternalSyncPrimitive_D3D12Fence,
+  ExternalSyncPrimitive_VulkanSemaphore,  // Vulkan timeline semaphore
+} ExternalSyncPrimitive;
+
+typedef struct VulkanDeviceParams {
+  void* pVkDevice;
+  void* pVkGetDeviceProcAddr;
+} VulkanDeviceParams;
+
+typedef struct GraphicsInteropParams {
+  ExternalSyncPrimitive extSyncPrimitive;
+  union DevicePtr {
+    struct DXDeviceParams {
+      void* pDevice;
+      void* pCommandQueue;
+    } DXDeviceParams;
+    VulkanDeviceParams VulkanDeviceParams;
+  } DevicePtr;
+
+} GraphicsInteropParams;
+
+typedef struct FenceInteropParams {
+  ExternalSyncPrimitive extSyncPrimitive;
+  union FencePtr {
+    void* pFence;
+    void* pVkFence;
+    void* VkSemaphore;
+  } FencePtr;
+  VulkanDeviceParams VulkanDeviceParams;
+} FenceInteropParams;
+
+typedef struct SemaphoreEpMap {
+  void* extSemFence;
+  void* selectedEp;
+} SemaphoreEpMap;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
@@ -6591,6 +6629,99 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /** \brief Setup Graphics Interopcontext for an execution provider device.
+   *
+   * This function enables D3D12/Vulkan interoperability by creating a CUDA context
+   * associated with a graphics API command queue/device. Once setup, any OrtSyncStream
+   * created for this ep_device via CreateSyncStreamForEpDevice will be created on the
+   * CIG context, enabling efficient GPU-side synchronization between graphics APIs and CUDA.
+   *
+   * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device if you want
+   * streams to be created on the CIG context.
+   *
+   * \param[in] ep_device The OrtEpDevice to setup CIG context for.
+   * \param[in] graphicsInteropParams Pointer to struct containing D3D12 command queue or Vulkan device info.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device,
+                  _In_ const struct GraphicsInteropParams* graphicsInteropParams);
+
+  /**
+   * \brief Get an external GPU fence/semaphore suitable for graphics interop.
+   *
+   * This function enables interoperability between ONNX Runtime and graphics APIs by obtaining a GPU external synchronization
+   * primitive (such as a semaphore or fence handle) that may be shared with external systems like D3D12 or Vulkan.
+   *
+   * This allows integration between ONNX Runtime GPU computation and external graphics or compute pipelines for scenarios such
+   * as synchronizing operations between ONNX Runtime's inference execution and mechanisms external to ONNX Runtime.
+   *
+   * The exact semantics and type of the synchronization primitive returned depend on the executing provider and the parameters provided.
+   *
+   * \param[in] session An OrtSession instance whose compute graph and providers participate in the graphics interop.
+   * \param[in] graphicsInteropParams Pointer to a struct defining which graphics API interop is desired, providing descriptor handles, device pointers, etc.
+   * \param[out] extSemFence Pointer to a variable that will receive the external semaphore/fence handle. The handle is suitable for passing to external graphics APIs.
+   *
+   * \retval ORT_OK On success.
+   * \retval ORT_NOT_IMPLEMENTED If none of the active providers support graphics-fence interop.
+   * \retval ORT_FAIL or provider-specific error if the operation fails for another reason.
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
+
+  /**
+   * \brief Wait on a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
+   *
+   * This function synchronizes ONNX Runtime computation with an external graphics or compute API by waiting on an external
+   * semaphore or fence. It is typically used in scenarios where GPU computation in ONNX Runtime must be synchronized with
+   * non-ONNX Runtime workloads, such as graphics pipelines (e.g., Direct3D 12 or Vulkan).
+   *
+   * The external synchronization primitive (such as a fence or semaphore handle) referenced by `extSemFence` should be
+   * obtained from a previous call to GetOrtFenceForGraphicsInterop.
+   *
+   * The implementation and support for this is execution provider-specific.
+   *
+   * \param[in] session The OrtSession instance for which synchronization is required.
+   * \param[in] extSemFence The handle to the external synchronization primitive, as returned from GetOrtFenceForGraphicsInterop.
+   * \param[in] stream The OrtSyncStream instance on which the synchronization will be performed.
+   * \param[in] fenceValue The fence value for synchronization (if required for the specific graphics API/interop scenario).
+   *
+   * \retval ORT_OK On successful synchronization.
+   * \retval ORT_NOT_IMPLEMENTED If the current execution provider does not support graphics interop wait.
+   * \retval ORT_FAIL or provider-specific error if the synchronization operation fails for another reason.
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+
+  /**
+   * \brief Signal a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
+   *
+   * This function synchronizes external graphics or compute APIs with ONNX Runtime computation by signaling an external
+   * semaphore or fence. This is typically used when GPU computation in ONNX Runtime has completed and an external
+   * workload (such as a graphics pipeline) should continue execution.
+   *
+   * The external synchronization primitive (such as a fence or semaphore handle) referenced by `extSemFence` should
+   * have been obtained from a previous call to GetOrtFenceForGraphicsInterop.
+   *
+   * The behavior and support for this operation is execution provider-specific.
+   *
+   * \param[in] session   The OrtSession instance corresponding to the computation that should be synchronized.
+   * \param[in] extSemFence The handle to the external synchronization primitive, as returned from GetOrtFenceForGraphicsInterop.
+   * \param[in] stream    The OrtSyncStream on which the signal operation should occur.
+   * \param[in] fenceValue The fence value to signal (if required for the specific graphics API or interop scenario).
+   *
+   * \retval ORT_OK                On successful signal operation.
+   * \retval ORT_NOT_IMPLEMENTED   If the current execution provider does not support graphics interop signaling.
+   * \retval ORT_FAIL or provider-specific error if signaling fails for another reason.
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 };
 
 /*
