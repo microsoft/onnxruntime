@@ -13,7 +13,7 @@ namespace onnxruntime {
 constexpr const char* kLayerNormInputShapeMismatchError =
     "Scale and (optional) bias must match X.shape[axis:] or be NumPy-broadcastable to it.";
 
-constexpr const char* kLayerNormInvalidSize = "Size of X.shape[axis:] must be larger than 1, got ";
+constexpr const char* kLayerNormInvalidSize = "Size of X.shape[axis:] must be at least 1, got ";
 
 constexpr int64_t kLayerNormInvalidInput = -1;
 
@@ -34,8 +34,6 @@ struct LayerNormParams {
   int64_t last_rank{0};
   onnxruntime::InlinedVector<int64_t, 8> sc_inner_inc;     // scale strides for inner dims [axis..]
   onnxruntime::InlinedVector<int64_t, 8> bi_inner_inc;     // bias  strides for inner dims [axis..]
-  onnxruntime::InlinedVector<int64_t, 8> sc_outer_inc;     // how much the scale pointer moves (stride) when an outer-dimension index of X changes (dims 0..axis-1)
-  onnxruntime::InlinedVector<int64_t, 8> bi_outer_inc;     // how much the bias pointer moves (stride) when an outer-dimension index of X changes (dims 0..axis-1)
   onnxruntime::InlinedVector<int64_t, 8> x_outer_strides;  // X strides for outer dims [0..axis-1]
 };
 
@@ -74,7 +72,8 @@ class LayerNormHelper {
     params.broadcast_param = 0;
     params.axis = axis;
 
-    if (params.norm_size <= 1) {
+    // Allow norm_size == 1 (scalar normalization is valid according to ONNX spec).
+    if (params.norm_size < 1) {
       params.broadcast_param = kLayerNormInvalidInput;
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kLayerNormInvalidSize, params.norm_size);
     } else if (params.scale_size != params.norm_size || (has_bias && params.bias_size != params.scale_size)) {
@@ -83,22 +82,21 @@ class LayerNormHelper {
       // fast-path can be used. If this fails, broadcast_param will be set to
       // kLayerNormInvalidInput and we may fall back to generic broadcasting later.
     }
-
     const size_t xr = x_shape.NumDimensions();
     const size_t sr = scale_shape.NumDimensions();
     const size_t br = has_bias ? bias_shape.NumDimensions() : 0;
+
     params.x_dims.clear();
     params.x_dims.reserve(xr);
-    for (size_t i = 0; i < xr; ++i) params.x_dims.push_back(x_shape.GetDims()[i]);
+    for (size_t i = 0; i < xr; ++i) {
+      params.x_dims.push_back(x_shape.GetDims()[i]);
+    }
 
-    // Right-align the scale (and bias) shape to match X's rank, filling leading
-    // dimensions with 1 so that NumPy-style broadcasting rules can be applied.
+    // Right-align scale and bias shapes
     params.sc_dims.clear();
     params.sc_dims.resize(xr, 1);
-    {
-      for (size_t i = 0; i < sr; ++i) {
-        params.sc_dims[xr - 1 - i] = scale_shape.GetDims()[sr - 1 - i];
-      }
+    for (size_t i = 0; i < sr; ++i) {
+      params.sc_dims[xr - 1 - i] = scale_shape.GetDims()[sr - 1 - i];
     }
 
     params.bi_dims.clear();
@@ -108,8 +106,8 @@ class LayerNormHelper {
         params.bi_dims[xr - 1 - i] = bias_shape.GetDims()[br - 1 - i];
       }
     }
-    // Validate that scale and bias shapes are NumPy-broadcastable to X.
-    // If not, we fail early with a clear shape mismatch error.
+
+    // Validate broadcastability
     const bool sc_ok = IsNumpyBroadcastable(params.sc_dims, params.x_dims);
     const bool bi_ok = !has_bias || IsNumpyBroadcastable(params.bi_dims, params.x_dims);
     if (!sc_ok || !bi_ok) {
@@ -120,64 +118,65 @@ class LayerNormHelper {
                              " bias.shape=", bias_shape,
                              " and axis=", axis);
     }
-    // Cache the inner dimensions X.shape[axis:] that are normalized together
-    // for each logical row.
-    params.last_rank = onnxruntime::narrow<int64_t>(xr) - axis;
-    params.x_inner_dims.clear();
-    params.x_inner_dims.reserve(params.last_rank > 0 ? static_cast<size_t>(params.last_rank) : 0);
-    for (size_t i = static_cast<size_t>(axis); i < xr; ++i) {
-      params.x_inner_dims.push_back(params.x_dims[i]);
-    }
 
+    // Compute strides for scale/bias once
     params.sc_strides = MakeStrides(params.sc_dims);
     params.bi_strides.clear();
     if (has_bias) {
       params.bi_strides = MakeStrides(params.bi_dims);
     }
 
-    // Precompute how scale/bias advance along the inner dimensions [axis..]:
-    // these increments are used inside the per-row normalization loop.
-    params.sc_inner_inc.clear();
-    params.bi_inner_inc.clear();
-    for (size_t i = static_cast<size_t>(axis); i < xr; ++i) {
-      params.sc_inner_inc.push_back(params.sc_strides[i]);
-      if (has_bias) {
-        params.bi_inner_inc.push_back(params.bi_strides[i]);
-      }
-    }
-    // Compute strides for X over the outer dimensions [0..axis-1],
-    // used to locate the base address of each logical row in X.
-    params.x_outer_strides.clear();
-    params.x_outer_strides.resize(static_cast<size_t>(axis), 1);
-    if (axis > 1) {
-      for (int64_t d = axis - 2; d >= 0; --d) {
-        const size_t du = static_cast<size_t>(d);
-        params.x_outer_strides[du] =
-            params.x_outer_strides[du + 1] * params.x_dims[du + 1];
-      }
-    }
-    // Detect whether scale/bias depend on any outer dimensions [0..axis-1].
-    // If any outer stride is non-zero, scale/bias are not purely "inner-only"
-    // and the simple fast-path based on broadcast_param is not sufficient.
-    params.sc_outer_inc.clear();
-    params.bi_outer_inc.clear();
-    for (int64_t i = 0; i < axis; ++i) {
-      params.sc_outer_inc.push_back(params.sc_strides[static_cast<size_t>(i)]);
-      params.bi_outer_inc.push_back(has_bias ? params.bi_strides[static_cast<size_t>(i)] : 0);
-    }
-
+    // Detect dependency on outer dimensions [0..axis-1]
     bool outer_dep = false;
     for (int64_t i = 0; i < axis; ++i) {
-      if (params.sc_outer_inc[static_cast<size_t>(i)] != 0 ||
-          (has_bias && params.bi_outer_inc[static_cast<size_t>(i)] != 0)) {
+      const size_t idx = static_cast<size_t>(i);
+      if (params.sc_strides[idx] != 0 ||
+          (has_bias && params.bi_strides[idx] != 0)) {
         outer_dep = true;
         break;
       }
     }
-    // Enable the generic NumPy-style broadcasting path if either:
-    //  - the fast-path cannot represent this shape (broadcast_param is invalid), or
-    //  - scale/bias have any dependency on outer dimensions.
+
+    // Decide if we need the generic NumPy-style broadcasting path
     params.use_generic_broadcast = outer_dep || (params.broadcast_param == kLayerNormInvalidInput);
+
+    if (params.use_generic_broadcast) {
+      // Cache inner dims X.shape[axis:]
+      params.last_rank = onnxruntime::narrow<int64_t>(xr) - axis;
+      params.x_inner_dims.clear();
+      params.x_inner_dims.reserve(params.last_rank > 0 ? static_cast<size_t>(params.last_rank) : 0);
+      for (size_t i = static_cast<size_t>(axis); i < xr; ++i) {
+        params.x_inner_dims.push_back(params.x_dims[i]);
+      }
+
+      // Precompute inner increments for scale/bias over [axis..]
+      params.sc_inner_inc.clear();
+      params.bi_inner_inc.clear();
+      for (size_t i = static_cast<size_t>(axis); i < xr; ++i) {
+        params.sc_inner_inc.push_back(params.sc_strides[i]);
+        if (has_bias) {
+          params.bi_inner_inc.push_back(params.bi_strides[i]);
+        }
+      }
+
+      // X outer strides [0..axis-1], used only in generic path
+      params.x_outer_strides.clear();
+      params.x_outer_strides.resize(static_cast<size_t>(axis), 1);
+      if (axis > 1) {
+        for (int64_t d = axis - 2; d >= 0; --d) {
+          const size_t du = static_cast<size_t>(d);
+          params.x_outer_strides[du] =
+              params.x_outer_strides[du + 1] * params.x_dims[du + 1];
+        }
+      }
+    } else {
+      // Fast-path: we don't need inner/outer increments
+      params.last_rank = 0;
+      params.x_inner_dims.clear();
+      params.sc_inner_inc.clear();
+      params.bi_inner_inc.clear();
+      params.x_outer_strides.clear();
+    }
 
     return Status::OK();
   }

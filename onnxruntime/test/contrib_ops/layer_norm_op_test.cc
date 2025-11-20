@@ -428,19 +428,18 @@ TEST(LayerNormTest, LayerNorm17_double) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
 }
 
-// Test normalize size shall be larger than 1.
-TEST(LayerNormTest, LayerNorm_InvalidNormSize) {
+TEST(LayerNormTest, LayerNorm_NormSize1_Valid) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
-
   std::vector<int64_t> dims{1, 3, 1};
   test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f});
   test.AddInput<float>("gamma", {1}, {-0.6953f});
   test.AddInput<float>("bias", {1}, {0.6435f});
   test.AddAttribute<int64_t>("axis", 2);
-  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f});
-
-  RunTestOnCpuAndCuda(test, kLayerNormInvalidSize);
+  test.AddOutput<float>("output", dims, {0.6435f, 0.6435f, 0.6435f});
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
 TEST(LayerNormTest, LayerNorm_ValidScaleBias_Broadcast) {
@@ -738,6 +737,70 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_4D_OuterInnerBroadcast) {
   if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
   test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
+TEST(LayerNormTest, LayerNorm_NormSize1_NoBias) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<int64_t>("axis", 2);
+  test.AddAttribute<float>("epsilon", 1e-5f);
+
+  std::vector<float> x = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f};
+  test.AddInput<float>("X", {2, 3, 1}, x);
+  test.AddInput<float>("Scale", {1}, {1.0f});
+  std::vector<float> expected = {
+      0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f};
+
+  test.AddOutput<float>("Y", {2, 3, 1}, expected);
+  test.AddOutput<float>("Mean", {2, 3, 1},
+                        {1.0f, 2.0f, 3.0f,
+                         4.0f, 5.0f, 6.0f});
+
+  float inv_std = 1.0f / sqrtf(1e-5f);
+  test.AddOutput<float>("InvStdDev", {2, 3, 1},
+                        {inv_std, inv_std, inv_std,
+                         inv_std, inv_std, inv_std});
+
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+TEST(LayerNormTest, LayerNorm_NormSize1_WithBiasScale) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<int64_t>("axis", 2);
+  test.AddAttribute<float>("epsilon", 1e-5f);
+  test.AddInput<float>("X", {1, 2, 1}, {10.0f, 20.0f});
+  test.AddInput<float>("Scale", {1}, {2.0f});
+  test.AddInput<float>("Bias", {1}, {5.0f});
+  test.AddOutput<float>("Y", {1, 2, 1}, {5.0f, 5.0f});
+  test.AddOutput<float>("Mean", {1, 2, 1}, {10.0f, 20.0f});
+  float inv_std = 1.0f / sqrtf(1e-5f);
+  test.AddOutput<float>("InvStdDev", {1, 2, 1}, {inv_std, inv_std});
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Broadcast_Inner_Mixed) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 1);
+  std::vector<int64_t> dims{1, 2, 4};
+  std::vector<float> x = {
+      0.0f, 1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f, 7.0f};
+  test.AddInput<float>("X", dims, x);
+  std::vector<float> scale = {1.0f, 0.5f, 1.0f, 0.5f};
+  test.AddInput<float>("Scale", {1, 4}, scale);
+  std::vector<float> expected_y = {
+      -1.527524f, -0.545544f, -0.654653f, -0.109109f,
+      0.218218f, 0.327327f, 1.091088f, 0.763762f};
+  test.AddOutput<float>("Y", dims, expected_y);
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
 #if defined(USE_DNNL)
 TEST(LayerNormTest, LayerNorm17_Scale_Bias_bfloat16) {
 #ifdef USE_DNNL

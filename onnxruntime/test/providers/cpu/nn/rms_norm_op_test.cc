@@ -687,6 +687,33 @@ TEST(RMSNormalizationOpTest, RMSNorm_Scale_Float16_OuterBroadcast_BxSx1_Axis2) {
   if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
   test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
+TEST(RMSNormalizationOpTest, RMSNorm_Scale_Broadcast_Inner_Mixed) {
+  OpTester test("RMSNormalization", 23);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 1);
+  std::vector<int64_t> dims{1, 2, 4};
+  std::vector<float> x = {
+      0.0f, 1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f, 7.0f};
+  test.AddInput<float>("X", dims, x);
+  std::vector<float> scale = {1.0f, 0.5f, 1.0f, 0.5f};
+  test.AddInput<float>("Scale", {1, 4}, scale);
+  std::vector<float> expected = {
+      0.0f,
+      0.119527f,
+      0.478108f,
+      0.358581f,
+      0.956216f,
+      0.597635f,
+      1.434324f,
+      0.836689f};
+
+  test.AddOutput<float>("Y", dims, expected);
+
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
 
 }  // namespace test
 }  // namespace onnxruntime
