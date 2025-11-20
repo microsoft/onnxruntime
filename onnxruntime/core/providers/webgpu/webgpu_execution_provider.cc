@@ -800,7 +800,8 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       context_{context},
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
-      enable_graph_capture_{config.enable_graph_capture} {
+      enable_graph_capture_{config.enable_graph_capture},
+      weight_layout_transform_cache_{std::make_unique<WeightLayoutTransformCache>()} {
   // If graph capture is enabled, create a dedicated buffer manager for graph mode
   if (enable_graph_capture_) {
     // Create buffer manager for graph capture mode with appropriate cache modes
@@ -948,6 +949,12 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
 }
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
+  // Clear weight transform cache before releasing WebGPU resources
+  // This ensures cached GPU tensors are freed while BufferManager is still valid
+  if (weight_layout_transform_cache_) {
+    weight_layout_transform_cache_->Clear();
+  }
+
   // Release all resources associated with the captured graph
   if (!captured_commands_.empty()) {
     context_.ReleaseGraphResources(captured_commands_);

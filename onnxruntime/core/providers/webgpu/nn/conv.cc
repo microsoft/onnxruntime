@@ -8,6 +8,8 @@
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/weight_layout_transform.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -23,6 +25,37 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
   *transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
   const Tensor reshaped_kernel(kernel->DataType(), kernel_shape, const_cast<void*>(kernel->DataRaw()), kernel->Location());
   return Transpose::DoTranspose(context, perm, reshaped_kernel, *transposed_kernel);
+}
+
+template <bool is_channels_last, bool is_fused>
+Status Conv<is_channels_last, is_fused>::GetTransformedWeight(ComputeContext& context,
+                                                              const Tensor* original_weight,
+                                                              const Tensor*& transformed_weight) const {
+  // Return cached weight if already transformed
+  if (transformed_weight_) {
+    transformed_weight = transformed_weight_;
+    return Status::OK();
+  }
+
+  // If transformation was attempted but failed, return error
+  if (weight_transform_attempted_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Weight transformation previously failed");
+  }
+
+  weight_transform_attempted_ = true;
+
+  // Use the weight input name extracted during construction
+  ORT_ENFORCE(!weight_name_.empty(), "Weight input name must be available for transformation caching");
+
+  // Get cache from execution provider
+  auto& cache = context.GetExecutionProvider().GetWeightLayoutTransformCache();
+
+  // Transform weight to HWIO layout
+  ORT_RETURN_IF_ERROR(TransformWeightLayout(context, original_weight, weight_name_,
+                                            "hwio", cache, transformed_weight_));
+
+  transformed_weight = transformed_weight_;
+  return Status::OK();
 }
 
 template <bool is_channels_last, bool is_fused>
@@ -104,11 +137,11 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   auto pad1 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
   std::vector<uint32_t> updated_pads{pad0, pad1};
   if (conv_attrs_.group > 1) {
-    Tensor transposed_kernel;
     if (is_channels_last) {
-      ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
-      inputs[1] = &transposed_kernel;
-      modified_input_output_shapes[1] = transposed_kernel.Shape();
+      const Tensor* kernel_to_use = nullptr;
+      ORT_RETURN_IF_ERROR(GetTransformedWeight(context, kernel, kernel_to_use));
+      inputs[1] = kernel_to_use;
+      modified_input_output_shapes[1] = kernel_to_use->Shape();
     }
     auto output_channels_per_group = output_channels / conv_attrs_.group;
     auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
@@ -138,17 +171,16 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
 
   const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
-    Tensor transposed_kernel;
     TensorShape input_reshape;
     TensorShape kernel_reshape;
     TensorShape matmul_output_shape;
     std::vector<const Tensor*> matmul_inputs;
     std::vector<TensorShape> matmul_input_reshapes;
     if (is_channels_last) {
-      // Transpose weights
-
-      ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
-      inputs[1] = &transposed_kernel;
+      // Transform weights to HWIO layout (cached on first inference)
+      const Tensor* kernel_to_use = nullptr;
+      ORT_RETURN_IF_ERROR(GetTransformedWeight(context, kernel, kernel_to_use));
+      inputs[1] = kernel_to_use;
       if (same_size) {
         const auto shared_dim = input_height * input_width * input_channels;
         input_reshape = TensorShape({1, batch, shared_dim});
@@ -160,7 +192,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
         matmul_output_shape = TensorShape({batch, output_height * output_width, output_channels});
       }
       matmul_inputs.push_back(input);
-      matmul_inputs.push_back(&transposed_kernel);
+      matmul_inputs.push_back(kernel_to_use);
       matmul_input_reshapes.push_back(input_reshape);
       matmul_input_reshapes.push_back(kernel_reshape);
     } else {
@@ -204,15 +236,14 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       return context.RunProgram(program);
     }
   }
-  // Transpose weights
-  Tensor transposed_kernel;
-  ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
+  // Transpose weights - use cached transformation
+  const Tensor* kernel_to_use = nullptr;
+  ORT_RETURN_IF_ERROR(GetTransformedWeight(context, kernel, kernel_to_use));
+  inputs[1] = kernel_to_use;
+  modified_input_output_shapes[1] = kernel_to_use->Shape();
   auto dim_a_outer = static_cast<uint32_t>(is_channels_last ? output_height * output_width : output_channels);
   auto dim_b_outer = static_cast<uint32_t>(is_channels_last ? output_channels : output_height * output_width);
   auto dim_inner = static_cast<uint32_t>(kernel_height * kernel_width * input_channels);
-  inputs[1] = &transposed_kernel;
-  TensorShape transposed_kernel_shape = transposed_kernel.Shape();
-  modified_input_output_shapes[1] = transposed_kernel.Shape();
   Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }

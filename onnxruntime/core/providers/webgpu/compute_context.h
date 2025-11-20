@@ -152,6 +152,13 @@ class ComputeContext final {
     return webgpu_context_.Run(*this, program);
   }
 
+  //
+  // Get the execution provider.
+  //
+  inline const WebGpuExecutionProvider& GetExecutionProvider() const {
+    return ep_;
+  }
+
  private:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
