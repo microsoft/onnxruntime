@@ -7,6 +7,8 @@
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
+#include "core/providers/webgpu/webgpu_external_header.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -88,6 +90,25 @@ inline Tensor CreateTensorView(const Tensor& tensor, MLDataType new_data_type, c
               byte_size, " and the byte size of the new tensor is ", new_byte_size);
   return {new_data_type, new_shape, const_cast<void*>(tensor.DataRaw()), tensor.Location()};
 }
+
+class SplitKConfig {
+ public:
+  static SplitKConfig GetSplitKConfig(const wgpu::AdapterInfo& adapter_info);
+
+  bool UseSplitK(
+      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size,
+      bool is_channels_last, uint32_t dim_a_outer,
+      uint32_t dim_b_outer, uint32_t dim_inner) const;
+
+  uint32_t GetSplitDimInner() const;
+
+ private:
+  bool enable_split_k_ = false;
+  uint32_t split_dim_inner_ = 0;
+  uint32_t min_dim_inner_with_split_k_ = 0;
+  uint32_t max_dim_inner_with_split_k_ = 0;
+  float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.0f;
+};
 
 }  // namespace webgpu
 }  // namespace onnxruntime

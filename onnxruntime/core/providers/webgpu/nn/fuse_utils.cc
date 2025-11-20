@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/nn/fuse_utils.h"
+#include "core/framework/op_kernel_info.h"
 #include <string>
 namespace onnxruntime {
 namespace webgpu {
