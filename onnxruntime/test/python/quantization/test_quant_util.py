@@ -128,7 +128,8 @@ class TestQuantUtil(unittest.TestCase):
                 src_int = src_float.astype(numpy.int8 if signed else numpy.uint8)
 
                 actual_packed_vals = bytes(pack_bytes_to_4bit(src_int.tobytes()))
-                expected_packed_vals = onnx.helper.pack_float32_to_4bit(src_float, signed).tobytes()
+                src_4bit = src_float.astype(int4 if signed else uint4)
+                expected_packed_vals = bytes(pack_bytes_to_4bit(src_4bit.tobytes()))
                 self.assertEqual(actual_packed_vals, expected_packed_vals)
 
     def test_quantize_data_4bit(self):
