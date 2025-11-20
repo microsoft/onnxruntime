@@ -878,9 +878,9 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       const auto& inputs = node.InputDefs();
       const auto& outputs = node.OutputDefs();
 
-      // Current implementation does not support mask_index(input[3]), past(input[5]) and past_seq_len(input[6])
+      // Current implementation does not support mask_index(input[3]), past(input[4]) and past_seq_len(input[6])
       FALLBACK_TO_CPU_IF_EXIST_INPUT(3);
-      FALLBACK_TO_CPU_IF_EXIST_INPUT(5);
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(4);
       FALLBACK_TO_CPU_IF_EXIST_INPUT(6);
 
       // Current implementation does not support present(output[1])
