@@ -1,27 +1,19 @@
 import onnx
-from onnx import helper, TensorProto
+from onnx import TensorProto, helper
+
 
 def create_model_with_topk_graph_output(model_path):
-
     # ======================
     # ---- Inputs ----
     # ======================
-    input_tensor = helper.make_tensor_value_info(
-        "input", TensorProto.FLOAT, ["N"]
-    )
+    input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["N"])
 
     # ======================
     # ---- Initializers ----
     # ======================
-    K = helper.make_tensor(
-        "K", TensorProto.INT64, dims=[1], vals=[300]
-    )
-    zero = helper.make_tensor(
-        "zero", TensorProto.INT64, dims=[], vals=[0]
-    )
-    twenty_six = helper.make_tensor(
-        "twenty_six", TensorProto.INT64, dims=[], vals=[26]
-    )
+    K = helper.make_tensor("K", TensorProto.INT64, dims=[1], vals=[300])
+    zero = helper.make_tensor("zero", TensorProto.INT64, dims=[], vals=[0])
+    twenty_six = helper.make_tensor("twenty_six", TensorProto.INT64, dims=[], vals=[26])
 
     # ======================
     # ---- Nodes ----

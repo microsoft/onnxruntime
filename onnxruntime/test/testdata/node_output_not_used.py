@@ -1,5 +1,6 @@
 import onnx
-from onnx import helper, TensorProto
+from onnx import TensorProto, helper
+
 
 def create_model_with_node_output_not_used(model_path):
     # Create graph
