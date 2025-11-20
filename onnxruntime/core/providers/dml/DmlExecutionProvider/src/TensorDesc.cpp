@@ -136,9 +136,6 @@ TensorDesc::TensorDesc(
     ////////////////////////////////////////
     // Coerce the physical shape to the desired shape.
 
-    // By default, assume strides are not necessary.
-    bool useStrides = false;
-
     if (dimensions != nonBroadcastDimensions)
     {
         // This broadcasting and subset logic is only applicable to the simple case where all
@@ -152,42 +149,7 @@ TensorDesc::TensorDesc(
             &m_sizes[m_bufferTensorDesc.DimensionCount]
         ));
 
-        // Stretch any dimensions with a single element.
-        //
-        // e.g. physical [2,1,4]
-        //       desired [2,3,4]
-        //       output  [2,3,4]
-        //       strides [4,0,1]
-        //
-        // If broadcasting is used, then strides are used.
-        useStrides = true;
-
-        // Walk backwards through both input shapes and broadcast or default each dimension.
-        auto nonBroadcastDimsIter = nonBroadcastDimensions.rbegin();
-        uint32_t elementCount = 1;
-
-        for (int descDimIndex = m_bufferTensorDesc.DimensionCount - 1; descDimIndex >= 0; --descDimIndex)
-        {
-            if (nonBroadcastDimsIter == nonBroadcastDimensions.rend() || (*nonBroadcastDimsIter == 1))
-            {
-                m_strides[descDimIndex] = 0;
-            }
-            else
-            {
-                m_strides[descDimIndex] = elementCount;
-                elementCount *= (*nonBroadcastDimsIter);
-            }
-
-            if (nonBroadcastDimsIter != nonBroadcastDimensions.rend())
-            {
-                ++nonBroadcastDimsIter;
-            }
-        }
-    }
-
-    if (useStrides)
-    {
-        m_bufferTensorDesc.Strides = m_strides;
+        SetBroadcastedShape(dimensions, nonBroadcastDimensions, m_bufferTensorDesc.DimensionCount);
     }
 
     m_bufferTensorDesc.Flags = DML_TENSOR_FLAG_NONE;
@@ -196,7 +158,7 @@ TensorDesc::TensorDesc(
         m_bufferTensorDesc.DataType,
         m_bufferTensorDesc.DimensionCount,
         m_sizes,
-        useStrides ? m_strides : nullptr
+        m_bufferTensorDesc.Strides
         );
     assert(m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType));
 }
@@ -287,6 +249,62 @@ void TensorDesc::ForceUnsignedDataType()
     default:
         ML_INVALID_ARGUMENT("Can't coerce unknown or non-integral data type");
     }
+}
+
+void TensorDesc::BroadcastTo(gsl::span<const uint32_t> targetSizes)
+{
+    auto currentSizes = gsl::span<const uint32_t>(m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount);
+    size_t targetRank = std::max(currentSizes.size(), targetSizes.size());
+    return SetBroadcastedShape(targetSizes, currentSizes, targetRank);
+}
+
+// The targetRank can be greater than or equal the targetSizes, which may apply if there is a minimum rank
+// for an operator. targetSizes and sourceSizes may be different sizes, and they will be right-aligned within
+// the targetRank.
+void TensorDesc::SetBroadcastedShape(gsl::span<const uint32_t> targetSizes, gsl::span<const uint32_t> sourceSizes, size_t targetRank)
+{
+    ML_CHECK_VALID_ARGUMENT(targetSizes.size() <= targetRank);
+    ML_CHECK_VALID_ARGUMENT(targetRank <= MaximumDimensionCount);
+
+    // Update the tensor shape with the target shape, padding right-aligned if needed.
+    size_t extraFill = targetRank - targetSizes.size();
+    std::fill(&m_sizes[0], &m_sizes[0] + extraFill, 1u); // Insert any leading 1's.
+    std::copy(targetSizes.data(), targetSizes.data() + targetSizes.size(), &m_sizes[0] + extraFill);
+    m_bufferTensorDesc.DimensionCount = uint32_t(targetRank);
+
+    if (targetSizes == sourceSizes)
+    {
+        m_bufferTensorDesc.Strides = nullptr; // Packed strides.
+        return;
+    }
+
+    // Stretch any dimensions with a single element.
+    //
+    // e.g. physical [2,1,4]
+    //       desired [2,3,4]
+    //       output  [2,3,4]
+    //       strides [4,0,1]
+
+    // Walk backwards through each dimenions of the input shapes, either broadcasting or defaulting to packed.
+    auto sourceSizesIter = sourceSizes.rbegin();
+    uint32_t elementCount = 1;
+
+    for (size_t dimensionIndex = targetRank; dimensionIndex-- > 0; )
+    {
+        uint32_t stride = 0; // Broadcast by default (any leading batch dimensions or dimensions of size 1)
+        if (sourceSizesIter != sourceSizes.rend())
+        {
+            if (uint32_t size = *sourceSizesIter; size > 1)
+            {
+                stride = elementCount;
+                elementCount *= size;
+            }
+            ++sourceSizesIter;
+        }
+        m_strides[dimensionIndex] = stride;
+    }
+
+    m_bufferTensorDesc.Strides = m_strides;
 }
 
 // Add additional padding 1's to ensure the count is at least that large.
@@ -449,6 +467,12 @@ void TensorDesc::EnsureStridesExist() noexcept
     m_bufferTensorDesc.Strides = m_strides;
 }
 
+// A range of dimensions have collapsible strides if they all follow packed layout rules
+// or are all broadcasted dimensions. e.g.
+//
+//  sizes [2,3,4] with strides [12,4,1] are collapsible
+//  sizes [1,1,1] with strides [1,0,1] are collapsible
+//  sizes [2,1,4] with strides [4,0,1] are not collapsible
 bool TensorDesc::AreStridesCollapsible(gsl::span<const uint32_t> sizes, gsl::span<const uint32_t> strides) const noexcept
 {
     if (strides.empty())
@@ -458,6 +482,10 @@ bool TensorDesc::AreStridesCollapsible(gsl::span<const uint32_t> sizes, gsl::spa
 
     assert(sizes.size() == strides.size());
 
+    // Start from the back and work towards the front, computing the accumulated packed stride
+    // and comparing it to the actual stride. Skip dimensions of size 1 which make no difference,
+    // as these are the logical target dimensions by now, not the original physical dimensions
+    // (so it's stride can be ignored).
     uint32_t expectedStride = strides.back();
     for (size_t i = strides.size(); i-- > 0; )
     {

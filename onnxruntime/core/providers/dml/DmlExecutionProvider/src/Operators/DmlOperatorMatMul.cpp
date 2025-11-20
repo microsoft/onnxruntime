@@ -22,20 +22,27 @@ public:
         std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
         std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(1);
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
+        std::vector<DimensionType> inputShape0Broadcasted;
+        std::vector<DimensionType> inputShape1Broadcasted;
 
-        OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape);
+        OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape, inputShape0Broadcasted, inputShape1Broadcasted);
 
-        // Initialize the input descriptions with broadcasting
-        m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
-        m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelInfo, 1, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
+        // Initialize the input descriptions without broadcasting yet, since MatMul has special rules where broadcasting the
+        // original shape (notably when 1D) to the output shape would mess up because the dimensions are shifted.
+        m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelInfo, 0);
+        m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelInfo, 1);
 
         // Initialize the output description while overriding the shape
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
 
-        // DirectML only supports ranks up to 4D for GEMM, and so leading dimensions must be clamped.
-        m_inputTensorDescs[0].EnsureMaximumDimensionCount(4, TensorAxis::RightAligned);
-        m_inputTensorDescs[1].EnsureMaximumDimensionCount(4, TensorAxis::RightAligned);
-        m_outputTensorDescs[0].EnsureMaximumDimensionCount(4, TensorAxis::RightAligned);
+        // Broadcast the inputs to their broadcasted shapes.
+        m_inputTensorDescs[0].SetBroadcastedShape(inputShape0Broadcasted, inputShape0, outputShape.size());
+        m_inputTensorDescs[1].SetBroadcastedShape(inputShape1Broadcasted, inputShape1, outputShape.size());
+
+        // DirectML only supports ranks up to 4D for GEMM, and so any leading dimensions must be folded.
+        m_inputTensorDescs[0].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
+        m_inputTensorDescs[1].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
+        m_outputTensorDescs[0].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

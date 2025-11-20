@@ -41,6 +41,8 @@ namespace Dml
         inline bool IsValid() const noexcept { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
         inline uint32_t GetDimensionCount() const { return m_bufferTensorDesc.DimensionCount; }
         void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment, bool foldEndDimensions = false);
+        void BroadcastTo(gsl::span<const uint32_t> targetSizes);
+        void SetBroadcastedShape(gsl::span<const uint32_t> targetSizes, gsl::span<const uint32_t> originalSizes, size_t targetRank);
         void EnsureMinimumDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         void EnsureMaximumDimensionCount(uint32_t maximumDimensionCount, TensorAxis alignment);
 
