@@ -1391,7 +1391,7 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
   std::unordered_map<const NodeArg*, int> original_inputs;
 
-  // These maps store the inputs and outpus of the subgraph.
+  // These maps store the inputs and outputs of the subgraph.
   // Please note that the inputs and outputs of the maps will be dynamically updated during node iteration
   // to determine the final inputs and outputs of the subgraph.
   std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs;
