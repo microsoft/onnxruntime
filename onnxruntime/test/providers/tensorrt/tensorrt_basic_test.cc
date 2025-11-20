@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "test_tensorrt_ep_util.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
@@ -9,6 +10,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
+#include "core/common/path_utils.h"
 #include <string>
 #include <thread>
 #include <filesystem>
@@ -22,105 +24,6 @@ namespace onnxruntime {
 
 namespace test {
 class TensorrtExecutionProviderCacheTest : public testing::TestWithParam<std::string> {};
-
-template <typename T>
-void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                   const std::vector<T>& expected_values) {
-  ASSERT_EQ(1, fetches.size());
-  auto& rtensor = fetches.front().Get<Tensor>();
-  TensorShape expected_shape(expected_dims);
-  ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<T> found(rtensor.Data<T>(), rtensor.Data<T>() + expected_values.size());
-  ASSERT_EQ(expected_values, found);
-}
-
-/**
- * Create a simple model with dynamic or non-dynamic input shape.
- * \param model_name - model name
- * \param graph_name - graph name
- * \param dims - input dimensions
- * \param add_non_zero_node - add NonZero node which makes the whole model partition into TRT EP and CUDA EP subgraphs.
- *
- * input: "X", "Y" and "Z"
- *        you can specify input dimensions, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic.
- *        All three inputs have the same dimensions.
- * output: "M"
- *
- *      "X"  "Y"
- *        \  /
- *    "Z"  Add
- *      \  /
- *       Add
- *       /
- *     "M"
- *
- *     or
- *
- *      "X"  "Y"
- *        \  /
- *    "Z"  Add
- *      \  /
- *       Add
- *       /
- *    NonZero (This node will be placed on CUDA EP)
- *     /
- *   "M"
- */
-void CreateBaseModel(const PathString& model_name,
-                     std::string graph_name,
-                     std::vector<int> dims,
-                     bool add_non_zero_node = false) {
-  onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
-  auto& graph = model.MainGraph();
-  std::vector<onnxruntime::NodeArg*> inputs;
-  std::vector<onnxruntime::NodeArg*> outputs;
-
-  // FLOAT tensor
-  ONNX_NAMESPACE::TypeProto float_tensor;
-  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-  for (auto dim : dims) {
-    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
-  }
-
-  auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
-  auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
-  inputs.push_back(&input_arg_1);
-  inputs.push_back(&input_arg_2);
-  auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &float_tensor);
-  outputs.push_back(&output_arg);
-  graph.AddNode("node_1", "Add", "node 1.", inputs, outputs);
-
-  auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &float_tensor);
-  inputs.clear();
-  inputs.push_back(&output_arg);
-  inputs.push_back(&input_arg_3);
-
-  if (add_non_zero_node) {
-    auto& output_arg_2 = graph.GetOrCreateNodeArg("node_2_out_1", &float_tensor);
-    outputs.clear();
-    outputs.push_back(&output_arg_2);
-    graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
-
-    inputs.clear();
-    inputs.push_back(&output_arg_2);
-    ONNX_NAMESPACE::TypeProto int_tensor;
-    int_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    auto& output_arg_3 = graph.GetOrCreateNodeArg("M", &int_tensor);
-    outputs.clear();
-    outputs.push_back(&output_arg_3);
-    graph.AddNode("node_3", "NonZero", "node 3.", inputs, outputs);
-  } else {
-    auto& output_arg_2 = graph.GetOrCreateNodeArg("M", &float_tensor);
-    outputs.clear();
-    outputs.push_back(&output_arg_2);
-    graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
-  }
-
-  auto status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK());
-  status = onnxruntime::Model::Save(model, model_name);
-}
 
 std::vector<char> ReadFileFromDisk(const PathString& path) {
   std::fstream file(path.c_str(), std::fstream::binary | std::fstream::in | std::fstream::ate);
@@ -618,6 +521,41 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   status = session_object9.Initialize();
   ASSERT_TRUE(status.IsOK());
   RunSession(session_object9, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  /*
+   * Test case 8: Refit weightless engine with external weights.
+   *
+   * Note: The external weights should be loaded either by ORT as OrtValues stored in memory or by EP's call to
+   *       LoadExternalInitializerAsOrtValu() at EP's Compile().
+   *       Those weights should be in memory and TRT's refitter API can fetch them from there.
+   */
+
+  PathString large_model_name = path_utils::MakePathString("tensorrt_ep_llm.onnx");
+  PathString external_data_name = path_utils::MakePathString("tensorrt_ep_llm.onnx_data");
+
+  // This accelerates test iterations if the large model was already generated
+  if (!std::filesystem::exists(large_model_name) || !std::filesystem::exists(external_data_name)) {
+    // CI has limited VRAM, so we create only one layer of LLM with hidden dim 512.
+    int num_layers = 1;
+    int hidden_dim = 2048;
+    CreateLargeLLMModel(large_model_name, external_data_name, num_layers, hidden_dim);
+  }
+
+  {
+    auto model_bytes = ReadFileFromDisk(large_model_name);
+    InferenceSession session_object{so, GetEnvironment()};
+    OrtTensorRTProviderOptionsV2 params;
+    params.trt_weight_stripped_engine_enable = 1;
+    params.trt_load_user_initializer = 1;
+    params.trt_onnx_bytestream = model_bytes.data();
+    params.trt_onnx_bytestream_size = model_bytes.size();
+    auto execution_provider = TensorrtExecutionProviderWithOptions(&params);
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+    auto status = session_object.Load(model_bytes.data(), static_cast<int>(model_bytes.size()));
+    ASSERT_TRUE(status.IsOK());
+    status = session_object.Initialize();  // If TRT's refitter fails to get the weights in memory, it will fail.
+    ASSERT_TRUE(status.IsOK());
+  }
 }
 
 TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {

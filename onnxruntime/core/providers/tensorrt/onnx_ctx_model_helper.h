@@ -9,6 +9,7 @@
 
 #include "core/providers/tensorrt/nv_includes.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "tensorrt_execution_provider.h"
 
 namespace onnxruntime {
 
@@ -56,6 +57,7 @@ class TensorRTCacheModelHandler {
                             size_t onnx_model_bytestream_size,
                             const void* onnx_external_data_bytestream,
                             size_t onnx_external_data_bytestream_size,
+                            std::unordered_map<std::string, TensorrtUserWeights>& in_memory_weights,
                             bool detailed_build_log)
       : trt_engine_(trt_engine),
         trt_runtime_(trt_runtime),
@@ -67,6 +69,7 @@ class TensorRTCacheModelHandler {
         onnx_model_bytestream_size_(onnx_model_bytestream_size),
         onnx_external_data_bytestream_(onnx_external_data_bytestream),
         onnx_external_data_bytestream_size_(onnx_external_data_bytestream_size),
+        in_memory_weights_(in_memory_weights),
         detailed_build_log_(detailed_build_log) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
@@ -86,6 +89,7 @@ class TensorRTCacheModelHandler {
   size_t onnx_model_bytestream_size_;
   const void* onnx_external_data_bytestream_;
   size_t onnx_external_data_bytestream_size_;
+  std::unordered_map<std::string, TensorrtUserWeights>& in_memory_weights_;
   bool detailed_build_log_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime
