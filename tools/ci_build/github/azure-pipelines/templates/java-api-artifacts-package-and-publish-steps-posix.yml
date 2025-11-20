@@ -28,12 +28,13 @@ parameters:
   displayName: Architecture
   type: string
   #default: 'linux-x64'
-  
+
 steps:
 - task: PythonScript@0
   inputs:
     scriptSource: 'filePath'
     scriptPath: 'tools/ci_build/linux_java_copy_strip_binary.py'
+    pythonInterpreter: 'python3'
     arguments: >-
       --binary-dir $(Build.BinariesDirectory)
       --build-config ${{parameters.buildConfig}}
@@ -47,4 +48,3 @@ steps:
   inputs:
     targetPath: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
     artifactName: 'drop-${{parameters.artifactName}}'
-
