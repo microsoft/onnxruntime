@@ -9,7 +9,7 @@
 // Key for the execution provider version string. This should be available for all plugin EPs.
 static const char* const kOrtEpDevice_EpMetadataKey_Version = "version";
 
-// Key for the execution provider OS driver version. This should be available for all plugin EPs.
+// Key for the execution provider OS driver version.
 static const char* const kOrtEpDevice_EpMetadataKey_OSDriverVersion = "os_driver_version";
 
 // Prefix for execution provider compatibility information stored in model metadata.
