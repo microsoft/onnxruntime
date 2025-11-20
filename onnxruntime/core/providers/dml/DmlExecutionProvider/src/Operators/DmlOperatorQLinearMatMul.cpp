@@ -97,6 +97,7 @@ public:
         
         // Initialize the output description while overriding the shape
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
+        m_outputTensorDescs[0].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

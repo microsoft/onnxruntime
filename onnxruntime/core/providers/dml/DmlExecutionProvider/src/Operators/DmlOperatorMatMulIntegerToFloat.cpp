@@ -57,13 +57,22 @@ public:
         m_inputTensorDescs[DmlInputIndex::dmlA].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
         m_inputTensorDescs[DmlInputIndex::dmlB].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
 
+        uint32_t dmlDimSize = m_inputTensorDescs[DmlInputIndex::dmlA].GetDimensionCount();
+
         // Broadcast Bias tensor to the shape of the output tensor.
-        if(kernelInfo.IsInputValid(OrtInputTensors::ortBias)) {
-            m_inputTensorDescs[DmlInputIndex::dmlBias] = CreateTensorDescFromInput(kernelInfo, OrtInputTensors::ortBias, TensorAxis::DoNotCoerce,
-                TensorAxis::W, TensorAxis::RightAligned, outputShape);
+        if (kernelInfo.IsInputValid(OrtInputTensors::ortBias))
+        {
+            m_inputTensorDescs[DmlInputIndex::dmlBias] = CreateTensorDescFromInput(
+                kernelInfo,
+                OrtInputTensors::ortBias,
+                TensorAxis::DoNotCoerce,
+                TensorAxis::W,
+                TensorAxis::RightAligned,
+                outputShape,
+                dmlDimSize
+                );
         }
 
-        uint32_t dmlDimSize = m_inputTensorDescs[DmlInputIndex::dmlA].GetDimensionCount();
         // Resize the A Scale to be the same dimension as the input tensor.
         // The 1D tensor needs to be moved to the H channel.
         m_inputTensorDescs[DmlInputIndex::dmlAScale] = CreateTensorDescFromInput(
@@ -95,6 +104,7 @@ public:
 
         // Initialize the output description while overriding the shape
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
+        m_outputTensorDescs[0].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
