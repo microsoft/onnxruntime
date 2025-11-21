@@ -38,101 +38,127 @@ parameters:
 jobs:
 - job: 'BUILD_QNN_EP'
   pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
-  variables:
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    buildArch: arm64
-    BuildConfig: 'RelWithDebInfo'
-    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+  # variables:
+  #   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  #   buildArch: arm64
+  #   BuildConfig: 'RelWithDebInfo'
+  #   ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
   timeoutInMinutes: 240
   workspace:
     clean: all
-  strategy:
-    matrix:
-      SHARED_LIB:
-        QnnLibKind: 'shared_lib'
-        ExtraQnnBuildArgs: '--client_package_build'
-      STATIC_LIB:
-        QnnLibKind: 'static_lib'
-        ExtraQnnBuildArgs: ''
-      SHARED_LIB_GENERIC_INTERFACE:
-        QnnLibKind: 'shared_lib'
-        # Note: Building ORT with generic ep interface which only builds the provider-bridge APIs for
-        # various EPs, but does not build the actual EPs. We enable --build_wheel for additional code coverage
-        # because the python bindings also use the USE_<EP>_PROVIDER_INTERFACE preprocessor macros.
-        ExtraQnnBuildArgs: '--enable_generic_interface --build_wheel'
+  # strategy:
+  #   matrix:
+  #     SHARED_LIB:
+  #       QnnLibKind: 'shared_lib'
+  #       ExtraQnnBuildArgs: '--client_package_build'
+  #     STATIC_LIB:
+  #       QnnLibKind: 'static_lib'
+  #       ExtraQnnBuildArgs: ''
+  #     SHARED_LIB_GENERIC_INTERFACE:
+  #       QnnLibKind: 'shared_lib'
+  #       # Note: Building ORT with generic ep interface which only builds the provider-bridge APIs for
+  #       # various EPs, but does not build the actual EPs. We enable --build_wheel for additional code coverage
+  #       # because the python bindings also use the USE_<EP>_PROVIDER_INTERFACE preprocessor macros.
+  #       ExtraQnnBuildArgs: '--enable_generic_interface --build_wheel'
   steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.x'
-      addToPath: true
-      architecture: $(buildArch)
-
-  - task: NuGetToolInstaller@1
-    inputs:
-      versionSpec: 6.4.x
-
-  - template: templates/jobs/download_win_qnn_sdk.yml
-    parameters:
-      QnnSDKVersion: ${{ parameters.QnnSdk }}
-
-  - task: PythonScript@0
-    displayName: 'Build'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: >-
-        --config $(BuildConfig)
-        --build_dir $(Build.BinariesDirectory)
-        --cmake_generator "Visual Studio 17 2022"
-        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
-        --use_qnn $(QnnLibKind)
-        --qnn_home $(QnnSDKRootDir)
-        --update --build --parallel $(ExtraQnnBuildArgs)
 
   - script: |
-      python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
-        --config $(BuildConfig) ^
-        --build_dir $(Build.BinariesDirectory) ^
-        --cmake_generator "Visual Studio 17 2022" ^
-        --build_shared_lib ^
-        --use_qnn $(QnnLibKind) ^
-        --qnn_home $(QnnSDKRootDir) ^
-        --test --enable_onnx_tests $(ExtraQnnBuildArgs)
-    displayName: 'Run unit tests'
+      cmake -S . -B .\build
+
+      cmake --build .\build --config Debug
+
+      .\build\Debug\test_fp16.exe
+
+    workingDirectory: $(Build.SourcesDirectory)
+    displayName: run fp16 test
 
   - script: |
-     .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-    displayName: 'Run ONNX Tests'
+      git clone https://github.com/pytorch/cpuinfo.git -b 161a9ec374884f4b3e85725cb22e05f9458fdc93
 
-  - script: |
-     .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" C:\data\float32_models
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-    displayName: 'Run float32 model tests'
+      cd .\cpuinfo
 
-  - script: |
-     .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnHtp.dll" C:\data\qdq_models
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-    displayName: 'Run QDQ model tests'
-    enabled: false
+      cmake -S . -B .\build
 
-  - task: CopyFiles@2
-    displayName: 'Create Artifact'
-    inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-      Contents: |
-         *.exe
-         *.dll
-         *.pdb
-         !Qnn*.dll
-      TargetFolder: '$(Build.ArtifactStagingDirectory)'
-      CleanTargetFolder: true
-      OverWrite: true
-    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))
+      cmake --build .\build --config Debug --parallel
 
-  - task: PublishBuildArtifacts@1
-    displayName: 'Publish Artifact'
-    inputs:
-      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-      ArtifactName: 'internal_release'
-      publishLocation: 'Container'
-    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))
+      .\build\Debug\isa-info.exe
+
+    workingDirectory: $(Build.SourcesDirectory)
+    displayName: run cpuinfo isa-info
+
+
+  # - task: UsePythonVersion@0
+  #   inputs:
+  #     versionSpec: '3.x'
+  #     addToPath: true
+  #     architecture: $(buildArch)
+
+  # - task: NuGetToolInstaller@1
+  #   inputs:
+  #     versionSpec: 6.4.x
+
+  # - template: templates/jobs/download_win_qnn_sdk.yml
+  #   parameters:
+  #     QnnSDKVersion: ${{ parameters.QnnSdk }}
+
+  # - task: PythonScript@0
+  #   displayName: 'Build'
+  #   inputs:
+  #     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+  #     arguments: >-
+  #       --config $(BuildConfig)
+  #       --build_dir $(Build.BinariesDirectory)
+  #       --cmake_generator "Visual Studio 17 2022"
+  #       --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+  #       --use_qnn $(QnnLibKind)
+  #       --qnn_home $(QnnSDKRootDir)
+  #       --update --build --parallel $(ExtraQnnBuildArgs)
+
+  # - script: |
+  #     python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
+  #       --config $(BuildConfig) ^
+  #       --build_dir $(Build.BinariesDirectory) ^
+  #       --cmake_generator "Visual Studio 17 2022" ^
+  #       --build_shared_lib ^
+  #       --use_qnn $(QnnLibKind) ^
+  #       --qnn_home $(QnnSDKRootDir) ^
+  #       --test --enable_onnx_tests $(ExtraQnnBuildArgs)
+  #   displayName: 'Run unit tests'
+
+  # - script: |
+  #    .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+  #   workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+  #   displayName: 'Run ONNX Tests'
+
+  # - script: |
+  #    .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" C:\data\float32_models
+  #   workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+  #   displayName: 'Run float32 model tests'
+
+  # - script: |
+  #    .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnHtp.dll" C:\data\qdq_models
+  #   workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+  #   displayName: 'Run QDQ model tests'
+  #   enabled: false
+
+  # - task: CopyFiles@2
+  #   displayName: 'Create Artifact'
+  #   inputs:
+  #     SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+  #     Contents: |
+  #        *.exe
+  #        *.dll
+  #        *.pdb
+  #        !Qnn*.dll
+  #     TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  #     CleanTargetFolder: true
+  #     OverWrite: true
+  #   condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))
+
+  # - task: PublishBuildArtifacts@1
+  #   displayName: 'Publish Artifact'
+  #   inputs:
+  #     PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+  #     ArtifactName: 'internal_release'
+  #     publishLocation: 'Container'
+  #   condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))
