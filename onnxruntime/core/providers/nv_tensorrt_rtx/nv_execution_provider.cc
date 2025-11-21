@@ -984,6 +984,17 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     stream_ = nullptr;  // Will be created in compute function
   }
 
+  if (info.user_aux_stream_array != nullptr) {
+    if(info.auxiliary_streams <= 0){
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams"));
+    }
+    external_aux_streams_ = true;
+    aux_streams_ = static_cast<cudaStream_t>(info.user_aux_stream_array);
+  } else {
+    external_aux_streams_ = false;
+    aux_streams_ = nullptr;
+  }
+
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
 
   // incase the EP context is dumped the engine cache has to be enabled
@@ -3033,6 +3044,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP select an optimization profile for the current context failed");
     }
 
+    // Set auxiliary stream if provided by user
+    if (external_aux_streams_ && aux_streams_ != nullptr) {
+      if(auxiliary_streams_ <= 0){
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams");
+      }
+      trt_context->setAuxStreams(&aux_streams_, (int32_t)auxiliary_streams_);
+    }
+
     // Check before using trt_engine
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "No engine is found.");
@@ -3442,6 +3461,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         trt_state->context_memory_size = mem_size;
         trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
       }
+    }
+
+    // Set auxiliary stream if provided by user
+    if (external_aux_streams_ && aux_streams_ != nullptr) {
+      if(auxiliary_streams_ <= 0){
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams");
+      }
+      trt_context->setAuxStreams(&aux_streams_, (int32_t)auxiliary_streams_);
     }
 
     // Start CUDA graph capture with the correct stream
