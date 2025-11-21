@@ -3,8 +3,8 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO onnx/onnx
-    REF "v${VERSION}"
-    SHA512 cf6ff4c0bb6cc16ce5f4d6267480d35f3c7a5fde94d10e1358928ff6e4ec6d756a7c5d34a500e60bbd8eb1912c8af21aa763719321b330f56a0eb6b9b810ef60
+    REF d8d3b072c5cacad5f0bf1adf35fcb549902b1149
+    SHA512 3e03e2e43f097a9abc0e1d871f2b1bb4d619ac7913cce858d713524b380699d9278f1d1080f635f2b590431399ca0ecdb4eaa5cec126da4f39298c6a76370bc0
     PATCHES
         fix-cmakelists.patch
         fix-dependency-protobuf.patch
@@ -36,6 +36,7 @@ vcpkg_cmake_configure(
         "-DProtobuf_PROTOC_EXECUTABLE:FILEPATH=${PROTOC}"
         -DONNX_ML=ON
         -DONNX_USE_PROTOBUF_SHARED_LIBS=${USE_PROTOBUF_SHARED}
+        -DONNX_USE_LITE_PROTO=ON
         -DONNX_USE_MSVC_STATIC_RUNTIME=${USE_STATIC_RUNTIME}
         -DONNX_BUILD_TESTS=OFF
         -DONNX_BUILD_BENCHMARKS=OFF

@@ -164,10 +164,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
     Loop);
 
-// Opset 24
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Loop,
     24,
+    24,
+    KernelDefBuilder()
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    Loop);
+
+// Opset 25
+ONNX_CPU_OPERATOR_KERNEL(
+    Loop,
+    25,
     KernelDefBuilder()
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
