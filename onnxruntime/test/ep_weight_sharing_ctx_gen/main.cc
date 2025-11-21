@@ -101,7 +101,8 @@ static PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
     }
     ORT_CATCH(const Ort::Exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {
-        std::cerr << "Failed to unregister EP library with name '" << registration_name << "': " << e.what() << "\n";
+        std::cerr << "Failed to unregister EP library with name '" << registration_name << "': "
+                  << e.what() << std::endl;
       });
     }
   };
@@ -112,9 +113,9 @@ static PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
   return PluginEpLibraryRegistrationHandle{handle_value, unregister_ep_library};
 }
 
-static Ort::Status SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions& session_options,
-                                             const qnnctxgen::PluginEpConfig& config,
-                                             PluginEpLibraryRegistrationHandle& plugin_ep_library_registration_handle) {
+static bool SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions& session_options,
+                                      const qnnctxgen::PluginEpConfig& config,
+                                      PluginEpLibraryRegistrationHandle& plugin_ep_library_registration_handle) {
   auto lib_registration_handle = RegisterPluginEpLibrary(env, config.ep_library_registration_name,
                                                          ToPathString(config.ep_library_path));
 
@@ -124,9 +125,9 @@ static Ort::Status SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions&
   if (!config.selected_ep_device_indices.empty()) {
     for (const auto idx : config.selected_ep_device_indices) {
       if (idx >= ep_devices.size()) {
-        std::ostringstream oss;
-        oss << "Selected EP device index is out of range (max is " << ep_devices.size() - 1 << "): " << idx;
-        return Ort::Status(oss.str().c_str(), ORT_FAIL);
+        std::cerr << "ERROR: Selected EP device index is out of range (max is " << ep_devices.size() - 1 << "): "
+                  << idx << std::endl;
+        return false;
       }
 
       selected_ep_devices.push_back(ep_devices[idx]);
@@ -139,13 +140,14 @@ static Ort::Status SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions&
   }
 
   if (selected_ep_devices.empty()) {
-    return Ort::Status("No EP devices were selected.", ORT_FAIL);
+    std::cerr << "ERROR: No EP devices were selected" << std::endl;
+    return false;
   }
 
   session_options.AppendExecutionProvider_V2(env, selected_ep_devices, config.default_ep_options);
   plugin_ep_library_registration_handle = std::move(lib_registration_handle);
 
-  return Ort::Status{nullptr};
+  return true;
 }
 
 #ifdef _WIN32
@@ -208,10 +210,10 @@ int real_main(int argc, char* argv[]) {
       if (const auto& plugin_ep_config = test_config.machine_config.plugin_ep_config; plugin_ep_config.has_value()) {
         plugin_ep_library_registration_handle = PluginEpLibraryRegistrationHandle{};
 
-        if (Ort::Status status = SetPluginEpSessionOptions(env, so, *plugin_ep_config,
-                                                           *plugin_ep_library_registration_handle);
-            !status.IsOK()) {
-          ORT_CXX_API_THROW(status.GetErrorMessage(), status.GetErrorCode());
+        if (!SetPluginEpSessionOptions(env, so, *plugin_ep_config, *plugin_ep_library_registration_handle)) {
+          std::cerr << "ERROR: Failed to initialize session for plugin EP "
+                    << test_config.machine_config.plugin_ep_config->ep_library_path << std::endl;
+          return 1;
         }
       } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN

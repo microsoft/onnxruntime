@@ -137,7 +137,8 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
   ORT_TRY {
     std::ifstream ifs{json_file_path};
     if (!ifs) {
-      fprintf(stderr, "ERROR: Failed to open plugin EP configuration file at path: %s\n", json_file_path.c_str());
+      std::cerr << "ERROR: Failed to open plugin EP configuration file at path: "
+                << json_file_path.c_str() << std::endl;
       return false;
     }
 
@@ -157,9 +158,8 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
         parsed_json.value<decltype(config.selected_ep_device_indices)>("selected_ep_device_indices", {});
 
     if (config.selected_ep_name.empty() == config.selected_ep_device_indices.empty()) {
-      fprintf(stderr,
-              "ERROR: Plugin EP configuration must specify exactly one of 'selected_ep_name' "
-              "or 'selected_ep_device_indices'\n");
+      std::cerr << "ERROR: Plugin EP configuration must specify exactly one of 'selected_ep_name' "
+                << "or 'selected_ep_device_indices'" << std::endl;
       return false;
     }
 
@@ -176,8 +176,9 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
           "}";
 
       success = false;
-      fprintf(stderr, "ERROR: JSON parse error: %s\n", e.what());
-      fprintf(stderr, "This is an example valid JSON configuration:\n%s\n", kExampleValidJsonStr.c_str());
+      std::cerr << "ERROR: JSON parse error: " << e.what() << std::endl;
+      std::cerr << "This is an example valid JSON configuration:\n"
+                << kExampleValidJsonStr.c_str() << std::endl;
     });
   }
   return success;
@@ -290,7 +291,7 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
   argv += optind;
 
   if (argc == 0) {
-    fprintf(stderr, "ERROR: Did not specify model paths\n");
+    std::cerr << "ERROR: Did not specify model paths" << std::endl;
     return false;
   }
 
