@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <fstream>
 #include <optional>
-#include <sstream>
 
 using namespace onnxruntime;
 using ProviderOptions = std::unordered_map<std::string, std::string>;
