@@ -117,24 +117,27 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern1TestCase(const TestInputDef<flo
     NodeArg* input_q = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<QuantType>(input, input_qparams.scale, input_qparams.zero_point, input_q);
 
-    // Create quantized constants
-    QuantParams<QuantType> const_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, sqrt_2, sqrt_2));
+    // Create quantized constants with individual quantization parameters
+    // For scalar constants, use range [0, value] to ensure proper quantization
+    QuantParams<QuantType> sqrt2_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, 0.0f, sqrt_2));
     NodeArg* sqrt2_initializer = builder.MakeScalarInitializer<float>(sqrt_2);
     NodeArg* sqrt2_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(sqrt2_initializer, const_qparams.scale, const_qparams.zero_point, sqrt2_q);
+    builder.AddQuantizeLinearNode<QuantType>(sqrt2_initializer, sqrt2_qparams.scale, sqrt2_qparams.zero_point, sqrt2_q);
 
+    QuantParams<QuantType> one_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, 0.0f, one));
     NodeArg* one_initializer = builder.MakeScalarInitializer<float>(one);
     NodeArg* one_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(one_initializer, const_qparams.scale, const_qparams.zero_point, one_q);
+    builder.AddQuantizeLinearNode<QuantType>(one_initializer, one_qparams.scale, one_qparams.zero_point, one_q);
 
+    QuantParams<QuantType> half_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, 0.0f, half));
     NodeArg* half_initializer = builder.MakeScalarInitializer<float>(half);
     NodeArg* half_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(half_initializer, const_qparams.scale, const_qparams.zero_point, half_q);
+    builder.AddQuantizeLinearNode<QuantType>(half_initializer, half_qparams.scale, half_qparams.zero_point, half_q);
 
     NodeArg* input_dq_1 = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<QuantType>(input_q, input_qparams.scale, input_qparams.zero_point, input_dq_1);
     NodeArg* sqrt2_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(sqrt2_q, const_qparams.scale, const_qparams.zero_point, sqrt2_dq);
+    builder.AddDequantizeLinearNode<QuantType>(sqrt2_q, sqrt2_qparams.scale, sqrt2_qparams.zero_point, sqrt2_dq);
     NodeArg* div_output = builder.MakeIntermediate();
     builder.AddNode("Div", {input_dq_1, sqrt2_dq}, {div_output});
     NodeArg* div_q = builder.MakeIntermediate();
@@ -152,7 +155,7 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern1TestCase(const TestInputDef<flo
     NodeArg* erf_dq = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<QuantType>(erf_q, input_qparams.scale, input_qparams.zero_point, erf_dq);
     NodeArg* one_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(one_q, const_qparams.scale, const_qparams.zero_point, one_dq);
+    builder.AddDequantizeLinearNode<QuantType>(one_q, one_qparams.scale, one_qparams.zero_point, one_dq);
     NodeArg* add_output = builder.MakeIntermediate();
     builder.AddNode("Add", {erf_dq, one_dq}, {add_output});
     NodeArg* add_q = builder.MakeIntermediate();
@@ -172,7 +175,7 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern1TestCase(const TestInputDef<flo
     NodeArg* mul_dq = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<QuantType>(mul_q, input_qparams.scale, input_qparams.zero_point, mul_dq);
     NodeArg* half_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(half_q, const_qparams.scale, const_qparams.zero_point, half_dq);
+    builder.AddDequantizeLinearNode<QuantType>(half_q, half_qparams.scale, half_qparams.zero_point, half_dq);
     NodeArg* mul_final_output = builder.MakeIntermediate();
     builder.AddNode("Mul", {mul_dq, half_dq}, {mul_final_output});
 
@@ -198,25 +201,28 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern2TestCase(const TestInputDef<flo
     NodeArg* input_q = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<QuantType>(input, input_qparams.scale, input_qparams.zero_point, input_q);
 
-    // Create quantized constants
-    QuantParams<QuantType> const_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, sqrt_2, sqrt_2));
+    // Create quantized constants with individual quantization parameters
+    // For scalar constants, use range [0, value] to ensure proper quantization
+    QuantParams<QuantType> sqrt2_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, 0.0f, sqrt_2));
     NodeArg* sqrt2_initializer = builder.MakeScalarInitializer<float>(sqrt_2);
     NodeArg* sqrt2_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(sqrt2_initializer, const_qparams.scale, const_qparams.zero_point, sqrt2_q);
+    builder.AddQuantizeLinearNode<QuantType>(sqrt2_initializer, sqrt2_qparams.scale, sqrt2_qparams.zero_point, sqrt2_q);
 
+    QuantParams<QuantType> one_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, 0.0f, one));
     NodeArg* one_initializer = builder.MakeScalarInitializer<float>(one);
     NodeArg* one_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(one_initializer, const_qparams.scale, const_qparams.zero_point, one_q);
+    builder.AddQuantizeLinearNode<QuantType>(one_initializer, one_qparams.scale, one_qparams.zero_point, one_q);
 
+    QuantParams<QuantType> half_qparams = GetTestInputQuantParams<QuantType>(TestInputDef<float>({}, true, 0.0f, half));
     NodeArg* half_initializer = builder.MakeScalarInitializer<float>(half);
     NodeArg* half_q = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(half_initializer, const_qparams.scale, const_qparams.zero_point, half_q);
+    builder.AddQuantizeLinearNode<QuantType>(half_initializer, half_qparams.scale, half_qparams.zero_point, half_q);
 
     // Main branch: DQ -> Div -> Q
     NodeArg* input_dq_1 = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<QuantType>(input_q, input_qparams.scale, input_qparams.zero_point, input_dq_1);
     NodeArg* sqrt2_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(sqrt2_q, const_qparams.scale, const_qparams.zero_point, sqrt2_dq);
+    builder.AddDequantizeLinearNode<QuantType>(sqrt2_q, sqrt2_qparams.scale, sqrt2_qparams.zero_point, sqrt2_dq);
     NodeArg* div_output = builder.MakeIntermediate();
     builder.AddNode("Div", {input_dq_1, sqrt2_dq}, {div_output});
     NodeArg* div_q = builder.MakeIntermediate();
@@ -234,7 +240,7 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern2TestCase(const TestInputDef<flo
     NodeArg* erf_dq = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<QuantType>(erf_q, input_qparams.scale, input_qparams.zero_point, erf_dq);
     NodeArg* one_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(one_q, const_qparams.scale, const_qparams.zero_point, one_dq);
+    builder.AddDequantizeLinearNode<QuantType>(one_q, one_qparams.scale, one_qparams.zero_point, one_dq);
     NodeArg* add_output = builder.MakeIntermediate();
     builder.AddNode("Add", {erf_dq, one_dq}, {add_output});
     NodeArg* add_q = builder.MakeIntermediate();
@@ -254,7 +260,7 @@ GetTestQDQModelFn<QuantType> BuildQDQGeluPattern2TestCase(const TestInputDef<flo
     NodeArg* mul_dq = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<QuantType>(mul_q, input_qparams.scale, input_qparams.zero_point, mul_dq);
     NodeArg* half_dq = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(half_q, const_qparams.scale, const_qparams.zero_point, half_dq);
+    builder.AddDequantizeLinearNode<QuantType>(half_q, half_qparams.scale, half_qparams.zero_point, half_dq);
     NodeArg* mul_final_output = builder.MakeIntermediate();
     builder.AddNode("Mul", {mul_dq, half_dq}, {mul_final_output});
 

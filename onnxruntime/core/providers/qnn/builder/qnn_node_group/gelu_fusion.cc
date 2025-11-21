@@ -130,14 +130,14 @@ static std::optional<float> GetConstantInitializerFloatScalar(QnnModelWrapper& q
 static bool IsInitializerWithExpectedValue(QnnModelWrapper& qnn_model_wrapper,
                                            const NodeUnitIODef& io_def,
                                            float expected_value,
-                                           float tolerance = 1e-3f) {
+                                           float tolerance = 1e-5f) {
   std::optional<float> actual_value = GetConstantInitializerFloatScalar(qnn_model_wrapper, io_def);
   if (!actual_value.has_value()) {
     return false;
   }
 
   // Compare with expected value within tolerance
-  return std::abs(actual_value.value() - expected_value) <= tolerance;
+  return std::fabs(actual_value.value() - expected_value) <= tolerance;
 }
 
 // Forward declaration.
@@ -168,8 +168,7 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     const NodeUnit& erf_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-    const logging::Logger& logger) {
-  ORT_UNUSED_PARAMETER(logger);
+    const logging::Logger& /*logger*/) {
   if (erf_node_unit.OpType() != "Erf") {
     return nullptr;
   }
@@ -205,8 +204,8 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     return nullptr;
   }
 
-  const NodeUnit* add_node_unit = GetChildOfOutput(graph_viewer, erf_node_unit, erf_outputs[0],
-                                                   node_to_node_unit, node_unit_to_qnn_node_group);
+  const NodeUnit* add_node_unit = GetOnlyChildOfOutput(graph_viewer, erf_node_unit, erf_outputs[0],
+                                                       node_to_node_unit, node_unit_to_qnn_node_group);
   if (add_node_unit == nullptr || add_node_unit->OpType() != "Add") {
     return nullptr;
   }
@@ -220,7 +219,7 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
   // Check the other input node (e.g. not the Erf) is 1.0f
   bool is_erf_first_input = (add_inputs[0].node_arg.Name() == erf_outputs[0].node_arg.Name());
   const auto& add_const_input = add_inputs[is_erf_first_input ? 1 : 0];
-  if (!IsInitializerWithExpectedValue(qnn_model_wrapper, add_const_input, 1.0f, 1e-02f)) {
+  if (!IsInitializerWithExpectedValue(qnn_model_wrapper, add_const_input, 1.0f)) {
     return nullptr;
   }
 
@@ -230,8 +229,8 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     return nullptr;
   }
 
-  const NodeUnit* mul_node_unit = GetChildOfOutput(graph_viewer, *add_node_unit, add_outputs[0],
-                                                   node_to_node_unit, node_unit_to_qnn_node_group);
+  const NodeUnit* mul_node_unit = GetOnlyChildOfOutput(graph_viewer, *add_node_unit, add_outputs[0],
+                                                       node_to_node_unit, node_unit_to_qnn_node_group);
   if (mul_node_unit == nullptr || mul_node_unit->OpType() != "Mul") {
     return nullptr;
   }
@@ -250,44 +249,25 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
 
   // Check if either input to mul_node_unit comes from a Mul node
   for (size_t i = 0; i < 2; ++i) {
-    const auto& mul_input_name = mul_inputs[i].node_arg.Name();
+    const auto& mul_input = mul_inputs[i];
 
-    // Find the node that produces this input
-    for (const auto& node_index : graph_viewer.GetNodesInTopologicalOrder()) {
-      const Node* node = graph_viewer.GetNode(node_index);
-      if (node == nullptr) continue;
+    const NodeUnit* producer_unit = GetParentOfInput(graph_viewer, *mul_node_unit, mul_input,
+                                                     node_to_node_unit, node_unit_to_qnn_node_group);
+    if (producer_unit && producer_unit->OpType() == "Mul") {
+      const auto& mul2_inputs = producer_unit->Inputs();
+      if (mul2_inputs.size() >= 2) {
+        bool has_root_input = (mul2_inputs[0].node_arg.Name() == root_input_name ||
+                               mul2_inputs[1].node_arg.Name() == root_input_name);
+        if (has_root_input) {
+          int root_index = (mul2_inputs[0].node_arg.Name() == root_input_name) ? 0 : 1;
+          const auto& mul_const_input = mul2_inputs[1 - root_index];
 
-      // Check if this node's output matches our input
-      for (const auto* output_def : node->OutputDefs()) {
-        if (output_def && output_def->Name() == mul_input_name) {
-          // Found the producer node, check if it's a Mul
-          auto it = node_to_node_unit.find(node);
-          if (it != node_to_node_unit.end()) {
-            const NodeUnit* producer_unit = it->second;
-            if (producer_unit->OpType() == "Mul" &&
-                node_unit_to_qnn_node_group.find(producer_unit) == node_unit_to_qnn_node_group.end()) {
-              // Check if this Mul has root as one input
-              const auto& mul2_inputs = producer_unit->Inputs();
-              if (mul2_inputs.size() >= 2) {
-                bool has_root_input = (mul2_inputs[0].node_arg.Name() == root_input_name ||
-                                       mul2_inputs[1].node_arg.Name() == root_input_name);
-
-                if (has_root_input) {
-                  // Check the other input is 0.5f
-                  int root_index = (mul2_inputs[0].node_arg.Name() == root_input_name) ? 0 : 1;
-                  const auto& mul_const_input = mul2_inputs[1 - root_index];
-
-                  if (IsInitializerWithExpectedValue(qnn_model_wrapper, mul_const_input, 0.5f)) {
-                    mul2_node_unit = producer_unit;
-                    break;
-                  }
-                }
-              }
-            }
+          if (IsInitializerWithExpectedValue(qnn_model_wrapper, mul_const_input, 0.5f)) {
+            mul2_node_unit = producer_unit;
+            break;
           }
         }
       }
-      if (mul2_node_unit != nullptr) break;
     }
     if (mul2_node_unit != nullptr) break;
   }
@@ -315,8 +295,8 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
       return nullptr;
     }
 
-    const NodeUnit* mul2_node_unit_pattern2 = GetChildOfOutput(graph_viewer, *mul_node_unit, mul_outputs[0],
-                                                               node_to_node_unit, node_unit_to_qnn_node_group);
+    const NodeUnit* mul2_node_unit_pattern2 = GetOnlyChildOfOutput(graph_viewer, *mul_node_unit, mul_outputs[0],
+                                                                   node_to_node_unit, node_unit_to_qnn_node_group);
     if (mul2_node_unit_pattern2 == nullptr || mul2_node_unit_pattern2->OpType() != "Mul") {
       return nullptr;
     }
@@ -358,15 +338,15 @@ GeluFusion::GeluFusion(std::vector<const NodeUnit*>&& node_units, const NodeUnit
     : node_units_(std::move(node_units)), target_node_unit_(target_node_unit) {
 }
 
-Status GeluFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
+Status GeluFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& /*logger*/) const {
+  ORT_RETURN_IF_NOT(!node_units_.empty(), "GeluFusion node_units_ is empty");
   const NodeUnitIODef& root_input = node_units_[0]->Inputs()[0];
   const NodeUnitIODef& final_output = node_units_.back()->Outputs()[0];
   return ValidateOnQnn(qmw, node_units_, root_input, final_output);
 }
 
-Status GeluFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
+Status GeluFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& /*logger*/) const {
+  ORT_RETURN_IF_NOT(!node_units_.empty(), "GeluFusion node_units_ is empty");
   const NodeUnitIODef& root_input = node_units_[0]->Inputs()[0];
   const NodeUnitIODef& final_output = node_units_.back()->Outputs()[0];
   return CreateOnQnn(qmw, node_units_, root_input, final_output);
