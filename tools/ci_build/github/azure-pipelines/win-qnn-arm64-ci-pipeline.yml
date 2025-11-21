@@ -69,7 +69,7 @@ jobs:
 
       .\build\Debug\test_fp16.exe
 
-    workingDirectory: $(Build.SourcesDirectory)
+    workingDirectory: $(Build.SourcesDirectory)\test_fp16
     displayName: run fp16 test
 
   - script: |
