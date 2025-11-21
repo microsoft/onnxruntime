@@ -937,14 +937,12 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
                                                                           DataLayout target_data_layout) const {
   // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
   if (node_domain == kOnnxDomain && node_op_type == "Resize") {
-    if (target_data_layout != DataLayout::NHWC) {
-      return false;
-    }
+    return target_data_layout != DataLayout::NHWC;
   }
 
-  // Both NHWC and NCHW are supported for InstanceNormalization, so it don't need to convert layout for it.
+  // WebGPU perfer NCHW for InstanceNormalization due to a better performance
   if (node_domain == kOnnxDomain && node_op_type == "InstanceNormalization") {
-    return false;
+    return target_data_layout != DataLayout::NHWC;
   }
 
   return std::nullopt;
