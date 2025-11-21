@@ -330,12 +330,13 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   return std::make_shared<WebGpuProviderFactory>(context_id, context, std::move(webgpu_ep_config));
 }
 
-// WebGPU DataTransfer implementation wrapper for the C API
+// WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
 struct WebGpuDataTransferImpl : OrtDataTransferImpl {
-  WebGpuDataTransferImpl(const OrtApi& ort_api_in, webgpu::BufferManager& buffer_manager)
+  WebGpuDataTransferImpl(const OrtApi& ort_api_in)
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
-        data_transfer_{buffer_manager} {
+        data_transfer_{nullptr},
+        context_id_{-1} {
     ort_version_supported = ORT_API_VERSION;
     CanCopy = CanCopyImpl;
     CopyTensors = CopyTensorsImpl;
@@ -361,12 +362,61 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
                                     OrtSyncStream** /*streams*/,
                                     size_t num_tensors) noexcept {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
+
+    if (num_tensors == 0) {
+      return nullptr;
+    }
+
+    // Lazy initialization: Get context_id from the first GPU tensor's device
+    int context_id = 0;  // Default to context_id 0
+    bool found_gpu_tensor = false;
+
+    // Check both src_tensors and dst_tensors to find the first GPU tensor
+    for (size_t idx = 0; idx < num_tensors && !found_gpu_tensor; ++idx) {
+      // Check source tensor
+      const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensors[idx]);
+      OrtMemoryInfoDeviceType src_device_type = impl.ep_api.MemoryDevice_GetDeviceType(src_device);
+      if (src_device_type == OrtMemoryInfoDeviceType_GPU) {
+        context_id = static_cast<int>(impl.ep_api.MemoryDevice_GetDeviceId(src_device));
+        found_gpu_tensor = true;
+        break;
+      }
+
+      // Check destination tensor
+      const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensors[idx]);
+      OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_device);
+      if (dst_device_type == OrtMemoryInfoDeviceType_GPU) {
+        context_id = static_cast<int>(impl.ep_api.MemoryDevice_GetDeviceId(dst_device));
+        found_gpu_tensor = true;
+        break;
+      }
+    }
+
+    // Initialize data_transfer if not already done or if context_id changed
+    if (impl.data_transfer_ == nullptr || impl.context_id_ != context_id) {
+      impl.context_id_ = context_id;
+
+      // Check if context exists, create a default one if it doesn't
+      webgpu::WebGpuContext* context_ptr = nullptr;
+      if (webgpu::WebGpuContextFactory::HasContext(context_id)) {
+        context_ptr = &webgpu::WebGpuContextFactory::GetContext(context_id);
+      } else {
+        WebGpuContextParams params = GetDefaultWebGpuContextParams();
+        params.context_config.context_id = context_id;
+        context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
+        context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
+      }
+
+      // Create the DataTransfer instance
+      impl.data_transfer_ = std::make_unique<webgpu::DataTransfer>(context_ptr->BufferManager());
+    }
+
+    // Now perform the actual tensor copy
     for (size_t idx = 0; idx < num_tensors; ++idx) {
       const OrtValue* src_tensor = src_tensors[idx];
       OrtValue* dst_tensor = dst_tensors[idx];
-      auto status = impl.data_transfer_.CopyTensor(src_tensor->Get<Tensor>(), *dst_tensor->GetMutable<Tensor>());
+      auto status = impl.data_transfer_->CopyTensor(src_tensor->Get<Tensor>(), *dst_tensor->GetMutable<Tensor>());
       if (!status.IsOK()) {
-        // Convert common::Status to OrtStatus
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
     }
@@ -379,19 +429,12 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
-  webgpu::DataTransfer data_transfer_;
+  std::unique_ptr<webgpu::DataTransfer> data_transfer_;  // Lazy-initialized
+  int context_id_;                                       // Track which context we're using
 };
 
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id) {
-  webgpu::WebGpuContext* context_ptr = nullptr;
-  if (webgpu::WebGpuContextFactory::HasContext(context_id)) {
-    context_ptr = &webgpu::WebGpuContextFactory::GetContext(context_id);
-  } else {
-    WebGpuContextParams params = GetDefaultWebGpuContextParams();
-    context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
-    context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
-  }
-  return new WebGpuDataTransferImpl(*OrtApis::GetApi(ORT_API_VERSION), context_ptr->BufferManager());
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer() {
+  return new WebGpuDataTransferImpl(*OrtApis::GetApi(ORT_API_VERSION));
 }
 
 }  // namespace onnxruntime

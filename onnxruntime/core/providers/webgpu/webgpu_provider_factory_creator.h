@@ -19,9 +19,9 @@ struct WebGpuProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options);
 };
 
-// C API to create data transfer for WebGPU EP
-// If the context doesn't exist, creates a default one (context_id=0)
+// C API to create data transfer for WebGPU EP with lazy initialization
+// Context will be determined from tensors during the first CopyTensors call
 // Caller takes ownership of the returned OrtDataTransferImpl*
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id);
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer();
 
 }  // namespace onnxruntime

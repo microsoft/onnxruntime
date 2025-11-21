@@ -60,7 +60,7 @@ OrtStatus* WebGpuEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* co
 OrtStatus* WebGpuEpFactory::CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) noexcept {
   // Call the WebGPU provider's C API to create the data transfer
   // This is implemented in the WebGPU provider backend which has access to WebGPU headers
-  *data_transfer = OrtWebGpuCreateDataTransfer(0);  // Use default context (context_id=0)
+  *data_transfer = OrtWebGpuCreateDataTransfer();
   return nullptr;
 }
 
