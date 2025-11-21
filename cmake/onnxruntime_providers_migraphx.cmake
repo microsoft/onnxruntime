@@ -59,6 +59,15 @@
     target_compile_definitions(onnxruntime_providers_migraphx PRIVATE HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH=1)
   endif()
 
+  check_symbol_exists(migraphx_get_onnx_operators_size
+    "migraphx/migraphx.h" HAVE_MIGRAPHX_API_GET_ONNX_OPERATORS)
+
+  if(HAVE_MIGRAPHX_API_GET_ONNX_OPERATORS)
+    target_compile_definitions(onnxruntime_providers_migraphx PRIVATE HAVE_MIGRAPHX_API_GET_ONNX_OPERATORS=1)
+  endif()
+
+
+
   if (onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_training)
     target_link_libraries(onnxruntime_providers_migraphx PRIVATE onnxruntime_training)

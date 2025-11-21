@@ -749,7 +749,15 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
 
         if (target_op_type == "If" || target_op_type == "Loop" || target_op_type == "Scan") {
           const auto& src_output_idx = it->GetSrcArgIndex();
-          if (src_output_idx < node->OutputDefs().size()) {
+
+          // Do this to avoid signed to unsigned comparrison here
+          // if src_output_index is invalid (-1 or less) signal that to be larger than size + 1
+          // This ensures the check below fails
+          size_t output_index = 0;
+          if(src_output_idx < 0)
+            output_index = node->OutputDefs().size() + 1;
+
+          if (output_index < node->OutputDefs().size()) {
             const auto* output_def = node->OutputDefs()[src_output_idx];
             if (output_def && fused_outputs.find(output_def) == fused_outputs.end() && erased.find(output_def) == erased.end()) {
               fused_outputs_to_add[output_def] = output_order++;
@@ -866,9 +874,9 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
 
-#if HIP_VERSION_MAJOR > 7 || (HIP_VERSION_MAJOR == 7 && HIP_VERSION_MINOR >= 2)
+#ifdef HAVE_MIGRAPHX_API_GET_ONNX_OPERATORS
   // In ROCm 7.2 onward we'll query the MIGraphX API to get the supported op list
-  static std::set<std::string> mgx_supported_ops{}
+  static std::set<std::string> mgx_supported_ops{};
   auto list = migraphx::get_onnx_operators();
   for(const auto& name : list)
   {
