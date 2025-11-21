@@ -498,12 +498,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   return Status::OK();
 }
 
-bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
+bool CanApplyFlashAttention(const Tensor* present_key, const Tensor* present_value,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   return parameters.batch_size_ == 1 &&
          !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
-         bias == nullptr &&
          context.HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
          present_value->SizeInBytes() > 0 &&
