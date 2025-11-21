@@ -73,6 +73,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         int qkv_num_heads,
                         bool is_unidirectional,
                         bool is_nvidia,
+                        bool q_BNSH,
                         bool use_seqlen_k = false)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
@@ -82,6 +83,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
         is_nvidia_(is_nvidia),
+        q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k) {
   }
 
@@ -90,9 +92,12 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"alpha", ProgramUniformVariableDataType::Float32},
-                                          {"num_seq_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -102,6 +107,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
   bool is_unidirectional_;
   bool is_nvidia_;
+  bool q_BNSH_;
   bool use_seqlen_k_;
 };
 
@@ -120,7 +126,9 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
