@@ -237,9 +237,9 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
-  // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
+  // Read MIDR register values from Windows registry
   // There should be one per CPU
-  std::vector<uint64_t> midr_values{}, id_aa64isar1_el1_values{};
+  std::vector<uint64_t> midr_values{};
 
   // TODO!! Don't support multiple processor group yet!!
   constexpr int MAX_CORES = 64;
@@ -272,17 +272,7 @@ void CPUIDInfo::ArmWindowsInit() {
       break;
     }
 
-    uint64_t id_aa64isar1_el1_value;
-    data_size = sizeof(id_aa64isar1_el1_value);
-
-    // CP 4031 corresponds to ID_AA64ISAR1_EL1 register
-    if (::RegGetValueA(HKEY_LOCAL_MACHINE, processor_subkey, "CP 4031", RRF_RT_REG_QWORD,
-                       nullptr, &id_aa64isar1_el1_value, &data_size) != ERROR_SUCCESS) {
-      break;
-    }
-
     midr_values.push_back(midr_value);
-    id_aa64isar1_el1_values.push_back(id_aa64isar1_el1_value);
   }
 
   // process midr_values
@@ -308,22 +298,31 @@ void CPUIDInfo::ArmWindowsInit() {
     }
   }
 
-  has_arm_neon_i8mm_ = std::all_of(
-      id_aa64isar1_el1_values.begin(), id_aa64isar1_el1_values.end(),
-      [](uint64_t id_aa64isar1_el1_value) {
-        // I8MM, bits [55:52]
-        return ((id_aa64isar1_el1_value >> 52) & 0xF) != 0;
-      });
-
-  has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
+    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-    // cpuinfo_has_arm_i8mm() doesn't work on Windows yet. See https://github.com/pytorch/cpuinfo/issues/279.
-    // has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
-    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && has_arm_neon_i8mm_;
+
+    // Note:
+    // cpuinfo is using IsProcessorFeaturePresent(PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE):
+    // https://github.com/pytorch/cpuinfo/blob/403d652dca4c1046e8145950b1c0997a9f748b57/src/arm/windows/init.c#L224-L225
+    // However, on some systems (notably, a Windows ARM64 CI build agent), cpuinfo_has_arm_neon_fp16_arith() started to
+    // return false in the newer cpuinfo version that uses IsProcessorFeaturePresent(). Perhaps the newer
+    // PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE constant is not supported yet in the Windows version on those systems.
+    // To avoid regressing in fp16 instructions detection, we fall back to what cpuinfo used to do, i.e., use the
+    // detection of dot product instructions:
+    // https://github.com/pytorch/cpuinfo/blob/877328f188a3c7d1fa855871a278eb48d530c4c0/src/arm/windows/init.c#L206-L209
+    // This workaround can be removed when cpuinfo_has_arm_neon_fp16_arith() works correctly on all the Windows
+    // versions that we want to support.
+    if (!has_fp16_) {
+      has_fp16_ = has_arm_neon_dot_;
+    }
+
+    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_sme_ = cpuinfo_has_arm_sme();
+    has_arm_sme2_ = cpuinfo_has_arm_sme2();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
 }
