@@ -3,7 +3,7 @@
 
 #include "ep.h"
 
-#include <gsl/gsl>
+#include <gsl/span>
 #include <array>
 #include <cassert>
 #include <memory>
