@@ -21,27 +21,24 @@ TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components
   return TensorShape(shape_vector);
 }
 
-SplitKConfig SplitKConfig::GetSplitKConfig(const wgpu::AdapterInfo& adapter_info) {
-  SplitKConfig config = {};
-
+SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
   if (adapter_info.vendor == std::string_view{"intel"}) {
     if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
         adapter_info.architecture == std::string_view{"xe-2hpg"} ||
         adapter_info.architecture == std::string_view{"xe-lpg"} ||
         adapter_info.architecture == std::string_view{"gen-12hp"}) {
-      config.enable_split_k_ = true;
+      enable_split_k_ = true;
 
       // Below thresholds are only verified on the above Intel GPUs without any regressions. The
       // proper value of `max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_` may be
       // reduced when we support a larger `dim_inner` because larger `dim_inner` will bring more
       // atomic calls for each output value.
-      config.split_dim_inner_ = 256;
-      config.min_dim_inner_with_split_k_ = config.split_dim_inner_ * 2;
-      config.max_dim_inner_with_split_k_ = config.split_dim_inner_ * 9;
-      config.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 35.0f;
+      split_dim_inner_ = 256;
+      min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
+      max_dim_inner_with_split_k_ = split_dim_inner_ * 9;
+      max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 35.0f;
     }
   }
-  return config;
 }
 
 bool SplitKConfig::UseSplitK(

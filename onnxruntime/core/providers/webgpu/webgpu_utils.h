@@ -91,9 +91,12 @@ inline Tensor CreateTensorView(const Tensor& tensor, MLDataType new_data_type, c
   return {new_data_type, new_shape, const_cast<void*>(tensor.DataRaw()), tensor.Location()};
 }
 
+/**
+ * Configuration for Split-K optimization (Conv|MatMul).
+ */
 class SplitKConfig {
  public:
-  static SplitKConfig GetSplitKConfig(const wgpu::AdapterInfo& adapter_info);
+  explicit SplitKConfig(const wgpu::AdapterInfo& adapter_info);
 
   bool UseSplitK(
       bool is_vec4, ActivationKind activation_kind, uint64_t batch_size,

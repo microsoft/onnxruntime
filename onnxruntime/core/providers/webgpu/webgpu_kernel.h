@@ -23,8 +23,21 @@ class WebGpuKernel : public OpKernel {
 
   virtual Status ComputeInternal(ComputeContext& context) const = 0;
 
+  Status PrePack(const Tensor& tensor,
+                 int input_idx,
+                 AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  virtual Status PrePackInternal(ComputeContextBase& context,
+                                 const Tensor& tensor,
+                                 int input_idx,
+                                 AllocatorPtr alloc,
+                                 /*out*/ bool& is_packed);
+
  private:
   const WebGpuExecutionProvider& ep_;
+  WebGpuContext& webgpu_context_;
 };
 
 }  // namespace webgpu
