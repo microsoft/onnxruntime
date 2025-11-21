@@ -1029,6 +1029,18 @@ template Status ComputeSoftmaxWithCumSeqLength<half>(
     const int num_heads,
     half* output, cudaStream_t stream);
 
+template Status ComputeSoftmaxWithCumSeqLength<BFloat16>(
+    const BFloat16* input,
+    const BFloat16* attn_bias,
+    const bool broadcast_attn_bias_dim_0,
+    const bool broadcast_attn_bias_dim_1,
+    const int32_t* cum_seq_length,
+    const int batch_size,
+    const int sequence_length,
+    const int total_sequence_length,
+    const int num_heads,
+    BFloat16* output, cudaStream_t stream);
+
 template Status ComputeSoftmaxWithMask1D<float>(cudaStream_t stream,
                                                 const int total_sequence_length,
                                                 const int sequence_length,

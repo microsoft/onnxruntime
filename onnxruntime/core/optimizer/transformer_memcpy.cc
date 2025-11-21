@@ -249,9 +249,9 @@ static const IExecutionProvider* FindProviderByType(ProviderTypeToProviderMap pr
 }
 
 bool TransformerMemcpyImpl::IsNodeCompatibleWithProvider(const onnxruntime::Node& node) const {
-  const auto& node_provider_type = node.GetExecutionProviderType();
+  const auto node_provider_type = node.GetExecutionProviderType();
   const auto* node_provider = FindProviderByType(providers_by_type_, node_provider_type);
-  ORT_ENFORCE(node_provider != nullptr, "Unable to get provider associated with provider type ", node_provider_type);
+  ORT_ENFORCE(node_provider != nullptr, "Unable to get provider associated with provider type ", node_provider_type, ", node type is ", node.OpType(), ", name is ", node.Name());
 
   // Same provider?
   if (node_provider->Type() == provider_.Type()) {
@@ -359,7 +359,6 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg,
         output_it != it.MutableOutputDefs().end() ? static_cast<int>(output_it - it.MutableOutputDefs().begin()) : -1;
     if (arg_input_index == -1 && arg_output_index == -1)
       continue;
-    auto node_provider_type = it.GetExecutionProviderType();
     if (IsNodeCompatibleWithProvider(it)) {
       const KernelCreateInfo* kci = nullptr;
       ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(it, logger, &kci));
