@@ -174,6 +174,46 @@ Status QnnModel::FinalizeGraphs(const logging::Logger& logger) {
   return Status::OK();
 }
 
+// Helper function to check if ORT tensor shape matches expected QNN tensor shape (excluding batch dimension at index 0)
+template <typename OrtValueType>
+static Status CheckShape(const OrtValueType& ort_tensor,
+                         const QnnTensorInfo& qnn_io_info) {
+  const auto input_output_shape = ort_tensor.GetTensorTypeAndShapeInfo().GetShape();
+  const auto shape_size = input_output_shape.size();
+  const auto& expected_shape = qnn_io_info.ori_dimensions_;
+  const auto expected_shape_size = expected_shape.size();
+  const auto& tensor_name = qnn_io_info.tensor_wrapper->GetName();
+
+  ORT_RETURN_IF_NOT(shape_size == expected_shape_size,
+                    "Invalid rank for tensor: ", tensor_name,
+                    " Got: ", shape_size, " Expected: ", expected_shape_size,
+                    " Please fix either the inputs/outputs or the model.");
+
+  // Collect all invalid dimension indices (skip batch dimension at index 0)
+  InlinedVector<size_t> invalid_dim_indices;
+  invalid_dim_indices.reserve(shape_size);
+  for (size_t i = 1; i < shape_size; ++i) {
+    if (input_output_shape[i] != static_cast<int64_t>(expected_shape[i])) {
+      invalid_dim_indices.push_back(i);
+    }
+  }
+
+  if (!invalid_dim_indices.empty()) {
+    std::ostringstream ostr;
+    ostr << "Got invalid dimensions for tensor: " << tensor_name
+         << " for the following indices (excluding batch dimension)\n";
+    for (const auto idx : invalid_dim_indices) {
+      ostr << " index: " << idx
+           << " Got: " << input_output_shape[idx]
+           << " Expected: " << expected_shape[idx] << "\n";
+    }
+    ostr << " Please fix either the inputs/outputs or the model.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  }
+
+  return Status::OK();
+}
+
 Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   LOGS(logger, VERBOSE) << "Setting up QNN input/output for graph: " << graph_info_->Name();
 
@@ -286,6 +326,9 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     // Modify batch dimensions
     if (batch_multiplier > 1) {
+      // Check dimensions except for batch dimension (index 0)
+      ORT_RETURN_IF_ERROR(CheckShape(ort_input_tensor, qnn_input_info));
+
       // Create independent dimensions copy to avoid race conditions
       std::vector<uint32_t> dims_copy = qnn_input_info.ori_dimensions_;
       dims_copy[BATCH_DIMENSION_INDEX] =
@@ -346,6 +389,9 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     // Modify batch dimensions
     if (batch_multiplier > 1) {
+      // Check dimensions except for batch dimension (index 0)
+      ORT_RETURN_IF_ERROR(CheckShape(ort_output_tensor, qnn_output_info));
+
       // Create independent dimensions copy to avoid race conditions
       std::vector<uint32_t> dims_copy = qnn_output_info.ori_dimensions_;
       dims_copy[BATCH_DIMENSION_INDEX] =
