@@ -51,9 +51,7 @@
 
 namespace ArmKleidiAI {
 
-// By default we should try for SME2 first before falling back to SME.
-inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
-
+//
 // Buffer packing routines.
 //
 size_t
@@ -76,6 +74,19 @@ MlasGemmPackB(
     size_t ldb,
     void* PackedB
     );
+
+bool
+MLASCALL
+MlasFp32Gemv(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize
+    );
+
 
 bool
 MLASCALL
