@@ -231,11 +231,11 @@ const NodeUnit* GetParentOfInput(const GraphViewer& graph_viewer,
   return nullptr;
 }
 
-const NodeUnit* GetChildOfOutput(const GraphViewer& graph_viewer,
-                                 const NodeUnit& node_unit,
-                                 const NodeUnitIODef& output,
-                                 const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                 const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
+const NodeUnit* GetOnlyChildOfOutput(const GraphViewer& graph_viewer,
+                                     const NodeUnit& node_unit,
+                                     const NodeUnitIODef& output,
+                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
   const Node* p_parent_node = nullptr;
 
   for (auto node : node_unit.GetAllNodesInGroup()) {
@@ -244,13 +244,14 @@ const NodeUnit* GetChildOfOutput(const GraphViewer& graph_viewer,
         p_parent_node = node;
         break;
       }
-
-      if (p_parent_node != nullptr) {
-        break;
-      }
+    }
+    // break the loop if producer node of output is found
+    if (p_parent_node != nullptr) {
+      break;
     }
   }
 
+  // return if the given output tensor is not produced by any node in the given node_unit
   if (p_parent_node == nullptr) {
     return nullptr;
   }
@@ -261,6 +262,10 @@ const NodeUnit* GetChildOfOutput(const GraphViewer& graph_viewer,
     // Node is producing a graph output
     return nullptr;
   }
+
+  // First pass: count how many children consume this specific output
+  int child_count = 0;
+  const NodeUnit* p_child_node_unit = nullptr;
 
   for (auto edge = parent_node.OutputEdgesBegin(); edge != parent_node.OutputEdgesEnd(); ++edge) {
     const Node& child_node = edge->GetNode();
@@ -287,17 +292,26 @@ const NodeUnit* GetChildOfOutput(const GraphViewer& graph_viewer,
     if (child_node_unit_it == node_unit_map.end()) {
       return nullptr;
     }
-    const NodeUnit* p_child_node_unit = child_node_unit_it->second;
+    const NodeUnit* current_child_node_unit = child_node_unit_it->second;
 
     // Check if child node has already been handled. Should not be the case if the calling
     // fusion function has been called in topological order, but check to be safe.
-    if (qnn_node_group_map.count(p_child_node_unit) != 0) {
+    if (qnn_node_group_map.count(current_child_node_unit) != 0) {
       return nullptr;
     }
 
-    return p_child_node_unit;
+    // Store the child node unit and increment count
+    p_child_node_unit = current_child_node_unit;
+    child_count++;
+
+    // If we found more than one child, return nullptr immediately
+    if (child_count > 1) {
+      return nullptr;
+    }
   }
-  return nullptr;
+
+  // Return the child only if there's exactly one child
+  return (child_count == 1) ? p_child_node_unit : nullptr;
 }
 
 }  // namespace qnn
