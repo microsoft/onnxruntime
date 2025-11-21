@@ -73,9 +73,11 @@ jobs:
     displayName: run fp16 test
 
   - script: |
-      git clone https://github.com/pytorch/cpuinfo.git -b 161a9ec374884f4b3e85725cb22e05f9458fdc93
+      git clone https://github.com/pytorch/cpuinfo.git
 
       cd .\cpuinfo
+
+      git checkout 161a9ec374884f4b3e85725cb22e05f9458fdc93
 
       cmake -S . -B .\build
 
