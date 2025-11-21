@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import os
-from collections.abc import Collection, Generator, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -10,7 +10,7 @@ from ..github import is_host_github_runner
 from ..task import BashScriptsWithVenvTask, CompositeTask, RemovePathsTask, RunExecutablesWithVenvTask
 from ..typing import BuildConfigT, TargetArchLinuxT, TargetArchWindowsT, TargetPyVersionT
 from ..util import REPO_ROOT, git_head_sha
-from .docker import DOCKER_REPO_ROOT, MANYLINUX_2_34_AARCH64_TAG, DockerBuildAndTestTask, DockerRunTask
+from .docker import DOCKER_REPO_ROOT, MANYLINUX_2_34_AARCH64_TAG, DockerBuildAndTestTask
 from .windows import RunPowershellScriptsTask
 
 
@@ -32,18 +32,13 @@ class BuildEpDockerTask(CompositeTask):
     ) -> None:
         dist_rel_dir = Path("build") / f"linux-{target_arch}" / config / "dist"
 
-        def non_manylinux_wheels() -> Generator[Path, None, None]:
-            dist_dir = REPO_ROOT / dist_rel_dir
-            return (whl for whl in dist_dir.glob("*.whl") if "manylinux" not in whl.name)
-
-        def auditwheel_cmd() -> list[str]:
-            whls = [whl.name for whl in non_manylinux_wheels()]
-            assert len(whls) > 0, f"No wheels found in {dist_rel_dir}."
-            return ["auditwheel", "repair", "-w", ".", "--plat", "manylinux_2_34_aarch64", *whls]
-
         super().__init__(
             group_name,
             [
+                RemovePathsTask(
+                    "Deleting wheels to workaround ORT build bug",
+                    (REPO_ROOT / dist_rel_dir).glob("*.whl"),
+                ),
                 DockerBuildAndTestTask(
                     "Building ONNX Runtime inside a container",
                     ["_build_ort_linux_aarch64_manylinux_2_34"],
@@ -53,17 +48,6 @@ class BuildEpDockerTask(CompositeTask):
                     venv_path=DOCKER_REPO_ROOT / "build" / "venv.build",
                     qairt_sdk_root=qairt_sdk_root,
                     ccache_root=ccache_root,
-                ),
-                DockerRunTask(
-                    "Repairing ONNX Runtime wheel",
-                    MANYLINUX_2_34_AARCH64_TAG,
-                    auditwheel_cmd,
-                    working_dir=DOCKER_REPO_ROOT / dist_rel_dir,
-                    volumes={REPO_ROOT: DOCKER_REPO_ROOT},
-                ),
-                RemovePathsTask(
-                    "Deleting non-repaired wheel",
-                    non_manylinux_wheels,
                 ),
             ],
         )

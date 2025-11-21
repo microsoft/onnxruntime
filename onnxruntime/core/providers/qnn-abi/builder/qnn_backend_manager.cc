@@ -288,6 +288,25 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
 }
 
 Status QnnBackendManager::LoadBackend() {
+#if defined(__aarch64__) && defined(__linux__)
+  // QNN requires ADSP_LIBRARY_PATH to be set in order to find skel libs on Linux
+  static std::once_flag set_adsp_path_once;
+
+  std::call_once(set_adsp_path_once, []() {
+    constexpr std::string_view kAdspLibraryPathEnvVar{"ADSP_LIBRARY_PATH"};
+    const char* existingPath = getenv(kAdspLibraryPathEnvVar.data());
+    if (existingPath != nullptr) {
+      LOGS_DEFAULT(WARNING) << "Using existing ADSP_LIBRARY_PATH setting of " << existingPath
+                            << ", which may cause the HTP backend to fail.";
+      return;
+    }
+
+    std::filesystem::path qnnLibPath(GetDefaultEnv().GetRuntimePath());
+    LOGS_DEFAULT(INFO) << "Setting " << kAdspLibraryPathEnvVar << " = " << qnnLibPath;
+    setenv(kAdspLibraryPathEnvVar.data(), qnnLibPath.c_str(), 1);
+  });
+#endif
+
   QnnInterface_t* backend_interface_provider{nullptr};
   auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                     QnnInterface_t>(backend_path_.c_str(),
