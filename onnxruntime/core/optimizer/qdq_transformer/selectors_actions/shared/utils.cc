@@ -48,7 +48,8 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
 // These produce int64 indices output, which can't be quantized, so there's no downstream Q node.
 static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
   return {{"ArgMax", {}},
-          {"ArgMin", {}}};
+          {"ArgMin", {}},
+          {"NonZero", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
