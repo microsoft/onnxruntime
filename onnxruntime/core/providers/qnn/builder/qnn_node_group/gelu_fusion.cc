@@ -262,7 +262,6 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
   }
 
   // Check second input of Div is sqrt(2) ≈ 1.4142
-  // Use a larger tolerance to handle approximations used in some models
   if (!IsInitializerWithExpectedValue(qnn_model_wrapper, div_inputs[1], static_cast<float>(M_SQRT2))) {
     return nullptr;
   }
