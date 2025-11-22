@@ -274,7 +274,9 @@ void ResolveAutoPadding(
 void MatMulShapeMapping(
     std::vector<DimensionType>& inputShape0,
     std::vector<DimensionType>& inputShape1,
-    std::vector<DimensionType>& outputShape);
+    std::vector<DimensionType>& outputShape,
+    /*inout*/ std::vector<DimensionType>& inputShape0Broadcasted,
+    /*inout*/ std::vector<DimensionType>& inputShape1Broadcasted);
 
 void FusedMatMulShapeMapping(
     std::vector<DimensionType>& inputShape0,

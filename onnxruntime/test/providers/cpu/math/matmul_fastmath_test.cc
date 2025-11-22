@@ -169,18 +169,10 @@ void RunMatMulTest(int32_t opset_version) {
 }
 
 TEST(MathOpTest, MatMulFloatType_FastMath) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
-  }
   RunMatMulTest<float>(7, false, false, false);
 }
 
 TEST(MathOpTest, MatMulFloatTypeInitializer_FastMath) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
-  }
   RunMatMulTest<float>(7, false, true, false);
 }
 

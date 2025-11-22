@@ -136,9 +136,6 @@ TensorDesc::TensorDesc(
     ////////////////////////////////////////
     // Coerce the physical shape to the desired shape.
 
-    // By default, assume strides are not necessary.
-    bool useStrides = false;
-
     if (dimensions != nonBroadcastDimensions)
     {
         // This broadcasting and subset logic is only applicable to the simple case where all
@@ -152,42 +149,7 @@ TensorDesc::TensorDesc(
             &m_sizes[m_bufferTensorDesc.DimensionCount]
         ));
 
-        // Stretch any dimensions with a single element.
-        //
-        // e.g. physical [2,1,4]
-        //       desired [2,3,4]
-        //       output  [2,3,4]
-        //       strides [4,0,1]
-        //
-        // If broadcasting is used, then strides are used.
-        useStrides = true;
-
-        // Walk backwards through both input shapes and broadcast or default each dimension.
-        auto nonBroadcastDimsIter = nonBroadcastDimensions.rbegin();
-        uint32_t elementCount = 1;
-
-        for (int descDimIndex = m_bufferTensorDesc.DimensionCount - 1; descDimIndex >= 0; --descDimIndex)
-        {
-            if (nonBroadcastDimsIter == nonBroadcastDimensions.rend() || (*nonBroadcastDimsIter == 1))
-            {
-                m_strides[descDimIndex] = 0;
-            }
-            else
-            {
-                m_strides[descDimIndex] = elementCount;
-                elementCount *= (*nonBroadcastDimsIter);
-            }
-
-            if (nonBroadcastDimsIter != nonBroadcastDimensions.rend())
-            {
-                ++nonBroadcastDimsIter;
-            }
-        }
-    }
-
-    if (useStrides)
-    {
-        m_bufferTensorDesc.Strides = m_strides;
+        SetBroadcastedShape(dimensions, nonBroadcastDimensions, m_bufferTensorDesc.DimensionCount);
     }
 
     m_bufferTensorDesc.Flags = DML_TENSOR_FLAG_NONE;
@@ -196,7 +158,7 @@ TensorDesc::TensorDesc(
         m_bufferTensorDesc.DataType,
         m_bufferTensorDesc.DimensionCount,
         m_sizes,
-        useStrides ? m_strides : nullptr
+        m_bufferTensorDesc.Strides
         );
     assert(m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType));
 }
@@ -289,16 +251,85 @@ void TensorDesc::ForceUnsignedDataType()
     }
 }
 
-// Add additional padding 1's to ensure the count is at least that large.
-void TensorDesc::EnsureDimensionCount(uint32_t newDimensionCount, TensorAxis alignment)
+void TensorDesc::BroadcastTo(gsl::span<const uint32_t> targetSizes)
 {
-    if (m_bufferTensorDesc.DimensionCount < newDimensionCount)
+    auto currentSizes = gsl::span<const uint32_t>(m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount);
+    size_t targetRank = std::max(currentSizes.size(), targetSizes.size());
+    return SetBroadcastedShape(targetSizes, currentSizes, targetRank);
+}
+
+// The targetRank can be greater than or equal the targetSizes, which may apply if there is a minimum rank
+// for an operator. targetSizes and sourceSizes may be different sizes, and they will be right-aligned within
+// the targetRank.
+void TensorDesc::SetBroadcastedShape(gsl::span<const uint32_t> targetSizes, gsl::span<const uint32_t> sourceSizes, size_t targetRank)
+{
+    ML_CHECK_VALID_ARGUMENT(targetSizes.size() <= targetRank);
+    ML_CHECK_VALID_ARGUMENT(targetRank <= MaximumDimensionCount);
+
+    // Update the tensor shape with the target shape, padding right-aligned if needed.
+    size_t extraFill = targetRank - targetSizes.size();
+    std::fill(&m_sizes[0], &m_sizes[0] + extraFill, 1u); // Insert any leading 1's.
+    std::copy(targetSizes.data(), targetSizes.data() + targetSizes.size(), &m_sizes[0] + extraFill);
+    m_bufferTensorDesc.DimensionCount = uint32_t(targetRank);
+
+    if (targetSizes == sourceSizes)
     {
-        SetDimensionCount(newDimensionCount, alignment);
+        m_bufferTensorDesc.Strides = nullptr; // Packed strides.
+        return;
+    }
+
+    // Stretch any dimensions with a single element.
+    //
+    // e.g. physical [2,1,4]
+    //       desired [2,3,4]
+    //       output  [2,3,4]
+    //       strides [4,0,1]
+
+    // Walk backwards through each dimenions of the input shapes, either broadcasting or defaulting to packed.
+    auto sourceSizesIter = sourceSizes.rbegin();
+    uint32_t elementCount = 1;
+
+    for (size_t dimensionIndex = targetRank; dimensionIndex-- > 0; )
+    {
+        uint32_t stride = 0; // Broadcast by default (any leading batch dimensions or dimensions of size 1)
+        if (sourceSizesIter != sourceSizes.rend())
+        {
+            if (uint32_t size = *sourceSizesIter; size > 1)
+            {
+                stride = elementCount;
+                elementCount *= size;
+            }
+            ++sourceSizesIter;
+        }
+        m_strides[dimensionIndex] = stride;
+    }
+
+    m_bufferTensorDesc.Strides = m_strides;
+}
+
+// Add additional padding 1's to ensure the count is at least that large.
+void TensorDesc::EnsureMinimumDimensionCount(uint32_t minimumDimensionCount, TensorAxis alignment)
+{
+    if (m_bufferTensorDesc.DimensionCount < minimumDimensionCount)
+    {
+        SetDimensionCount(minimumDimensionCount, alignment);
     }
 }
 
-void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment)
+// Ensure the dimension count is less than or equal to the limit.
+void TensorDesc::EnsureMaximumDimensionCount(uint32_t maximumDimensionCount, TensorAxis alignment)
+{
+    if (m_bufferTensorDesc.DimensionCount > maximumDimensionCount)
+    {
+        SetDimensionCount(maximumDimensionCount, alignment, /*foldEndDimensions*/ true);
+    }
+}
+
+// Set a new dimension count, adding or removing dimensions as needed.
+// If the new rank is larger, any new dimensions are filled with size 1 and stride 0.
+// If the new rank is smaller and foldEndDimensions is true, then any removed dimensions are folded together.
+// Otherwise those dimensions (leading or trailing, depending on alignment) are simply truncated.
+void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment, bool foldEndDimensions)
 {
     ML_CHECK_VALID_ARGUMENT(newDimensionCount <= MaximumDimensionCount);
     ML_CHECK_VALID_ARGUMENT(alignment == TensorAxis::RightAligned || alignment == TensorAxis::LeftAligned);
@@ -313,7 +344,65 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
     int32_t fillOffset = oldDimensionCount;
     int32_t fillCount = std::max(0, difference);
 
-    // alignment == TensorAxis::LeftAligned is the easy case.
+    // If shrinking the rank and asked to fold dimensions, then collapse them into the first/last dimension.
+    // e.g. Folding 4D dimensions [2,3,4,5] to 3D right-aligned yield [6,4,5]
+    // e.g.         6D dimensions [2,3,4,5,6,7] to 3D left-aligned yield [1,2,840]
+    //
+    // Otherwise dimensions are simply truncated (which may be desired if they were modified before calling).
+    if (foldEndDimensions && difference < 0 && newDimensionCount > 0)
+    {
+        uint32_t dimensionCountRemoved = -difference;
+        uint32_t dimensionCountFolded = dimensionCountRemoved + 1; // If 2 dimensions are removed, then 3 dimensions are folded into one.
+        uint32_t targetDimensionIndex;
+        uint32_t firstFoldedDimensionIndex;
+
+        // Determine the range to fold and which dimension to fold them into.
+        // e.g. Right-aligned: was 4D [2, 3, 4, 5]
+        //                     now 2D      [12, 5]
+        //                     fold    <----->
+        //                     target        *
+        //
+        //      Left-aligned:  was 4D [2, 3, 4, 5]
+        //                     now 2D [2, 60]
+        //                     fold       <----->
+        //                     target     *
+        //
+        if (alignment == TensorAxis::RightAligned)
+        {
+            targetDimensionIndex = dimensionCountRemoved; // Fold extra dimensions into the first dimension of the new size.
+            firstFoldedDimensionIndex = 0;
+        }
+        else // alignment == TensorAxis::LeftAligned
+        {
+            targetDimensionIndex = newDimensionCount - 1; // Fold extra dimensions into the last dimension of the new size.
+            firstFoldedDimensionIndex = targetDimensionIndex;
+        }
+        auto sizeFoldBegin = &m_sizes[firstFoldedDimensionIndex];
+        auto sizeFoldEnd = &m_sizes[firstFoldedDimensionIndex + dimensionCountFolded];
+
+        // Ensure no stride broadcasting is lost during the fold, which would silently give incorrect results.
+        ML_CHECK_VALID_ARGUMENT(
+            m_bufferTensorDesc.Strides == nullptr ||
+            AreStridesCollapsible(
+                { sizeFoldBegin, sizeFoldEnd },
+                { &m_strides[firstFoldedDimensionIndex], dimensionCountFolded }
+            )
+        );
+
+        m_sizes[targetDimensionIndex] = std::accumulate(sizeFoldBegin, sizeFoldEnd, 1u, std::multiplies<uint32_t>());
+
+        // Update strides too (right alignment has no extra work).
+        if (alignment == TensorAxis::LeftAligned)
+        {
+            m_strides[targetDimensionIndex] = m_strides[oldDimensionCount - 1]; // Migrate the last stride to its new position.
+        }
+        // Ensure the target stride is at least 1, not 0, in case a dimension of size 1 was folded that had a stride
+        // of 0 (which might happen because a stride of 0 for dimension of size 1 is ignorable), and other dimensions
+        // were folded into the target too.
+        m_strides[targetDimensionIndex] = std::max(m_strides[targetDimensionIndex], 1u);
+    }
+
+    // Left alignment is the easy case (just truncate the end).
     // Right alignment needs more work, shifting values over.
     if (alignment == TensorAxis::RightAligned)
     {
@@ -322,6 +411,8 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
         memmove(&m_sizes[fillCount], &m_sizes[oldDimensionCount - moveCount], sizeof(m_sizes[0]) * moveCount);
         memmove(&m_strides[fillCount], &m_strides[oldDimensionCount - moveCount], sizeof(m_strides[0]) * moveCount);
     }
+
+    // For any new dimensions, insert leading/trailing 1's for sizes and 0's for strides.
     if (fillCount > 0)
     {
         std::fill(&m_sizes[fillOffset], &m_sizes[fillOffset] + fillCount, 1u);
@@ -374,4 +465,38 @@ void TensorDesc::EnsureStridesExist() noexcept
 
     GetDescendingPackedStrides({m_sizes, m_bufferTensorDesc.DimensionCount}, {m_strides, m_bufferTensorDesc.DimensionCount});
     m_bufferTensorDesc.Strides = m_strides;
+}
+
+// A range of dimensions have collapsible strides if they all follow packed layout rules
+// or are all broadcasted dimensions. e.g.
+//
+//  sizes [2,3,4] with strides [12,4,1] are collapsible
+//  sizes [1,1,1] with strides [1,0,1] are collapsible
+//  sizes [2,1,4] with strides [4,0,1] are not collapsible
+bool TensorDesc::AreStridesCollapsible(gsl::span<const uint32_t> sizes, gsl::span<const uint32_t> strides) const noexcept
+{
+    if (strides.empty())
+    {
+        return true;
+    }
+
+    assert(sizes.size() == strides.size());
+
+    // Start from the back and work towards the front, computing the accumulated packed stride
+    // and comparing it to the actual stride. Skip dimensions of size 1 which make no difference,
+    // as these are the logical target dimensions by now, not the original physical dimensions
+    // (so it's stride can be ignored).
+    uint32_t expectedStride = strides.back();
+    for (size_t i = strides.size(); i-- > 0; )
+    {
+        if (sizes[i] != 1)
+        {
+            if (strides[i] != expectedStride)
+            {
+                return false;
+            }
+            expectedStride *= sizes[i];
+        }
+    }
+    return true;
 }
