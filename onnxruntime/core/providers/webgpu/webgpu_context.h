@@ -5,12 +5,14 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -40,6 +42,8 @@ struct WebGpuContextConfig {
   const void* dawn_proc_table;
   ValidationMode validation_mode;
   bool preserve_device;
+  uint64_t max_storage_buffer_binding_size;
+  int power_preference;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -169,6 +173,13 @@ class WebGpuContext final {
   Status Run(ComputeContext& context, const ProgramBase& program);
   void OnRunEnd();
 
+  //
+  // Get Split-K configuration.
+  //
+  // `split_k_config_` won't be initialized until the first call to this method.
+  //
+  const SplitKConfig& GetSplitKConfig();
+
  private:
   enum class TimestampQueryType {
     None = 0,
@@ -176,12 +187,27 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device)
-      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
+  WebGpuContext(WGPUInstance instance,
+                WGPUDevice device,
+                webgpu::ValidationMode validation_mode,
+                bool preserve_device,
+                uint64_t max_storage_buffer_binding_size,
+                int power_preference = static_cast<int>(wgpu::PowerPreference::HighPerformance))
+      : instance_{instance},
+        device_{device},
+        validation_mode_{validation_mode},
+        query_type_{TimestampQueryType::None},
+        preserve_device_{preserve_device},
+        max_storage_buffer_binding_size_{max_storage_buffer_binding_size},
+        power_preference_{power_preference} {
+    ORT_ENFORCE(max_storage_buffer_binding_size_ == 0 || max_storage_buffer_binding_size_ >= 134217728,
+                "max_storage_buffer_binding_size must be 0 or at least 128MB");
+  }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,
+                             const std::vector<uint32_t>& bind_buffers_segments,
                              const ProgramArtifact& program_artifact,
                              uint32_t x, uint32_t y, uint32_t z,
                              const Tensor* indirect_dispatch_tensor = nullptr);
@@ -251,6 +277,8 @@ class WebGpuContext final {
   uint32_t num_pending_dispatches_ = 0;
   const uint32_t max_num_pending_dispatches_ = 16;
 
+  std::optional<SplitKConfig> split_k_config_;
+
   // profiling
   TimestampQueryType query_type_;
   wgpu::QuerySet query_set_;
@@ -264,6 +292,8 @@ class WebGpuContext final {
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
   bool preserve_device_;
+  uint64_t max_storage_buffer_binding_size_;
+  int power_preference_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP

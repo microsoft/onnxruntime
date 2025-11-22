@@ -449,7 +449,7 @@ def parse_args():
         type=str,
         required=True,
         default="fp32",
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision for model. For ONNX models, the model's precision should be set before running this script.",
     )
 
@@ -579,7 +579,7 @@ def main():
     config = WhisperConfig.from_pretrained(args.model_name)
     processor = WhisperProcessor.from_pretrained(args.model_name)
     target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
-    use_fp16 = args.precision == "fp16"
+    use_fp16 = args.precision == "fp16" or (args.precision in {"int8", "int4"} and args.device != "cpu")
 
     setattr(args, "processor", processor)  # noqa: B010
     setattr(args, "target_device", target_device)  # noqa: B010

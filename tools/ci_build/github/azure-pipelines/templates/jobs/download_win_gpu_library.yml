@@ -7,16 +7,13 @@ parameters:
     default: false
   - name: CudaVersion
     type: string
-    default: '12.2'
+    default: '12.8'
     values:
-      - 11.8
-      - 12.2
-  - name: TrtVersion
+      - 13.0
+      - 12.8
+  - name: CudnnFolder
     type: string
-    default: '10.9.0.34'
-    values:
-      - 8.6.1.6
-      - 10.9.0.34
+    default: '9.14.0.64_cuda13'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
@@ -30,8 +27,9 @@ steps:
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CudaVersion }} $(Agent.TempDirectory)
 
+    # Since CUDA 13.0, CUDA DLLs are  in bin\x64 folder instead of bin folder for Windows.
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin\x64;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
       displayName: 'Append CUDA SDK Directory to PATH'
 
     - task: CmdLine@2
@@ -41,38 +39,60 @@ steps:
           dir $(Agent.TempDirectory)
       displayName: 'Print PATH after download CUDA SDK'
 
+    - ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      - task: AzureCLI@2
+        displayName: 'Download CUDNN ${{ parameters.CudnnFolder }}'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/${{ parameters.CudnnFolder }} $(Agent.TempDirectory)
+
+      - powershell: |
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\${{ parameters.CudnnFolder }}\bin"
+        displayName: 'Append CUDNN Directory to PATH'
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            echo %PATH%
+            dir $(Agent.TempDirectory)
+        displayName: 'Print PATH after download CUDNN SDK'
+
   - ${{ if eq(parameters.DownloadTRT, true) }}:
-    - ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]11.8"
-          displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.0"
-          displayName: Set trtCudaVersion
-    - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '10.9.0.34')) }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.8"
-          displayName: Set trtCudaVersion
+    - powershell: |
+        # These values are copied from common-variables.yml
+        $cuda12_trt_version = '10.9.0.34'
+        $cuda13_trt_version = '10.13.3.9'
 
-    - script: |
-        echo $(trtCudaVersion) && echo TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)
-      displayName: Get trtCudaVersion and Directory Name
+        $trtFolder = ""
+        if ("${{ parameters.CudaVersion }}" -eq "13.0") {
+          $trtFolder = "TensorRT-$cuda13_trt_version.Windows.win10.cuda-13.0"
+        }
+        elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
+          $trtFolder = "TensorRT-$cuda12_trt_version.Windows10.x86_64.cuda-12.8"
+        }
 
+        Write-Host "Setting TrtFolderRuntime variable to: $trtFolder"
+        # This makes the variable available to subsequent steps in this job
+        Write-Host "##vso[task.setvariable variable=TrtFolderRuntime;]$trtFolder"
+      displayName: 'Set TensorRT Folder Variable'
 
     - task: AzureCLI@2
-      displayName: 'Download TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)'
+      displayName: 'Download TensorRT Directory'
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptType: 'batch'
         scriptLocation: 'inlineScript'
         inlineScript: |
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion) $(Agent.TempDirectory)
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(TrtFolderRuntime) $(Agent.TempDirectory)
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)\lib"
-      displayName: 'Append TensorRT-${{ parameters.TrtVersion }} Directory to PATH'
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\lib"
+      displayName: 'Append TensorRT Directory to PATH'
 
     - task: CmdLine@2
       inputs:

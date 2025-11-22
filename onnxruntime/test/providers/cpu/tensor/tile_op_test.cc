@@ -53,12 +53,14 @@ void RunTest(const std::vector<int64_t>& input_dims,
   std::vector<T> output_data(output_size);
   std::vector<int64_t> input_strides(rank);
   std::vector<int64_t> output_strides(rank);
-  input_strides[rank - 1] = output_strides[rank - 1] = 1;
-  if (rank > 1) {
-    for (size_t i = rank - 2;; --i) {
-      input_strides[i] = input_dims[i + 1] * input_strides[i + 1];
-      output_strides[i] = output_dims[i + 1] * output_strides[i + 1];
-      if (i == 0) break;
+  if (rank >= 1) {
+    input_strides[rank - 1] = output_strides[rank - 1] = 1;
+    if (rank > 1) {
+      for (size_t i = rank - 2;; --i) {
+        input_strides[i] = input_dims[i + 1] * input_strides[i + 1];
+        output_strides[i] = output_dims[i + 1] * output_strides[i + 1];
+        if (i == 0) break;
+      }
     }
   }
   for (size_t i = 0; i < output_size; ++i) {
@@ -141,6 +143,14 @@ void RunTestWrapper() {
   // This will trigger the (Batched) MemCpy optimization path
   RunTest<T>({2, 1, 3}, {2, 2, 1});
   RunTest<T>({2, 1, 3}, {2, 2, 1}, true);
+
+// The WebGPU EP is not currently prepared for this possibility:
+//   onnxruntime/core/providers/webgpu/program.cc:46
+//   ProgramUniformVariableValue(...) length > 0 was false. number of element of uniform variable must be greater than 0.
+#if !defined(USE_WEBGPU)
+  // Tile0D (nop)
+  RunTest<T>({}, {});
+#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
   // _TileMemcpyKernelFromInput, vectorized 4

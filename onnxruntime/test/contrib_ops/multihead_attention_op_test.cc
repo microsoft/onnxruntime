@@ -53,6 +53,7 @@ static void RunMultiHeadAttentionTest(
     bool is_static_kv = true,
     bool buffer_share = false,
     bool use_float16 = false,
+    bool is_unidirectional = false,
     bool disable_cpu = false,  // some cases not supported in cpu right now.
     bool disable_cuda = false,
     bool disable_webgpu = false,
@@ -82,6 +83,7 @@ static void RunMultiHeadAttentionTest(
   if (enable_cpu || enable_cuda || enable_rocm || enable_dml || enable_webgpu) {
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+    tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
 
     std::vector<int64_t> query_dims = {batch_size, sequence_length, hidden_size};
@@ -355,6 +357,7 @@ static void RunMultiHeadAttentionKernel(
     bool is_static_kv = true,
     bool buffer_share = false,
     bool use_float16 = true,
+    bool is_unidirectional = false,
     bool disable_cpu = false,  // some cases not supported in cpu right now.
     bool disable_cuda = false,
     bool disable_webgpu = false,
@@ -374,7 +377,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     return;
   }
 
@@ -392,7 +395,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     return;
   }
 
@@ -410,7 +413,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     return;
   }
 
@@ -429,7 +432,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     return;
   }
 #endif
@@ -449,7 +452,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
   }
 
   if (kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
@@ -467,7 +470,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
   }
 }
 
@@ -505,7 +508,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
           data.fp32_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -519,7 +522,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
             data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
             data.fp32_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
             data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-            disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+            false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
       }
     }
 #endif
@@ -531,7 +534,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
         data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
         data.fp32_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
         data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
   }
 
   if (data.fp16_output_data.size() > 0) {
@@ -544,7 +547,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     }
 
     kernel_type = AttentionKernelType::AttentionKernel_TrtFusedAttention;
@@ -555,7 +558,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -567,7 +570,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     }
 #endif
 
@@ -579,7 +582,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
     }
 
     kernel_type = AttentionKernelType::AttentionKernel_Default;
@@ -589,7 +592,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
         data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
         data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
         data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-        disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
   }
 }
 

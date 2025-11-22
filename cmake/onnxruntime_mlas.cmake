@@ -5,6 +5,10 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
+
+# mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
+# use internal MLAS headers like mlasi.h.
+set(mlas_private_compile_definitions)
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -133,9 +137,9 @@ function(setup_mlas_source_for_windows)
       )
 
       if (onnxruntime_USE_ARM_NEON_NCHWC)
-		setup_arm_neon_nchwc()	
+		setup_arm_neon_nchwc()
 	  endif()
-      
+
 	  if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
       endif()
@@ -282,6 +286,15 @@ function(setup_kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 
+  # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
+  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+  endif()
+  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+  endif()
+
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -293,11 +306,12 @@ endfunction()
 
 function (setup_arm_neon_nchwc)
   target_sources(onnxruntime_mlas PRIVATE
-   ${MLAS_SRC_DIR}/sconv.h  
+   ${MLAS_SRC_DIR}/sconv.h
    ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
    ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
   )
-  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_ARM_NEON_NCHWC)
+  list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
+  set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
 endfunction ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -380,6 +394,8 @@ else()
           set(X86_64 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
           set(LOONGARCH64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
+          set(S390X TRUE)
         endif()
     endif()
 
@@ -445,25 +461,25 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
         )
-        
+
         # Conditionally add the SVE implementation if compiler supports it
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
-          target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_USE_SVE)
+          list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
         if (onnxruntime_USE_ARM_NEON_NCHWC)
-		  setup_arm_neon_nchwc()	
+		  setup_arm_neon_nchwc()
 		endif()
-        
+
 		if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
-        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp 
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
 				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
 
         if (NOT APPLE)
@@ -771,6 +787,7 @@ endif()
     if(LOONGARCH64 AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/qgemm_kernel_lsx.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_lasx.cpp
           ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLasx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLsx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLasx.S
@@ -784,6 +801,24 @@ endif()
           ${MLAS_SRC_DIR}/loongarch64/SoftmaxKernelLasx.S
             )
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mlsx -mlasx")
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(S390X AND MLAS_SOURCE_IS_NOT_SET)
+        set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp
+          ${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp
+          ${MLAS_SRC_DIR}/dgemm.cpp
+          ${MLAS_SRC_DIR}/s390x/DgemmKernel.cpp
+          ${MLAS_SRC_DIR}/s390x/Quantize.cpp
+          ${MLAS_SRC_DIR}/s390x/QuantizeZVECTOR.cpp
+          ${MLAS_SRC_DIR}/s390x/qgemm_kernel_zvector.cpp
+        )
+        set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+        set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mvx -mzvector -march=z15")
+
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
@@ -804,7 +839,9 @@ endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
-    onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET})
+    onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET} safeint_interface)
+
+    target_compile_definitions(${mlas_target} PRIVATE ${mlas_private_compile_definitions})
 
     set_target_properties(${mlas_target} PROPERTIES FOLDER "ONNXRuntime")
 endforeach()

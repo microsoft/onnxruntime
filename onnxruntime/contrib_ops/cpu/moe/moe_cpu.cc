@@ -9,7 +9,7 @@
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/allocator.h"
 #include "core/platform/threadpool.h"
 #include "core/common/narrow.h"
@@ -48,9 +48,9 @@ Status MoE<T>::Compute(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias, nullptr,
-      fc2_experts_weights, fc2_experts_bias, nullptr,
-      fc3_experts_weights, fc3_experts_bias, nullptr,
+      fc1_experts_weights, fc1_experts_bias, nullptr, nullptr,
+      fc2_experts_weights, fc2_experts_bias, nullptr, nullptr,
+      fc3_experts_weights, fc3_experts_bias, nullptr, nullptr,
       1,
       activation_type_ == ActivationType::SwiGLU));
 

@@ -2293,6 +2293,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
       cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "max_power_of_two_extend_bytes") == 0) {
       cfg->max_power_of_two_extend_bytes = static_cast<int64_t>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "use_cuda_mempool") == 0) {
+      cfg->use_cuda_mempool = static_cast<bool>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "cuda_mempool_release_threshold") == 0) {
+      cfg->cuda_mempool_release_threshold = static_cast<uint64_t>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "cuda_mempool_bytes_to_keep_on_shrink") == 0) {
+      cfg->cuda_mempool_bytes_to_keep_on_shrink = static_cast<size_t>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];
@@ -3758,7 +3764,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_23 = {
+static constexpr OrtApi ort_api_1_to_24 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4228,6 +4234,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_GetModelMetadata,
     &OrtApis::GetModelCompatibilityForEpDevices,
     &OrtApis::CreateExternalInitializerInfo,
+    // End of Version 23 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::TensorTypeAndShape_HasShape,
 };
 
@@ -4264,18 +4272,19 @@ static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeo
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
+static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.23.0",
+static_assert(std::string_view(ORT_VERSION) == "1.24.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_23 above:
+// 2. If there were any APIs added to ort_api_1_to_24 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_23;
+    return &ort_api_1_to_24;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."

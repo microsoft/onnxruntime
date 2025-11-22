@@ -32,6 +32,8 @@ jobs:
         PythonVersion: '3.12'
       Python313:
         PythonVersion: '3.13'
+      Python314:
+        PythonVersion: '3.14'
   steps:
   - checkout: none
 
@@ -58,4 +60,3 @@ jobs:
         python3 -c "import onnxruntime as ort; print(ort.__version__)"
       workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
     displayName: Test Package Installation
-

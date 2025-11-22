@@ -18,6 +18,7 @@
 #include "core/providers/cann/cann_fwd.h"
 #include "core/providers/cann/cann_stream_handle.h"
 #include "core/providers/cann/npu_data_transfer.h"
+#include "core/providers/cann/cann_utils.h"
 
 using onnxruntime::cann::BuildONNXModel;
 using onnxruntime::cann::CannModelPreparation;
@@ -1068,7 +1069,9 @@ void DeleteRegistry() {
 
   ge::aclgrphBuildFinalize();
 
-  CANN_CALL_THROW(aclFinalize());
+  if (!cann::GetRepeatInitFlag()) {
+    CANN_CALL_THROW(aclFinalize());
+  }
 }
 
 std::shared_ptr<KernelRegistry> CANNExecutionProvider::GetKernelRegistry() const {
@@ -1393,7 +1396,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         modelID = modelIDs_[filename];
       } else {
         std::lock_guard<std::mutex> lock(g_mutex);
-        auto filename_with_suffix = cann::RegexMatchFile(filename);
+        auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
         } else {

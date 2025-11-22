@@ -6,9 +6,22 @@
 #param prefer_subgroupshuffle
 #param qkv_head_size
 #param qkv_num_heads
+#param use_seqlen_k
 
 const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
+
+#if use_seqlen_k
+// When graph capture is enabled, total_sequence_length is read from GPU buffer
+fn get_total_sequence_length() -> u32 {
+  return u32(seqlens_k[0]) + 1u;
+}
+#else
+// When graph capture is disabled, total_sequence_length comes from uniforms
+fn get_total_sequence_length() -> u32 {
+  return uniforms.total_sequence_length;
+}
+#endif
 
 #if is_fp16
 const min_value = q_element_t(-65504.0);
@@ -45,17 +58,17 @@ fn loadk(k_start : u32, head_idx : u32, local_idx : u32, k_step : u32) {
   let offset = head_idx * uniforms.present_sequence_length * head_size_vec + k_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
-    let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < uniforms.total_sequence_length);
+    let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < get_total_sequence_length());
     k_tile[slot][idx % head_size_vec] = val;
   }
 }
 
-fn loadv(v_start : u32, head_idx : u32, local_idx : u32, k_step : u32) {
+fn loadv(v_start : u32, head_idx : u32, local_idx : u32, v_step : u32) {
   // Stored as float16[batch_size,num_heads,present_sequence_length,96]
   let offset = head_idx * uniforms.present_sequence_length * head_size_vec + v_start * head_size_vec;
-  for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
+  for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
-    let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < uniforms.total_sequence_length);
+    let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < get_total_sequence_length());
     v_tile[slot][idx % head_size_vec] = val;
   }
 }
@@ -93,12 +106,12 @@ fn writeo(o_idx_global : u32, head_idx : u32) {
 #if has_attention_bias
 fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
   // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
-  if (q_idx_global >= uniforms.new_sequence_length || k_idx_global >= uniforms.total_sequence_length) {
+  if (q_idx_global >= uniforms.new_sequence_length || k_idx_global >= get_total_sequence_length()) {
     return vec4<q_element_t>(0);
   }
-  let offset_base = head_idx * uniforms.new_sequence_length * uniforms.total_sequence_length + q_idx_global * uniforms.total_sequence_length;
+  let offset_base = head_idx * uniforms.new_sequence_length * get_total_sequence_length() + q_idx_global * get_total_sequence_length();
   let offset = offset_base + k_idx_global;
-  let offset_max = offset_base + uniforms.total_sequence_length;
+  let offset_max = offset_base + get_total_sequence_length();
   let c1 = q_element_t(attention_bias[min(offset, offset_max)]);
   let c2 = q_element_t(attention_bias[min(offset + 1, offset_max)]);
   let c3 = q_element_t(attention_bias[min(offset + 2, offset_max)]);
@@ -141,16 +154,18 @@ $MAIN {
 
   var previous_max : q_element_t = min_value;
   var previous_denom : q_element_t = 0;
+  let total_sequence_length = get_total_sequence_length();
 
 #if is_unidirectional
   // If attention is unidirectional, set the loop bound to enforce causal masking.
-  let max_causal_len_for_workgroup = uniforms.past_sequence_length +
+  let past_sequence_length = total_sequence_length - uniforms.new_sequence_length;
+  let max_causal_len_for_workgroup = past_sequence_length +
                                      (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;
-  let loop_bound = min(uniforms.total_sequence_length, max_causal_len_for_workgroup);
-  let seq_causal_length = uniforms.past_sequence_length + q_idx_global + 1;
+  let loop_bound = min(total_sequence_length, max_causal_len_for_workgroup);
+  let seq_causal_length = past_sequence_length + q_idx_global + 1;
 #else
-  let loop_bound = uniforms.total_sequence_length;
-  let seq_causal_length = uniforms.total_sequence_length;
+  let loop_bound = total_sequence_length;
+  let seq_causal_length = total_sequence_length;
 #endif
 
   for (var k_start = 0u; k_start < loop_bound; k_start += capped_sg_size) {

@@ -7,7 +7,9 @@
 
 #include <utility>
 
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -16,18 +18,31 @@
 namespace onnxruntime {
 
 class Tensor;
-class WebGpuExecutionProvider;
 
 namespace webgpu {
 
 class WebGpuContext;
 class BufferManager;
 
-class ComputeContext {
+class ComputeContext final {
  public:
-  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep);
+  // Nested accessor class to provide controlled access to BufferManager
+  class BufferManagerAccessor {
+    // access to BufferManager is limited to class WebGpuContext.
+    // This ensures no access to BufferManager from other classes, avoiding
+    // potential misuse.
+    friend class WebGpuContext;
 
-  virtual ~ComputeContext() = default;
+   private:
+    static const webgpu::BufferManager& Get(const ComputeContext& context);
+  };
+
+  ComputeContext(OpKernelContext& kernel_context,
+                 const OpKernel& op_kernel,
+                 const WebGpuExecutionProvider& ep,
+                 WebGpuContext& webgpu_context);
+
+  ~ComputeContext() = default;
 
   //
   // Get various information from the context.
@@ -41,6 +56,9 @@ class ComputeContext {
   }
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
+  }
+  inline bool IsGraphCaptureEnabled() const {
+    return ep_.IsGraphCaptureEnabled();
   }
 #if !defined(__wasm__)
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
@@ -117,6 +135,16 @@ class ComputeContext {
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
+
+  //
+  // Copy data from a tensor to another tensor.
+  //
+  // This method assumes that both tensors have the same data size.
+  //
+  inline Status CopyTensor(const Tensor& src, Tensor& dst) {
+    return op_kernel_.Info().GetDataTransferManager().CopyTensor(src, dst);
+  }
+
   //
   // Run a compute shader program.
   //
@@ -125,27 +153,16 @@ class ComputeContext {
   }
 
   //
-  // Get the buffer manager from the GPU allocator.
+  // Get Split-K configuration.
   //
-  const webgpu::BufferManager& BufferManager() const;
+  // `split_k_config_` won't be initialized until the first call to this method.
+  //
+  const SplitKConfig& GetSplitKConfig();
 
-  //
-  // Push error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  void PushErrorScope();
-
-  //
-  // Pop error scope.
-  //
-  // This is useful only when "skip_validation" is not set.
-  //
-  Status PopErrorScope();
-
- protected:
+ private:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
+  const OpKernel& op_kernel_;
   const WebGpuExecutionProvider& ep_;
 };
 
