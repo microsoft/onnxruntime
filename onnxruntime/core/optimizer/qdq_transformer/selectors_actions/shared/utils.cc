@@ -87,8 +87,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Neg", {}},
           {"DepthToSpace", {}},
           {"SpaceToDepth", {}},
-          {"Clip", {}},
           {"LpNormalization", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetClipOpVersionsMap() {
+  return {{"Clip", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
@@ -168,16 +170,23 @@ void RegisterMiscSelectors(Selectors& qdq_selectors) {
 }
 
 void RegisterDropDQSelectors(Selectors& qdq_selectors) {
-  /* register selectors for ops that have a sigle DQ -> node */
+  /* register selectors for ops that have a single DQ -> node */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<DropDQNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetDropDQOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterUnarySelectors(Selectors& qdq_selectors) {
-  /* regsiter selectors for unary ops */
+  /* register selectors for unary ops */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<UnaryNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetUnaryOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterClipSelector(Selectors& qdq_selectors) {
+  /* register selector for Clip op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ClipNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetClipOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -305,6 +314,7 @@ void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
+  RegisterClipSelector(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
   RegisterSplitSelector(qdq_selectors_);
