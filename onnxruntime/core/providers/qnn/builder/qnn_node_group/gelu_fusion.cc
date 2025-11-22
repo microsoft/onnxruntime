@@ -163,6 +163,71 @@ static Status CreateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   return CreateOrValidateOnQnn(qnn_model_wrapper, node_units, root_input, final_output, false);
 }
 
+// Gets the parent and child of the Erf node. Can handle the following sequences
+//  - Parent -> Erf -> Child.
+//  - Parent -> DQ -> Erf -> Q -> Child.
+//
+// Also returns the outputs of the Erf. For the sequence `DQ -> Erf -> Q`, returns the outputs of the Q.
+static bool GetErfParentAndChild(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& erf_node_unit,
+                                 const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+                                 const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+                                 /*out*/ const NodeUnit*& parent_node_unit,
+                                 /*out*/ const NodeUnit*& child_node_unit,
+                                 /*out*/ const NodeUnit*& dq_node_unit,
+                                 /*out*/ const NodeUnit*& q_node_unit,
+                                 /*out*/ gsl::span<const NodeUnitIODef>& erf_outputs) {
+  const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
+
+  auto get_first_parent = [&](const NodeUnit& node_unit) -> const NodeUnit* {
+    const auto& inputs = node_unit.Inputs();
+    if (inputs.empty()) {
+      return nullptr;
+    }
+    return GetParentOfInput(graph_viewer, node_unit, inputs[0],
+                            node_to_node_unit, node_unit_to_qnn_node_group);
+  };
+
+  auto get_first_child = [&](const NodeUnit& node_unit) -> const NodeUnit* {
+    const auto& outputs = node_unit.Outputs();
+    if (outputs.empty()) {
+      return nullptr;
+    }
+
+    return GetOnlyChildOfOutput(graph_viewer, node_unit, outputs[0],
+                                node_to_node_unit, node_unit_to_qnn_node_group);
+  };
+
+  const NodeUnit* erf_parent_node_unit = get_first_parent(erf_node_unit);
+  if (erf_parent_node_unit == nullptr) {
+    return false;
+  }
+
+  const NodeUnit* erf_child_node_unit = get_first_child(erf_node_unit);
+  if (erf_child_node_unit == nullptr) {
+    return false;
+  }
+
+  if (erf_node_unit.UnitType() == NodeUnit::Type::SingleNode &&
+      erf_parent_node_unit->OpType() == "DequantizeLinear" &&
+      erf_child_node_unit->OpType() == "QuantizeLinear") {
+    // This is the explicit sequence DQ -> Erf -> Q.
+    // Look past the DQ and Q nodes to get the actual parent and child.
+    // We do this because ORT utils do not automatically group DQ -> Erf -> Q into a NodeUnit.
+    dq_node_unit = erf_parent_node_unit;
+    q_node_unit = erf_child_node_unit;
+    erf_parent_node_unit = get_first_parent(*erf_parent_node_unit);
+    erf_child_node_unit = get_first_child(*erf_child_node_unit);
+
+    erf_outputs = q_node_unit->Outputs();
+  } else {
+    erf_outputs = erf_node_unit.Outputs();
+  }
+
+  parent_node_unit = erf_parent_node_unit;
+  child_node_unit = erf_child_node_unit;
+  return parent_node_unit != nullptr && child_node_unit != nullptr;
+}
+
 std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     QnnModelWrapper& qnn_model_wrapper,
     const NodeUnit& erf_node_unit,
@@ -174,14 +239,18 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
   }
 
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
+  const NodeUnit* div_node_unit = nullptr;
+  const NodeUnit* add_node_unit = nullptr;
+  const NodeUnit* dq_node_unit = nullptr;
+  const NodeUnit* q_node_unit = nullptr;
+  gsl::span<const NodeUnitIODef> erf_outputs;
 
-  const auto& erf_inputs = erf_node_unit.Inputs();
-  if (erf_inputs.empty()) {
+  if (!GetErfParentAndChild(qnn_model_wrapper, erf_node_unit, node_to_node_unit, node_unit_to_qnn_node_group,
+                            div_node_unit, add_node_unit, dq_node_unit, q_node_unit, erf_outputs)) {
     return nullptr;
   }
 
-  const NodeUnit* div_node_unit = GetParentOfInput(graph_viewer, erf_node_unit, erf_inputs[0],
-                                                   node_to_node_unit, node_unit_to_qnn_node_group);
+  // Erf must have a Div parent.
   if (div_node_unit == nullptr || div_node_unit->OpType() != "Div") {
     return nullptr;
   }
@@ -199,13 +268,6 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
   }
 
   // Erf must have an Add child consuming its output
-  const auto& erf_outputs = erf_node_unit.Outputs();
-  if (erf_outputs.empty()) {
-    return nullptr;
-  }
-
-  const NodeUnit* add_node_unit = GetOnlyChildOfOutput(graph_viewer, erf_node_unit, erf_outputs[0],
-                                                       node_to_node_unit, node_unit_to_qnn_node_group);
   if (add_node_unit == nullptr || add_node_unit->OpType() != "Add") {
     return nullptr;
   }
@@ -277,7 +339,13 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
 
   if (mul2_node_unit != nullptr) {
     // Pattern 1: root -> Mul(0.5) -> ... -> Mul
-    node_units = {div_node_unit, &erf_node_unit, add_node_unit, mul2_node_unit, mul_node_unit};
+    if (dq_node_unit != nullptr) {
+      assert(q_node_unit != nullptr);
+      node_units = {div_node_unit, dq_node_unit, &erf_node_unit, q_node_unit, add_node_unit, mul2_node_unit,
+                    mul_node_unit};
+    } else {
+      node_units = {div_node_unit, &erf_node_unit, add_node_unit, mul2_node_unit, mul_node_unit};
+    }
     final_mul_node_unit = mul_node_unit;
   } else {
     // Try Pattern 2: root -> ... -> Mul -> Mul(0.5)
@@ -318,7 +386,14 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     }
 
     // Pattern 2
-    node_units = {div_node_unit, &erf_node_unit, add_node_unit, mul_node_unit, mul2_node_unit_pattern2};
+    if (dq_node_unit != nullptr) {
+      assert(q_node_unit != nullptr);
+      node_units = {div_node_unit, dq_node_unit, &erf_node_unit, q_node_unit, add_node_unit,
+                    mul_node_unit, mul2_node_unit_pattern2};
+    } else {
+      node_units = {div_node_unit, &erf_node_unit, add_node_unit, mul_node_unit, mul2_node_unit_pattern2};
+    }
+
     final_mul_node_unit = mul2_node_unit_pattern2;
   }
 
