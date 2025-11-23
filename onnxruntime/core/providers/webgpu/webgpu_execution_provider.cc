@@ -14,6 +14,7 @@
 #endif
 
 #include "allocator.h"
+#include "core/common/float16.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/fallback_cpu_capability.h"
@@ -29,6 +30,7 @@
 #include "core/providers/webgpu/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/tensor/cast.h"
+#include "core/providers/webgpu/vendor/intel/contrib/format_transform.h"
 
 namespace onnxruntime {
 
@@ -52,6 +54,7 @@ class Memcpy final : public OpKernel {
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 1, FormatTransform);
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
@@ -74,6 +77,19 @@ ONNX_OPERATOR_KERNEL_EX(
         .ExecQueueId(1)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    FormatTransform,
+    kMSInternalNHWCDomain,
+    1,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint(
+            "T",
+            {DataTypeImpl::GetTensorType<float>(),
+             DataTypeImpl::GetTensorType<MLFloat16>(),
+             DataTypeImpl::GetTensorType<BFloat16>()}),
+    intel::FormatTransform);
 
 #define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op) \
   BuildKernelCreateInfo<                             \
@@ -428,6 +444,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 1, FormatTransform)>,
 
       // element-wise operators
       // unary - math
