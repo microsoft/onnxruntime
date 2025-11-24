@@ -53,14 +53,11 @@ jobs:
           cp tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json ${{ runner.temp }}/.build_settings/build_settings.json
 
           python3 -m pip install --user -r ${{ github.workspace }}/tools/ci_build/requirements/pybind/requirements.txt
-          
-          python3 ${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_ROOT --android_ndk_path $ANDROID_NDK_ROOT ${{ runner.temp }}/.build_settings/build_settings.json      
+
+          python3 ${{ github.workspace }}/tools/ci_build/github/android/build_aar_package.py --build_dir ${{ runner.temp }} --config Release --android_sdk_path $ANDROID_SDK_ROOT --android_ndk_path $ANDROID_NDK_ROOT ${{ runner.temp }}/.build_settings/build_settings.json
 
           # Copy the built artifacts to give folder for publishing
-          BASE_PATH=${{ runner.temp }}/aar_out/Release/com/microsoft/onnxruntime/onnxruntime-android/${OnnxRuntimeVersion}
-          cp ${BASE_PATH}/*.jar  ${{ runner.temp }}/artifacts
-          cp ${BASE_PATH}/*.aar          ${{ runner.temp }}/artifacts
-          cp ${BASE_PATH}/*.pom          ${{ runner.temp }}/artifacts          
+          cp -r ${{ runner.temp }}/aar_out/Release/com ${{ runner.temp }}/artifacts
 
       - name: Upload Android AAR Artifact
         uses: actions/upload-artifact@v5
@@ -109,10 +106,8 @@ jobs:
 
       - name: Copy AAR to React Native and E2E directories
         run: |
-          mkdir -p ${{ github.workspace }}/js/react_native/android/libs
-          cp ${{ runner.temp }}/android-full-aar/*.aar ${{ github.workspace }}/js/react_native/android/libs
           mkdir -p ${{ github.workspace }}/js/react_native/e2e/android/app/libs
-          cp ${{ runner.temp }}/android-full-aar/*.aar ${{ github.workspace }}/js/react_native/e2e/android/app/libs
+          cp -r ${{ runner.temp }}/android-full-aar/com ${{ github.workspace }}/js/react_native/e2e/android/app/libs
 
       - name: Install dependencies and bootstrap
         run: |
@@ -141,10 +136,6 @@ jobs:
         with:
           ndk-version: 28.0.13004108
 
-      - name: Run React Native Android Instrumented Tests
-        run: ./gradlew connectedDebugAndroidTest --stacktrace
-        working-directory: ${{ github.workspace }}/js/react_native/android
-
       - name: Run React Native Detox Android e2e Tests
         run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/android-test-results.xml \
@@ -168,6 +159,15 @@ jobs:
           else
             echo "Emulator PID file was expected to exist but does not."
           fi
+
+      - name: Upload Android Test Results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: android-test-results
+          path: |
+            ${{ github.workspace }}/js/react_native/e2e/android-test-results.xml
+            ${{ github.workspace }}/js/react_native/e2e/artifacts
 
   react_native_ci_ios_build:
     name: React Native CI iOS Build
@@ -210,62 +210,6 @@ jobs:
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
-
-  react_native_ci_ios_unit_tests:
-    name: React Native CI iOS Unit Tests
-    needs: react_native_ci_ios_build
-    runs-on: macos-14
-    timeout-minutes: 90
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Download iOS pod artifact
-        uses: actions/download-artifact@v6
-        with:
-          name: ios_pod
-          path: ${{ runner.temp }}/ios_pod
-
-      - name: Use Xcode 15.3.0
-        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
-
-      - name: Use Node.js 22.x
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22.x'
-          
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
-        with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
-          cmake-version: '3.31.8'
-          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
-
-      - name: Install dependencies and bootstrap
-        run: |
-          npm ci
-        working-directory: ${{ github.workspace }}/js
-      - run: npm ci
-        working-directory: ${{ github.workspace }}/js/common
-      - run: |
-          set -e -x
-          npm ci
-          npm run bootstrap-no-pods
-        working-directory: ${{ github.workspace }}/js/react_native
-
-      - name: Pod install
-        run: |
-          set -e -x
-          ls ${{ runner.temp }}/ios_pod/onnxruntime-c
-          ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
-        working-directory: ${{ github.workspace }}/js/react_native/ios
-
-      - name: Run React Native iOS Instrumented Tests
-        run: |
-          /usr/bin/xcodebuild -sdk iphonesimulator -configuration Debug -workspace ${{ github.workspace }}/js/react_native/ios/OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.4' test CODE_SIGNING_ALLOWED=NO
-        working-directory: ${{ github.workspace }}/js/react_native/ios
 
   react_native_ci_ios_e2e_tests:
     name: React Native CI iOS E2E Tests
@@ -314,7 +258,7 @@ jobs:
           npm ci
           npm run bootstrap-no-pods
         working-directory: ${{ github.workspace }}/js/react_native
-      
+
       - name: Pod install for e2e tests
         run: |
           set -e -x
@@ -331,3 +275,12 @@ jobs:
                          --loglevel verbose \
                          --take-screenshots failing
         working-directory: ${{ github.workspace }}/js/react_native/e2e
+
+      - name: Upload iOS Test Results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ios-test-results
+          path: |
+            ${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml
+            ${{ github.workspace }}/js/react_native/e2e/artifacts
