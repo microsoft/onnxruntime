@@ -556,6 +556,8 @@ class PosixEnv : public Env {
   }
 
   PathString GetRuntimePath() const override {
+// In AIX, dladdr is not supported.
+#if !defined(_AIX)
     // Use dladdr() to look up the file that contains an address from this binary.
     const void* const address_from_this_binary = reinterpret_cast<const void*>(Env::Default);
 
@@ -568,7 +570,7 @@ class PosixEnv : public Env {
       runtime_path.remove_filename();
       return runtime_path;
     }
-
+#endif
     return PathString{};
   }
 

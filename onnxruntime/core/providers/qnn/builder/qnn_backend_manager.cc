@@ -32,6 +32,11 @@
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
 
+// Ensure that we have a recent enough version of QNN
+static_assert(QNN_API_VERSION_MAJOR > 2 ||
+                  (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR >= 29),
+              "Minimum required QAIRT SDK version is 2.39.0");
+
 namespace onnxruntime {
 namespace qnn {
 
