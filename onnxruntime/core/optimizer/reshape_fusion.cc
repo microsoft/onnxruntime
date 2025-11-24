@@ -34,7 +34,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     Node& reshape = *p_reshape;
     ORT_RETURN_IF_ERROR(Recurse(reshape, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13, 14}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13, 14, 19, 21, 23, 24}) ||
         !graph_utils::IsSupportedProvider(reshape, GetCompatibleExecutionProviders())) {
       continue;
     }

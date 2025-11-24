@@ -15,8 +15,10 @@ from ....tools.onnx_model_utils import fix_output_shapes, make_input_shape_fixed
 from ....tools.remove_initializer_from_input import remove_initializer_from_input
 from ...fusions import FusionGelu, FusionLayerNormalization
 from ...onnx_model import ONNXModel
+from ...quant_utils import save_and_reload_model_with_shape_infer
 from .fusion_lpnorm import FusionLpNormalization
 from .fusion_spacetodepth import FusionSpaceToDepth
+from .tensor6d_elimination import Tensor6DEliminationTranspose
 
 
 def qnn_preprocess_model(
@@ -93,7 +95,7 @@ def qnn_preprocess_model(
     """
     modified = False
     model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load_model(model_input)
-    model = save_and_reload_optimize_model(model, shape_infer=True)
+    model = save_and_reload_model_with_shape_infer(model)
     onnx_model = ONNXModel(model)
 
     # Optionally, fix the dynamic input shapes.
@@ -123,9 +125,13 @@ def qnn_preprocess_model(
     if fusion_s2d.apply():
         modified = True
 
+    remove_6d_transpose = Tensor6DEliminationTranspose(onnx_model)
+    if remove_6d_transpose.apply():
+        modified = True
+
     # Optionally, fuse ReduceMean sequence into a single LayerNormalization node.
     if fuse_layernorm:
-        onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
+        onnx_opset = next(x for x in onnx_model.model.opset_import if x.domain == "" or x.domain == "ai.onnx")
 
         # Need opset >= 17 to use LayerNormalization.
         if onnx_opset.version < 17:
@@ -138,6 +144,14 @@ def qnn_preprocess_model(
             fusion_layernorm = FusionLayerNormalization(onnx_model)
             if fusion_layernorm.apply():
                 modified = True
+
+    # Apply L1 transformers. We should do this after the QNN preprocess surgeries (particularly, 6D tensor
+    # eliminations), but before `update_io_to_channel_last`, since the L1 optimizations might assume
+    # untransformed in/out layouts.
+    #
+    # Note: we don't update `modified` based on the L1 optimizations, as we would need to compare the
+    # graphs pre- and post- optimizations to figure out if anything changed. This can be done in future work.
+    onnx_model = ONNXModel(save_and_reload_optimize_model(onnx_model.model, shape_infer=False))
 
     # Optionally, transpose inputs and/or outputs to make them "channel-last".
     if inputs_to_make_channel_last or outputs_to_make_channel_last:
@@ -166,7 +180,7 @@ def qnn_preprocess_model(
     if modified:
         onnx_model.topological_sort()
         onnx.save_model(
-            model,
+            onnx_model.model,
             model_output,
             save_as_external_data=save_as_external_data,
             all_tensors_to_one_file=all_tensors_to_one_file,
@@ -191,7 +205,7 @@ def save_and_reload_optimize_model(model: onnx.ModelProto, shape_infer: bool) ->
         ret_model = onnx.load_model(model_out_path)
         ret_metaprops = {"onnx.infer": "onnxruntime.tools.qnn.preprocess"}
         if ret_model.metadata_props:
-            ret_metaprops.update(ret_model.metadata_props)
+            ret_metaprops.update({prop.key: prop.value for prop in ret_model.metadata_props})
         onnx.helper.set_model_props(ret_model, ret_metaprops)
         return ret_model
 
