@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 import onnx
 from autoep_helper import AutoEpTestCase
-from helper import get_name
+from helper import get_name, get_shared_library_filename_for_platform
 
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
@@ -57,12 +57,9 @@ class TestCompileApi(AutoEpTestCase):
         """
         Test compiling two example models using weight sharing (via example plugin EP)
         """
-        if sys.platform != "win32":
-            self.skipTest("Skipping test because device discovery is only supported on Windows")
-
-        ep_lib_path = "example_plugin_ep.dll"
+        ep_lib_path = get_shared_library_filename_for_platform("example_plugin_ep")
         try:
-            ep_lib_path = get_name("example_plugin_ep.dll")
+            ep_lib_path = get_name(ep_lib_path)
         except FileNotFoundError:
             self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
 

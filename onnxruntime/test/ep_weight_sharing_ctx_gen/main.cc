@@ -166,7 +166,7 @@ int real_main(int argc, char* argv[]) {
   Ort::Env env(logging_level, "ep_weight_sharing");
 
   ORT_TRY {
-    std::optional<PluginEpLibraryRegistrationHandle> plugin_ep_library_registration_handle = std::nullopt;
+    PluginEpLibraryRegistrationHandle plugin_ep_library_registration_handle{};
     Ort::SessionOptions so;
     so.SetLogId("ep_weight_sharing_ctx_gen_session_logger");
     // Set default session option to dump EPContext model with non-embed mode
@@ -207,9 +207,7 @@ int real_main(int argc, char* argv[]) {
       std::string provider_name_ = test_config.machine_config.provider_type_name;
 
       if (const auto& plugin_ep_config = test_config.machine_config.plugin_ep_config; plugin_ep_config.has_value()) {
-        plugin_ep_library_registration_handle = PluginEpLibraryRegistrationHandle{};
-
-        if (!SetPluginEpSessionOptions(env, so, *plugin_ep_config, *plugin_ep_library_registration_handle)) {
+        if (!SetPluginEpSessionOptions(env, so, *plugin_ep_config, plugin_ep_library_registration_handle)) {
           std::cerr << "ERROR: Failed to initialize session for plugin EP "
                     << test_config.machine_config.plugin_ep_config->ep_library_path << std::endl;
           return 1;
