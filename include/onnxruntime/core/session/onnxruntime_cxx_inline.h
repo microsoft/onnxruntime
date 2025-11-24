@@ -2822,6 +2822,13 @@ inline Logger KernelInfoImpl<T>::GetLogger() const {
   return Logger{out};
 }
 
+template <typename T>
+inline KeyValuePairs KernelInfoImpl<T>::GetConfigEntries() const {
+  OrtKeyValuePairs* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelInfo_GetConfigEntries(this->p_, &out));
+  return KeyValuePairs{out};
+}
+
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
   Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p, name, &out));
 }
