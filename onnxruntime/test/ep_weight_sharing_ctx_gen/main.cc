@@ -12,7 +12,6 @@
 #include "onnx/onnx_pb.h"
 #include <algorithm>
 #include <fstream>
-#include <optional>
 
 using namespace onnxruntime;
 using ProviderOptions = std::unordered_map<std::string, std::string>;
