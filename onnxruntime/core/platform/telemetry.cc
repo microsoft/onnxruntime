@@ -62,7 +62,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
                                    const std::string& model_weight_hash,
                                    const std::unordered_map<std::string, std::string>& model_metadata,
                                    const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
-                                   bool use_fp16, bool captureState) const {
+                                   bool use_fp16, bool captureState, const std::string& used_from) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(ir_version);
   ORT_UNUSED_PARAMETER(model_producer_name);
@@ -79,6 +79,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(execution_provider_ids);
   ORT_UNUSED_PARAMETER(use_fp16);
   ORT_UNUSED_PARAMETER(captureState);
+  ORT_UNUSED_PARAMETER(used_from);
 }
 
 void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,

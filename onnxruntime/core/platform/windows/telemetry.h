@@ -57,7 +57,7 @@ class WindowsTelemetry : public Telemetry {
                           const std::string& model_weight_hash,
                           const std::unordered_map<std::string, std::string>& model_metadata,
                           const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
-                          bool use_fp16, bool captureState) const override;
+                          bool use_fp16, bool captureState, const std::string& used_from) const override;
 
   void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                        const char* function, uint32_t line) const override;

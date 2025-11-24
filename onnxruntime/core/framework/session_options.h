@@ -226,6 +226,9 @@ struct SessionOptions {
   bool has_explicit_ep_context_gen_options = false;
   epctx::ModelGenOptions ep_context_gen_options = {};
   epctx::ModelGenOptions GetEpContextGenerationOptions() const;
+
+  // Optional field to indicate where the session was used from. One of compilation, empty.
+  std::string used_from;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

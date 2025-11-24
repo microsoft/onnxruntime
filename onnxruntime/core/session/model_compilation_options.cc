@@ -18,6 +18,7 @@
 namespace onnxruntime {
 ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment& env, const OrtSessionOptions& session_options)
     : env_(env), session_options_(session_options) {
+  session_options_.value.used_from = "compilation";
   session_options_.value.has_explicit_ep_context_gen_options = true;
   session_options_.value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
   session_options_.value.ep_context_gen_options.enable = true;

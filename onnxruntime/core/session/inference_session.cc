@@ -518,6 +518,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   }
 
   telemetry_ = {};
+  telemetry_.used_from = session_options_.used_from;
 
 #ifdef _WIN32
   std::lock_guard<std::mutex> lock(active_sessions_mutex_);
@@ -2504,7 +2505,7 @@ common::Status InferenceSession::Initialize() {
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
+        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false, telemetry_.used_from_);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }

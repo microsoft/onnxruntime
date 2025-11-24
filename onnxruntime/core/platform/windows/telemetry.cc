@@ -235,7 +235,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_weight_hash,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
-                                          bool use_fp16, bool captureState) const {
+                                          bool use_fp16, bool captureState, const std::string& used_from) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -304,7 +304,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingString(used_from.c_str(), "usedFrom"));
   } else {
     TraceLoggingWrite(telemetry_provider_handle,
                       "SessionCreation_CaptureState",
@@ -330,7 +331,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingString(used_from.c_str(), "usedFrom"));
   }
 }
 
