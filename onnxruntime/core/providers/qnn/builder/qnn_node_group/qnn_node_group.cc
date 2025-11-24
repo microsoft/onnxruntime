@@ -20,6 +20,8 @@
 #include "core/providers/qnn/builder/qnn_node_group/udo_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/lpbqgemm_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/lpbqmatmul_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/reshape_transpose_rank5.h"
+#include "core/providers/qnn/builder/qnn_node_group/gelu_fusion.h"
 
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/ort_api.h"
@@ -80,6 +82,9 @@ static std::unordered_map<std::string, std::vector<FusionFunc>> fusions = {
     {"MatMul", {LowPowerBlockQuantizedMatMulFusion::TryFusion}},
     {"Gemm", {LowPowerBlockQuantizedGemmFusion::TryFusion, ReshapeGemmFusion::TryFusion}},
     {"Mul", {ScaleSoftmaxFusion::TryFusion}},
+    {"Cast", {CastLoneQFusion::TryFusion}},
+    {"Erf", {GeluFusion::TryFusion}},
+    {"Reshape", {Rank6ToRank5Fusion::TryFusion}},
     {"Transpose", {ChannelShuffleFusion::TryFusion}}};
 
 void registerUDO(const std::string& node_type, const std::string& op_package) {
@@ -115,8 +120,12 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
-  // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes) except MatMul w/ LPBQ encodings
-  if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode && starting_node_unit.OpType() != "MatMul") {
+  // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes) except
+  // MatMul w/ LPBQ encodings, Erf and Reshape
+  if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode &&
+      starting_node_unit.OpType() != "MatMul" &&
+      starting_node_unit.OpType() != "Erf" &&
+      starting_node_unit.OpType() != "Reshape") {
     return nullptr;
   }
 
