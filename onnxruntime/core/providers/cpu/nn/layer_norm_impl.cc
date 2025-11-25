@@ -281,9 +281,9 @@ void ComputeJobGenericShared(
                                 ? 0
                                 : (task_idx / outer_strides[du]) % dim;
 
-      off_sc_row += idx_d * params.sc_strides[du];
+      off_sc_row += idx_d * params.scale_strides[du];
       if (has_bias_any) {
-        off_bi_row += idx_d * params.bi_strides[du];
+        off_bi_row += idx_d * params.bias_strides[du];
       }
     }
   }
@@ -294,17 +294,17 @@ void ComputeJobGenericShared(
   onnxruntime::InlinedVector<int64_t, 8> idx(static_cast<size_t>(last_rank), 0);
 
   const auto& x_inner_dims = params.x_inner_dims;
-  const auto& sc_inner_inc = params.sc_inner_inc;
-  const auto& bi_inner_inc = params.bi_inner_inc;
+  const auto& scale_inner_inc = params.scale_inner_inc;
+  const auto& bias_inner_inc = params.bias_inner_inc;
 
   const int64_t last_dim = x_inner_dims[static_cast<size_t>(last_rank - 1)];
   ORT_ENFORCE(last_dim > 0);
   ORT_ENFORCE(norm_size % last_dim == 0);
   const int64_t num_chunks = norm_size / last_dim;
 
-  const int64_t sc_last_stride = !sc_inner_inc.empty() ? sc_inner_inc.back() : 0;
+  const int64_t sc_last_stride = !scale_inner_inc.empty() ? scale_inner_inc.back() : 0;
   const int64_t bi_last_stride =
-      (has_bias_any && !bi_inner_inc.empty()) ? bi_inner_inc.back() : 0;
+      (has_bias_any && !bias_inner_inc.empty()) ? bias_inner_inc.back() : 0;
 
   //  Outer loop: iterate over "chunks" of the last dimension.
   for (int64_t c = 0; c < num_chunks; ++c) {
@@ -314,9 +314,9 @@ void ComputeJobGenericShared(
     // Base offsets for all inner dims except the last.
     for (int64_t d = 0; d < last_rank - 1; ++d) {
       const size_t du = static_cast<size_t>(d);
-      off_sc += idx[du] * sc_inner_inc[du];
+      off_sc += idx[du] * scale_inner_inc[du];
       if (has_bias_any) {
-        off_bi += idx[du] * bi_inner_inc[du];
+        off_bi += idx[du] * bias_inner_inc[du];
       }
     }
 

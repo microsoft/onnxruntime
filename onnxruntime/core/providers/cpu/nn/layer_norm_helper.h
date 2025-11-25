@@ -26,14 +26,14 @@ struct LayerNormParams {
   bool use_generic_broadcast{false};  // true: full NumPy-style broadcast; false: legacy broadcast_param path
   onnxruntime::InlinedVector<int64_t, 8> x_dims;
   onnxruntime::InlinedVector<int64_t, 8> x_inner_dims;  // X.shape[axis:]
-  onnxruntime::InlinedVector<int64_t, 8> sc_dims;
-  onnxruntime::InlinedVector<int64_t, 8> bi_dims;
-  onnxruntime::InlinedVector<int64_t, 8> sc_strides;
-  onnxruntime::InlinedVector<int64_t, 8> bi_strides;
+  onnxruntime::InlinedVector<int64_t, 8> scale_dims;
+  onnxruntime::InlinedVector<int64_t, 8> bias_dims;
+  onnxruntime::InlinedVector<int64_t, 8> scale_strides;
+  onnxruntime::InlinedVector<int64_t, 8> bias_strides;
   int64_t axis{0};
   int64_t last_rank{0};
-  onnxruntime::InlinedVector<int64_t, 8> sc_inner_inc;     // scale strides for inner dims [axis..]
-  onnxruntime::InlinedVector<int64_t, 8> bi_inner_inc;     // bias  strides for inner dims [axis..]
+  onnxruntime::InlinedVector<int64_t, 8> scale_inner_inc;  // scale strides for inner dims [axis..]
+  onnxruntime::InlinedVector<int64_t, 8> bias_inner_inc;   // bias  strides for inner dims [axis..]
   onnxruntime::InlinedVector<int64_t, 8> x_outer_strides;  // X strides for outer dims [0..axis-1]
 };
 
@@ -86,6 +86,12 @@ class LayerNormHelper {
     const size_t sr = scale_shape.NumDimensions();
     const size_t br = has_bias ? bias_shape.NumDimensions() : 0;
 
+    if (sr > xr || (has_bias && br > xr)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             kLayerNormInputShapeMismatchError,
+                             " Scale/Bias rank cannot exceed Input rank.");
+    }
+
     params.x_dims.clear();
     params.x_dims.reserve(xr);
     for (size_t i = 0; i < xr; ++i) {
@@ -93,23 +99,23 @@ class LayerNormHelper {
     }
 
     // Right-align scale and bias shapes
-    params.sc_dims.clear();
-    params.sc_dims.resize(xr, 1);
+    params.scale_dims.clear();
+    params.scale_dims.resize(xr, 1);
     for (size_t i = 0; i < sr; ++i) {
-      params.sc_dims[xr - 1 - i] = scale_shape.GetDims()[sr - 1 - i];
+      params.scale_dims[xr - 1 - i] = scale_shape.GetDims()[sr - 1 - i];
     }
 
-    params.bi_dims.clear();
+    params.bias_dims.clear();
     if (has_bias) {
-      params.bi_dims.resize(xr, 1);
+      params.bias_dims.resize(xr, 1);
       for (size_t i = 0; i < br; ++i) {
-        params.bi_dims[xr - 1 - i] = bias_shape.GetDims()[br - 1 - i];
+        params.bias_dims[xr - 1 - i] = bias_shape.GetDims()[br - 1 - i];
       }
     }
 
     // Validate broadcastability
-    const bool sc_ok = IsNumpyBroadcastable(params.sc_dims, params.x_dims);
-    const bool bi_ok = !has_bias || IsNumpyBroadcastable(params.bi_dims, params.x_dims);
+    const bool sc_ok = IsNumpyBroadcastable(params.scale_dims, params.x_dims);
+    const bool bi_ok = !has_bias || IsNumpyBroadcastable(params.bias_dims, params.x_dims);
     if (!sc_ok || !bi_ok) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              kLayerNormInputShapeMismatchError,
@@ -120,18 +126,18 @@ class LayerNormHelper {
     }
 
     // Compute strides for scale/bias once
-    params.sc_strides = MakeStrides(params.sc_dims);
-    params.bi_strides.clear();
+    params.scale_strides = MakeStrides(params.scale_dims);
+    params.bias_strides.clear();
     if (has_bias) {
-      params.bi_strides = MakeStrides(params.bi_dims);
+      params.bias_strides = MakeStrides(params.bias_dims);
     }
 
     // Detect dependency on outer dimensions [0..axis-1]
     bool outer_dep = false;
     for (int64_t i = 0; i < axis; ++i) {
       const size_t idx = static_cast<size_t>(i);
-      if (params.sc_strides[idx] != 0 ||
-          (has_bias && params.bi_strides[idx] != 0)) {
+      if (params.scale_strides[idx] != 0 ||
+          (has_bias && params.bias_strides[idx] != 0)) {
         outer_dep = true;
         break;
       }
@@ -150,12 +156,12 @@ class LayerNormHelper {
       }
 
       // Precompute inner increments for scale/bias over [axis..]
-      params.sc_inner_inc.clear();
-      params.bi_inner_inc.clear();
+      params.scale_inner_inc.clear();
+      params.bias_inner_inc.clear();
       for (size_t i = static_cast<size_t>(axis); i < xr; ++i) {
-        params.sc_inner_inc.push_back(params.sc_strides[i]);
+        params.scale_inner_inc.push_back(params.scale_strides[i]);
         if (has_bias) {
-          params.bi_inner_inc.push_back(params.bi_strides[i]);
+          params.bias_inner_inc.push_back(params.bias_strides[i]);
         }
       }
 
@@ -173,8 +179,8 @@ class LayerNormHelper {
       // Fast-path: we don't need inner/outer increments
       params.last_rank = 0;
       params.x_inner_dims.clear();
-      params.sc_inner_inc.clear();
-      params.bi_inner_inc.clear();
+      params.scale_inner_inc.clear();
+      params.bias_inner_inc.clear();
       params.x_outer_strides.clear();
     }
 

@@ -715,5 +715,34 @@ TEST(RMSNormalizationOpTest, RMSNorm_Scale_Broadcast_Inner_Mixed) {
   test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
+TEST(RMSNormalizationOpTest, RMSNorm_InvalidScaleRank_GreaterThanInputRank_ShouldFail) {
+  OpTester test("RMSNormalization", 23);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 1);
+
+  std::vector<int64_t> x_dims{2, 4};
+  std::vector<float> x = {
+      0.0f, 1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f, 7.0f};
+  test.AddInput<float>("X", x_dims, x);
+
+  std::vector<int64_t> scale_dims{1, 2, 4};
+  std::vector<float> scale(1 * 2 * 4, 1.0f);
+  test.AddInput<float>("Scale", scale_dims, scale);
+
+  // Dummy output so model builds; failure is expected during shape check.
+  std::vector<float> dummy_y(x.size(), 0.0f);
+  test.AddOutput<float>("Y", x_dims, dummy_y);
+
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) {
+    GTEST_SKIP() << "CPU EP not available in this build.";
+  }
+  test.ConfigEp(std::move(cpu));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Scale/Bias rank cannot exceed Input rank.");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
