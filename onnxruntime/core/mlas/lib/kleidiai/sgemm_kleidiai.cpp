@@ -132,7 +132,7 @@ Return Value:
 
 bool
 MLASCALL
-ArmKleidiAI::MlasFp32Gemv(
+ArmKleidiAI::MlasGemvBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -420,7 +420,8 @@ Return Value:
     // Attempt GEMV (M==1 or N==1)
     if (M == 1 || N == 1)
     {
-        if (ArmKleidiAI::MlasFp32Gemv(TransA, TransB, M, N, K, Data, BatchSize)) {
+        // TODO: Investigate passing threadpool and multithreading of gemv op
+        if (ArmKleidiAI::MlasGemvBatch(TransA, TransB, M, N, K, Data, BatchSize)) {
             return true;
         }
     }

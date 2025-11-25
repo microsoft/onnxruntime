@@ -158,11 +158,6 @@ MLAS_FORCEINLINE void
 // of the ONNX Runtime source tree. OpenMP may or may not be enabled in this
 // configuration.
 //
-struct SMEInfo {
-    static const bool CanUseSME2;
-    static const bool CanUseSME;
-    static const bool IsSMEAvailable;
-};
 
 #if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
@@ -172,15 +167,6 @@ using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
 
 #include "core/common/float16.h"
 
-
-
-// Boolean condition to determine if we can use SME2
-// By default we should try for SME2 first before falling back to SME.
-inline const bool SMEInfo::CanUseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
-// Boolean condition to determine if we can use SME
-inline const bool SMEInfo::CanUseSME  = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
-// Boolean condition to tell us if SME is enabled on this system
-inline const bool SMEInfo::IsSMEAvailable = SMEInfo::CanUseSME2 || SMEInfo::CanUseSME;
 
 #else  // BUILD_MLAS_NO_ONNXRUNTIME
 
@@ -233,14 +219,6 @@ class MLASCPUIDInfo
     bool has_arm_sme2_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
-
-// Boolean condition to determine if we can use SME2
-// By default we should try for SME2 first before falling back to SME.
-inline const bool SMEInfo::CanUseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
-// Boolean condition to determine if we can use SME
-inline const bool SMEInfo::CanUseSME  = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
-// Boolean condition to tell us if SME is enabled on this system
-inline const bool SMEInfo::IsSMEAvailable = SMEInfo::CanUseSME2 || SMEInfo::CanUseSME;
 
 #if defined(MLAS_TARGET_ARM64)
 /**
@@ -339,6 +317,23 @@ operator!=(const MLFloat16& left, const MLFloat16& right)
 }
 
 #endif  // BUILD_MLAS_NO_ONNXRUNTIME
+
+#if defined(MLAS_TARGET_ARM64)
+
+struct SMEInfo {
+    static const bool CanUseSME2;
+    static const bool CanUseSME;
+    static const bool IsSMEAvailable;
+};
+
+// Boolean condition to determine if we can use SME2
+// By default we should try for SME2 first before falling back to SME.
+inline const bool SMEInfo::CanUseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+// Boolean condition to determine if we can use SME
+inline const bool SMEInfo::CanUseSME  = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+// Boolean condition to tell us if SME is enabled on this system
+inline const bool SMEInfo::IsSMEAvailable = SMEInfo::CanUseSME2 || SMEInfo::CanUseSME;
+#endif // MLAS_TARGET_ARM64
 
 static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 

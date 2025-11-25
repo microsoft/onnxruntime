@@ -51,7 +51,6 @@
 
 namespace ArmKleidiAI {
 
-//
 // Buffer packing routines.
 //
 size_t
@@ -77,7 +76,7 @@ MlasGemmPackB(
 
 bool
 MLASCALL
-MlasFp32Gemv(
+MlasGemvBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
