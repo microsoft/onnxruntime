@@ -7,7 +7,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -29,17 +29,17 @@ static void RunCumSumOpTest(const std::string& op_type,
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
-  RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_def_2}, attrs),
-                  provider_options,
-                  opset_version,
-                  expected_ep_assignment,
-                  fp32_abs_err);
+  RunQnnModelTestABI(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_def_2}, attrs),
+                     provider_options,
+                     opset_version,
+                     expected_ep_assignment,
+                     fp32_abs_err);
 }
 
 // Non-QDQ model, CumSum with float input and axis input as initializer with axis 0
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_0) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_0) {
   RunCumSumOpTest<float, int32_t>("CumSum",
                                   TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
                                   TestInputDef<int32_t>({}, true, {0}),
@@ -52,7 +52,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_0) {
 // Non-QDQ model, CumSum with float input and axis input as initializer with axis -1
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_neg1) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_neg1) {
   RunCumSumOpTest<float, int32_t>("CumSum",
                                   TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
                                   TestInputDef<int32_t>({}, true, {-1}),
@@ -110,18 +110,18 @@ static void RunQDQCumSumOpTest(const TestInputDef<float>& input_def,
   auto qdq_model_builder = BuildQDQCumSumTestCase<QuantType, AxisType>(input_def, axis_def, attrs,
                                                                        use_contrib_qdq);
 
-  TestQDQModelAccuracy<QuantType>(f32_model_builder,
-                                  qdq_model_builder,
-                                  provider_options,
-                                  opset,
-                                  expected_ep_assignment);
+  TestQDQModelAccuracyABI<QuantType>(f32_model_builder,
+                                     qdq_model_builder,
+                                     provider_options,
+                                     opset,
+                                     expected_ep_assignment);
 }
 
 // Test creates a DQ -> CumSum -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
 // QDQ model, CumSum with uint8 input and axis input as initializer
-TEST_F(QnnHTPBackendTests, CumSum_uint8_int32_e0_r0) {
+TEST_F(QnnABIHTPBackendTests, CumSum_uint8_int32_e0_r0) {
   RunQDQCumSumOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
                                        TestInputDef<int32_t>({}, true, {0}),
                                        {utils::MakeAttribute("exclusive", static_cast<int64_t>(0)),

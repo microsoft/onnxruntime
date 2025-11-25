@@ -17,6 +17,8 @@
 #include "core/framework/ort_value.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime {
 class Graph;
@@ -71,6 +73,19 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes,
                                const EPVerificationParams& params = EPVerificationParams(),
                                const std::function<void(SessionOptions&)>& session_options_updater = {},
                                bool verify_outputs = true);
+
+void RunWithEPABI(OrtSessionWrapper* ort_session,
+                  const Ort::RunOptions& ort_ro,
+                  const NameMLValMap& feeds,
+                  std::vector<OrtValue>& output_vals);
+
+void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
+                                  Ort::SessionOptions& ort_so,
+                                  const std::string& provider_type,
+                                  std::string_view log_id,
+                                  const NameMLValMap& feeds,
+                                  const EPVerificationParams& params = EPVerificationParams(),
+                                  bool verify_outputs = true);
 
 // Tests model loading only.
 // This can be used to test EPs in builds where only loading (and not running) of a model is supported.

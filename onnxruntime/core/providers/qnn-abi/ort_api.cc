@@ -1,223 +1,989 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn-abi/ort_api.h"
+
+#include <fcntl.h>
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <utility>
+
+#include <gsl/gsl>
+#ifdef _WIN32
+#include <wil/Resource.h>
+#else
+#include <dlfcn.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#endif
 
 namespace onnxruntime {
 
-#if BUILD_QNN_EP_STATIC_LIB
-static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
+namespace {
 
-void RunOnUnload(std::function<void()> function) {
-  static std::mutex mutex;
-  std::lock_guard<std::mutex> guard(mutex);
-  if (!s_run_on_unload_) {
-    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
+OrtStatus* ParseOrtValueInfo(const OrtValueInfo* io,
+                             std::optional<OrtNodeUnitIODef::QuantParam> quant_param,
+                             const OrtApi& ort_api,
+                             /*out*/ OrtNodeUnitIODef& result) {
+  // Get name.
+  const char* name = nullptr;
+  RETURN_IF_NOT_NULL(ort_api.GetValueInfoName(io, &name));
+
+  // Get type and shape.
+  const OrtTypeInfo* type_info = nullptr;
+  RETURN_IF_NOT_NULL(ort_api.GetValueInfoTypeInfo(io, &type_info));
+
+  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+  RETURN_IF_NOT_NULL(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  RETURN_IF_NOT_NULL(ort_api.GetTensorElementType(type_shape, &elem_type));
+
+  // TODO: Is it possible shape not exist? And how should it be handled?
+  // ort_api.TensorTypeAndShape_HasShape can be used for checking
+  size_t num_dims = 0;
+  RETURN_IF_NOT_NULL(ort_api.GetDimensionsCount(type_shape, &num_dims));
+
+  std::vector<int64_t> shape;
+  shape.resize(num_dims, 0);
+  if (num_dims > 0) {
+    RETURN_IF_NOT_NULL(ort_api.GetDimensions(type_shape, shape.data(), shape.size()));
   }
-  s_run_on_unload_->push_back(std::move(function));
+
+  result = OrtNodeUnitIODef{name ? name : "", elem_type, shape, quant_param};
+  return nullptr;
 }
 
-struct OnUnload {
-  ~OnUnload() {
-    if (!s_run_on_unload_)
-      return;
+std::vector<OrtNodeUnitIODef> GetQDQIODefs(const OrtNode* target_node,
+                                           const QDQ::OrtNodeGroup& node_group,
+                                           bool is_input,
+                                           const OrtApi& ort_api) {
+  const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
 
-    for (auto& function : *s_run_on_unload_)
-      function();
-
-    s_run_on_unload_.reset();
-  }
-
-} g_on_unload;
-#endif  // BUILD_QNN_EP_STATIC_LIB
-
-std::vector<const Node*> Graph__Nodes(const Graph& graph) {
-#if BUILD_QNN_EP_STATIC_LIB
-  std::vector<const Node*> nodes;
-  nodes.reserve(graph.NumberOfNodes());
-
-  for (const Node& node : graph.Nodes()) {
-    nodes.push_back(&node);
-  }
-
-  return nodes;
-#else
-  return graph.Nodes();
-#endif
-}
-
-#if BUILD_QNN_EP_STATIC_LIB
-#define NODE_ATTR_ITER_VAL(iter) (iter)->second
-#else
-#define NODE_ATTR_ITER_VAL(iter) (iter)->second()
-#endif
-
-NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
-    : node_attributes_(node.GetAttributes()) {}
-
-NodeAttrHelper::NodeAttrHelper(const NodeUnit& node_unit)
-    : node_attributes_(node_unit.GetNode().GetAttributes()) {}
-
-float NodeAttrHelper::Get(const std::string& key, float def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return NODE_ATTR_ITER_VAL(entry).f();
-  }
-
-  return def_val;
-}
-
-int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return narrow<int32_t>(NODE_ATTR_ITER_VAL(entry).i());
-  }
-
-  return def_val;
-}
-
-uint32_t NodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return narrow<uint32_t>(NODE_ATTR_ITER_VAL(entry).i());
-  }
-
-  return def_val;
-}
-
-int64_t NodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return NODE_ATTR_ITER_VAL(entry).i();
-  }
-
-  return def_val;
-}
-
-const std::string& NodeAttrHelper::Get(const std::string& key, const std::string& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    return NODE_ATTR_ITER_VAL(entry).s();
-  }
-
-  return def_val;
-}
-
-std::vector<std::string> NodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    std::vector<std::string> res;
-    for (int i = 0; i < NODE_ATTR_ITER_VAL(entry).strings_size(); i++) {
-      res.emplace_back(NODE_ATTR_ITER_VAL(entry).strings(i));
+  size_t num_ios = 0;
+  std::vector<const OrtValueInfo*> target_node_ios;
+  if (is_input) {
+    auto status = ort_api.Node_GetNumInputs(target_node, &num_ios);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return {};
     }
-    return res;
+    target_node_ios.resize(num_ios);
+    status = ort_api.Node_GetInputs(target_node, target_node_ios.data(), target_node_ios.size());
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return {};
+    }
+  } else {
+    auto status = ort_api.Node_GetNumOutputs(target_node, &num_ios);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return {};
+    }
+    target_node_ios.resize(num_ios);
+    status = ort_api.Node_GetOutputs(target_node, target_node_ios.data(), target_node_ios.size());
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return {};
+    }
   }
 
-  return def_val;
-}
+  // Find all the quantized IO defs and indices (for the input/output of the target node).
+  std::unordered_map<size_t, OrtNodeUnitIODef> quantized_io_defs;
+  quantized_io_defs.reserve(num_ios);
 
-std::vector<int32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-    const int64_t* cbegin = values.data();
-    const int64_t* cend = values.data() + values.size();
-    std::vector<int32_t> v;
-    v.reserve(static_cast<size_t>(values.size()));
-    std::transform(cbegin, cend, std::back_inserter(v),
-                   [](int64_t val) -> int32_t { return narrow<int32_t>(val); });
-    return v;
+  for (size_t io_idx = 0; io_idx < num_ios; ++io_idx) {
+    if (target_node_ios[io_idx] == nullptr) {
+      continue;
+    }
+
+    const OrtNode* node = nullptr;
+    if (is_input) {
+      auto status = ort_api.ValueInfo_GetValueProducer(target_node_ios[io_idx], &node, nullptr);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+    } else {
+      size_t num_consumers = 0;
+      auto status = ort_api.ValueInfo_GetValueNumConsumers(target_node_ios[io_idx], &num_consumers);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+      if (num_consumers != 1) {
+        continue;
+      }
+
+      std::vector<const OrtNode*> consumers(num_consumers);
+      std::vector<int64_t> input_indices(num_consumers);
+      status = ort_api.ValueInfo_GetValueConsumers(target_node_ios[io_idx],
+                                                   consumers.data(),
+                                                   input_indices.data(),
+                                                   num_consumers);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+      node = consumers[0];
+    }
+
+    // If we cannot find the node index in the DQ/Q nodes, this is not a quantized input/output.
+    if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), node) == dq_or_q_nodes.cend()) {
+      continue;
+    }
+
+    size_t num_node_inputs = 0;
+    auto status = ort_api.Node_GetNumInputs(node, &num_node_inputs);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      continue;
+    }
+    std::vector<const OrtValueInfo*> node_inputs(num_node_inputs);
+    status = ort_api.Node_GetInputs(node, node_inputs.data(), node_inputs.size());
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      continue;
+    }
+
+    // Get the Q/DQ axis attribute if available.
+    std::optional<int64_t> axis = OrtNodeAttrHelper(*node).GetInt64("axis");
+
+    // Quantization scale and zp are always the input[1, 2].
+    OrtNodeUnitIODef::QuantParam quant_param{node_inputs[1], num_node_inputs == 3 ? node_inputs[2] : nullptr, axis};
+
+    OrtNodeUnitIODef io_def;
+    if (is_input) {
+      // DQ node, using input[0, 1, 2].
+      auto parse_status = ParseOrtValueInfo(node_inputs[0], quant_param, ort_api, io_def);
+      if (parse_status != nullptr) {
+        ort_api.ReleaseStatus(parse_status);
+        continue;
+      }
+    } else {
+      // Q node, using output[0], input[1, 2].
+      size_t num_node_outputs = 0;
+      status = ort_api.Node_GetNumOutputs(node, &num_node_outputs);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+      std::vector<const OrtValueInfo*> node_outputs(num_node_outputs);
+      status = ort_api.Node_GetOutputs(node, node_outputs.data(), node_outputs.size());
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+      auto parse_status = ParseOrtValueInfo(node_outputs[0], quant_param, ort_api, io_def);
+      if (parse_status != nullptr) {
+        ort_api.ReleaseStatus(parse_status);
+        continue;
+      }
+    }
+
+    quantized_io_defs.insert({io_idx, io_def});
   }
 
-  return def_val;
-}
+  // Construct IO defs for this QDQ node group.
+  std::vector<OrtNodeUnitIODef> io_defs;
+  io_defs.reserve(num_ios);
+  for (size_t io_idx = 0; io_idx < num_ios; ++io_idx) {
+    if (target_node_ios[io_idx] == nullptr) {
+      // Optional IO.
+      io_defs.push_back(OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt});
+      continue;
+    }
 
-std::vector<uint32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-    const int64_t* cbegin = values.data();
-    const int64_t* cend = values.data() + values.size();
-    std::vector<uint32_t> v;
-    v.reserve(static_cast<size_t>(values.size()));
-    std::transform(cbegin, cend, std::back_inserter(v),
-                   [](int64_t val) -> uint32_t { return narrow<uint32_t>(val); });
-    return v;
+    // If we can find the NodeUnitIODef for this index, this is a quantized input/output.
+    if (quantized_io_defs.find(io_idx) != quantized_io_defs.end()) {
+      io_defs.push_back(std::move(quantized_io_defs.at(io_idx)));
+    } else {
+      // This is a regular input.
+      OrtNodeUnitIODef regular_io_def;
+      auto parse_status = ParseOrtValueInfo(target_node_ios[io_idx], std::nullopt, ort_api, regular_io_def);
+      if (parse_status != nullptr) {
+        ort_api.ReleaseStatus(parse_status);
+        regular_io_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+      }
+      io_defs.push_back(regular_io_def);
+    }
   }
 
-  return def_val;
+  return io_defs;
 }
 
-std::vector<int64_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-    const int64_t* cbegin = values.data();
-    const int64_t* cend = values.data() + values.size();
-    return std::vector<int64_t>{cbegin, cend};
+}  // namespace
+
+OrtNodeUnit::OrtNodeUnit(const OrtNode* node, const OrtApi& ort_api) : target_node_(node), type_(Type::SingleNode) {
+  OrtStatus* status = InitForSingleNode(ort_api);
+  if (status != nullptr) {
+    ort_api.ReleaseStatus(status);
+    // Initialize with empty inputs/outputs on error
+    inputs_.clear();
+    outputs_.clear();
+  }
+}
+
+OrtNodeUnit::OrtNodeUnit(const OrtGraph* /* graph */, const QDQ::OrtNodeGroup& node_group, const OrtApi& ort_api)
+    : dq_nodes_(node_group.dq_nodes),
+      target_node_(node_group.target_node),
+      redundant_clip_node_(node_group.redundant_clip_node ? node_group.redundant_clip_node : nullptr),
+      q_nodes_(node_group.q_nodes),
+      type_(Type::QDQGroup),
+      inputs_(GetQDQIODefs(target_node_, node_group, true, ort_api)),
+      outputs_(GetQDQIODefs((redundant_clip_node_ ? redundant_clip_node_ : target_node_), node_group, false, ort_api)) {
+}
+
+OrtStatus* OrtNodeUnit::InitForSingleNode(const OrtApi& ort_api) {
+  size_t num_inputs = 0;
+  size_t num_outputs = 0;
+  RETURN_IF_NOT_NULL(ort_api.Node_GetNumInputs(target_node_, &num_inputs));
+  RETURN_IF_NOT_NULL(ort_api.Node_GetNumOutputs(target_node_, &num_outputs));
+
+  std::vector<const OrtValueInfo*> inputs_data(num_inputs);
+  std::vector<const OrtValueInfo*> outputs_data(num_outputs);
+  RETURN_IF_NOT_NULL(ort_api.Node_GetInputs(target_node_, inputs_data.data(), inputs_data.size()));
+  RETURN_IF_NOT_NULL(ort_api.Node_GetOutputs(target_node_, outputs_data.data(), outputs_data.size()));
+
+  const char* op_type = nullptr;
+  RETURN_IF_NOT_NULL(ort_api.Node_GetOperatorType(target_node_, &op_type));
+
+  if (std::string(op_type) == "DequantizeLinear") {
+    std::optional<int64_t> axis = OrtNodeAttrHelper(*target_node_).GetInt64("axis");
+    OrtNodeUnitIODef::QuantParam quant_param{inputs_data[1], num_inputs == 3 ? inputs_data[2] : nullptr, axis};
+
+    OrtNodeUnitIODef input_def, output_def;
+    auto input_status = ParseOrtValueInfo(inputs_data[0], quant_param, ort_api, input_def);
+    if (input_status != nullptr) {
+      ort_api.ReleaseStatus(input_status);
+      input_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+    }
+
+    auto output_status = ParseOrtValueInfo(outputs_data[0], std::nullopt, ort_api, output_def);
+    if (output_status != nullptr) {
+      ort_api.ReleaseStatus(output_status);
+      output_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+    }
+
+    inputs_.push_back(input_def);
+    outputs_.push_back(output_def);
+  } else if (std::string(op_type) == "QuantizeLinear") {
+    std::optional<int64_t> axis = OrtNodeAttrHelper(*target_node_).GetInt64("axis");
+    OrtNodeUnitIODef::QuantParam quant_param{inputs_data[1], num_inputs == 3 ? inputs_data[2] : nullptr, axis};
+
+    OrtNodeUnitIODef input_def, output_def;
+    auto input_status = ParseOrtValueInfo(inputs_data[0], std::nullopt, ort_api, input_def);
+    if (input_status != nullptr) {
+      ort_api.ReleaseStatus(input_status);
+      input_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+    }
+
+    auto output_status = ParseOrtValueInfo(outputs_data[0], quant_param, ort_api, output_def);
+    if (output_status != nullptr) {
+      ort_api.ReleaseStatus(output_status);
+      output_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+    }
+
+    inputs_.push_back(input_def);
+    outputs_.push_back(output_def);
+  } else {
+    inputs_.reserve(num_inputs);
+    for (size_t idx = 0; idx < num_inputs; ++idx) {
+      const OrtValueInfo* io = inputs_data[idx];
+      OrtNodeUnitIODef io_def;
+      if (io == nullptr) {
+        // Nullptr indicates optional.
+        io_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+      } else {
+        auto parse_status = ParseOrtValueInfo(io, std::nullopt, ort_api, io_def);
+        if (parse_status != nullptr) {
+          ort_api.ReleaseStatus(parse_status);
+          io_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+        }
+      }
+      inputs_.push_back(io_def);
+    }
+
+    outputs_.reserve(num_outputs);
+    for (size_t idx = 0; idx < num_outputs; ++idx) {
+      const OrtValueInfo* io = outputs_data[idx];
+      OrtNodeUnitIODef io_def;
+      if (io == nullptr) {
+        // Not sure whether output would be optional.
+        io_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+      } else {
+        auto parse_status = ParseOrtValueInfo(io, std::nullopt, ort_api, io_def);
+        if (parse_status != nullptr) {
+          ort_api.ReleaseStatus(parse_status);
+          io_def = OrtNodeUnitIODef{"", ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, {}, std::nullopt};
+        }
+      }
+      outputs_.push_back(io_def);
+    }
   }
 
-  return def_val;
+  return nullptr;
 }
 
-std::vector<float> NodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = NODE_ATTR_ITER_VAL(entry).floats();
-    const float* cbegin = values.data();
-    const float* cend = values.data() + values.size();
-    return std::vector<float>{cbegin, cend};
+size_t OrtNodeUnit::GetInputEdgesCount(const OrtApi& ort_api) const {
+  auto count_edges = [&ort_api](const OrtNode* target_node) {
+    size_t num_inputs = 0;
+    auto status = ort_api.Node_GetNumInputs(target_node, &num_inputs);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return size_t(0);
+    }
+
+    std::vector<const OrtValueInfo*> inputs(num_inputs);
+    status = ort_api.Node_GetInputs(target_node, inputs.data(), inputs.size());
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return size_t(0);
+    }
+
+    size_t num_actual_inputs = 0;
+    for (const OrtValueInfo* input : inputs) {
+      if (input == nullptr) {
+        continue;
+      }
+
+      const OrtNode* producer_node = nullptr;
+      status = ort_api.ValueInfo_GetValueProducer(input, &producer_node, nullptr);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+      if (producer_node) {
+        num_actual_inputs++;
+      }
+    }
+
+    return num_actual_inputs;
+  };
+
+  if (type_ == Type::SingleNode) {
+    return count_edges(target_node_);
   }
 
-  return def_val;
+  size_t edges = std::accumulate(dq_nodes_.cbegin(),
+                                 dq_nodes_.cend(),
+                                 size_t(0),
+                                 [&count_edges](size_t acc, const OrtNode* node) { return acc + count_edges(node); });
+  return edges + count_edges(target_node_) - dq_nodes_.size();
 }
 
-std::optional<float> NodeAttrHelper::GetFloat(const std::string& key) const {
-  std::optional<float> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    result = NODE_ATTR_ITER_VAL(entry).f();
+std::vector<const OrtNode*> OrtNodeUnit::GetOutputNodes(const OrtApi& ort_api) const {
+  auto get_consumers = [&ort_api](const OrtNode* target_node) {
+    std::vector<const OrtNode*> target_consumers;
+
+    size_t num_outputs = 0;
+    auto status = ort_api.Node_GetNumOutputs(target_node, &num_outputs);
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return target_consumers;
+    }
+
+    std::vector<const OrtValueInfo*> outputs(num_outputs);
+    status = ort_api.Node_GetOutputs(target_node, outputs.data(), outputs.size());
+    if (status != nullptr) {
+      ort_api.ReleaseStatus(status);
+      return target_consumers;
+    }
+
+    for (const OrtValueInfo* output : outputs) {
+      if (output == nullptr) {
+        continue;
+      }
+
+      size_t num_consumers = 0;
+      status = ort_api.ValueInfo_GetValueNumConsumers(output, &num_consumers);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+
+      std::vector<const OrtNode*> consumers(num_consumers);
+      std::vector<int64_t> input_indices(num_consumers);
+      status = ort_api.ValueInfo_GetValueConsumers(output, consumers.data(), input_indices.data(), num_consumers);
+      if (status != nullptr) {
+        ort_api.ReleaseStatus(status);
+        continue;
+      }
+
+      target_consumers.insert(target_consumers.end(), consumers.begin(), consumers.end());
+    }
+
+    return target_consumers;
+  };
+
+  const OrtNode* output_producer = redundant_clip_node_ ? redundant_clip_node_ : target_node_;
+  std::vector<const OrtNode*> output_nodes;
+
+  for (const OrtNode* output_node : get_consumers(output_producer)) {
+    if (std::find(q_nodes_.cbegin(), q_nodes_.cend(), output_node) != q_nodes_.cend()) {
+      std::vector<const OrtNode*> q_output_nodes = get_consumers(output_node);
+      output_nodes.insert(output_nodes.end(), q_output_nodes.begin(), q_output_nodes.end());
+    } else {
+      output_nodes.push_back(output_node);
+    }
   }
 
-  return result;
+  return output_nodes;
 }
 
-std::optional<int64_t> NodeAttrHelper::GetInt64(const std::string& key) const {
-  std::optional<int64_t> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    result = NODE_ATTR_ITER_VAL(entry).i();
+#define NODE_ATTR_ITER_VAL(iter) (iter)->second()
+
+OrtNodeAttrHelper::OrtNodeAttrHelper(const OrtNode& node) : node_(node) {}
+
+OrtNodeAttrHelper::OrtNodeAttrHelper(const OrtNodeUnit& node_unit) : node_(node_unit.GetNode()) {}
+
+float OrtNodeAttrHelper::Get(const std::string& key, float def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
   }
 
-  return result;
+  float val;
+  status = attr.GetValue<float>(val);
+  return status.IsOK() ? val : def_val;
 }
 
-std::optional<std::vector<float>> NodeAttrHelper::GetFloats(const std::string& key) const {
-  std::optional<std::vector<float>> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = NODE_ATTR_ITER_VAL(entry).floats();
-    const float* cbegin = values.data();
-    const float* cend = values.data() + values.size();
-    result = std::vector<float>(cbegin, cend);
+int32_t OrtNodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
   }
 
-  return result;
+  int64_t val;
+  status = attr.GetValue<int64_t>(val);
+  return status.IsOK() ? gsl::narrow<int32_t>(val) : def_val;
 }
 
-std::optional<std::vector<int64_t>> NodeAttrHelper::GetInt64s(const std::string& key) const {
-  std::optional<std::vector<int64_t>> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = NODE_ATTR_ITER_VAL(entry).ints();
-    const int64_t* cbegin = values.data();
-    const int64_t* cend = values.data() + values.size();
-    result = std::vector<int64_t>(cbegin, cend);
+uint32_t OrtNodeAttrHelper::Get(const std::string& key, uint32_t def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
   }
 
-  return result;
+  int64_t val;
+  status = attr.GetValue<int64_t>(val);
+  return status.IsOK() ? gsl::narrow<uint32_t>(val) : def_val;
 }
 
-std::optional<std::string> NodeAttrHelper::GetString(const std::string& key) const {
-  std::optional<std::string> result;
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    result = NODE_ATTR_ITER_VAL(entry).s();
+int64_t OrtNodeAttrHelper::Get(const std::string& key, int64_t def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
   }
 
-  return result;
+  int64_t val;
+  status = attr.GetValue<int64_t>(val);
+  return status.IsOK() ? val : def_val;
 }
 
-bool NodeAttrHelper::HasAttr(const std::string& key) const {
-  return node_attributes_.find(key) != node_attributes_.end();
+std::string OrtNodeAttrHelper::Get(const std::string& key, std::string def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
+  }
+
+  std::string val;
+  status = attr.GetValue<std::string>(val);
+  return status.IsOK() ? val : def_val;
 }
+
+std::vector<std::string> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
+  }
+
+  std::vector<std::string> val;
+  status = attr.GetValueArray<std::string>(val);
+  return status.IsOK() ? val : def_val;
+}
+
+std::vector<int32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
+  }
+
+  std::vector<int64_t> val_int64;
+  status = attr.GetValueArray<int64_t>(val_int64);
+  if (!status.IsOK()) {
+    return def_val;
+  }
+
+  std::vector<int32_t> val;
+  val.reserve(val_int64.size());
+  for (const int64_t& _val_int64 : val_int64) {
+    val.push_back(gsl::narrow<int32_t>(_val_int64));
+  }
+
+  return val;
+}
+
+std::vector<uint32_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
+  }
+
+  std::vector<int64_t> val_int64;
+  status = attr.GetValueArray<int64_t>(val_int64);
+  if (!status.IsOK()) {
+    return def_val;
+  }
+
+  std::vector<uint32_t> val;
+  val.reserve(val_int64.size());
+  for (const int64_t& _val_int64 : val_int64) {
+    val.push_back(gsl::narrow<uint32_t>(_val_int64));
+  }
+
+  return val;
+}
+
+std::vector<int64_t> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
+  }
+
+  std::vector<int64_t> val;
+  status = attr.GetValueArray<int64_t>(val);
+  return status.IsOK() ? val : def_val;
+}
+
+std::vector<float> OrtNodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return def_val;
+  }
+
+  std::vector<float> val;
+  status = attr.GetValueArray<float>(val);
+  return status.IsOK() ? val : def_val;
+}
+
+std::optional<float> OrtNodeAttrHelper::GetFloat(const std::string& key) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return std::nullopt;
+  }
+
+  float val;
+  status = attr.GetValue<float>(val);
+  return status.IsOK() ? std::make_optional(val) : std::nullopt;
+}
+
+std::optional<int64_t> OrtNodeAttrHelper::GetInt64(const std::string& key) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return std::nullopt;
+  }
+
+  int64_t val;
+  status = attr.GetValue<int64_t>(val);
+  return status.IsOK() ? std::make_optional(val) : std::nullopt;
+}
+
+std::optional<std::vector<float>> OrtNodeAttrHelper::GetFloats(const std::string& key) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return std::nullopt;
+  }
+
+  std::vector<float> val;
+  status = attr.GetValueArray<float>(val);
+  return status.IsOK() ? std::make_optional(val) : std::nullopt;
+}
+
+std::optional<std::vector<int64_t>> OrtNodeAttrHelper::GetInt64s(const std::string& key) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return std::nullopt;
+  }
+
+  std::vector<int64_t> val;
+  status = attr.GetValueArray<int64_t>(val);
+  return status.IsOK() ? std::make_optional(val) : std::nullopt;
+}
+
+std::optional<std::string> OrtNodeAttrHelper::GetString(const std::string& key) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  if (!status.IsOK() || attr == nullptr) {
+    return std::nullopt;
+  }
+
+  std::string val;
+  status = attr.GetValue<std::string>(val);
+  return status.IsOK() ? std::make_optional(val) : std::nullopt;
+}
+
+bool OrtNodeAttrHelper::HasAttr(const std::string& key) const {
+  Ort::ConstOpAttr attr;
+  Ort::Status status = Ort::ConstNode(&node_).GetAttributeByName(key, attr);
+  return status.IsOK() && attr != nullptr;
+}
+
+OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api,
+                                          const OrtSessionOptions& session_options,
+                                          const std::string& config_key,
+                                          const std::string& default_val,
+                                          /*out*/ std::string& config_val) {
+  const char* config_key_cstr = config_key.c_str();
+
+  int has_config = 0;
+  RETURN_IF_NOT_NULL(ort_api.HasSessionConfigEntry(&session_options, config_key_cstr, &has_config));
+
+  if (has_config != 1) {
+    config_val = default_val;
+    return nullptr;
+  }
+
+  size_t size = 0;
+  RETURN_IF_NOT_NULL(ort_api.GetSessionConfigEntry(&session_options, config_key_cstr, nullptr, &size));
+
+  config_val.resize(size);
+  RETURN_IF_NOT_NULL(ort_api.GetSessionConfigEntry(&session_options, config_key_cstr, config_val.data(), &size));
+  config_val.resize(size - 1);  // remove the terminating '\0'
+
+  return nullptr;
+}
+
+std::basic_string<ORTCHAR_T> GetModelPathString(const OrtGraph* graph, const OrtApi& ort_api) {
+  const ORTCHAR_T* model_path = nullptr;
+  OrtStatus* ort_status = ort_api.Graph_GetModelPath(graph, &model_path);
+  if (ort_status != nullptr) {
+    ort_api.ReleaseStatus(ort_status);
+    return ORT_TSTR("");
+  }
+  return std::basic_string<ORTCHAR_T>(model_path);
+}
+
+std::string GetProviderOptionPrefix(const std::string& provider_name) {
+  std::string key_prefix = "ep.";
+  key_prefix += GetLowercaseString(provider_name);
+  key_prefix += ".";
+
+  return key_prefix;
+}
+
+std::basic_string<ORTCHAR_T> GetDynamicLibraryLocationByAddress(const void* address) {
+#ifdef _WIN32
+  HMODULE moduleHandle;
+  if (!::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(address), &moduleHandle)) {
+    return {};
+  }
+  std::wstring buffer;
+  for (std::uint32_t size{70}; size < 4096; size *= 2) {
+    buffer.resize(size, L'\0');
+    const std::uint32_t requiredSize = ::GetModuleFileNameW(moduleHandle, buffer.data(), size);
+    if (requiredSize == 0) {
+      break;
+    }
+    if (requiredSize == size) {
+      continue;
+    }
+    buffer.resize(requiredSize);
+    return buffer;
+  }
+#else
+  std::ignore = address;
+#endif
+  return {};
+}
+
+// QNN-EP COPY START
+std::basic_string<ORTCHAR_T> OrtGetRuntimePath() {
+#ifdef _WIN32
+  IMAGE_DOS_HEADER __ImageBase;
+  wchar_t buffer[MAX_PATH];
+  if (!GetModuleFileNameW(reinterpret_cast<HINSTANCE>(&__ImageBase), buffer, _countof(buffer))) {
+    return ORT_TSTR("");
+  }
+
+  // Remove the filename at the end, but keep the trailing slash
+  std::basic_string<ORTCHAR_T> path(buffer);
+  auto slash_index = path.find_last_of(ORT_TSTR('\\'));
+  if (slash_index == std::string::npos) {
+    // Windows supports forward slashes
+    slash_index = path.find_last_of(ORT_TSTR('/'));
+    if (slash_index == std::string::npos) {
+      return ORT_TSTR("");
+    }
+  }
+  return path.substr(0, slash_index + 1);
+#else
+  return ORT_TSTR("");
+#endif
+}
+
+Ort::Status OrtLoadDynamicLibrary(const std::basic_string<ORTCHAR_T>& wlibrary_filename,
+                                  bool global_symbols,
+                                  void** handle) {
+#ifdef _WIN32
+  (void)global_symbols;  // Suppress unused parameter warning on Windows
+#if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
+  *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
+#else
+  // TODO: in most cases, the path name is a relative path and the behavior of the following line of code is undefined.
+  *handle = ::LoadLibraryExW(wlibrary_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+#endif
+  if (!*handle) {
+    const auto error_code = GetLastError();
+    return MAKE_FAIL(("Loadibrary failed with error " + std::to_string(error_code) + " - " +
+                      std::system_category().message(error_code))
+                         .c_str());
+  }
+  return Ort::Status();
+#else
+  dlerror();  // clear any old error_str
+  std::string library_filename = wlibrary_filename;
+  *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
+  char* error_str = dlerror();
+  if (!*handle) {
+    return MAKE_FAIL(("Failed to load library " + library_filename + " with error: " +
+                      std::string(error_str ? error_str : "unknown error"))
+                         .c_str());
+  }
+  return Ort::Status();
+#endif
+}
+
+Ort::Status OrtUnloadDynamicLibrary(void* handle) {
+#ifdef _WIN32
+  if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0) {
+    const auto error_code = GetLastError();
+    return MAKE_FAIL(("FreeLibrary failed with error " + std::to_string(error_code) + " - " +
+                      std::system_category().message(error_code))
+                         .c_str());
+  }
+  return Ort::Status();
+#else
+  if (!handle) {
+    return MAKE_FAIL("Got null library handle");
+  }
+  dlerror();  // clear any old error_str
+  int retval = dlclose(handle);
+  char* error_str = dlerror();
+  if (retval != 0) {
+    return MAKE_FAIL(("Failed to unload library with error" +
+                      std::string(error_str ? error_str : "unknown error"))
+                         .c_str());
+  }
+  return Ort::Status();
+#endif
+}
+
+#ifdef _WIN32
+namespace ort_dlfcn_win32 {
+// adapted from https://github.com/dlfcn-win32 version 1.3.1.
+// Simplified to only support finding symbols in libraries that were linked against.
+// If ORT dynamically loads a custom ops library using RegisterCustomOpsLibrary[_V2] the handle from the library load
+// is explicitly provided in the call to GetSymbolFromLibrary.
+//
+/* Load Psapi.dll at runtime, this avoids linking caveat */
+bool OrtMyEnumProcessModules(HANDLE hProcess, HMODULE* lphModule, DWORD cb, LPDWORD lpcbNeeded) {
+  using EnumProcessModulesFn = BOOL(WINAPI*)(HANDLE, HMODULE*, DWORD, LPDWORD);
+  static EnumProcessModulesFn EnumProcessModulesPtr = []() {
+    EnumProcessModulesFn fn = nullptr;
+    // Windows 7 and newer versions have K32EnumProcessModules in Kernel32.dll which is always pre-loaded
+    HMODULE psapi = GetModuleHandleA("Kernel32.dll");
+    if (psapi) {
+      fn = (EnumProcessModulesFn)(LPVOID)GetProcAddress(psapi, "K32EnumProcessModules");
+    }
+
+    return fn;
+  }();
+
+  if (EnumProcessModulesPtr == nullptr) {
+    return false;
+  }
+
+  return EnumProcessModulesPtr(hProcess, lphModule, cb, lpcbNeeded);
+}
+
+void* OrtSearchModulesForSymbol(const char* name) {
+  HANDLE current_proc = GetCurrentProcess();
+  DWORD size = 0;
+  void* symbol = nullptr;
+
+  // GetModuleHandle(NULL) only returns the current program file. So if we want to get ALL loaded module including
+  // those in linked DLLs, we have to use EnumProcessModules().
+  if (OrtMyEnumProcessModules(current_proc, nullptr, 0, &size) != false) {
+    size_t num_handles = size / sizeof(HMODULE);
+    std::unique_ptr<HMODULE[]> modules = std::make_unique<HMODULE[]>(num_handles);
+    HMODULE* modules_ptr = modules.get();
+    DWORD cb_needed = 0;
+    if (OrtMyEnumProcessModules(current_proc, modules_ptr, size, &cb_needed) != 0 && size == cb_needed) {
+      for (size_t i = 0; i < num_handles; i++) {
+        symbol = GetProcAddress(modules[i], name);
+        if (symbol != nullptr) {
+          break;
+        }
+      }
+    }
+  }
+
+  return symbol;
+}
+}  // namespace ort_dlfcn_win32
+#endif  // ifdef _WIN32
+
+Ort::Status OrtGetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) {
+#ifdef _WIN32
+  // global search to replicate dlsym RTLD_DEFAULT if handle is nullptr
+  if (handle == nullptr) {
+    *symbol = ort_dlfcn_win32::OrtSearchModulesForSymbol(symbol_name.c_str());
+  } else {
+    *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
+  }
+
+  if (!*symbol) {
+    const auto error_code = GetLastError();
+    return MAKE_FAIL(("GetSymbol failed with error " + std::to_string(error_code) + " - " +
+                      std::system_category().message(error_code))
+                         .c_str());
+  }
+
+  return Ort::Status();
+#else
+  dlerror();  // clear any old error str
+
+  // search global space if handle is nullptr.
+  // value of RTLD_DEFAULT differs across posix platforms (-2 on macos, 0 on linux).
+  handle = handle ? handle : RTLD_DEFAULT;
+  *symbol = dlsym(handle, symbol_name.c_str());
+
+  char* error_str = dlerror();
+  if (error_str) {
+    return MAKE_FAIL(("Failed to get symbol " + symbol_name + " with error: " + error_str).c_str());
+  }
+  // it's possible to get a NULL symbol in our case when Schemas are not custom.
+  return Ort::Status();
+#endif
+}
+
+Ort::Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, int64_t offset, size_t length, gsl::span<char> buffer) {
+  RETURN_IF_NOT(file_path, "file_path == nullptr");
+  RETURN_IF_NOT(offset >= 0, "offset < 0");
+  RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
+
+#ifdef _WIN32
+  wil::unique_hfile file_handle{CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+  if (file_handle.get() == INVALID_HANDLE_VALUE) {
+    const auto error_code = GetLastError();
+    return MAKE_FAIL(("Open file failed with error " + std::to_string(error_code) + " - " +
+                      std::system_category().message(error_code))
+                         .c_str());
+  }
+
+  if (length == 0)
+    return Ort::Status();
+
+  if (offset > 0) {
+    LARGE_INTEGER current_position;
+    current_position.QuadPart = offset;
+    if (!SetFilePointerEx(file_handle.get(), current_position, &current_position, FILE_BEGIN)) {
+      const auto error_code = GetLastError();
+      return MAKE_FAIL(("SetFilePointerEx failed with error " + std::to_string(error_code) + " - " +
+                        std::system_category().message(error_code))
+                           .c_str());
+    }
+  }
+
+  size_t total_bytes_read = 0;
+  while (total_bytes_read < length) {
+    constexpr DWORD k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+    const size_t bytes_remaining = length - total_bytes_read;
+    const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
+    DWORD bytes_read;
+
+    if (!ReadFile(file_handle.get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
+      const auto error_code = GetLastError();
+      return MAKE_FAIL(("ReadFile failed with error " + std::to_string(error_code) + " - " +
+                        std::system_category().message(error_code))
+                           .c_str());
+    }
+
+    if (bytes_read != bytes_to_read) {
+      return MAKE_FAIL("ReadFile fail: unexpected end");
+    }
+
+    total_bytes_read += bytes_read;
+  }
+
+  return Ort::Status();
+#else
+  int file_descriptor = open(file_path, O_RDONLY);
+  if (file_descriptor == -1) {
+    return MAKE_FAIL("Failed to open file");
+  }
+
+  if (length == 0) {
+    close(file_descriptor);
+    return Ort::Status();
+  }
+
+  if (offset > 0) {
+    const int64_t seek_result = lseek(file_descriptor, offset, SEEK_SET);
+    if (seek_result == -1) {
+      close(file_descriptor);
+      return MAKE_FAIL("Failed to lseek");
+    }
+  }
+
+  size_t total_bytes_read = 0;
+  while (total_bytes_read < length) {
+    constexpr size_t k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+    const size_t bytes_remaining = length - total_bytes_read;
+    const size_t bytes_to_read = std::min(bytes_remaining, k_max_bytes_to_read);
+
+    ssize_t bytes_read;
+    do {
+      bytes_read = read(file_descriptor, buffer.data() + total_bytes_read, bytes_to_read);
+    } while (bytes_read == -1 && errno == EINTR);
+
+    if (bytes_read == -1) {
+      close(file_descriptor);
+      return MAKE_FAIL("Failed to read");
+    }
+
+    if (bytes_read == 0) {
+      close(file_descriptor);
+      return MAKE_FAIL("Failed to read");
+    }
+
+    total_bytes_read += bytes_read;
+  }
+
+  close(file_descriptor);
+  return Ort::Status();
+#endif
+}
+// QNN-EP COPY END
+
 }  // namespace onnxruntime

@@ -5,10 +5,10 @@
 #include <cassert>
 #include <unordered_map>
 
-#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn-abi/builder/op_builder_factory.h"
+#include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -18,30 +18,30 @@ class ResizeOpBuilder : public BaseOpBuilder {
   ResizeOpBuilder() : BaseOpBuilder("ResizeOpBuilder") {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResizeOpBuilder);
 
-  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
+  Ort::Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                            const OrtNodeUnit& node_unit,
+                            const Ort::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       std::vector<std::string>& input_names,
-                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                            const OrtNodeUnit& node_unit,
+                            const Ort::Logger& logger,
+                            std::vector<std::string>& input_names,
+                            bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                     const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names,
-                                     const logging::Logger& logger,
-                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                          const OrtNodeUnit& node_unit,
+                                          std::vector<std::string>&& input_names,
+                                          const Ort::Logger& logger,
+                                          bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
-                                  const NodeUnit& node_unit,
-                                  const logging::Logger& logger,
-                                  const std::vector<std::string>& input_names,
-                                  size_t output_index,
-                                  Qnn_DataType_t qnn_data_type,
-                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
+  Ort::Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                       const OrtNodeUnit& node_unit,
+                                       const Ort::Logger& logger,
+                                       const std::vector<std::string>& input_names,
+                                       size_t output_index,
+                                       Qnn_DataType_t qnn_data_type,
+                                       QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
   // Info for each ONNX attribute of interest (attribute name + default value)
@@ -84,18 +84,19 @@ const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_antialias_attr = {"antialias",
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_exclude_outside_attr = {"exclude_outside", 0};
 
 // Returns the QNN parameter integer value that corresponds to the given ONNX attribute mode string value.
-static Status GetQnnModeValFromOnnxString(const std::unordered_map<std::string, uint32_t>& supported_qnn_modes,
-                                          const std::string& onnx_attr_value,
-                                          const char* onnx_attr_name,
-                                          uint32_t& qnn_mode_value) {
+static Ort::Status GetQnnModeValFromOnnxString(const std::unordered_map<std::string, uint32_t>& supported_qnn_modes,
+                                               const std::string& onnx_attr_value,
+                                               const char* onnx_attr_name,
+                                               uint32_t& qnn_mode_value) {
   auto it = supported_qnn_modes.find(onnx_attr_value);
   if (it != supported_qnn_modes.end()) {
     qnn_mode_value = it->second;
-    return Status::OK();
+    return Ort::Status();
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Resize operator does not support ", onnx_attr_name,
-                         " ", std::string(onnx_attr_value));
+  return MAKE_EP_FAIL(("QNN EP: Resize operator does not support " + std::string(onnx_attr_name) +
+                       " " + onnx_attr_value)
+                          .c_str());
 }
 
 // Returns true if the given ONNX attribute mode value is generally supported on QNN. Note that
@@ -109,36 +110,36 @@ static bool IsOnnxAttrModeSupported(const std::unordered_map<std::string, uint32
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 // Need to do op validation in 1st call of GetCapability
-Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                                      const NodeUnit& node_unit,
-                                      const logging::Logger& logger) const {
+Ort::Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                                           const OrtNodeUnit& node_unit,
+                                           const Ort::Logger& logger) const {
   if (node_unit.Domain() == kMSInternalNHWCDomain) {
     return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
   }
 
   const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  NodeAttrHelper node_helper(node_unit);
+  OrtNodeAttrHelper node_helper(node_unit);
 
   // QNN doesn't support anti-aliasing (added in opset 18)
   if (node_unit.SinceVersion() >= 18) {
     const bool antialias = GetOnnxAttr(node_helper, onnx_antialias_attr) != 0;
-    ORT_RETURN_IF(antialias, "QNN EP: Resize doesn't support anti-aliasing.");
+    RETURN_IF(antialias, "QNN EP: Resize doesn't support anti-aliasing.");
   }
 
   // Check mode
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
-  ORT_RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_modes, interp_mode), "QNN EP: Resize does not support mode ",
-                    interp_mode.c_str());
+  RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_modes, interp_mode),
+                ("QNN EP: Resize does not support mode " + interp_mode).c_str());
 
   // Check coordinate transformation mode
   const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
-  ORT_RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_coord_transf_modes, transformation_mode),
-                    "QNN EP: Resize does not support coordinate_transformation_mode ", transformation_mode.c_str());
+  RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_coord_transf_modes, transformation_mode),
+                ("QNN EP: Resize does not support coordinate_transformation_mode " + transformation_mode).c_str());
 
   const auto& input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
-                    "QNN EP: Cannot get shape for Resize input");
+  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.shape, input_shape),
+                "QNN EP: Cannot get shape for Resize input");
   const size_t input_rank = input_shape.size();
 
   // Resize w/ "linear" mode.
@@ -169,94 +170,96 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   if (interp_mode == "nearest") {
     const std::string nearest_mode = GetOnnxAttr(node_helper, onnx_nearest_mode_attr);
-    ORT_RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_nearest_modes, nearest_mode),
-                      "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
+    RETURN_IF_NOT(IsOnnxAttrModeSupported(supported_nearest_modes, nearest_mode),
+                  ("QNN EP: Resize does not support nearest_mode " + nearest_mode).c_str());
 
     if (is_npu_backend) {
-      // QNN only supports the following nearest_mode values on HTP:
-      // - QNN 2.19: "round_prefer_floor" via QNN's Resize operator
-      // - QNN 2.20 (API version 2.14): "round_prefer_ceil" via QNN's Resize operator
-      // - "floor" via QNN's ResizeNearestNeighbor operator
-#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
-      ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_ceil" || nearest_mode == "floor",
-                        "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
-#else
-      ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_floor" || nearest_mode == "floor",
-                        "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
-#endif
-
-      // Use ResizeNearestNeighbor for rank-4 inputs.
+      // For better performance with HTP backend, use QNN's ResizeNearestNeighbor for rank-4 input.
       const bool use_resize_nn_op = input_rank == 4;
 
-      // If HTP uses ResizeNearestNeighbor ("floor"), then the "pytorch_half_pixel" coordinate_transformation_mode
-      // is not supported.
-      ORT_RETURN_IF(!use_resize_nn_op && nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
-                    "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' ",
-                    " and coordinate_transformation_mode == 'pytorch_half_pixel'.");
+      if (!use_resize_nn_op) {
+        // QNN only supports the following nearest_mode values on HTP:
+        // - QNN 2.19: "round_prefer_floor" via QNN's Resize operator
+        // - QNN 2.20 (API version 2.14): "round_prefer_ceil" via QNN's Resize operator
 
 #if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
-      // QNN's Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
-      ORT_RETURN_IF(!use_resize_nn_op && transformation_mode != "align_corners",
-                    "QNN EP: Resize on the NPU only supports 'round_prefer_ceil' if "
-                    "transformation mode is 'align_corners'");
+        RETURN_IF_NOT(nearest_mode == "round_prefer_ceil" || nearest_mode == "floor",
+                      ("QNN EP: Resize on the NPU does not support nearest_mode " + nearest_mode).c_str());
+
+        // QNN HTP Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
+        RETURN_IF(nearest_mode == "round_prefer_ceil" && transformation_mode != "align_corners",
+                  "QNN EP: Resize on the NPU only supports 'round_prefer_ceil' if "
+                  "transformation mode is 'align_corners'");
+#else
+        RETURN_IF_NOT(nearest_mode == "round_prefer_floor" || nearest_mode == "floor",
+                      ("QNN EP: Resize on the NPU does not support nearest_mode " + nearest_mode).c_str());
 #endif
+        // If HTP uses Resize ("floor"), then the transformation_mode "pytorch_half_pixel" is not supported.
+        RETURN_IF(nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
+                  "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' "
+                  " and transformation_mode == 'pytorch_half_pixel'.");
+      } else {
+        // If HTP uses ResizeNearestNeighbor "ceil" or "round_prefer_floor", then the
+        // transformation_mode "asymmetric" is not supported.
+        // This is verified in unit test but not be documented in QNN SDK.
+        RETURN_IF((nearest_mode == "ceil" || nearest_mode == "round_prefer_floor") && transformation_mode == "asymmetric",
+                  "QNN EP: ResizeNearestNeighbor on the NPU does not support the combination of "
+                  "nearest_mode == 'ceil' or 'round_prefer_floor' and transformation_mode == 'asymmetric'.");
+      }
     }
   }
 
   // Check that the input shape has at least a rank of 3 (and a max of 5 on HTP).
-  ORT_RETURN_IF(input_rank < 3 || (is_npu_backend && input_rank > 5),
-                "QNN EP: Resize input must have a rank >= 3. The maximum rank is 5 on the NPU.");
+  RETURN_IF(input_rank < 3 || (is_npu_backend && input_rank > 5),
+            "QNN EP: Resize input must have a rank >= 3. The maximum rank is 5 on the NPU.");
 
   const auto& output_0 = node_unit.Outputs()[0];
   std::vector<uint32_t> output_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.node_arg, output_shape),
-                    "QNN EP: Cannot get shape for Resize output");
+  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.shape, output_shape),
+                "QNN EP: Cannot get shape for Resize output");
 
   // Check that only the spatial dimensions (width, height) are resized. The batch_size (N) and channels (C) should
   // be untouched. This code runs before layout transformation, so we know that the current layout is "channel first"
   // (e.g., N, C, S1, S2, ..., SN), and that the minimum rank is 3.
   assert(node_unit.Domain() != kMSInternalNHWCDomain);
-  ORT_RETURN_IF_NOT(input_shape[0] == output_shape[0] && input_shape[1] == output_shape[1],
-                    "QNN EP: Resize may only change the spatial dimensions.");
+  RETURN_IF_NOT(input_shape[0] == output_shape[0] && input_shape[1] == output_shape[1],
+                "QNN EP: Resize may only change the spatial dimensions.");
 
-  const bool is_cpu_backend = IsCpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  if (is_cpu_backend) {
-    ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
-    ORT_RETURN_IF(input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
-                  "QNN EP: Data type ", input_data_type->c_str(),
-                  " is not supported for Resize operator in CPU backend.");
-  }
+  ONNXTensorElementDataType input_data_type = input_0.type;
+  std::string error_msg = "QNN EP: Data type " + std::to_string(static_cast<int>(input_data_type)) +
+                          " is not supported for Resize operator in CPU backend.";
+  RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, input_data_type, error_msg));
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                      const NodeUnit& node_unit,
-                                      const logging::Logger& logger,
-                                      std::vector<std::string>& input_names,
-                                      bool do_op_validation) const {
+Ort::Status ResizeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                           const OrtNodeUnit& node_unit,
+                                           const Ort::Logger& logger,
+                                           std::vector<std::string>& input_names,
+                                           bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
 
   // Only cares about the 1st input
   const auto& inputs = node_unit.Inputs();
 
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
+  RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                    const NodeUnit& node_unit,
-                                                    std::vector<std::string>&& input_names,
-                                                    const logging::Logger& logger,
-                                                    bool do_op_validation) const {
+Ort::Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                         const OrtNodeUnit& node_unit,
+                                                         std::vector<std::string>&& input_names,
+                                                         const Ort::Logger& logger,
+                                                         bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
-  NodeAttrHelper node_helper(node_unit);
+  OrtNodeAttrHelper node_helper(node_unit);
 
   const auto& input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape),
-                    "QNN EP: Cannot get shape for Resize input");
+  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.shape, input_shape),
+                "QNN EP: Cannot get shape for Resize input");
   const size_t input_rank = input_shape.size();
   const std::string interp_mode = GetOnnxAttr(node_helper, onnx_mode_attr);
   const std::string transformation_mode = GetOnnxAttr(node_helper, onnx_coord_transf_mode_attr);
@@ -324,9 +327,9 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     // Parameter 'transformation_mode'
     Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
     qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
-    ORT_RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_coord_transf_modes, transformation_mode,
-                                                    "coordinate_transformation_mode",
-                                                    qnn_transformation_mode.uint32Value));
+    RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_coord_transf_modes, transformation_mode,
+                                                "coordinate_transformation_mode",
+                                                qnn_transformation_mode.uint32Value));
 
     QnnParamWrapper qnn_transformation_mode_param(node_unit.Index(), node_unit.Name(),
                                                   QNN_OP_RESIZE_PARAM_TRANSFORMATION_MODE, qnn_transformation_mode);
@@ -346,7 +349,7 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     // Parameter 'interpolation_mode'
     Qnn_Scalar_t qnn_interp_mode = QNN_SCALAR_INIT;
     qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
-    ORT_RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
+    RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_modes, interp_mode, "mode", qnn_interp_mode.uint32Value));
 
     QnnParamWrapper qnn_interp_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_INTERPOLATION_MODE,
                                           qnn_interp_mode);
@@ -357,8 +360,8 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     if (qnn_interp_mode.uint32Value == 0) {
       Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
       qnn_nearest_mode.dataType = QNN_DATATYPE_UINT_32;
-      ORT_RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_nearest_modes, nearest_mode, "nearest_mode",
-                                                      qnn_nearest_mode.uint32Value));
+      RETURN_IF_ERROR(GetQnnModeValFromOnnxString(supported_nearest_modes, nearest_mode, "nearest_mode",
+                                                  qnn_nearest_mode.uint32Value));
 
       QnnParamWrapper qnn_nearest_mode_param(node_unit.Index(), node_unit.Name(), QNN_OP_RESIZE_PARAM_NEAREST_MODE,
                                              qnn_nearest_mode);
@@ -371,15 +374,15 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                         logger, do_op_validation, qnn_op_type);
 }
 
-Status ResizeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
-                                                 const NodeUnit& node_unit,
-                                                 const logging::Logger& logger,
-                                                 const std::vector<std::string>& input_names,
-                                                 size_t output_index,
-                                                 Qnn_DataType_t qnn_data_type,
-                                                 QnnQuantParamsWrapper& quant_param) const {
+Ort::Status ResizeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                                      const OrtNodeUnit& node_unit,
+                                                      const Ort::Logger& logger,
+                                                      const std::vector<std::string>& input_names,
+                                                      size_t output_index,
+                                                      Qnn_DataType_t qnn_data_type,
+                                                      QnnQuantParamsWrapper& quant_param) const {
   if (!quant_param.IsPerTensor()) {
-    return Status::OK();
+    return Ort::Status();
   }
 
   // Force Resize op's output to use the same quantization parameters as the input if nearly equal.

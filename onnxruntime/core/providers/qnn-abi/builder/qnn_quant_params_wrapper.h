@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <gsl/gsl>
 #include <memory>
 #include <vector>
-#include <gsl/gsl>
 
-#include "core/providers/qnn/ort_api.h"
 #include "QnnTypes.h"
+
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -38,11 +40,11 @@ class QnnQuantParamsWrapper {
   const Qnn_QuantizeParams_t& Get() const { return params_; }
 
   // Initialize this object from a raw Qnn_QuantizeParam_t object.
-  Status Init(const Qnn_QuantizeParams_t& params, const size_t lpbq_num_scaleoffsets = 0);
+  Ort::Status Init(const Qnn_QuantizeParams_t& params, const size_t lpbq_num_scaleoffsets = 0);
 
   // Initialize this object from a (potentially) quantized ONNX tensor.
   // QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
-  Status Init(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef& io_def);
+  Ort::Status Init(const QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnitIODef& io_def);
 
   QnnQuantParamsWrapper Copy() const;
 
@@ -68,41 +70,41 @@ class QnnQuantParamsWrapper {
   }
 
   // Get a copy of scales. Works for both per-tensor and per-channel.
-  Status GetScales(/*out*/ std::vector<float>& scales) const;
+  Ort::Status GetScales(/*out*/ std::vector<float>& scales) const;
 
   // Handle transposing of a per-channel quantized tensor. The quantization parameter's axis
   // must be transposed using the inverse permutation of the Transpose.
   template <typename IntType>
-  Status HandleTranspose(gsl::span<const IntType> perm) {
+  Ort::Status HandleTranspose(gsl::span<const IntType> perm) {
     if (!IsPerChannel()) {
-      return Status::OK();
+      return Ort::Status();
     }
 
     if (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
-      ORT_RETURN_IF_NOT(static_cast<size_t>(params_.axisScaleOffsetEncoding.axis) < perm.size(),
-                        "Axis value is out of range of the provided permutation");
+      RETURN_IF_NOT(static_cast<size_t>(params_.axisScaleOffsetEncoding.axis) < perm.size(),
+                    "Axis value is out of range of the provided permutation");
       const int32_t new_axis = static_cast<int32_t>(perm[params_.axisScaleOffsetEncoding.axis]);
       params_.axisScaleOffsetEncoding.axis = new_axis;
     } else if (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
-      ORT_RETURN_IF_NOT(static_cast<size_t>(params_.bwAxisScaleOffsetEncoding.axis) < perm.size(),
-                        "Axis value is out of range of the provided permutation");
+      RETURN_IF_NOT(static_cast<size_t>(params_.bwAxisScaleOffsetEncoding.axis) < perm.size(),
+                    "Axis value is out of range of the provided permutation");
       const int32_t new_axis = static_cast<int32_t>(perm[params_.bwAxisScaleOffsetEncoding.axis]);
       params_.bwAxisScaleOffsetEncoding.axis = new_axis;
     }
 
-    return Status::OK();
+    return Ort::Status();
   }
 
   // Handle "unsqueeze" of a per-channel quantized tensor. The quantization parameter's axis
   // may need to be shifted if the unsqueeze inserted 1s before the quantization axis.
   template <typename IntType>
-  Status HandleUnsqueeze(gsl::span<const IntType> orig_shape,
-                         gsl::span<const IntType> new_shape) {
+  Ort::Status HandleUnsqueeze(gsl::span<const IntType> orig_shape,
+                              gsl::span<const IntType> new_shape) {
     if (!IsPerChannel()) {
-      return Status::OK();
+      return Ort::Status();
     }
 
-    ORT_RETURN_IF_NOT(orig_shape.size() < new_shape.size(), "Expected unsqueezed shape to have a greater rank.");
+    RETURN_IF_NOT(orig_shape.size() < new_shape.size(), "Expected unsqueezed shape to have a greater rank.");
 
     // Get the axis value.
     int32_t axis = 0;
@@ -111,8 +113,7 @@ class QnnQuantParamsWrapper {
     } else if (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
       axis = params_.bwAxisScaleOffsetEncoding.axis;
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Unhandled quantization encoding: ", params_.quantizationEncoding);
+      return MAKE_EP_FAIL(("Unhandled quantization encoding: " + std::to_string(params_.quantizationEncoding)).c_str());
     }
 
     // Find where the axis was moved to after unsqueeze.
@@ -132,7 +133,7 @@ class QnnQuantParamsWrapper {
     }
 
     if (j == static_cast<size_t>(axis)) {
-      return Status::OK();
+      return Ort::Status();
     }
 
     // Set new axis.
@@ -141,11 +142,10 @@ class QnnQuantParamsWrapper {
     } else if (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
       params_.bwAxisScaleOffsetEncoding.axis = static_cast<int32_t>(j);
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Unhandled quantization encoding: ", params_.quantizationEncoding);
+      return MAKE_EP_FAIL(("Unhandled quantization encoding: " + std::to_string(params_.quantizationEncoding)).c_str());
     }
 
-    return Status::OK();
+    return Ort::Status();
   }
 
  private:

@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
@@ -63,10 +63,10 @@ static void RunSplitOpTestOnCPU(const TestInputDef<DataType>& input_def,
   provider_options["backend_type"] = "cpu";
 
   const bool split_is_input = opset >= 13;
-  RunQnnModelTest(BuildSplitTestCase<DataType>(input_def, split, split_is_input, axis, num_outputs),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildSplitTestCase<DataType>(input_def, split, split_is_input, axis, num_outputs),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment);
 }
 
 //
@@ -75,7 +75,7 @@ static void RunSplitOpTestOnCPU(const TestInputDef<DataType>& input_def,
 
 // Test Split opset 18 on CPU backend: equal split of axis 0 via 'num_outputs' attribute
 // and 'split' input.
-TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset18) {
+TEST_F(QnnABICPUBackendTests, Split_Equal_Axis0_Opset18) {
   // Use 'split' input (initializer).
   RunSplitOpTestOnCPU<float>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                              {2, 2},  // split
@@ -106,7 +106,7 @@ TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset18) {
 }
 
 // Test Split opset 13 on CPU backend: equal split of axis 0
-TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset13) {
+TEST_F(QnnABICPUBackendTests, Split_Equal_Axis0_Opset13) {
   RunSplitOpTestOnCPU<float>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                              {2, 2},  // split
                              0,       // axis
@@ -122,7 +122,7 @@ TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset13) {
 }
 
 // Test Split opset 11 on CPU backend: equal split of axis 0
-TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset11) {
+TEST_F(QnnABICPUBackendTests, Split_Equal_Axis0_Opset11) {
   RunSplitOpTestOnCPU<float>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                              {2, 2},  // split
                              0,       // axis
@@ -138,7 +138,7 @@ TEST_F(QnnCPUBackendTests, Split_Equal_Axis0_Opset11) {
 }
 
 // Test Split opset 13 on CPU backend: unequal split of axis 1
-TEST_F(QnnCPUBackendTests, Split_Unequal_Axis1_Opset13) {
+TEST_F(QnnABICPUBackendTests, Split_Unequal_Axis1_Opset13) {
   RunSplitOpTestOnCPU<float>(TestInputDef<float>({2, 4}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                              {1, 3},  // split
                              1,       // axis
@@ -154,7 +154,7 @@ TEST_F(QnnCPUBackendTests, Split_Unequal_Axis1_Opset13) {
 }
 
 // Test Split opset 11 on CPU backend: unequal split of axis 1
-TEST_F(QnnCPUBackendTests, Split_Unequal_Axis1_Opset11) {
+TEST_F(QnnABICPUBackendTests, Split_Unequal_Axis1_Opset11) {
   RunSplitOpTestOnCPU<float>(TestInputDef<float>({2, 4}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                              {1, 3},  // split
                              1,       // axis
@@ -246,10 +246,10 @@ static void RunSplitOpTestOnHTP(const TestInputDef<DataType>& input_def,
   provider_options["backend_type"] = "htp";
 
   const bool split_is_input = opset >= 13;
-  RunQnnModelTest(BuildSplitTestCase<DataType>(input_def, split, split_is_input, axis, num_outputs),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildSplitTestCase<DataType>(input_def, split, split_is_input, axis, num_outputs),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment);
 }
 
 // Runs a QDQ Split operator on the HTP backend.
@@ -270,15 +270,15 @@ static void RunQDQSplitOpTestOnHTP(const TestInputDef<float>& input_def,
   auto f32_model_builder = BuildSplitTestCase<float>(input_def, split, split_is_input, axis, num_outputs);
   auto qdq_model_builder = BuildQDQSplitTestCase<QuantType>(input_def, split, split_is_input, axis, num_outputs,
                                                             use_contrib_qdq);
-  TestQDQModelAccuracy<QuantType>(f32_model_builder,
-                                  qdq_model_builder,
-                                  provider_options,
-                                  opset,
-                                  expected_ep_assignment);
+  TestQDQModelAccuracyABI<QuantType>(f32_model_builder,
+                                     qdq_model_builder,
+                                     provider_options,
+                                     opset,
+                                     expected_ep_assignment);
 }
 
 // Test that HTP can run non-QDQ Split (int32 input).
-TEST_F(QnnHTPBackendTests, Split_Int32_Opset13) {
+TEST_F(QnnABIHTPBackendTests, Split_Int32_Opset13) {
   // Equal split.
   RunSplitOpTestOnHTP<int32_t>(TestInputDef<int32_t>({4, 2}, false, {1, 2, 3, 4, 5, 6, 7, 8}),
                                {2, 2},  // split
@@ -290,7 +290,7 @@ TEST_F(QnnHTPBackendTests, Split_Int32_Opset13) {
 
 // Test 8-bit QDQ Split opset 18 on HTP backend: equal split of axis 0 via 'num_outputs' attribute
 // and 'split' input.
-TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18) {
+TEST_F(QnnABIHTPBackendTests, Split_Equal_Axis0_Opset18) {
   // Split 6 into 3 outputs of lengths [2, 2, 2]
   TestInputDef<float> input_def({6, 2}, false,
                                 {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f, 9.0f, 10.0f, 11.0f});
@@ -313,7 +313,7 @@ TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18) {
 }
 
 // Test 8-bit QDQ Split opset 18 on HTP backend. Use an uneven split (last chunk should be smaller).
-TEST_F(QnnHTPBackendTests, Split_NonEqual_Axis0_Opset18) {
+TEST_F(QnnABIHTPBackendTests, Split_NonEqual_Axis0_Opset18) {
   // Split 7 into 3 outputs of lengths [3, 3, 1]
   TestInputDef<float> input_def({7, 2}, false,
                                 {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f});
@@ -337,7 +337,7 @@ TEST_F(QnnHTPBackendTests, Split_NonEqual_Axis0_Opset18) {
 
 // Test 16-bit QDQ Split opset 18 on HTP backend: equal split of axis 0 via 'num_outputs' attribute
 // and 'split' input.
-TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18_U16) {
+TEST_F(QnnABIHTPBackendTests, Split_Equal_Axis0_Opset18_U16) {
   // Use 'split' input (initializer).
   RunQDQSplitOpTestOnHTP<uint16_t>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                                    {2, 2},  // split
@@ -358,7 +358,7 @@ TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset18_U16) {
 }
 
 // Test QDQ Split op on HTP backend: equal split on axis 0 with opset 13.
-TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset13) {
+TEST_F(QnnABIHTPBackendTests, Split_Equal_Axis0_Opset13) {
   RunQDQSplitOpTestOnHTP<uint8_t>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                                   {2, 2},  // split
                                   0,       // axis
@@ -368,7 +368,7 @@ TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset13) {
 }
 
 // Test QDQ Split op on HTP backend: equal split on axis 0 with opset 11.
-TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset11) {
+TEST_F(QnnABIHTPBackendTests, Split_Equal_Axis0_Opset11) {
   RunQDQSplitOpTestOnHTP<uint8_t>(TestInputDef<float>({4, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                                   {2, 2},  // split
                                   0,       // axis
@@ -378,7 +378,7 @@ TEST_F(QnnHTPBackendTests, Split_Equal_Axis0_Opset11) {
 }
 
 // Test Split opset 13 on HTP backend: unequal split of axis 1
-TEST_F(QnnHTPBackendTests, Split_Unequal_Axis1_Opset13) {
+TEST_F(QnnABIHTPBackendTests, Split_Unequal_Axis1_Opset13) {
   RunQDQSplitOpTestOnHTP<uint8_t>(TestInputDef<float>({2, 4}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                                   {1, 3},  // split
                                   1,       // axis
@@ -388,7 +388,7 @@ TEST_F(QnnHTPBackendTests, Split_Unequal_Axis1_Opset13) {
 }
 
 // Test Split opset 11 on HTP backend: unequal split of axis 1
-TEST_F(QnnHTPBackendTests, Split_Unequal_Axis1_Opset11) {
+TEST_F(QnnABIHTPBackendTests, Split_Unequal_Axis1_Opset11) {
   RunQDQSplitOpTestOnHTP<uint8_t>(TestInputDef<float>({2, 4}, false, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.f, 8.f}),
                                   {1, 3},  // split
                                   1,       // axis

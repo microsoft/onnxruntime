@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include <unordered_set>
-#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/cpu/tensor/slice_helper.h"
+
+#include "core/providers/qnn-abi/builder/op_builder_factory.h"
+#include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -16,17 +16,17 @@ class ModOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ModOpBuilder);
 
  protected:
-  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       std::vector<std::string>& input_names,
-                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                            const OrtNodeUnit& node_unit,
+                            const Ort::Logger& logger,
+                            std::vector<std::string>& input_names,
+                            bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                     const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names,
-                                     const logging::Logger& logger,
-                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                          const OrtNodeUnit& node_unit,
+                                          std::vector<std::string>&& input_names,
+                                          const Ort::Logger& logger,
+                                          bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
 // Mod supported Qnn datatype is limited by floor supported datatype.
@@ -40,44 +40,42 @@ bool IsCastRequired(int target_tensor_type) {
   return supported_types.count(target_tensor_type) == 0;
 }
 
-Status ModOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                   const NodeUnit& node_unit,
-                                   const logging::Logger& logger,
-                                   std::vector<std::string>& input_names,
-                                   bool do_op_validation) const {
+Ort::Status ModOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                        const OrtNodeUnit& node_unit,
+                                        const Ort::Logger& logger,
+                                        std::vector<std::string>& input_names,
+                                        bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
-  NodeAttrHelper node_helper(node_unit);
+  OrtNodeAttrHelper node_helper(node_unit);
   int64_t fmod = node_helper.Get("fmod", static_cast<int64_t>(0));  // 0=integer mod. 1=float mod.
-  if (1 == fmod) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Mod Op only support fmod == 0 for now.");
-  }
+  RETURN_IF(1 == fmod, "QNN Mod Op only support fmod == 0 for now.");
 
   const auto& inputs = node_unit.Inputs();
   const auto input_count = GetInputCountQnnRequired(node_unit);
   for (size_t input_i = 0; input_i < input_count; ++input_i) {
-    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_i], logger, input_names));
+    RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[input_i], logger, input_names));
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                 const NodeUnit& node_unit,
-                                                 std::vector<std::string>&& input_names,
-                                                 const logging::Logger& logger,
-                                                 bool do_op_validation) const {
+Ort::Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                      const OrtNodeUnit& node_unit,
+                                                      std::vector<std::string>&& input_names,
+                                                      const Ort::Logger& logger,
+                                                      bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
   TensorInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
   TensorInfo output_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
 
-  NodeAttrHelper node_helper(node_unit);
+  OrtNodeAttrHelper node_helper(node_unit);
   int64_t fmod = node_helper.Get("fmod", static_cast<int64_t>(0));
   std::string& input_a_name = input_names[0];
   std::string& input_b_name = input_names[1];
 
-  const std::string& org_output_name = node_unit.Outputs()[0].node_arg.Name();
+  const std::string& org_output_name = node_unit.Outputs()[0].name;
   const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(org_output_name);
 
   std::vector<uint32_t> output_shape = output_info.shape;
@@ -97,20 +95,20 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                    target_tensor_type,
                                    QnnQuantParamsWrapper(),
                                    std::vector<uint32_t>(output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_a_output)),
-                      "Failed to add output tensor for QNN Cast node.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_a_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_CAST,
-                                                      {input_a_name},
-                                                      {cast_a_output_name},
-                                                      {},
-                                                      false),
-                      "Failed to create QNN Cast node.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_a_output)),
+                  "Failed to add output tensor for QNN Cast node.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_a_name,
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_CAST,
+                                                  {input_a_name},
+                                                  {cast_a_output_name},
+                                                  {},
+                                                  false),
+                  "Failed to create QNN Cast node.");
     input_a_name = cast_a_output_name;
 
     TensorInfo input_B_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[1], input_B_info));
+    RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[1], input_B_info));
     std::vector<uint32_t> input_B_shape = input_B_info.shape;
     std::string cast_b_name = utils::GetUniqueName(node_unit, "_Cast_B");
     std::string cast_b_output_name = utils::GetUniqueName(node_unit, "_Cast_B_output");
@@ -119,16 +117,16 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                    target_tensor_type,
                                    QnnQuantParamsWrapper(),
                                    std::vector<uint32_t>(input_B_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_b_output)),
-                      "Failed to add output tensor for QNN Cast node.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_b_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_CAST,
-                                                      {input_b_name},
-                                                      {cast_b_output_name},
-                                                      {},
-                                                      false),
-                      "Failed to create QNN Cast node.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_b_output)),
+                  "Failed to add output tensor for QNN Cast node.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_b_name,
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_CAST,
+                                                  {input_b_name},
+                                                  {cast_b_output_name},
+                                                  {},
+                                                  false),
+                  "Failed to create QNN Cast node.");
     input_b_name = cast_b_output_name;
   }
 
@@ -146,16 +144,16 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                 target_tensor_type,
                                 QnnQuantParamsWrapper(),
                                 std::vector<uint32_t>(output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(div_output)),
-                      "Failed to add Mod - ElementWiseDiv output tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(div_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_ELEMENT_WISE_DIVIDE,
-                                                      std::move(div_input),
-                                                      {div_output_name},
-                                                      {},
-                                                      do_op_validation),
-                      "Failed to add Mod - ElementWiseDiv node.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(div_output)),
+                  "Failed to add Mod - ElementWiseDiv output tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(div_name,
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_ELEMENT_WISE_DIVIDE,
+                                                  std::move(div_input),
+                                                  {div_output_name},
+                                                  {},
+                                                  do_op_validation),
+                  "Failed to add Mod - ElementWiseDiv node.");
 
     // 2. ElementWiseFloor
     std::string floor_name = utils::GetUniqueName(node_unit, "_Floor");
@@ -165,16 +163,16 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                   target_tensor_type,
                                   QnnQuantParamsWrapper(),
                                   std::vector<uint32_t>(output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(floor_output)),
-                      "Failed to add Mod - ElementWiseFloor output tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(floor_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_ELEMENT_WISE_FLOOR,
-                                                      {div_output_name},
-                                                      {floor_output_name},
-                                                      {},
-                                                      do_op_validation),
-                      "Failed to add Mod - ElementWiseFloor node.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(floor_output)),
+                  "Failed to add Mod - ElementWiseFloor output tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(floor_name,
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_ELEMENT_WISE_FLOOR,
+                                                  {div_output_name},
+                                                  {floor_output_name},
+                                                  {},
+                                                  do_op_validation),
+                  "Failed to add Mod - ElementWiseFloor node.");
 
     // 3. ElementWiseMul
     std::vector<std::string> mul_input;
@@ -187,16 +185,16 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                 target_tensor_type,
                                 QnnQuantParamsWrapper(),
                                 std::vector<uint32_t>(output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(mul_output)),
-                      "Failed to add Mod - ElementWiseMul output tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(mul_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_ELEMENT_WISE_MULTIPLY,
-                                                      std::move(mul_input),
-                                                      {mul_output_name},
-                                                      {},
-                                                      do_op_validation),
-                      "Failed to add Mod - ElementWiseMul node.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(mul_output)),
+                  "Failed to add Mod - ElementWiseMul output tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(mul_name,
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_ELEMENT_WISE_MULTIPLY,
+                                                  std::move(mul_input),
+                                                  {mul_output_name},
+                                                  {},
+                                                  do_op_validation),
+                  "Failed to add Mod - ElementWiseMul node.");
 
     // 4. ElementWiseSub
     std::vector<std::string> sub_input;
@@ -209,16 +207,16 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                 is_cast_required ? target_tensor_type : output_info.qnn_data_type,
                                 is_cast_required ? QnnQuantParamsWrapper() : output_info.quant_param.Copy(),
                                 std::vector<uint32_t>(output_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(mod_output)),
-                      "Failed to add Mod output tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(sub_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_ELEMENT_WISE_SUBTRACT,
-                                                      std::move(sub_input),
-                                                      {sub_output_name},
-                                                      {},
-                                                      do_op_validation),
-                      "Failed to add Mod - ElementWiseSub node.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(mod_output)),
+                  "Failed to add Mod output tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(sub_name,
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_ELEMENT_WISE_SUBTRACT,
+                                                  std::move(sub_input),
+                                                  {sub_output_name},
+                                                  {},
+                                                  do_op_validation),
+                  "Failed to add Mod - ElementWiseSub node.");
 
     if (is_cast_required) {
       std::string output_cast_name = utils::GetUniqueName(node_unit, "_output_Cast");
@@ -227,22 +225,22 @@ Status ModOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                          output_info.qnn_data_type,
                                          output_info.quant_param.Copy(),
                                          std::vector<uint32_t>(output_shape));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(casted_mod_output)),
-                        "Failed to add output tensor for QNN Cast node.");
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_cast_name,
-                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                        QNN_OP_CAST,
-                                                        {sub_output_name},
-                                                        {org_output_name},
-                                                        {},
-                                                        false),
-                        "Failed to create QNN Cast node.");
+      RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(casted_mod_output)),
+                    "Failed to add output tensor for QNN Cast node.");
+      RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_cast_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                    QNN_OP_CAST,
+                                                    {sub_output_name},
+                                                    {org_output_name},
+                                                    {},
+                                                    false),
+                    "Failed to create QNN Cast node.");
     }
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Mod Op doesn't support fmod.");
+    return MAKE_EP_FAIL("QNN Mod Op doesn't support fmod.");
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 void CreateModOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

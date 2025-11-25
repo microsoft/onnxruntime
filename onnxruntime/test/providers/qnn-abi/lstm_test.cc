@@ -6,9 +6,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
-#include "test/providers/tester_types.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
+#include "test/unittest_util/tester_types.h"
 
 #include "core/graph/onnx_protobuf.h"
 
@@ -74,7 +74,7 @@ void _BuildLSTMTestCase(ModelTestBuilder& builder,
                         const std::vector<QuantParams<InputType>>& output_qparams) {
   auto convert_input = [](ModelTestBuilder& builder, const TestInputDef<float>& def) {
     if (std::is_same<InputType, MLFloat16>::value) {
-      TestInputDef<MLFloat16> Fp16_def = ConvertToFP16InputDef(def);
+      TestInputDef<MLFloat16> Fp16_def = ConvertToFP16InputDefABI(def);
       return MakeTestInput(builder, Fp16_def);
     } else if (std::is_same<InputType, uint8_t>::value) {
       NodeArg* input = MakeTestInput(builder, def);
@@ -159,7 +159,7 @@ void _BuildLSTMTestCase(ModelTestBuilder& builder,
   lstm_node.AddAttribute("hidden_size", hidden_size);
   lstm_node.AddAttribute("layout", layout);
   ORT_UNUSED_PARAMETER(output_qparams);
-  if (std::is_same<InputType, uint8_t>::value) {
+  if constexpr (std::is_same<InputType, uint8_t>::value) {
     size_t i = 0;
     if (has_Y) {
       AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, lstm_output_Y, output_qparams[i].scale,
@@ -251,12 +251,12 @@ static void RunHtpQDQLSTMOpTest(const TestInputDef<float>& X_def,
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  TestQDQModelAccuracy(BuildLSTMTestCase<float>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
-                       BuildQDQLSTMTestCase<QuantType>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
-                       provider_options,
-                       opset,
-                       expected_ep_assignment,
-                       tolerance);
+  TestQDQModelAccuracyABI(BuildLSTMTestCase<float>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
+                          BuildQDQLSTMTestCase<QuantType>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
+                          provider_options,
+                          opset,
+                          expected_ep_assignment,
+                          tolerance);
 }
 
 static void RunHtpFp16LSTMOpTest(const TestInputDef<float>& X_def,
@@ -278,12 +278,12 @@ static void RunHtpFp16LSTMOpTest(const TestInputDef<float>& X_def,
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
 
-  TestFp16ModelAccuracy(BuildLSTMTestCase<float>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
-                        BuildLSTMTestCase<MLFloat16>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
-                        provider_options,
-                        opset,
-                        expected_ep_assignment,
-                        tolerance);
+  TestFp16ModelAccuracyABI(BuildLSTMTestCase<float>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
+                           BuildLSTMTestCase<MLFloat16>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
+                           provider_options,
+                           opset,
+                           expected_ep_assignment,
+                           tolerance);
 }
 
 static void RunCpuFP32LSTMOpTest(const TestInputDef<float>& X_def,
@@ -305,11 +305,11 @@ static void RunCpuFP32LSTMOpTest(const TestInputDef<float>& X_def,
   ProviderOptions provider_options;
   provider_options["backend_type"] = "cpu";
 
-  RunQnnModelTest(BuildLSTMTestCase<float>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment,
-                  tolerance);
+  RunQnnModelTestABI(BuildLSTMTestCase<float>(X_def, W_def, R_def, B_def, H_def, C_def, P_def, has_Y, has_Y_h, has_Y_c, direction, hidden_size, layout),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment,
+                     tolerance);
 }
 
 // QNN failed to finalize when P is provided
@@ -318,7 +318,7 @@ static void RunCpuFP32LSTMOpTest(const TestInputDef<float>& X_def,
 // HTP QDQ
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_forward) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_forward) {
   std::string direction = "forward";
   uint32_t num_direction = 1;
   uint32_t batch_size = 3;
@@ -346,7 +346,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_forward) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_reverse) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_reverse) {
   std::string direction = "reverse";
   uint32_t num_direction = 1;
   uint32_t batch_size = 3;
@@ -374,7 +374,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_reverse) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -402,7 +402,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_B) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_B) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -429,7 +429,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_B) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_H) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_H) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -456,7 +456,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_H) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_C) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_C) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -483,7 +483,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_wo_C) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_all_initializer) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_all_initializer) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -513,7 +513,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_all_initialize
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_only) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -541,7 +541,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_only) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_h_only) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_h_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -569,7 +569,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_h_only) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_c_only) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_c_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -598,7 +598,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_QDQ_sanity_bidirectional_Y_c_only) {
 // HTP Fp16
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_forward) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_forward) {
   std::string direction = "forward";
   uint32_t num_direction = 1;
   uint32_t batch_size = 3;
@@ -626,7 +626,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_forward) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_reverse) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_reverse) {
   std::string direction = "reverse";
   uint32_t num_direction = 1;
   uint32_t batch_size = 3;
@@ -654,7 +654,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_reverse) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -683,7 +683,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_B) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_B) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -711,7 +711,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_B) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_H) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_H) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -739,7 +739,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_H) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_C) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_C) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -767,7 +767,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_wo_C) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_all_initializer) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_all_initializer) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -796,7 +796,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_all_initializ
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_only) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -825,7 +825,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_only) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_h_only) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_h_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -854,7 +854,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_h_only) {
 
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_c_only) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_c_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -882,7 +882,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_LSTM_Fp16_sanity_bidirectional_Y_c_only) {
 }
 
 // CPU FP32
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_forward) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_forward) {
   std::string direction = "forward";
   uint32_t num_direction = 1;
   uint32_t batch_size = 3;
@@ -909,7 +909,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_forward) {
                        ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_reverse) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_reverse) {
   std::string direction = "reverse";
   uint32_t num_direction = 1;
   uint32_t batch_size = 3;
@@ -936,7 +936,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_reverse) {
                        ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -964,7 +964,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_B) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_B) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -991,7 +991,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_B) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_H) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_H) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -1018,7 +1018,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_H) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_C) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_C) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -1045,7 +1045,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_C) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_HC) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_HC) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -1071,7 +1071,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_HC) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_P) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_P) {
   std::string direction = "forward";
   uint32_t num_direction = 1;
   uint32_t batch_size = 3;
@@ -1097,7 +1097,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_P) {
                        ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_all_initializer) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_all_initializer) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -1125,7 +1125,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_all_initializer) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_only) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -1153,7 +1153,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_only) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_h_only) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_h_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;
@@ -1181,7 +1181,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_h_only) {
       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_c_only) {
+TEST_F(QnnABICPUBackendTests, LSTM_FP32_sanity_bidirectional_Y_c_only) {
   std::string direction = "bidirectional";
   uint32_t num_direction = 2;
   uint32_t batch_size = 3;

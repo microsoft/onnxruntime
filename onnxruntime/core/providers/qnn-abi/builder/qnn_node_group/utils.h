@@ -7,8 +7,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
-#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -22,34 +22,36 @@ constexpr size_t QDQ_ZERO_POINT_INPUT_IDX = 2;
 /// Utility function to get a child NodeUnit. The returned NodeUnit must be the parent's only child, must be
 /// of the expected type, and must not be a part of another IQnnNodeGroup.
 /// </summary>
-/// <param name="graph_viewer">GraphViewer containing all Nodes</param>
+/// <param name="qnn_model_wrapper">QnnModelWrapper containing the OrtGraph and OrtApi</param>
 /// <param name="parent_node_unit">Parent NodeUnit</param>
 /// <param name="child_op_types">Valid child types</param>
 /// <param name="node_unit_map">Maps a Node to its NodeUnit</param>
 /// <param name="node_unit_to_qnn_node_group">Maps a NodeUnit to its IQnnNodeGroup.
 /// Used to check that the child has not already been added to another IQnnNodeGroup.</param>
 /// <returns></returns>
-const NodeUnit* GetOnlyChildOfType(const GraphViewer& graph_viewer,
-                                   const NodeUnit& parent_node_unit,
-                                   gsl::span<const std::string_view> child_op_types,
-                                   const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                   const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group);
-const NodeUnit* GetChildOfType(const GraphViewer& graph_viewer,
-                               const NodeUnit& parent_node_unit,
-                               gsl::span<const std::string_view> child_op_types,
-                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                               const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group);
-const NodeUnit* GetParentOfType(const GraphViewer& graph_viewer,
-                                const NodeUnit& child_node_unit,
-                                gsl::span<const std::string_view> parent_op_types,
-                                const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group);
+const OrtNodeUnit* GetOnlyChildOfType(const QnnModelWrapper& qnn_model_wrapper,
+                                      const OrtNodeUnit& parent_node_unit,
+                                      gsl::span<const std::string_view> child_op_types,
+                                      const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
+                                      const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group);
 
-const NodeUnit* GetParentOfInput(const GraphViewer& graph_viewer,
-                                 const NodeUnit& node_unit,
-                                 const NodeUnitIODef& input,
-                                 const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                 const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map);
+const OrtNodeUnit* GetParentOfType(const QnnModelWrapper& qnn_model_wrapper,
+                                   const OrtNodeUnit& child_node_unit,
+                                   gsl::span<const std::string_view> parent_op_types,
+                                   const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
+                                   const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group);
+
+const OrtNodeUnit* GetParentOfInput(const QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtNodeUnit& node_unit,
+                                    const OrtNodeUnitIODef& input,
+                                    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
+                                    const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map);
+
+const OrtNodeUnit* GetChildOfOutput(const QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtNodeUnit& node_unit,
+                                    const OrtNodeUnitIODef& output,
+                                    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
+                                    const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map);
 
 }  // namespace qnn
 }  // namespace onnxruntime

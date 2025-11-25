@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include "core/providers/qnn-abi/ort_api.h"
+
 #ifdef _WIN32
 #include <Windows.h>
 
@@ -13,8 +16,6 @@
 #include <mutex>
 #include <string>
 #include <vector>
-
-#include "core/providers/qnn/ort_api.h"
 
 #if !BUILD_QNN_EP_STATIC_LIB
 TRACELOGGING_DECLARE_PROVIDER(telemetry_provider_handle);
@@ -37,10 +38,17 @@ namespace qnn {
 class QnnTelemetry {
  public:
   static QnnTelemetry& Instance();
+
+  // Returns true if ETW is supported on this platform
+  static bool SupportsETW();
+
   bool IsEnabled() const;
 
   // Get the current logging level
   unsigned char Level() const;
+
+  // Map ETW level to OrtLoggingLevel
+  OrtLoggingLevel MapLevelToOrtLoggingLevel();
 
   // Get the current keyword
   UINT64 Keyword() const;
@@ -92,7 +100,37 @@ class QnnTelemetry {
 #endif
 };
 
+enum class ORTTraceLoggingKeyword : uint64_t {
+  Session = 0x1,    // ORT Session TraceLoggingWrite
+  Logs = 0x2,       // LOGS() Macro ORT logs. Pair with an appropriate level depending on detail required
+  Reserved1 = 0x4,  // Reserved if we want to add some specific sub-categories instead of just LOGS() or other uses
+  Reserved2 = 0x8,
+  Reserved3 = 0x10,
+  Reserved4 = 0x20,
+  Reserved5 = 0x40,
+  Reserved6 = 0x80,
+  Profiling = 0x100  // Enables profiling. At higher levels >5 can impact inference performance
+};
+
 }  // namespace qnn
 }  // namespace onnxruntime
 
+#else
+// ETW is not supported on non-Windows platforms but should still define a dummy QnnTelemetry
+namespace onnxruntime {
+namespace qnn {
+
+class QnnTelemetry {
+ public:
+  static QnnTelemetry& Instance();
+  static bool SupportsETW();
+
+ private:
+  QnnTelemetry() = default;
+  ~QnnTelemetry() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnTelemetry);
+};
+
+}  // namespace qnn
+}  // namespace onnxruntime
 #endif  // defined(_WIN32)

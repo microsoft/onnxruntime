@@ -7,8 +7,8 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -17,9 +17,9 @@ namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Function that builds a float32 model with a Where operator.
-GetTestModelFn BuildWhereTestCase(const TestInputDef<bool>& condition_def,
-                                  const TestInputDef<float>& x_def,
-                                  const TestInputDef<float>& y_def) {
+GetTestModelFn BuildWhereTestCaseABI(const TestInputDef<bool>& condition_def,
+                                     const TestInputDef<float>& x_def,
+                                     const TestInputDef<float>& y_def) {
   return [condition_def, x_def, y_def](ModelTestBuilder& builder) {
     NodeArg* condition = MakeTestInput(builder, condition_def);
     NodeArg* x = MakeTestInput(builder, x_def);
@@ -78,16 +78,16 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> Where -> Q and compares the outputs of the CPU and QNN EPs.
-  TestQDQModelAccuracy(BuildWhereTestCase(condition_def, x_def, y_def),
-                       BuildQDQWhereTestCase<QuantType>(condition_def, x_def, y_def),
-                       provider_options,
-                       18,
-                       expected_ep_assignment);
+  TestQDQModelAccuracyABI(BuildWhereTestCaseABI(condition_def, x_def, y_def),
+                          BuildQDQWhereTestCase<QuantType>(condition_def, x_def, y_def),
+                          provider_options,
+                          18,
+                          expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Fails since QNN 2.37.1: Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_WhereQDQU8) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_WhereQDQU8) {
   RunWhereQDQTest(TestInputDef<bool>({4, 3, 2}, false,
                                      {true, false, true, false, true, false,
                                       true, false, true, false, true, false,
@@ -101,7 +101,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_WhereQDQU8) {
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Check QNN Where works with broadcast
 // Fails since QNN 2.37.1: Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_WhereBroadcastU8) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_WhereBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({2}, false, {true, false}),
                   TestInputDef<float>({4, 3, 2}, true, -2.0f, 2.0f),
                   TestInputDef<float>({1}, true, {3.0f}),
@@ -110,7 +110,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_WhereBroadcastU8) {
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Large data broadcast, QNN v2.13 failed
-TEST_F(QnnHTPBackendTests, WhereLargeDataU8) {
+TEST_F(QnnABIHTPBackendTests, WhereLargeDataU8) {
   RunWhereQDQTest(TestInputDef<bool>({5120}, false, false, true),
                   TestInputDef<float>({1, 16, 64, 5120}, true, -5000.0f, 0.0f),
                   TestInputDef<float>({1, 16, 64, 5120}, true, 0.0f, 5000.0f),
@@ -120,14 +120,14 @@ TEST_F(QnnHTPBackendTests, WhereLargeDataU8) {
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Large data broadcast, QNN v2.13 failed to finalize graph
 // Worked with QNN v2.16
-TEST_F(QnnHTPBackendTests, WhereLargeDataBroadcastU8) {
+TEST_F(QnnABIHTPBackendTests, WhereLargeDataBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({5120}, false, false, true),
                   TestInputDef<float>({1, 16, 64, 5120}, true, 0.0f, 1.0f),
                   TestInputDef<float>({1}, true, {3.0f}),
                   ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnHTPBackendTests, WhereLargeDataBroadcastTransformedU8) {
+TEST_F(QnnABIHTPBackendTests, WhereLargeDataBroadcastTransformedU8) {
   RunWhereQDQTest(TestInputDef<bool>({1, 1, 5120, 1}, false, false, true),
                   TestInputDef<float>({1, 64, 5120, 16}, true, 0.0f, 1.0f),
                   TestInputDef<float>({1, 1, 1, 1}, true, {3.0f}),

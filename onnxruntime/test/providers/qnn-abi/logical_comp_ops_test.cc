@@ -6,8 +6,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
 
@@ -71,10 +71,10 @@ static void RunCPULogicalOpTest(const std::string& op_type, const std::vector<in
   provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(BuildLogicalOpTestCase(op_type, shape),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildLogicalOpTestCase(op_type, shape),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment);
 }
 
 // Runs a model with a logical operator on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -87,33 +87,33 @@ static void RunQDQLogicalOpTest(const std::string& op_type, const std::vector<in
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(BuildQDQLogicalOpTestCase<QuantType>(op_type, shape),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildQDQLogicalOpTestCase<QuantType>(op_type, shape),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment);
 }
 
 //
 // CPU tests:
 //
 
-TEST_F(QnnCPUBackendTests, LogicalOpEqual4D) {
+TEST_F(QnnABICPUBackendTests, LogicalOpEqual4D) {
   RunCPULogicalOpTest("Equal", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LogicalOpGreater4D) {
+TEST_F(QnnABICPUBackendTests, LogicalOpGreater4D) {
   RunCPULogicalOpTest("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LogicalOpGreaterOrEqual4D) {
+TEST_F(QnnABICPUBackendTests, LogicalOpGreaterOrEqual4D) {
   RunCPULogicalOpTest("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LogicalOpLess4D) {
+TEST_F(QnnABICPUBackendTests, LogicalOpLess4D) {
   RunCPULogicalOpTest("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LogicalOpLessOrEqual4D) {
+TEST_F(QnnABICPUBackendTests, LogicalOpLessOrEqual4D) {
   RunCPULogicalOpTest("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
@@ -122,29 +122,29 @@ TEST_F(QnnCPUBackendTests, LogicalOpLessOrEqual4D) {
 // HTP tests:
 //
 
-TEST_F(QnnHTPBackendTests, LogicalOpEqual4D) {
+TEST_F(QnnABIHTPBackendTests, LogicalOpEqual4D) {
   RunQDQLogicalOpTest<uint8_t>("Equal", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnHTPBackendTests, LogicalOpGreater4D) {
+TEST_F(QnnABIHTPBackendTests, LogicalOpGreater4D) {
   RunQDQLogicalOpTest<uint8_t>("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnHTPBackendTests, LogicalOpGreaterOrEqual4D) {
+TEST_F(QnnABIHTPBackendTests, LogicalOpGreaterOrEqual4D) {
   RunQDQLogicalOpTest<uint8_t>("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnHTPBackendTests, LogicalOpLess4D) {
+TEST_F(QnnABIHTPBackendTests, LogicalOpLess4D) {
   RunQDQLogicalOpTest<uint8_t>("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnHTPBackendTests, LogicalOpLessOrEqual4D) {
+TEST_F(QnnABIHTPBackendTests, LogicalOpLessOrEqual4D) {
   RunQDQLogicalOpTest<uint8_t>("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All);
 }
 
 // Test for bug 44777546.
 // Tests a QDQ graph with an Equal node followed by a Cast.
-TEST_F(QnnHTPBackendTests, EqualToCast4D) {
+TEST_F(QnnABIHTPBackendTests, EqualToCast4D) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -174,11 +174,11 @@ TEST_F(QnnHTPBackendTests, EqualToCast4D) {
                            static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
   };
 
-  RunQnnModelTest(build_qdq_equal_to_cast,
-                  provider_options,
-                  17,  // opset
-                  ExpectedEPNodeAssignment::All,
-                  1);  // expected nodes in graph
+  RunQnnModelTestABI(build_qdq_equal_to_cast,
+                     provider_options,
+                     17,  // opset
+                     ExpectedEPNodeAssignment::All,
+                     1);  // expected nodes in graph
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

@@ -8,8 +8,10 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model_saving_options.h"
+#include "core/session/utils.h"
+#include "core/session/abi_session_options_impl.h"
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -65,7 +67,7 @@ static void GetContextBinaryFileName(const std::string onnx_ctx_file,
 }
 
 // Get context binary file name from Context model file and remove it with the context model file
-void CleanUpCtxFile(std::string context_file_path) {
+void CleanUpCtxFileABI(std::string context_file_path) {
   std::string qnn_ctx_binary_file_name;
   GetContextBinaryFileName(context_file_path, qnn_ctx_binary_file_name,
                            DefaultLoggingManager().DefaultLogger());
@@ -128,7 +130,7 @@ static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   };
 }
 
-void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
+void QnnContextBinaryMultiPartitionTestBodyABI(bool single_ep_node = true) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -155,46 +157,56 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
 
   const std::string context_model_file = "./testdata/qnn_context_binary_multi_partition_test.onnx";
   std::remove(context_model_file.c_str());
-  Ort::SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str());
-  so.AppendExecutionProvider("QNN", provider_options);
 
-  Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
-
-  // Make sure the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists(context_model_file.c_str()));
-
-  int ep_context_node_count = 0;
-  int non_ep_context_node_count = 0;
   std::shared_ptr<Model> ctx_model;
-  ASSERT_STATUS_OK(Model::Load(ToPathString(context_model_file), ctx_model, nullptr, DefaultLoggingManager().DefaultLogger()));
-  auto& ctx_graph = ctx_model->MainGraph();
-  for (auto& node : ctx_graph.Nodes()) {
-    if (node.OpType() == "EPContext") {
-      ++ep_context_node_count;
-      // validate the fix for the partition issue relate to QDQ model
-      ASSERT_EQ(node.InputDefs().size(), 1);
-    } else {
-      ++non_ep_context_node_count;
+
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str());
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
+    Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
+
+    // Make sure the Qnn context cache binary file is generated
+    EXPECT_TRUE(std::filesystem::exists(context_model_file.c_str()));
+
+    int ep_context_node_count = 0;
+    int non_ep_context_node_count = 0;
+    ASSERT_STATUS_OK(Model::Load(ToPathString(context_model_file), ctx_model, nullptr, DefaultLoggingManager().DefaultLogger()));
+    auto& ctx_graph = ctx_model->MainGraph();
+    for (auto& node : ctx_graph.Nodes()) {
+      if (node.OpType() == "EPContext") {
+        ++ep_context_node_count;
+        // validate the fix for the partition issue relate to QDQ model
+        ASSERT_EQ(node.InputDefs().size(), 1);
+      } else {
+        ++non_ep_context_node_count;
+      }
     }
+
+    int expected_node_count = single_ep_node ? 1 : 2;
+    ASSERT_EQ(ep_context_node_count, expected_node_count);
+    ASSERT_EQ(non_ep_context_node_count, expected_node_count);
   }
 
-  int expected_node_count = single_ep_node ? 1 : 2;
-  ASSERT_EQ(ep_context_node_count, expected_node_count);
-  ASSERT_EQ(non_ep_context_node_count, expected_node_count);
+  {
+    Ort::SessionOptions so2;
+    // context file path is required if it's non-embed mode and the model is loaded from memory
+    so2.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str());
 
-  Ort::SessionOptions so2;
-  // context file path is required if it's non-embed mode and the model is loaded from memory
-  so2.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str());
-  so2.AppendExecutionProvider("QNN", provider_options);
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so2, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
-  std::string ctx_model_data;
-  ctx_model->ToProto().SerializeToString(&ctx_model_data);
-  Ort::Session session2(*ort_env, ctx_model_data.data(), ctx_model_data.size(), so2);
+    std::string ctx_model_data;
+    ctx_model->ToProto().SerializeToString(&ctx_model_data);
+    Ort::Session session2(*ort_env, ctx_model_data.data(), ctx_model_data.size(), so2);
+  }
 
   // clean up
-  CleanUpCtxFile(context_model_file);
+  CleanUpCtxFileABI(context_model_file);
 }
 
 // Helper struct that represents a test model.
@@ -279,7 +291,7 @@ static void CheckEpContextNodeCounts(void* model_buffer, size_t model_buffer_siz
 //   - Session creation fails because input model is not pre-compiled.
 //   - Uses OrtCompileApi to compile the model.
 //   - Recreates session with the compiled model.
-TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
   const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_disable_compile_input.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("./compileapi_disable_compile_output.onnx");
   std::filesystem::remove(input_model_file);
@@ -290,13 +302,14 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
   ASSERT_STATUS_OK(test_model.Save(input_model_file));
 
-  // Initialize session options with QNN EP
-  Ort::SessionOptions so;
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  so.AppendExecutionProvider("QNN", provider_options);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
   so.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "1");  // Disable model compilation!
 
   // Create an inference session that fails with error ORT_MODEL_REQUIRES_COMPILATION
@@ -307,7 +320,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
     OrtErrorCode error_code = excpt.GetOrtErrorCode();
     std::string_view error_msg = excpt.what();
     ASSERT_EQ(error_code, ORT_MODEL_REQUIRES_COMPILATION);
-    ASSERT_THAT(error_msg, testing::HasSubstr(kQnnExecutionProvider));
+    ASSERT_THAT(error_msg, testing::HasSubstr(onnxruntime::kQnnABIExecutionProvider));
   }
 
   // Session creation failed because the model was not pre-compiled.
@@ -329,12 +342,15 @@ TEST_F(QnnHTPBackendTests, CompileApi_DisableEpCompile_ThenCompileExplicitly) {
 
   // Should be able to create a session with the compiled model and the original session options.
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
+  std::filesystem::remove(output_model_file);
+
+  std::filesystem::remove(input_model_file);
 }
 
 // Test using the CompileModel() API with settings:
 //   - input model file
 //   - output model file
-TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
   const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_fromsessionoptions_inputmodelfrompath.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("./qnn_context_binary_multi_partition_test.onnx");
   std::filesystem::remove(input_model_file);
@@ -345,12 +361,13 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
   ASSERT_STATUS_OK(test_model.Save(input_model_file));
 
-  // Initialize session options with QNN EP
-  Ort::SessionOptions so;
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Create model compilation options from the session options.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
@@ -368,13 +385,14 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelFromPath) {
 
   // Should be able to create a session with the compiled model and the original session options.
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
+  std::filesystem::remove(output_model_file);
 }
 
 // Test using the CompileModel() API with settings:
 //   - input model from buffer
 //   - output model file
 //   - EPContext nodes in output model use embedded binary blobs.
-TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embedded) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embedded) {
   // Create a test model and serialize it to a buffer.
   TestModel test_model;
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
@@ -383,12 +401,13 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embe
   const ORTCHAR_T* output_model_file = ORT_TSTR("./qnn_context_binary_multi_partition_test.onnx");
   std::filesystem::remove(output_model_file);
 
-  // Initialize session options with QNN EP
-  Ort::SessionOptions so;
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Create model compilation options from the session options.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
@@ -407,12 +426,13 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputModelAsBuffer_Embe
 
   // Should be able to create a session with the compiled model and the original session options.
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_file, so)));
+  std::filesystem::remove(output_model_file);
 }
 
 // Test using the CompileModel() API with settings:
 //   - input model from file
 //   - save output model to a buffer
-TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
   const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_fromsessionoptions_inputmodelfrompath.onnx");
   std::filesystem::remove(input_model_file);
 
@@ -421,17 +441,18 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
   ASSERT_STATUS_OK(test_model.Save(input_model_file));
 
-  // Initialize session options with QNN EP
-  Ort::SessionOptions so;
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Create model compilation options from the session options. Output model is stored in a buffer.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
   compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
 
   Ort::AllocatorWithDefaultOptions allocator;
   void* output_model_buffer = nullptr;
@@ -449,10 +470,8 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
   // Check that the compiled model has the expected number of EPContext nodes.
   CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
 
-  {
-    // Should be able to create a session with the compiled model and the original session options.
-    EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, so)));
-  }
+  // Should be able to create a session with the compiled model and the original session options.
+  EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, so)));
 
   allocator.Free(output_model_buffer);
 }
@@ -461,18 +480,19 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
 //   - input model from buffer
 //   - save output model to buffer
 //   - test enabling AND disabling embed mode for context binary in EPContext node attributes
-TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInBuffers) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInBuffers) {
   // Create a test model and serialize it to a buffer.
   TestModel test_model;
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
   std::string model_data = test_model.Serialize();
 
-  // Initialize session options with QNN EP
-  Ort::SessionOptions session_options;
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  session_options.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions session_options;
+  RegisterQnnEpLibrary(registered_ep_device, session_options, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::AllocatorWithDefaultOptions allocator;
 
@@ -551,7 +571,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
 //   - save output model to a buffer
 //   - save initializers (used by CPU EP) to external file.
 //   - EPContext nodes in output model use embedded binary blobs.
-TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_OutputInitializersFile) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_OutputInitializersFile) {
   const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_fromsessionoptions_outputmodelbuffer_initializers.onnx");
   const ORTCHAR_T* output_initializers_file = ORT_TSTR("./compileapi_initializers.bin");
   std::filesystem::remove(input_model_file);
@@ -562,12 +582,13 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
   ASSERT_STATUS_OK(test_model.Save(input_model_file));
 
-  // Initialize session options with QNN EP
-  Ort::SessionOptions so;
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Create model compilation options from the session options. Output model is stored in a buffer.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
@@ -599,11 +620,12 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, so)));
 
   allocator.Free(output_model_buffer);
+  std::filesystem::remove(output_initializers_file);
 }
 
 // Test that the explicit compile API can be configured to return an error if the output model does not
 // have EPContext nodes.
-TEST_F(QnnHTPBackendTests, CompileApi_SetFlags_ErrorIfNoCompiledNodes) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_SetFlags_ErrorIfNoCompiledNodes) {
   const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
   const ORTCHAR_T* output_model_file = ORT_TSTR("should_not_be_generated.onnx");
   std::filesystem::remove(output_model_file);
@@ -626,13 +648,17 @@ TEST_F(QnnHTPBackendTests, CompileApi_SetFlags_ErrorIfNoCompiledNodes) {
 
 // Test that the explicit compile API can be configured to return an error if the output model already exists and
 // would have been overwritten.
-TEST_F(QnnHTPBackendTests, CompileApi_SetFlags_ErrorIfOutputFileAlreadyExists) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_SetFlags_ErrorIfOutputFileAlreadyExists) {
   const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
   const ORTCHAR_T* output_model_file = ORT_TSTR("mul_1_ctx_.onnx");
   std::filesystem::remove(output_model_file);
 
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
   Ort::SessionOptions session_options;
-  session_options.AppendExecutionProvider(kQnnExecutionProvider, ProviderOptions{{"backend_type", "htp"}});
+  RegisterQnnEpLibrary(registered_ep_device, session_options, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Compile with QNN EP. Should succeed the first time.
   {
@@ -656,18 +682,24 @@ TEST_F(QnnHTPBackendTests, CompileApi_SetFlags_ErrorIfOutputFileAlreadyExists) {
     ASSERT_EQ(status.GetErrorCode(), ORT_FAIL);
     ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("exists already"));
     ASSERT_TRUE(std::filesystem::exists(output_model_file)) << "original compiled model should still exist";
+
+    std::filesystem::remove(output_model_file);
   }
 }
 
 // Tests that the explicit compile API returns an error if user tries to compile a compiled model.
 // This scenario is silently ignored in the original compilation approach with session option configs.
-TEST_F(QnnHTPBackendTests, CompileApi_ErrorIfCompilingACompiledModel) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_ErrorIfCompilingACompiledModel) {
   const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
   const ORTCHAR_T* output_model_file = ORT_TSTR("mul_1_ctx_.onnx");
   std::filesystem::remove(output_model_file);
 
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
   Ort::SessionOptions session_options;
-  session_options.AppendExecutionProvider(kQnnExecutionProvider, ProviderOptions{{"backend_type", "htp"}});
+  RegisterQnnEpLibrary(registered_ep_device, session_options, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Compile with QNN EP. Should succeed the first time.
   {
@@ -689,18 +721,21 @@ TEST_F(QnnHTPBackendTests, CompileApi_ErrorIfCompilingACompiledModel) {
     compile_options.SetInputModelPath(output_model_file);  // Set the compiled model as the input!
     compile_options.SetOutputModelPath(new_output_model_file);
 
+    // Currently it would failed at ConvertEpContextNodes in ep_plugin_provider_interfaces.cc.
     Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-    ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_GRAPH);
-    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("ensure the input model is not already compiled"));
+    ASSERT_EQ(status.GetErrorCode(), ORT_FAIL);
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("OrtEp::Compile() returned a NULL EPContext node"));
     ASSERT_FALSE(std::filesystem::exists(new_output_model_file)) << "new compiled model should not be generated";
     ASSERT_TRUE(std::filesystem::exists(output_model_file)) << "original compiled model should still exist";
+
+    std::filesystem::remove(output_model_file);
   }
 }
 
 // Uses the original compiling approach with session option configs (instead of explicit compile API).
 // Test that ORT does not generate an output model if the model does not contain EPContext nodes.
 // Also, ORT should not return an error.
-TEST_F(QnnHTPBackendTests, QnnContextBinary_OriginalCompileApproach_NoCompiledNodesDoesntGenerateOutput) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinary_OriginalCompileApproach_NoCompiledNodesDoesntGenerateOutput) {
   const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
   const char* output_model_file = "should_not_be_generated.onnx";
 
@@ -717,7 +752,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary_OriginalCompileApproach_NoCompiledNo
 // Uses the original compiling approach with session option configs (instead of explicit compile API).
 // Test that ORT does not generate an output model if the input model is already compiled.
 // Also, ORT should not return an error.
-TEST_F(QnnHTPBackendTests, QnnContextBinary_OriginalCompileApproach_IgnoreCompilingOfCompiledModel) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinary_OriginalCompileApproach_IgnoreCompilingOfCompiledModel) {
   const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
   const char* output_model_file = "mul_1_ctx.onnx";
   std::filesystem::remove(output_model_file);
@@ -729,7 +764,9 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary_OriginalCompileApproach_IgnoreCompil
     Ort::SessionOptions so;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file);
-    so.AppendExecutionProvider(kQnnExecutionProvider, qnn_options);
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
 
     Ort::Session session(*ort_env, input_model_file, so);
     ASSERT_TRUE(std::filesystem::exists(output_model_file));  // check compiled model was generated.
@@ -743,30 +780,37 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary_OriginalCompileApproach_IgnoreCompil
     Ort::SessionOptions so;
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, new_output_model_file);
-    so.AppendExecutionProvider(kQnnExecutionProvider, qnn_options);
 
-    Ort::Session session(*ort_env, ToPathString(output_model_file).c_str(), so);
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    // Currently it would failed at ConvertEpContextNodes in ep_plugin_provider_interfaces.cc.
+    try {
+      Ort::Session session(*ort_env, ToPathString(output_model_file).c_str(), so);
+    } catch (const Ort::Exception& e) {
+      ASSERT_EQ(e.GetOrtErrorCode(), ORT_FAIL);
+      ASSERT_THAT(e.what(), testing::HasSubstr("OrtEp::Compile() returned a NULL EPContext node"));
+    }
 
     // Session creation should not throw an error. And a new output model should not have been generated.
     ASSERT_FALSE(std::filesystem::exists(new_output_model_file));
+    std::filesystem::remove(output_model_file);
   }
 }
 
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
 // The generated Onnx model has 1 FusedMatMul node and 1 EPContext node
-TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {
-  bool single_ep_node = true;
-  QnnContextBinaryMultiPartitionTestBody(single_ep_node);
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {
+  QnnContextBinaryMultiPartitionTestBodyABI(true);
 }
 
 // Test that models with 2 non-quantized FusedMatMul nodes and 2 quantized Add nodes can still generate the context binary
 // The generated Onnx model has 2 FusedMatMul nodes and 1 EPContext nodes
-TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
-  bool single_ep_node = false;
-  QnnContextBinaryMultiPartitionTestBody(single_ep_node);
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
+  QnnContextBinaryMultiPartitionTestBodyABI(false);
 }
 
-void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file, bool load_model_from_buffer = false) {
+void EpCtxCpuNodeWithExternalIniFileTestBodyABI(bool expect_external_ini_file, bool load_model_from_buffer = false) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
 
@@ -796,7 +840,10 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file, bool
 
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
   const std::string ep_context_model_file = "./qnn_ctx_part_external_ini_ctx.onnx";
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_model_file.c_str());
   const std::string external_ini_file = "./qnn_ctx_part_external_ini.bin";
@@ -833,30 +880,30 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file, bool
   // clean up
   ASSERT_EQ(std::remove(model_with_ext.c_str()), 0);
   ASSERT_EQ(std::remove(model_ext_file_full_path.c_str()), 0);
-  CleanUpCtxFile(ep_context_model_file);
+  CleanUpCtxFileABI(ep_context_model_file);
 }
 
 // Set the session option "ep.context_model_external_initializers_file_name" so FusedMatMul (which fallback on CPU)
 // will dump initializer data to external file
-TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithExternalWeights) {
-  EpCtxCpuNodeWithExternalIniFileTestBody(true);
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryCpuNodeWithExternalWeights) {
+  EpCtxCpuNodeWithExternalIniFileTestBodyABI(true);
 }
 
 // Without setting the session option "ep.context_model_external_initializers_file_name"
 // so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
-TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
-  EpCtxCpuNodeWithExternalIniFileTestBody(false);
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
+  EpCtxCpuNodeWithExternalIniFileTestBodyABI(false);
 }
 
 // Load model from memory
 // Without setting the session option "ep.context_model_external_initializers_file_name"
 // so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
-TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeightsModelFromMemory) {
-  EpCtxCpuNodeWithExternalIniFileTestBody(false, true);
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeightsModelFromMemory) {
+  EpCtxCpuNodeWithExternalIniFileTestBodyABI(false, true);
 }
 
 // Set ep.context_file_path to folder path which is not a valid option, check the error message
-TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -884,10 +931,13 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected) {
 
   const std::string ep_context_onnx_file = "./ep_context_folder_not_expected/";
   std::remove(ep_context_onnx_file.c_str());
+
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   try {
     Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
@@ -899,7 +949,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected) {
 }
 
 // Set ep.context_file_path to invalid file path, check the error message
-TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected2) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected2) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -927,10 +977,13 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected2) {
 
   const std::string ep_context_onnx_file = "./ep_context_folder_not_expected/invalid_file";
   std::remove(ep_context_onnx_file.c_str());
+
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   try {
     Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
@@ -944,7 +997,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected2) {
 // Create session 1 to generate context binary file
 // Create session 2 to do same thing, make sure session 2 failed because file exist already
 // Make sure no new file over write from session 2
-TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -971,13 +1024,16 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
   const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
 
   const std::string ep_context_onnx_file = "./ep_context_no_over_write.onnx";
+  std::remove(ep_context_onnx_file.c_str());
+
   const std::string ep_context_binary_file = "./ep_context_no_over_write_qnn.bin";
 
-  std::remove(ep_context_onnx_file.c_str());
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::Session session1(*ort_env, model_data_span.data(), model_data_span.size(), so);
 
@@ -1053,7 +1109,7 @@ static GetTestModelFn BuildAddTestCase() {
 }
 
 // Test that models with 2 inputs which has different data type can still generate the context binary
-TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1080,11 +1136,13 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
 
   const std::string context_model_file = "./qnn_context_binary_int32_fp32_inputs_test.onnx";
   std::remove(context_model_file.c_str());
+
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str());
 
-  so.AppendExecutionProvider("QNN", provider_options);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
 
@@ -1092,7 +1150,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
   EXPECT_TRUE(std::filesystem::exists(context_model_file.c_str()));
 
   // clean up
-  CleanUpCtxFile(context_model_file);
+  CleanUpCtxFileABI(context_model_file);
 }
 
 // Generate context cache model from the ONNX models with 2 inputs.
@@ -1100,7 +1158,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
 // The input ONNX model is created in the way that the model inputs order
 // is different with the order in the graph (topological order).
 // It cause issue if the generated model doesn't set the inputs/outputs explicitly.
-TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
+TEST_F(QnnABIHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1112,10 +1170,13 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
   logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
 
   const std::string context_model_file = "./qnn_ctx_2_inputs_order_test_gen.onnx";
+
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str());
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);
 
@@ -1130,10 +1191,15 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
   EXPECT_TRUE(inputs[1]->Name() == "Add_input_0");
 
   // clean up
-  CleanUpCtxFile(context_model_file);
+  CleanUpCtxFileABI(context_model_file);
 }
 
-TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
+// TODO
+// kOrtSessionOptionEpContextNodeNamePrefix currently does not work for ABI since naming isn't controlled by EP.
+// This test is disabled because the node naming functionality is not implemented in the QNN-ABI EP.
+// The standard QNN EP uses context_node_name_prefix_ in its node name generation (see qnn_execution_provider.cc),
+// but the QNN-ABI EP only reads this value without using it.
+TEST_F(QnnABIHTPBackendTests, DISABLED_QnnContextGenerationNodeNamePrefix) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1146,11 +1212,14 @@ TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
   logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
 
   const std::string context_model_file = "./qnn_ctx_2_inputs_order_test_gen.onnx";
+
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str());
   so.AddConfigEntry(kOrtSessionOptionEpContextNodeNamePrefix, node_name_prefix.c_str());
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);
 
@@ -1166,13 +1235,13 @@ TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
   }
 
   // clean up
-  CleanUpCtxFile(context_model_file);
+  CleanUpCtxFileABI(context_model_file);
 }
 
 // Run QDQ model on HTP 3 times
 // 1st run will generate the Qnn context cache onnx file
 // 2nd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1188,15 +1257,15 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
 
   // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          "",  // context model file path, not required for this inference
+                          session_option_pairs);
 
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_model_file.c_str()));
@@ -1204,23 +1273,23 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
   // 2nd run directly loads and run from Qnn context cache model
   std::unordered_map<std::string, std::string> session_option_pairs2;
   session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_model_file);
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       context_model_file,
-                       session_option_pairs2);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          context_model_file,
+                          session_option_pairs2);
   // Clean up
-  CleanUpCtxFile(context_model_file);
+  CleanUpCtxFileABI(context_model_file);
 }
 
 // Run QDQ model on HTP 3 times
 // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
 // 2nd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
-TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1240,15 +1309,15 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
 
   // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          "",  // context model file path, not required for this inference
+                          session_option_pairs);
 
   // Check the Onnx skeleton file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
@@ -1256,23 +1325,26 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
   EXPECT_TRUE(std::filesystem::exists(qnn_ctx_bin));
 
   std::unordered_map<std::string, std::string> session_option_pairs2;
-  // Need to set the context file path since TestQDQModelAccuracy load the model from memory
+  // Need to set the context file path since TestQDQModelAccuracyABI load the model from memory
   session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_binary_file);
   // 2nd run directly loads and run from Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       context_binary_file,
-                       session_option_pairs2);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          context_binary_file,
+                          session_option_pairs2);
+
+  const std::string context_binary_file_abi = "./testdata/qnn_context_cache_non_embed.onnx";
+  const std::string qnn_ctx_bin_abi = "./testdata/qnn_context_cache_non_embed_qnn.bin";
 
   // load the model from file
   std::vector<char> buffer;
   {
-    std::ifstream file(context_binary_file, std::ios::binary | std::ios::ate);
+    std::ifstream file(context_binary_file_abi, std::ios::binary | std::ios::ate);
     if (!file)
       ORT_THROW("Error reading model");
     buffer.resize(narrow<size_t>(file.tellg()));
@@ -1282,23 +1354,24 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
   }
 
   Ort::SessionOptions so;  // No need to set the context file path in so since it's load from file
-  so.AppendExecutionProvider("QNN", provider_options);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 #ifdef _WIN32
-  std::wstring ctx_model_file(context_binary_file.begin(), context_binary_file.end());
+  std::wstring ctx_model_file(context_binary_file_abi.begin(), context_binary_file_abi.end());
 #else
-  std::string ctx_model_file(context_binary_file.begin(), context_binary_file.end());
+  std::string ctx_model_file(context_binary_file_abi.begin(), context_binary_file_abi.end());
 #endif
   Ort::Session session(*ort_env.get(), ctx_model_file.c_str(), so);
 
   // Clean up
-  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
-  ASSERT_EQ(std::remove(qnn_ctx_bin.c_str()), 0);
+  ASSERT_EQ(std::remove(context_binary_file_abi.c_str()), 0);
+  ASSERT_EQ(std::remove(qnn_ctx_bin_abi.c_str()), 0);
 }
 
 // Run QDQ model on HTP 2 times
 // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
 // Then delete the context bin file to make the 2nd sesssion.Initialize() return the status with code INVALID_GRAPH
-TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1317,15 +1390,15 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
 
   // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          "",  // context model file path, not required for this inference
+                          session_option_pairs);
 
   // Check the Onnx skeleton file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
@@ -1342,23 +1415,28 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
   std::string qnn_ctx_model_data;
   model_proto.SerializeToString(&qnn_ctx_model_data);
 
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
   RunOptions run_options;
-  run_options.run_tag = so.session_logid;
+  run_options.run_tag = "logger0";
 
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  Ort::SessionOptions so;
+  so.SetLogId("logger0");
 
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
+  auto* ort_so = static_cast<OrtSessionOptions*>(so);
+  InferenceSessionWrapper session_object{ort_so->value, GetEnvironment()};
+
   ASSERT_STATUS_OK(session_object.Load(qnn_ctx_model_data.data(), static_cast<int>(qnn_ctx_model_data.size())));
   // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+  auto* status_ptr = InitializeSession(ort_so, session_object);
+  ASSERT_TRUE(status_ptr != nullptr && Ort::GetApi().GetErrorCode(status_ptr) == ORT_INVALID_GRAPH);
 
   // Clean up
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
-std::string CreateQnnCtxModelWithNonEmbedMode(std::string external_bin_path) {
+std::string CreateQnnCtxModelWithNonEmbedModeABI(std::string external_bin_path) {
   const std::unordered_map<std::string, int> domain_to_version = {{"", 11}, {kMSDomain, 1}};
   auto& logging_manager = DefaultLoggingManager();
   onnxruntime::Model model("QNN_ctx_model", false, ModelMetaData(), PathString(),
@@ -1383,103 +1461,111 @@ std::string CreateQnnCtxModelWithNonEmbedMode(std::string external_bin_path) {
 
 // Create a model with EPContext node. Set the node property ep_cache_context has ".."
 // Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryRelativePathTest) {
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode("../qnn_context.bin");
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryRelativePathTest) {
+  std::string model_data = CreateQnnCtxModelWithNonEmbedModeABI("../qnn_context.bin");
 
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  Ort::SessionOptions so;
+  so.SetLogId("qnn_ctx_model_logger");
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
+  auto* ort_so = static_cast<OrtSessionOptions*>(so);
+  InferenceSessionWrapper session_object{ort_so->value, GetEnvironment()};
+
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+  auto* status_ptr = InitializeSession(ort_so, session_object);
+  ASSERT_TRUE(status_ptr != nullptr && Ort::GetApi().GetErrorCode(status_ptr) == ORT_INVALID_GRAPH);
 }
 
 // Create a model with EPContext node. Set the node property ep_cache_context has absolute path
 // Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
 #if defined(_WIN32)
   std::string external_ctx_bin_path = "D:/qnn_context.bin";
 #else
   std::string external_ctx_bin_path = "/data/qnn_context.bin";
 #endif
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode(external_ctx_bin_path);
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  std::string model_data = CreateQnnCtxModelWithNonEmbedModeABI(external_ctx_bin_path);
 
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  Ort::SessionOptions so;
+  so.SetLogId("qnn_ctx_model_logger");
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
+  auto* ort_so = static_cast<OrtSessionOptions*>(so);
+  InferenceSessionWrapper session_object{ort_so->value, GetEnvironment()};
+
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+  auto* status_ptr = InitializeSession(ort_so, session_object);
+  ASSERT_TRUE(status_ptr != nullptr && Ort::GetApi().GetErrorCode(status_ptr) == ORT_INVALID_GRAPH);
 }
 
 // Create a model with EPContext node. Set the node property ep_cache_context to a file not exist
 // Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode("qnn_context_not_exist.bin");
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./qnn_context_not_exist.onnx"));
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryFileNotExistTest) {
+  std::string model_data = CreateQnnCtxModelWithNonEmbedModeABI("qnn_context_not_exist.bin");
 
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options, &so)));
+  Ort::SessionOptions so;
+  so.SetLogId("qnn_ctx_model_logger");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./qnn_context_not_exist.onnx");
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
+  auto* ort_so = static_cast<OrtSessionOptions*>(so);
+  InferenceSessionWrapper session_object{ort_so->value, GetEnvironment()};
+
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+  auto* status_ptr = InitializeSession(ort_so, session_object);
+  ASSERT_TRUE(status_ptr != nullptr && Ort::GetApi().GetErrorCode(status_ptr) == ORT_INVALID_GRAPH);
 }
 
 // Create a model with EPContext node. Set the node property ep_cache_context to empty string
 // Verify that it return INVALID_GRAPH status
-TEST_F(QnnHTPBackendTests, QnnContextBinaryFileEmptyStringTest) {
-  std::string model_data = CreateQnnCtxModelWithNonEmbedMode("");
-
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./test_ctx.onnx"));
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryFileEmptyStringTest) {
+  std::string model_data = CreateQnnCtxModelWithNonEmbedModeABI("");
 
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options, &so)));
+  Ort::SessionOptions so;
+  so.SetLogId("qnn_ctx_model_logger");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./test_ctx.onnx");
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
+  auto* ort_so = static_cast<OrtSessionOptions*>(so);
+  InferenceSessionWrapper session_object{ort_so->value, GetEnvironment()};
+
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+  auto* status_ptr = InitializeSession(ort_so, session_object);
+  ASSERT_TRUE(status_ptr != nullptr && Ort::GetApi().GetErrorCode(status_ptr) == ORT_INVALID_GRAPH);
 }
 
 // Run QDQ model on HTP with 2 inputs
 // 1st run will generate the Qnn context cache onnx file
 // 2nd run directly loads and run from Qnn context cache model
-TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinary2InputsTest) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1496,15 +1582,15 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
 
   // Runs model with DQ-> Add-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          "",  // context model file path, not required for this inference
+                          session_option_pairs);
 
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_model_file.c_str()));
@@ -1512,17 +1598,17 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
   // 2nd run directly loads and run from Qnn context cache model
   std::unordered_map<std::string, std::string> session_option_pairs2;
   session_option_pairs2.emplace(kOrtSessionOptionEpContextFilePath, context_model_file);
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       context_model_file,
-                       session_option_pairs2);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def1, input_def2}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def1, input_def2}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          context_model_file,
+                          session_option_pairs2);
   // Clean up
-  CleanUpCtxFile(context_model_file);
+  CleanUpCtxFileABI(context_model_file);
 }
 
 // Context binary only contains a single QNN graph, generated context cache model (detached mode) only has 1 EPContext node
@@ -1530,7 +1616,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
 // but the node name is not same with the QNN graph name inside the bin file.
 // This is to support backward compatible for the models generated before the PR that
 // make context generation support multi-partition
-TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphNameInCtx) {
+TEST_F(QnnABIHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphNameInCtx) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1549,20 +1635,23 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
 
   // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
-                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
-                       provider_options,
-                       14,
-                       ExpectedEPNodeAssignment::All,
-                       QDQTolerance(),
-                       logging::Severity::kERROR,
-                       "",  // context model file path, not required for this inference
-                       session_option_pairs);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                          BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                          provider_options,
+                          14,
+                          ExpectedEPNodeAssignment::All,
+                          QDQTolerance(),
+                          logging::Severity::kERROR,
+                          "",  // context model file path, not required for this inference
+                          session_option_pairs);
 
   // Check the Onnx skeleton file is generated
   EXPECT_TRUE(std::filesystem::exists(context_model_file.c_str()));
   // Check the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_bin));
+
+  const std::string context_model_file_abi = "./qnn_context_cache_non_embed.onnx";
+  const std::string context_bin_abi = "qnn_context_cache_non_embed_qnn.bin";
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 11}, {kMSDomain, 1}};
   auto& logging_manager = DefaultLoggingManager();
@@ -1576,7 +1665,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
   auto* graph_output = helper.MakeOutput<float>(shape);
   Node& ep_context_node = helper.AddNode("EPContext", {graph_input}, {graph_output}, kMSDomain);
   ep_context_node.AddAttribute("embed_mode", static_cast<int64_t>(0));
-  ep_context_node.AddAttribute("ep_cache_context", context_bin.string());
+  ep_context_node.AddAttribute("ep_cache_context", context_bin_abi);
   ep_context_node.AddAttribute("partition_name", "QNNExecutionProvider_QNN_1110111000111000111_1_0");
   ep_context_node.AddAttribute("source", "QNNExecutionProvider");
   helper.SetGraphOutputs();
@@ -1584,46 +1673,46 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
-  // loads and run from Onnx skeleton file + Qnn context cache binary file
+  Ort::SessionOptions so;
+  so.SetLogId("qnn_ctx_model_logger");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file_abi.c_str());
 
-  SessionOptions so;
-  so.session_logid = "qnn_ctx_model_logger";
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_model_file.c_str()));
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  auto* ort_so = static_cast<OrtSessionOptions*>(so);
+  InferenceSessionWrapper session_object{ort_so->value, GetEnvironment()};
 
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options, &so)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::OK);
+  ASSERT_EQ(InitializeSession(ort_so, session_object), nullptr);
 
   // Clean up
-  ASSERT_EQ(std::remove(context_model_file.c_str()), 0);
-  ASSERT_EQ(std::remove(context_bin.string().c_str()), 0);
+  ASSERT_EQ(std::remove(context_model_file_abi.c_str()), 0);
+  ASSERT_EQ(std::remove(context_bin_abi.c_str()), 0);
 }
 
 // Model has 2 EPContext nodes, both with main_context=1 and embedded context binary
-TEST_F(QnnHTPBackendTests, QnnMultiContextEmbeded) {
+TEST_F(QnnABIHTPBackendTests, QnnMultiContextEmbeded) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   Ort::SessionOptions so;
-  so.AppendExecutionProvider("QNN", provider_options);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
 }
 
 // Model has 2 EPContext nodes, both with main_context=1 and external context binary
-TEST_F(QnnHTPBackendTests, QnnMultiContextExternal) {
+TEST_F(QnnABIHTPBackendTests, QnnMultiContextExternal) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   Ort::SessionOptions so;
-  so.AppendExecutionProvider("QNN", provider_options);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_external.onnx"), so);
 }
@@ -1657,7 +1746,8 @@ static void DumpModelWithSharedCtx(ProviderOptions provider_options,
 #endif  // !_M_ARM64
 #endif  // !__aarch64__
 
-  so.AppendExecutionProvider("QNN", provider_options);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Create 2 sessions to generate context binary models, the 1st session will share the QnnBackendManager
   // to the 2nd session, so graphs from these 2 models are all included in the 2nd context binary
@@ -1694,7 +1784,7 @@ static void GetModelInputNames(const std::string& model_path,
 // 3. Start 2 ort session from the dumped context model,
 // The 2nd session uses graph from 1st session
 // 4. Run the 2nd session
-TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
+TEST_F(QnnABIHTPBackendTests, QnnContextShareAcrossSessions) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1743,11 +1833,14 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   Ort::SessionOptions so1;
   so1.SetLogId("so1");
   so1.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
-  so1.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so1, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
   Ort::SessionOptions so2;
   so2.SetLogId("so2");
   so2.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
-  so2.AppendExecutionProvider("QNN", provider_options);
+  so2.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(registered_ep_device.get())}, provider_options);
 
   EXPECT_TRUE(2 == ctx_model_paths.size());
 #ifdef _WIN32
@@ -1796,7 +1889,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   std::remove(qnn_ctx_binary_file_name1.c_str());
 }
 
-TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
   // Disable the test on test-android job in Qualcomm CI here while we investigate
   // but do not upstream this change.
   ProviderOptions provider_options;
@@ -1847,10 +1940,13 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
 #if defined(__aarch64__) || defined(_M_ARM64)
   Ort::SessionOptions so1;
   so1.SetLogId("so1");
-  so1.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so1, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
   Ort::SessionOptions so2;
   so2.SetLogId("so2");
-  so2.AppendExecutionProvider("QNN", provider_options);
+  so2.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(registered_ep_device.get())}, provider_options);
 
   EXPECT_TRUE(2 == ctx_model_paths.size());
 #ifdef _WIN32
@@ -1901,7 +1997,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_VTCMBackupBufferSharing) {
 
 // For Ort sessions to generate the context binary, with session option ep.share_ep_contexts enabled
 // Ort sessions will share the QnnBackendManager, so that all graphs from all models compile into the same Qnn context
-TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
+TEST_F(QnnABIHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -1958,7 +2054,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
 
 // Session created from array wth ep.context_enable enabled without ep.context_file_path
 // Error message expected
-TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
+TEST_F(QnnABIHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -1987,9 +2083,12 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
 
   const std::string context_model_file = "./qnn_context_binary_multi_partition_test.onnx";
   std::remove(context_model_file.c_str());
+
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   ORT_TRY {
     Ort::Session session1(*ort_env, model_data_span.data(), model_data_span.size(), so);
@@ -2013,14 +2112,16 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
   }
 }
 
-TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
+TEST_F(QnnABIHTPBackendTests, QnnEpDynamicOptions) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   Ort::SessionOptions so;
-  so.AppendExecutionProvider("QNN", provider_options);
   so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
 
@@ -2078,6 +2179,21 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
   } catch (const std::exception& e) {
     EXPECT_STREQ("Unsupported EP Dynamic Option", e.what());
   }
+
+  const char* const htp_perf_mode_type[] = {"ep.dynamic.qnn_htp_performance_mode"};
+  const char* const eps_type[] = {"extreme_power_saver"};
+  const char* const shp_type[] = {"sustained_high_performance"};
+  session.SetEpDynamicOptions(htp_perf_mode_type, shp_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  session.SetEpDynamicOptions(htp_perf_mode_type, eps_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  session.SetEpDynamicOptions(htp_perf_mode_type, shp_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
 }
 
 // Implementation of OrtOutStreamWriteFunc that writes the compiled model to a file.
@@ -2098,7 +2214,7 @@ static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const 
 // Test using the CompileModel() API with settings:
 //   - input model comes from a file
 //   - write output model to custom write stream
-TEST_F(QnnHTPBackendTests, CompileApi_InputFile_WriteOutputModelBytes) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_InputFile_WriteOutputModelBytes) {
   const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_inputfile_writeoutputmodelbytes.onnx");
   std::filesystem::remove(input_model_file);
 
@@ -2112,7 +2228,9 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputFile_WriteOutputModelBytes) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   const ORTCHAR_T* output_model_file = ORT_TSTR("compileapi_inputfile_writeoutputmodelbytes_ctx.onnx");
   std::filesystem::remove(output_model_file);
@@ -2141,7 +2259,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputFile_WriteOutputModelBytes) {
 }
 
 // Tests using an OrtOutStreamFunc function that returns an error.
-TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
   // Create a test model (in memory).
   TestModel test_model;
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
@@ -2152,7 +2270,9 @@ TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Create model compilation options from the session options.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
@@ -2227,7 +2347,7 @@ static OrtStatus* ORT_API_CALL TestHandleInitializerDataFunc(void* state,
 //   - input model comes from a file
 //   - write output model to a file
 //   - Use callback to specify where each initializer is stored (i.e., external file or within model).
-TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
   const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler_ctx.onnx");
   const ORTCHAR_T* initializer_file = ORT_TSTR("./compileapi_inputfile_outputfile_initializerhandler.bin");
@@ -2245,7 +2365,9 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputFile_OutputFile_InitializerHandler) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
 
   // Open a file to store external initializers. ORT will call our handler function for every initializer.
   ASSERT_FALSE(std::filesystem::exists(initializer_file));
@@ -2326,7 +2448,7 @@ static OrtStatus* ORT_API_CALL ReuseExternalInitializers(void* state,
 //   - write output model to a file
 //   - Use callback to specify where each initializer is stored. We'll reuse external initializers
 //     from original model!
-TEST_F(QnnHTPBackendTests, CompileApi_InitializerHandler_ReuseExternalInitializers) {
+TEST_F(QnnABIHTPBackendTests, CompileApi_InitializerHandler_ReuseExternalInitializers) {
   const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/conv_qdq_external_ini.onnx");
   const ORTCHAR_T* output_model_file = ORT_TSTR("testdata/conv_qdq_external_ini_reuse_ctx.onnx");
   std::filesystem::remove(output_model_file);

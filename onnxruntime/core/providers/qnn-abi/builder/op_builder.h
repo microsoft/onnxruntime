@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -15,15 +15,15 @@ class IOpBuilder {
   virtual ~IOpBuilder() = default;
 
   // Check whether the operator is supported or not
-  virtual Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                               const NodeUnit& node,
-                               const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
+  virtual Ort::Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtNodeUnit& node,
+                                    const Ort::Logger& logger) const ORT_MUST_USE_RESULT = 0;
 
   // Add the operator to QNN model
-  virtual Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
-                                   const NodeUnit& node,
-                                   const logging::Logger& logger,
-                                   bool do_op_validation = false) const ORT_MUST_USE_RESULT = 0;
+  virtual Ort::Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
+                                        const OrtNodeUnit& node,
+                                        const Ort::Logger& logger,
+                                        bool do_op_validation = false) const ORT_MUST_USE_RESULT = 0;
 
   virtual std::string GetOpBuilderType() const = 0;
 };

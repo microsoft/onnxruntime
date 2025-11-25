@@ -7,7 +7,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -97,18 +97,18 @@ static void RunQDQGatherOpTest(const TestInputDef<float>& input_def,
   auto qdq_model_builder = BuildQDQGatherTestCase<QuantType, IndicesType>(input_def, indices_def, attrs,
                                                                           use_contrib_qdq);
 
-  TestQDQModelAccuracy<QuantType>(f32_model_builder,
-                                  qdq_model_builder,
-                                  provider_options,
-                                  opset,
-                                  expected_ep_assignment);
+  TestQDQModelAccuracyABI<QuantType>(f32_model_builder,
+                                     qdq_model_builder,
+                                     provider_options,
+                                     opset,
+                                     expected_ep_assignment);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
 // Static int64 indices with default axis.
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt64_Axis0) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_IndicesStaticInt64_Axis0) {
   RunQDQGatherOpTest<uint8_t, int64_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                        TestInputDef<int64_t>({2, 2}, true, {0, 1, 1, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
@@ -117,7 +117,7 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt64_Axis0) {
 }
 
 // Test 16-bit QDQ Gather with static int64 indices with default axis.
-TEST_F(QnnHTPBackendTests, GatherOp_U16_IndicesStaticInt64_Axis0) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_U16_IndicesStaticInt64_Axis0) {
   RunQDQGatherOpTest<uint16_t, int64_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                         TestInputDef<int64_t>({2, 2}, true, {0, 1, 1, 2}),
                                         {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
@@ -128,7 +128,7 @@ TEST_F(QnnHTPBackendTests, GatherOp_U16_IndicesStaticInt64_Axis0) {
 
 // Tests that dynamic int64 indices are supported on HTP backend if the indices are a graph input.
 // QNN SDK 2.23 added support for Cast from int64 to int32.
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt64_Axis0) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_IndicesDynamicInt64_Axis0) {
   RunQDQGatherOpTest<uint8_t, int64_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                        TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
@@ -140,7 +140,7 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt64_Axis0) {
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
 // Static int32 indices with default axis.
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis0) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_IndicesStaticInt32_Axis0) {
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                        TestInputDef<int32_t>({2, 2}, true, {0, 1, 1, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
@@ -149,7 +149,7 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis0) {
 }
 
 // negative indices
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_NegativeIndices) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_IndicesStaticInt32_NegativeIndices) {
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                        TestInputDef<int32_t>({2, 2}, true, {-1, 1, 1, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
@@ -161,7 +161,7 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_NegativeIndices) {
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
 // Dynamic int32 indices with default axis.
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt32_Axis0) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_IndicesDynamicInt32_Axis0) {
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                        TestInputDef<int32_t>({2, 2}, false, {0, 1, 1, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
@@ -179,7 +179,7 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt32_Axis0) {
 //
 // Static int32 indices with axis = 1
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis1) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_IndicesStaticInt32_Axis1) {
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 3}, false, {1.0f, 1.2f, 1.9f, 2.3f, 3.4f, 3.9f, 4.5f, 5.7f, 5.9f}),
                                        TestInputDef<int32_t>({1, 2}, true, {0, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
@@ -202,17 +202,17 @@ static void RunOpTest(const std::string& op_type,
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
-  RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_defs_2}, attrs, op_domain),
-                  provider_options,
-                  opset_version,
-                  expected_ep_assignment,
-                  fp32_abs_err);
+  RunQnnModelTestABI(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_defs_2}, attrs, op_domain),
+                     provider_options,
+                     opset_version,
+                     expected_ep_assignment,
+                     fp32_abs_err);
 }
 
 // Non-QDQ model, Gather with static input and dynamic int64 indices
 // Fails with QNN SDK 2.35.0:
 // Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
   RunOpTest<float, int64_t>("Gather",
                             TestInputDef<float>({3, 2}, true, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                             TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),
@@ -222,7 +222,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
 }
 
 // Test that int64 Gather runs on HTP backend.
-TEST_F(QnnHTPBackendTests, GatherOp_InputIndicesInt64) {
+TEST_F(QnnABIHTPBackendTests, GatherOp_InputIndicesInt64) {
   RunOpTest<int64_t, int64_t>("Gather",
                               TestInputDef<int64_t>({3, 2}, false, {1, 2, 3, 4, 5, 6}),
                               TestInputDef<int64_t>({2, 2}, true, {0, 1, 1, 2}),
@@ -247,15 +247,15 @@ static void RunQDQGatherNDOpTest(const TestInputDef<float>& input_def,
   auto qdq_model_builder = BuildQDQGatherNdTestCase<QuantType, IndicesType>(input_def, indices_def, attrs,
                                                                             use_contrib_qdq);
 
-  TestQDQModelAccuracy<QuantType>(f32_model_builder,
-                                  qdq_model_builder,
-                                  provider_options,
-                                  opset,
-                                  expected_ep_assignment);
+  TestQDQModelAccuracyABI<QuantType>(f32_model_builder,
+                                     qdq_model_builder,
+                                     provider_options,
+                                     opset,
+                                     expected_ep_assignment);
 }
 
 // Non-QDQ model, GatherND with static input and dynamic int64 indices
-TEST_F(QnnHTPBackendTests, GatherNDOp_IndicesDynamicInt64) {
+TEST_F(QnnABIHTPBackendTests, GatherNDOp_IndicesDynamicInt64) {
   RunOpTest<float, int64_t>(
       "GatherND",
       TestInputDef<float>({2, 2, 2}, true,  // Static input
@@ -268,7 +268,7 @@ TEST_F(QnnHTPBackendTests, GatherNDOp_IndicesDynamicInt64) {
 }
 
 // Static negative int64 indices with negative values and batch_dims = 0
-TEST_F(QnnHTPBackendTests, GatherNDOp_Negative_IndicesInt64_BatchDims0) {
+TEST_F(QnnABIHTPBackendTests, GatherNDOp_Negative_IndicesInt64_BatchDims0) {
   RunOpTest<float, int64_t>(
       "GatherND",
       TestInputDef<float>({2, 2, 2}, true,  // Static input
@@ -281,7 +281,7 @@ TEST_F(QnnHTPBackendTests, GatherNDOp_Negative_IndicesInt64_BatchDims0) {
 }
 
 // Static int64 indices with batch_dims = 0
-TEST_F(QnnHTPBackendTests, GatherNDOp_QDQ_IndicesStaticInt64_BatchDims0) {
+TEST_F(QnnABIHTPBackendTests, GatherNDOp_QDQ_IndicesStaticInt64_BatchDims0) {
   RunQDQGatherNDOpTest<uint8_t, int64_t>(
       TestInputDef<float>({2, 2, 2}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),
       TestInputDef<int64_t>({2, 2}, true, {0, 0, 1, 1}),
@@ -291,7 +291,7 @@ TEST_F(QnnHTPBackendTests, GatherNDOp_QDQ_IndicesStaticInt64_BatchDims0) {
 }
 
 // Dynamic int64 indices with batch_dims = 0
-TEST_F(QnnHTPBackendTests, GatherNDOp_QDQ_IndicesDynamicInt64_BatchDims0) {
+TEST_F(QnnABIHTPBackendTests, GatherNDOp_QDQ_IndicesDynamicInt64_BatchDims0) {
   RunQDQGatherNDOpTest<uint8_t, int64_t>(
       TestInputDef<float>({2, 2, 2}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),
       TestInputDef<int64_t>({2, 2}, false, {0, 0, 1, 1}),

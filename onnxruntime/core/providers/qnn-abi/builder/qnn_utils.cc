@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
 #include <algorithm>
 #include <functional>
@@ -12,10 +12,11 @@
 #include <utility>
 #include <vector>
 
-#include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/builder/qnn_def.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "nlohmann/json.hpp"
+
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_def.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -43,9 +44,12 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
       {QNN_DATATYPE_UNDEFINED, 1}};
 
   auto pos = data_type_to_size.find(data_type);
-  ORT_ENFORCE(pos != data_type_to_size.end(), "Unknown QNN data type", data_type);
+  if (pos == data_type_to_size.end()) {
+    ORT_CXX_API_THROW("Unknown QNN data type " + std::to_string(data_type), ORT_EP_FAIL);
+  }
   return pos->second;
 }
+
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
   const static std::unordered_map<ONNXTensorElementDataType, size_t> elem_type_to_size = {
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(Int4x2)},
@@ -64,48 +68,17 @@ size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, sizeof(bool)}};
 
   auto pos = elem_type_to_size.find(elem_type);
-  ORT_ENFORCE(pos != elem_type_to_size.end(), "Unknown element type", elem_type);
+  if (pos == elem_type_to_size.end()) {
+    ORT_CXX_API_THROW("Unknown element type " + std::to_string(elem_type), ORT_EP_FAIL);
+  }
   return pos->second;
 }
 
-size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
-  switch (onnx_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_INT4:
-      return sizeof(Int4x2);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
-      return sizeof(UInt4x2);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      return sizeof(int8_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return sizeof(uint8_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      return sizeof(int16_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      return sizeof(uint16_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return sizeof(int32_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      return sizeof(uint32_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return sizeof(int64_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      return sizeof(uint64_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return 2;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return sizeof(float);
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return sizeof(double);
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      return sizeof(bool);
-    default:
-      return 0;
-  }
-  // Unreachable
-}
-
 size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
-  ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
+  // TODO can we just treat empty shape as a scalar?
+  if (shape.empty()) {
+    ORT_CXX_API_THROW("Empty shape not allowed.", ORT_EP_FAIL);
+  }
   SafeInt<size_t> data_length = GetElementSizeByType(element_type);
   return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
 }
@@ -164,7 +137,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {
       out << static_cast<int32_t>(scalar.bool8Value);
       break;
     default:
-      ORT_THROW("Unknown Qnn Data type");
+      ORT_CXX_API_THROW("Unknown Qnn Data type", ORT_EP_FAIL);
   }
   return out;
 }
@@ -232,7 +205,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_DataType_t& data_type) {
       out << "QNN_DATATYPE_UNDEFINED";
       break;
     default:
-      ORT_THROW("Unknown Qnn Data type");
+      ORT_CXX_API_THROW("Unknown Qnn Data type", ORT_EP_FAIL);
   }
   return out;
 }
@@ -777,17 +750,13 @@ const nlohmann::json& QnnJSONGraph::Finalize() {
   return json_;
 }
 
-Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::TypeProto* type_proto,
-                      Qnn_DataType_t& tensor_data_type) {
-  if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
-  }
+Ort::Status GetQnnDataType(const bool is_quantized_tensor,
+                           const ONNXTensorElementDataType onnx_data_type,
+                           Qnn_DataType_t& tensor_data_type) {
+  RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_tensor),
+                "Failed to map Onnx data type to Qnn data type!");
 
-  int32_t onnx_data_type = type_proto->tensor_type().elem_type();
-  ORT_RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_tensor),
-                    "Failed to map Onnx data type to Qnn data type!");
-
-  return Status::OK();
+  return Ort::Status();
 }
 
 std::string GetUniqueName(const std::string& base, std::string_view suffix) {
@@ -808,7 +777,7 @@ std::string GetUniqueName(const std::string& base, std::string_view suffix) {
   return name;
 }
 
-std::string GetUniqueName(const NodeUnit& node_unit, std::string_view suffix) {
+std::string GetUniqueName(const OrtNodeUnit& node_unit, std::string_view suffix) {
   // Preserve node name when exist. Otherwise, use op type with index
   std::string base;
   if (!node_unit.Name().empty()) {
@@ -819,39 +788,42 @@ std::string GetUniqueName(const NodeUnit& node_unit, std::string_view suffix) {
   return GetUniqueName(base, suffix);
 }
 
-bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {
-  const std::unordered_map<int32_t, Qnn_DataType_t> onnx_to_qnn_data_type = {
-      {ONNX_NAMESPACE::TensorProto_DataType_INT8, QNN_DATATYPE_INT_8},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT16, QNN_DATATYPE_INT_16},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT32, QNN_DATATYPE_INT_32},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT64, QNN_DATATYPE_INT_64},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT8, QNN_DATATYPE_UINT_8},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT16, QNN_DATATYPE_UINT_16},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT32, QNN_DATATYPE_UINT_32},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT64, QNN_DATATYPE_UINT_64},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, QNN_DATATYPE_FLOAT_16},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, QNN_DATATYPE_FLOAT_32},
-      {ONNX_NAMESPACE::TensorProto_DataType_BOOL, QNN_DATATYPE_BOOL_8},
+bool OnnxDataTypeToQnnDataType(const ONNXTensorElementDataType onnx_data_type,
+                               Qnn_DataType_t& qnn_data_type,
+                               bool is_quantized) {
+  const std::unordered_map<ONNXTensorElementDataType, Qnn_DataType_t> onnx_to_qnn_data_type = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, QNN_DATATYPE_INT_8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, QNN_DATATYPE_INT_16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, QNN_DATATYPE_INT_32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, QNN_DATATYPE_INT_64},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, QNN_DATATYPE_UINT_8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, QNN_DATATYPE_UINT_16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, QNN_DATATYPE_UINT_32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, QNN_DATATYPE_UINT_64},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, QNN_DATATYPE_FLOAT_16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, QNN_DATATYPE_FLOAT_32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, QNN_DATATYPE_BOOL_8},
   };
 
-  const std::unordered_map<int32_t, Qnn_DataType_t> onnx_to_qnn_data_type_quantized = {
-      {ONNX_NAMESPACE::TensorProto_DataType_INT4, QNN_DATATYPE_SFIXED_POINT_8},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT8, QNN_DATATYPE_SFIXED_POINT_8},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT16, QNN_DATATYPE_SFIXED_POINT_16},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT32, QNN_DATATYPE_SFIXED_POINT_32},
-      {ONNX_NAMESPACE::TensorProto_DataType_INT64, QNN_DATATYPE_INT_64},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT4, QNN_DATATYPE_UFIXED_POINT_8},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT8, QNN_DATATYPE_UFIXED_POINT_8},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT16, QNN_DATATYPE_UFIXED_POINT_16},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT32, QNN_DATATYPE_UFIXED_POINT_32},
-      {ONNX_NAMESPACE::TensorProto_DataType_UINT64, QNN_DATATYPE_UINT_64},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, QNN_DATATYPE_FLOAT_16},
-      {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, QNN_DATATYPE_FLOAT_32},
-      {ONNX_NAMESPACE::TensorProto_DataType_BOOL, QNN_DATATYPE_BOOL_8},
+  const std::unordered_map<ONNXTensorElementDataType, Qnn_DataType_t> onnx_to_qnn_data_type_quantized = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, QNN_DATATYPE_SFIXED_POINT_8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, QNN_DATATYPE_SFIXED_POINT_8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, QNN_DATATYPE_SFIXED_POINT_16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, QNN_DATATYPE_SFIXED_POINT_32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, QNN_DATATYPE_INT_64},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, QNN_DATATYPE_UFIXED_POINT_8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, QNN_DATATYPE_UFIXED_POINT_8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, QNN_DATATYPE_UFIXED_POINT_16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, QNN_DATATYPE_UFIXED_POINT_32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, QNN_DATATYPE_UINT_64},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, QNN_DATATYPE_FLOAT_16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, QNN_DATATYPE_FLOAT_32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, QNN_DATATYPE_BOOL_8},
   };
 
-  const auto do_type_mapping = [](const std::unordered_map<int32_t, Qnn_DataType_t>& mapping_table,
-                                  const int32_t onnx_data_type,
+  const auto do_type_mapping = [](const std::unordered_map<ONNXTensorElementDataType,
+                                                           Qnn_DataType_t>& mapping_table,
+                                  const ONNXTensorElementDataType onnx_data_type,
                                   Qnn_DataType_t& qnn_data_type) -> bool {
     auto pos = mapping_table.find(onnx_data_type);
     if (pos == mapping_table.end()) {
@@ -887,12 +859,12 @@ inline float RoundHalfToEven(float input) {
   return input - std::remainderf(input, 1.f);
 }
 
-Status GetQuantParams(float rmin,
-                      float rmax,
-                      const Qnn_DataType_t qnn_data_type,
-                      float& scale,
-                      int32_t& zero_point,
-                      bool symmetric) {
+Ort::Status GetQuantParams(float rmin,
+                           float rmax,
+                           const Qnn_DataType_t qnn_data_type,
+                           float& scale,
+                           int32_t& zero_point,
+                           bool symmetric) {
   std::tie(rmin, rmax) = CheckMinMax(rmin, rmax);
   if (symmetric) {
     float abs_max = std::max(abs(rmax), abs(rmin));
@@ -904,7 +876,7 @@ Status GetQuantParams(float rmin,
   double rmax_dbl = static_cast<double>(rmax);
   double qmin = 0.0;
   double qmax = 0.0;
-  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax, symmetric));
+  RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax, symmetric));
 
   double scale_dbl = (rmax_dbl - rmin_dbl) / (qmax - qmin);
   double initial_zero_point = 0.0;
@@ -916,7 +888,7 @@ Status GetQuantParams(float rmin,
   zero_point = static_cast<int32_t>(RoundHalfToEven(static_cast<float>(Saturate(qmax, qmin, initial_zero_point))));
   zero_point = -zero_point;  // Negate to match QNN quantization definition.
   scale = static_cast<float>(scale_dbl);
-  return Status::OK();
+  return Ort::Status();
 }
 
 double Dequantize(int32_t offset, float scale, const double quant_value) {
@@ -925,16 +897,16 @@ double Dequantize(int32_t offset, float scale, const double quant_value) {
   return (quant_value + offset_d) * scale_d;
 }
 
-Status Quantize(const double double_value,
-                const float scale,
-                const int32_t zero_point,
-                const Qnn_DataType_t qnn_data_type,
-                int& quant_value) {
+Ort::Status Quantize(const double double_value,
+                     const float scale,
+                     const int32_t zero_point,
+                     const Qnn_DataType_t qnn_data_type,
+                     int& quant_value) {
   int qmin = 0;
   int qmax = 255;
-  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
+  RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
   quant_value = Saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
-  return Status::OK();
+  return Ort::Status();
 }
 
 size_t ShapeSizeCalc(gsl::span<const uint32_t> shape, size_t start, size_t end) {
@@ -945,12 +917,12 @@ size_t ShapeSizeCalc(gsl::span<const uint32_t> shape, size_t start, size_t end) 
   return size;
 }
 
-Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t> shape,
-                          /*out*/ gsl::span<float> scales, /*out*/ gsl::span<int32_t> offsets,
-                          Qnn_DataType_t data_type, bool symmetric, std::optional<int64_t> axis) {
+Ort::Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t> shape,
+                               /*out*/ gsl::span<float> scales, /*out*/ gsl::span<int32_t> offsets,
+                               Qnn_DataType_t data_type, bool symmetric, std::optional<int64_t> axis) {
   const size_t num_dims = shape.size();
   const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
-  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
+  RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
 
   size_t block_count = 1;
   size_t broadcast_dim = 1;
@@ -963,8 +935,8 @@ Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t>
     block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
   }
 
-  ORT_RETURN_IF_NOT(scales.size() == broadcast_dim, "Unexpected size of scales output buffer");
-  ORT_RETURN_IF_NOT(offsets.size() == broadcast_dim, "Unexpected size of offsets output buffer");
+  RETURN_IF_NOT(scales.size() == broadcast_dim, "Unexpected size of scales output buffer");
+  RETURN_IF_NOT(offsets.size() == broadcast_dim, "Unexpected size of offsets output buffer");
 
   size_t i = 0;
   for (size_t n = 0; n < block_count; n++) {
@@ -979,24 +951,24 @@ Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t>
 
       scales[bd] = 1.0f;
       offsets[bd] = 0;
-      ORT_RETURN_IF_ERROR(GetQuantParams(rmin, rmax, data_type, scales[bd], offsets[bd], symmetric));
+      RETURN_IF_ERROR(GetQuantParams(rmin, rmax, data_type, scales[bd], offsets[bd], symmetric));
     }
   }
 
   assert(i == data.size());
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape,
-                    gsl::span<const float> scales, gsl::span<const int32_t> offsets,
-                    /*out*/ gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type,
-                    std::optional<int64_t> axis) {
+Ort::Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape,
+                         gsl::span<const float> scales, gsl::span<const int32_t> offsets,
+                         /*out*/ gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type,
+                         std::optional<int64_t> axis) {
   const size_t num_dims = shape.size();
   const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
-  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
+  RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
   size_t expected_num_quant_bytes = GetElementSizeByType(data_type) * data.size();
-  ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
-                    "Cannot quantize data because output buffer is not the correct size");
+  RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
+                "Cannot quantize data because output buffer is not the correct size");
 
   size_t block_count = 1;
   size_t broadcast_dim = 1;
@@ -1009,8 +981,8 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
     block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
   }
 
-  ORT_RETURN_IF_NOT(scales.size() == broadcast_dim, "Unexpected size of scales output buffer");
-  ORT_RETURN_IF_NOT(offsets.size() == broadcast_dim, "Unexpected size of offsets output buffer");
+  RETURN_IF_NOT(scales.size() == broadcast_dim, "Unexpected size of scales output buffer");
+  RETURN_IF_NOT(offsets.size() == broadcast_dim, "Unexpected size of offsets output buffer");
 
   size_t i = 0;
   for (size_t n = 0; n < block_count; n++) {
@@ -1019,42 +991,42 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
         case QNN_DATATYPE_SFIXED_POINT_8: {
           auto input_span = gsl::make_span<const float>(&data[i], block_size);
           auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(int8_t)], sizeof(int8_t) * block_size);
-          ORT_RETURN_IF_ERROR(QuantizeData<int8_t>(input_span, scales[bd], offsets[bd], output_span));
+          RETURN_IF_ERROR(QuantizeData<int8_t>(input_span, scales[bd], offsets[bd], output_span));
           break;
         }
         case QNN_DATATYPE_UFIXED_POINT_8: {
           auto input_span = gsl::make_span<const float>(&data[i], block_size);
           auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(uint8_t)], sizeof(uint8_t) * block_size);
-          ORT_RETURN_IF_ERROR(QuantizeData<uint8_t>(input_span, scales[bd], offsets[bd], output_span));
+          RETURN_IF_ERROR(QuantizeData<uint8_t>(input_span, scales[bd], offsets[bd], output_span));
           break;
         }
         case QNN_DATATYPE_SFIXED_POINT_16: {
           auto input_span = gsl::make_span<const float>(&data[i], block_size);
           auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(int16_t)], sizeof(int16_t) * block_size);
-          ORT_RETURN_IF_ERROR(QuantizeData<int16_t>(input_span, scales[bd], offsets[bd], output_span));
+          RETURN_IF_ERROR(QuantizeData<int16_t>(input_span, scales[bd], offsets[bd], output_span));
           break;
         }
         case QNN_DATATYPE_UFIXED_POINT_16: {
           auto input_span = gsl::make_span<const float>(&data[i], block_size);
           auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(uint16_t)], sizeof(uint16_t) * block_size);
-          ORT_RETURN_IF_ERROR(QuantizeData<uint16_t>(input_span, scales[bd], offsets[bd], output_span));
+          RETURN_IF_ERROR(QuantizeData<uint16_t>(input_span, scales[bd], offsets[bd], output_span));
           break;
         }
         case QNN_DATATYPE_SFIXED_POINT_32: {
           auto input_span = gsl::make_span<const float>(&data[i], block_size);
           auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(int32_t)], sizeof(int32_t) * block_size);
-          ORT_RETURN_IF_ERROR(QuantizeData<int32_t>(input_span, scales[bd], offsets[bd], output_span));
+          RETURN_IF_ERROR(QuantizeData<int32_t>(input_span, scales[bd], offsets[bd], output_span));
           break;
         }
         default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported quantization data type for QuantizeData");
+          return MAKE_EP_FAIL("Unsupported quantization data type for QuantizeData");
       }
       i += block_size;
     }
   }
   assert(i == data.size());
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 /**
@@ -1072,43 +1044,43 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
  * @param block_scales_axis size of block in a channel
  * @param block_scales_shape shape of block scales
  */
-Status LowPowerBlockQuantizeData(gsl::span<const float> data,
-                                 gsl::span<const uint32_t> data_shape,
-                                 gsl::span<const float> channel_scales,
-                                 gsl::span<const uint8_t> block_scales,
-                                 gsl::span<const int32_t> offsets,
-                                 /*out*/ gsl::span<uint8_t> quant_bytes,
-                                 Qnn_DataType_t data_type,
-                                 int64_t data_axis,
-                                 int64_t block_scales_axis,
-                                 size_t data_block_size,
-                                 gsl::span<const uint32_t> block_scales_shape) {
+Ort::Status LowPowerBlockQuantizeData(gsl::span<const float> data,
+                                      gsl::span<const uint32_t> data_shape,
+                                      gsl::span<const float> channel_scales,
+                                      gsl::span<const uint8_t> block_scales,
+                                      gsl::span<const int32_t> offsets,
+                                      /*out*/ gsl::span<uint8_t> quant_bytes,
+                                      Qnn_DataType_t data_type,
+                                      int64_t data_axis,
+                                      int64_t block_scales_axis,
+                                      size_t data_block_size,
+                                      gsl::span<const uint32_t> block_scales_shape) {
   // transpose weight to match [K, N] where K : In Channel and N : Out Channel
   const size_t num_dims = data_shape.size();
   const size_t num_elems = ShapeSizeCalc(data_shape, 0, num_dims);
-  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
+  RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
   // LPBQ is currently supported for INT4 and INT8 types. INT4 weight is stored in INT8 buffer.
   size_t expected_num_quant_bytes = GetElementSizeByType(QNN_DATATYPE_SFIXED_POINT_8) * data.size();
-  ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
-                    "Cannot quantize data because output buffer is not the correct size");
+  RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
+                "Cannot quantize data because output buffer is not the correct size");
 
   size_t data_axis_no_neg = data_axis < 0 ? static_cast<size_t>(data_axis) + num_dims : static_cast<size_t>(data_axis);
 
   size_t block_scales_axis_no_neg = block_scales_axis < 0 ? static_cast<size_t>(block_scales_axis) + num_dims : static_cast<size_t>(block_scales_axis);
 
   // Assumption: data is of rank-2 with OutChannels at 0-dim
-  ORT_RETURN_IF_NOT(data_axis_no_neg == 0, "BlockQuantize works for Output Channel at axis 0");  // Data is expected in format: OI or OIHW; Output channel at axis-0
+  RETURN_IF_NOT(data_axis_no_neg == 0, "BlockQuantize works for Output Channel at axis 0");  // Data is expected in format: OI or OIHW; Output channel at axis-0
   // Current implementation is expecting block axis at axis-0
-  ORT_RETURN_IF_NOT(data_shape[data_axis_no_neg] == block_scales_shape[block_scales_axis_no_neg], "Incompatible shape of block_scales w.r.t data");
+  RETURN_IF_NOT(data_shape[data_axis_no_neg] == block_scales_shape[block_scales_axis_no_neg], "Incompatible shape of block_scales w.r.t data");
 
   size_t channel_count = data_shape[data_axis_no_neg];
   size_t block_count = (block_scales_axis_no_neg == 0) ? block_scales_shape[1] : block_scales_shape[0];
   size_t data_block_count = ShapeSizeCalc(data_shape, data_axis_no_neg + 1, num_dims) / data_block_size;
 
-  ORT_RETURN_IF_NOT(data_block_count == block_count, "Incompatible LowPowerBlockQuantization encodings.");
-  ORT_RETURN_IF_NOT(channel_scales.size() == channel_count, "Unexpected size of per-channel-float-scales output buffer");
-  ORT_RETURN_IF_NOT(offsets.size() == channel_count, "Unexpected size of offsets output buffer");
-  ORT_RETURN_IF_NOT(block_scales.size() == channel_count * block_count, "Unexpected size of Per-block-int-scales output buffer");
+  RETURN_IF_NOT(data_block_count == block_count, "Incompatible LowPowerBlockQuantization encodings.");
+  RETURN_IF_NOT(channel_scales.size() == channel_count, "Unexpected size of per-channel-float-scales output buffer");
+  RETURN_IF_NOT(offsets.size() == channel_count, "Unexpected size of offsets output buffer");
+  RETURN_IF_NOT(block_scales.size() == channel_count * block_count, "Unexpected size of Per-block-int-scales output buffer");
 
   // Pre-determine the block_scales_index calculation method based on the axis configuration
   // If block_scales_axis is 0, then the channel dimension comes first in the block scales tensor
@@ -1131,23 +1103,23 @@ Status LowPowerBlockQuantizeData(gsl::span<const float> data,
 
       switch (data_type) {
         case QNN_DATATYPE_SFIXED_POINT_8: {
-          ORT_RETURN_IF_ERROR(QuantizeData<int8_t>(input_span, scale, offsets[cn], output_span));
+          RETURN_IF_ERROR(QuantizeData<int8_t>(input_span, scale, offsets[cn], output_span));
           break;
         }
         case QNN_DATATYPE_SFIXED_POINT_4: {
-          ORT_RETURN_IF_ERROR(QuantizeData<Int4QuantTraits>(input_span, scale, offsets[cn], output_span));
+          RETURN_IF_ERROR(QuantizeData<Int4QuantTraits>(input_span, scale, offsets[cn], output_span));
           break;
         }
         default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported quantization data type for LowPowerBlockQuantizeData");
+          return MAKE_EP_FAIL("Unsupported quantization data type for LowPowerBlockQuantizeData");
       }
       i += data_block_size;
     }
   }
 
-  ORT_RETURN_IF_NOT(i == data.size(), "Failed to LowPowerBlockQuantize due to mismatch per-channel and per-block scales");
+  RETURN_IF_NOT(i == data.size(), "Failed to LowPowerBlockQuantize due to mismatch per-channel and per-block scales");
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
@@ -1170,59 +1142,59 @@ std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interfac
   return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
 }
 
-TensorShape GetTensorProtoShape(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
-  const auto& onnx_dims = tensor_shape_proto.dim();
-  const size_t num_dims = static_cast<size_t>(onnx_dims.size());
-  std::vector<int64_t> tensor_shape_vec(num_dims);
+// Calculate strides for a given shape without using TensorShape
+static Ort::Status GetTransposeStrides(gsl::span<const int64_t> input_shape,
+                                       gsl::span<const size_t> perm,
+                                       gsl::span<size_t> input_strides,
+                                       gsl::span<size_t> output_strides) {
+  const size_t rank = input_shape.size();
+  RETURN_IF_NOT(perm.size() == rank, ("Expected perm size of " + std::to_string(rank)).c_str());
+  RETURN_IF_NOT(input_strides.size() == rank, ("Expected input_strides size of " + std::to_string(rank)).c_str());
+  RETURN_IF_NOT(output_strides.size() == rank, ("Expected output_strides size of " + std::to_string(rank)).c_str());
 
-  for (int i = 0; i < static_cast<int>(num_dims); i++) {
-    const auto& onnx_dim = tensor_shape_proto.dim(i);
-    tensor_shape_vec[i] = onnx_dim.has_dim_value() ? onnx_dim.dim_value() : -1;  // -1 is for symbolic dim in ORT
-  }
-
-  return TensorShape(std::move(tensor_shape_vec));
-}
-
-static Status GetTransposeStrides(const TensorShape& input_shape,
-                                  gsl::span<const size_t> perm,
-                                  gsl::span<size_t> input_strides,
-                                  gsl::span<size_t> output_strides) {
-  const size_t rank = input_shape.NumDimensions();
-  ORT_RETURN_IF_NOT(perm.size() == rank, "Expected perm size of ", rank);
-  ORT_RETURN_IF_NOT(input_strides.size() == rank, "Expected input_strides size of ", rank);
-  ORT_RETURN_IF_NOT(output_strides.size() == rank, "Expected output_strides size of ", rank);
+  // Calculate output shape by applying permutation
   std::vector<int64_t> output_shape_dims(rank);
-  ORT_RETURN_IF_ERROR((qnn::utils::PermuteShape<int64_t, size_t>(input_shape.GetDims(), perm, output_shape_dims)));
-  const TensorShape output_shape = TensorShape::FromExistingBuffer(output_shape_dims);
+  RETURN_IF_ERROR((qnn::utils::PermuteShape<int64_t, size_t>(input_shape, perm, output_shape_dims)));
 
+  // Calculate input strides
   for (size_t i = 0; i < rank; ++i) {
-    int64_t stride = (i < rank - 1) ? input_shape.SizeFromDimension(i + 1) : 1;
-    ORT_RETURN_IF_NOT(stride > 0, "Expected positive shape dims when computing strides.");
-    input_strides[i] = static_cast<size_t>(stride);
+    size_t stride = 1;
+    for (size_t j = i + 1; j < rank; ++j) {
+      RETURN_IF_NOT(input_shape[j] > 0, "Expected positive shape dims when computing strides.");
+      stride *= static_cast<size_t>(input_shape[j]);
+    }
+    input_strides[i] = stride;
   }
 
+  // Calculate output strides
   for (size_t i = 0; i < rank; ++i) {
-    int64_t stride = (i < rank - 1) ? output_shape.SizeFromDimension(i + 1) : 1;
-    ORT_RETURN_IF_NOT(stride > 0, "Expected positive shape dims when computing strides.");
-    output_strides[i] = static_cast<size_t>(stride);
+    size_t stride = 1;
+    for (size_t j = i + 1; j < rank; ++j) {
+      RETURN_IF_NOT(output_shape_dims[j] > 0, "Expected positive shape dims when computing strides.");
+      stride *= static_cast<size_t>(output_shape_dims[j]);
+    }
+    output_strides[i] = stride;
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 // Internal function to transpose data of rank 5 with the given permutation.
 // Example: transpose input from either (N,C,H,W,D) or (C,N,H,W,D) to (H,W,D,C,N).
-static Status TransposeDataRank5(const TensorShape& input_shape,
-                                 gsl::span<const size_t> perm,
-                                 size_t elem_byte_size,
-                                 gsl::span<const uint8_t> input_buffer,
-                                 gsl::span<uint8_t> output_buffer) {
+static Ort::Status TransposeDataRank5(gsl::span<const int64_t> input_shape,
+                                      gsl::span<const size_t> perm,
+                                      size_t elem_byte_size,
+                                      gsl::span<const uint8_t> input_buffer,
+                                      gsl::span<uint8_t> output_buffer) {
+  const size_t rank = 5;
+  RETURN_IF_NOT(input_shape.size() == rank, "Expected input shape to have rank 5");
+
   std::array<size_t, 5> input_strides = {};
   std::array<size_t, 5> output_strides = {};
-  ORT_RETURN_IF_ERROR(GetTransposeStrides(input_shape, perm, input_strides, output_strides));
+  RETURN_IF_ERROR(GetTransposeStrides(input_shape, perm, input_strides, output_strides));
 
   std::vector<size_t> perm_inverse(perm.size());
-  ORT_RETURN_IF_ERROR(qnn::utils::InvertPerm<size_t>(perm, perm_inverse));
+  RETURN_IF_ERROR(qnn::utils::InvertPerm<size_t>(perm, perm_inverse));
 
   for (int64_t d0 = 0; d0 < input_shape[0]; ++d0) {
     for (int64_t d1 = 0; d1 < input_shape[1]; ++d1) {
@@ -1252,25 +1224,35 @@ static Status TransposeDataRank5(const TensorShape& input_shape,
     }
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
-                             std::vector<uint32_t>& data_shape,
-                             const onnx::TensorProto& initializer,
-                             std::vector<uint8_t>& transposed_data) {
-  ORT_RETURN_IF_NOT(data_shape.size() == 2, "Expected shape of rank 2");
+Ort::Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
+                                  std::vector<uint32_t>& data_shape,
+                                  const OrtValueInfo* initializer,
+                                  std::vector<uint8_t>& transposed_data) {
+  const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
+
+  RETURN_IF_NOT(data_shape.size() == 2, "Expected shape of rank 2");
 
   std::array<size_t, 2> perm = {1, 0};
   std::vector<uint32_t> output_shape(data_shape.size());
-  ORT_RETURN_IF_ERROR((qnn::utils::PermuteShape<uint32_t, size_t>(data_shape, perm, output_shape)));
+  RETURN_IF_ERROR((qnn::utils::PermuteShape<uint32_t, size_t>(data_shape, perm, output_shape)));
 
-  auto onnx_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type());
+  const OrtTypeInfo* type_info = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetValueInfoTypeInfo(initializer, &type_info));
+
+  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
+
+  ONNXTensorElementDataType onnx_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetTensorElementType(type_shape, &onnx_type));
+
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
-  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Can't get element byte size from given ONNX type");
+  RETURN_IF_NOT(elem_byte_size != 0, "Can't get element byte size from given ONNX type");
 
   std::vector<uint8_t> input_buffer;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
+  RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size());
 
   for (size_t row = 0; row < data_shape[0]; row++) {
@@ -1287,79 +1269,99 @@ Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
   }
 
   data_shape = std::move(output_shape);  // Update parameter with final transposed shape
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
-                               const onnx::TensorProto& initializer,
-                               std::vector<uint8_t>& transposed_data,
-                               bool is_3d) {
-  auto onnx_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type());
+Ort::Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtValueInfo* initializer,
+                                    std::vector<uint8_t>& transposed_data,
+                                    bool is_3d) {
+  const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
+  const OrtTypeInfo* type_info = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetValueInfoTypeInfo(initializer, &type_info));
+
+  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
+
+  ONNXTensorElementDataType onnx_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetTensorElementType(type_shape, &onnx_type));
+
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
-  std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape<int64_t>(initializer);
+  std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape(initializer, ort_api);
   std::vector<uint8_t> input_buffer;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
+  RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size());
   return TransposeFromNchwToHwcn(std::move(input_shape), elem_byte_size, input_buffer, transposed_data, is_3d);
 }
 
-Status TransposeFromNchwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
-                               size_t elem_byte_size,
-                               gsl::span<const uint8_t> input_buffer,
-                               gsl::span<uint8_t> output_buffer,
-                               bool is_3d) {
+Ort::Status TransposeFromNchwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
+                                    size_t elem_byte_size,
+                                    gsl::span<const uint8_t> input_buffer,
+                                    gsl::span<uint8_t> output_buffer,
+                                    bool is_3d) {
   std::vector<int64_t> input_shape_dims = std::move(original_input_shape_dims);
   const size_t rank = input_shape_dims.size();
-  ORT_RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4), "Only support input of rank 4 or 5 but got rank ",
-                    rank);
-  ORT_RETURN_IF_NOT(output_buffer.size() == input_buffer.size(),
-                    "Expected output buffer's size to equal the input buffer's size: ",
-                    output_buffer.size(), " != ", input_buffer.size());
-  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Invalid element byte size due to potentially unsupported type");
+  RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4),
+                ("Only support input of rank 4 or 5 but got rank " + std::to_string(rank)).c_str());
+  RETURN_IF_NOT(output_buffer.size() == input_buffer.size(),
+                ("Expected output buffer's size to equal the input buffer's size: " +
+                 std::to_string(output_buffer.size()) + " != " + std::to_string(input_buffer.size()))
+                    .c_str());
+  RETURN_IF_NOT(elem_byte_size != 0, "Invalid element byte size due to potentially unsupported type");
 
   if (!is_3d) {
     input_shape_dims.push_back(1);  // Make it 3D by making shape (N,C,H,W,1)
   }
 
-  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape_dims),
+  return TransposeDataRank5(input_shape_dims,
                             nchw2hwcn_perm_3d,
                             elem_byte_size,
                             input_buffer,
                             output_buffer);
 }
 
-Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
-                               const onnx::TensorProto& initializer,
-                               std::vector<uint8_t>& transposed_data,
-                               bool is_3d) {
-  auto onnx_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type());
+Ort::Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtValueInfo* initializer,
+                                    std::vector<uint8_t>& transposed_data,
+                                    bool is_3d) {
+  const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
+  const OrtTypeInfo* type_info = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetValueInfoTypeInfo(initializer, &type_info));
+
+  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
+
+  ONNXTensorElementDataType onnx_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetTensorElementType(type_shape, &onnx_type));
+
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
-  std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape<int64_t>(initializer);
+  std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape(initializer, ort_api);
   std::vector<uint8_t> input_buffer;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
+  RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size());
   return TransposeFromCnhwToHwcn(std::move(input_shape), elem_byte_size, input_buffer, transposed_data, is_3d);
 }
 
-Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
-                               size_t elem_byte_size,
-                               gsl::span<const uint8_t> input_buffer,
-                               gsl::span<uint8_t> output_buffer,
-                               bool is_3d) {
+Ort::Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
+                                    size_t elem_byte_size,
+                                    gsl::span<const uint8_t> input_buffer,
+                                    gsl::span<uint8_t> output_buffer,
+                                    bool is_3d) {
   std::vector<int64_t> input_shape_dims = std::move(original_input_shape_dims);
   const size_t rank = input_shape_dims.size();
-  ORT_RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4), "Only support input of rank 4 or 5 but got rank ",
-                    rank);
-  ORT_RETURN_IF_NOT(output_buffer.size() == input_buffer.size(),
-                    "Expected output buffer's size to equal the input buffer's size: ",
-                    output_buffer.size(), " != ", input_buffer.size());
-  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Invalid element byte size due to potentially unsupported type");
+  RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4),
+                ("Only support input of rank 4 or 5 but got rank " + std::to_string(rank)).c_str());
+  RETURN_IF_NOT(output_buffer.size() == input_buffer.size(),
+                ("Expected output buffer's size to equal the input buffer's size: " +
+                 std::to_string(output_buffer.size()) + " != " + std::to_string(input_buffer.size()))
+                    .c_str());
+  RETURN_IF_NOT(elem_byte_size != 0, "Invalid element byte size due to potentially unsupported type");
 
   if (!is_3d) {
     input_shape_dims.push_back(1);  // Make it 3D by making shape (C,N,H,W,1)
   }
 
-  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape_dims),
+  return TransposeDataRank5(input_shape_dims,
                             cnhw2hwcn_perm_3d,
                             elem_byte_size,
                             input_buffer,
@@ -1368,30 +1370,30 @@ Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
 
 // Inserts a QNN Convert operator to convert from one quantization type (e.g., uint16) to another (e.g., uint8).
 // (OR) Convert from Asymmetric (e.g., UINT16) to Symmetric (e.g., INT16) quantization type
-Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
-                       const std::string& convert_input_name,
-                       const std::string& convert_output_name,
-                       Qnn_DataType_t input_qnn_data_type,
-                       Qnn_DataType_t output_qnn_data_type,
-                       int32_t input_offset,
-                       float input_scale,
-                       const std::vector<uint32_t>& output_shape,
-                       bool output_symmetric,
-                       bool do_op_validation) {
+Ort::Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
+                            const std::string& convert_input_name,
+                            const std::string& convert_output_name,
+                            Qnn_DataType_t input_qnn_data_type,
+                            Qnn_DataType_t output_qnn_data_type,
+                            int32_t input_offset,
+                            float input_scale,
+                            const std::vector<uint32_t>& output_shape,
+                            bool output_symmetric,
+                            bool do_op_validation) {
   // Assume input is already handled.
   float qmin = 0.0f;
   float qmax = 255.0f;
-  ORT_RETURN_IF_ERROR(qnn::utils::GetQminQmax(input_qnn_data_type, qmin, qmax));
+  RETURN_IF_ERROR(qnn::utils::GetQminQmax(input_qnn_data_type, qmin, qmax));
   double value_min = qnn::utils::Dequantize(input_offset, input_scale, qmin);
   double value_max = qnn::utils::Dequantize(input_offset, input_scale, qmax);
   float scale = 0.0f;
   int32_t offset = 0;
-  ORT_RETURN_IF_ERROR(qnn::utils::GetQuantParams(static_cast<float>(value_min),
-                                                 static_cast<float>(value_max),
-                                                 output_qnn_data_type,
-                                                 scale,
-                                                 offset,
-                                                 output_symmetric));
+  RETURN_IF_ERROR(qnn::utils::GetQuantParams(static_cast<float>(value_min),
+                                             static_cast<float>(value_max),
+                                             output_qnn_data_type,
+                                             scale,
+                                             offset,
+                                             output_symmetric));
 
   std::vector<uint32_t> output_shape_copy = output_shape;
   QnnTensorWrapper convert_output_tensorwrapper(convert_output_name,
@@ -1399,20 +1401,23 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                                                 output_qnn_data_type,
                                                 QnnQuantParamsWrapper(scale, offset),
                                                 std::move(output_shape_copy));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(convert_output_name, QNN_OP_CONVERT),
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    QNN_OP_CONVERT,
-                                                    {convert_input_name},
-                                                    {convert_output_name},
-                                                    {},
-                                                    do_op_validation),
-                    "Failed to add node.");
-  return Status::OK();
+  RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
+  RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(convert_output_name, QNN_OP_CONVERT),
+                                                QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                QNN_OP_CONVERT,
+                                                {convert_input_name},
+                                                {convert_output_name},
+                                                {},
+                                                do_op_validation),
+                "Failed to add node.");
+  return Ort::Status();
 }
 
-Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm) {
-  ORT_RETURN_IF_NOT(axis < rank, "Expected axis must be smaller than rank: ", axis, " >= ", rank);
+Ort::Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm) {
+  RETURN_IF_NOT(axis < rank,
+                ("Expected axis must be smaller than rank: " +
+                 std::to_string(axis) + " >= " + std::to_string(rank))
+                    .c_str());
 
   perm.reserve(rank);
   for (uint32_t dim = 0; dim < rank; ++dim) {
@@ -1423,7 +1428,79 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
   perm[axis] = rank - 1;
   perm[rank - 1] = axis;
 
-  return Status::OK();
+  return Ort::Status();
+}
+
+uint64_t GetTimeStampInUs() {
+  auto timestamp = std::chrono::steady_clock::now().time_since_epoch();
+  return std::chrono::duration_cast<std::chrono::microseconds>(timestamp).count();
+}
+
+Ort::Status ReadExternalData(const OrtApi& ort_api,
+                             const OrtExternalInitializerInfo* initializer,
+                             const std::filesystem::path& model_path,
+                             std::vector<uint8_t>& unpacked_tensor) {
+  const ORTCHAR_T* file_path = ort_api.ExternalInitializerInfo_GetFilePath(initializer);
+  int64_t offset = ort_api.ExternalInitializerInfo_GetFileOffset(initializer);
+  size_t byte_size = ort_api.ExternalInitializerInfo_GetByteSize(initializer);
+
+  std::filesystem::path external_file_path = model_path.parent_path() / file_path;
+
+  unpacked_tensor.resize(byte_size);
+  RETURN_IF_ERROR(ReadFileIntoBuffer(
+      external_file_path.c_str(),
+      offset,
+      byte_size,
+      gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), byte_size)));
+
+  return Ort::Status();
+}
+
+Ort::Status UnpackInitializerData(const OrtApi& ort_api,
+                                  const OrtValueInfo* initializer,
+                                  const std::filesystem::path& model_path,
+                                  std::vector<uint8_t>& unpacked_tensor) {
+  OrtExternalInitializerInfo* external_initializer = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.ValueInfo_GetExternalInitializerInfo(initializer, &external_initializer));
+  if (external_initializer) {
+    RETURN_IF_ERROR(ReadExternalData(ort_api, external_initializer, model_path, unpacked_tensor));
+    ort_api.ReleaseExternalInitializerInfo(external_initializer);
+    return Ort::Status();
+  }
+
+  const OrtTypeInfo* type_info = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetValueInfoTypeInfo(initializer, &type_info));
+  const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info));
+  ONNXTensorElementDataType onnx_data_type;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type));
+
+  switch (onnx_data_type) {
+    CASE_UNPACK(FLOAT, float, float_data_size);
+    CASE_UNPACK(DOUBLE, double, double_data_size);
+    CASE_UNPACK(BOOL, bool, int32_data_size);
+    CASE_UNPACK(INT8, int8_t, int32_data_size);
+    CASE_UNPACK(INT16, int16_t, int32_data_size);
+    CASE_UNPACK(INT32, int32_t, int32_data_size);
+    CASE_UNPACK(INT64, int64_t, int64_data_size);
+    CASE_UNPACK(UINT8, uint8_t, int32_data_size);
+    CASE_UNPACK(UINT16, uint16_t, int32_data_size);
+    CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
+    CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
+    CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+    CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    // Refer to core/session/onnxruntime_cxx_api.h.
+    CASE_UNPACK(FLOAT8E4M3FN, uint8_t, int32_data_size);
+    CASE_UNPACK(FLOAT8E4M3FNUZ, uint8_t, int32_data_size);
+    CASE_UNPACK(FLOAT8E5M2, uint8_t, int32_data_size);
+    CASE_UNPACK(FLOAT8E5M2FNUZ, uint8_t, int32_data_size);
+#endif
+    CASE_UNPACK_INT4(INT4, Int4x2, int32_data_size);
+    CASE_UNPACK_INT4(UINT4, UInt4x2, int32_data_size);
+    default:
+      return MAKE_EP_FAIL(("Unsupported type: " + std::to_string(onnx_data_type)).c_str());
+  }
 }
 
 }  // namespace utils

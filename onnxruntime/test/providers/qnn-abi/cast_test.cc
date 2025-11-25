@@ -9,10 +9,10 @@
 
 #include "gtest/gtest.h"
 
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/graph/onnx_protobuf.h"
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -64,10 +64,10 @@ static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::Ten
     }
   }
 
-  RunQnnModelTest(BuildCastTestCase<InputType>(shape, dst_type),
-                  provider_options,
-                  13,  // opset
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildCastTestCase<InputType>(shape, dst_type),
+                     provider_options,
+                     13,  // opset
+                     expected_ep_assignment);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -83,7 +83,7 @@ static void RunCastFP16HTPTest(const std::vector<int64_t>& shape,
 
   auto testcase = [shape, dst_type](ModelTestBuilder& builder) {
     auto input_def_fp = TestInputDef(shape, false, static_cast<float>(0), static_cast<float>(20));
-    auto input_def = ConvertToFP16InputDef(input_def_fp);
+    auto input_def = ConvertToFP16InputDefABI(input_def_fp);
     auto input = MakeTestInput<MLFloat16>(builder, input_def);
 
     auto* output = builder.MakeOutput();
@@ -91,7 +91,7 @@ static void RunCastFP16HTPTest(const std::vector<int64_t>& shape,
     cast_node.AddAttribute("to", static_cast<int64_t>(dst_type));
   };
 
-  RunQnnModelTest(testcase, provider_options, /* opset */ 13, expected_ep_assignment);
+  RunQnnModelTestABI(testcase, provider_options, /* opset */ 13, expected_ep_assignment);
 }
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
@@ -100,17 +100,17 @@ static void RunCastFP16HTPTest(const std::vector<int64_t>& shape,
 //
 
 // Cast int32_t to float on CPU
-TEST_F(QnnCPUBackendTests, TestCastInt32ToFloat) {
+TEST_F(QnnABICPUBackendTests, TestCastInt32ToFloat) {
   RunCastOpTest<int32_t>({2, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All);
 }
 
 // Cast uint8_t to float on CPU
-TEST_F(QnnCPUBackendTests, TestCastUInt8ToFloat) {
+TEST_F(QnnABICPUBackendTests, TestCastUInt8ToFloat) {
   RunCastOpTest<uint8_t>({2, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All);
 }
 
 // Cast float to int32_t on CPU
-TEST_F(QnnCPUBackendTests, TestCastFloatToInt32) {
+TEST_F(QnnABICPUBackendTests, TestCastFloatToInt32) {
   RunCastOpTest<float>({2, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All);
 }
 
@@ -120,7 +120,7 @@ TEST_F(QnnCPUBackendTests, TestCastFloatToInt32) {
 //
 
 // Cast int32_t to float on HTP
-TEST_F(QnnHTPBackendTests, TestCastInt32ToFloatHTP) {
+TEST_F(QnnABIHTPBackendTests, TestCastInt32ToFloatHTP) {
   RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          "htp", false);
 }
@@ -128,33 +128,33 @@ TEST_F(QnnHTPBackendTests, TestCastInt32ToFloatHTP) {
 // Cast uint8_t to float on HTP
 // Fails with QNN SDK 2.35.0:
 // value pair (13, 1.00000012) at index #0 don't match, which is -12 from 13
-TEST_F(QnnHTPBackendTests, DISABLED_TestCastUInt8ToFloatHTP) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_TestCastUInt8ToFloatHTP) {
   RunCastOpTest<uint8_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          "htp", false);
 }
 
 // Cast float to int32_t on HTP
-TEST_F(QnnHTPBackendTests, TestCastFloatToInt32HTP) {
+TEST_F(QnnABIHTPBackendTests, TestCastFloatToInt32HTP) {
   RunCastOpTest<float>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All,
                        "htp", false);
 }
 
 // Cast int64_t to int32_t on HTP
 // Supported in QNN SDK 2.23
-TEST_F(QnnHTPBackendTests, TestCastInt64ToInt32HTP) {
+TEST_F(QnnABIHTPBackendTests, TestCastInt64ToInt32HTP) {
   RunCastOpTest<int64_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                          ExpectedEPNodeAssignment::All, "htp");
 }
 
 // Cast int32_t to int64_t on HTP
 // Supported in QNN SDK 2.23
-TEST_F(QnnHTPBackendTests, TestCastInt32ToInt64HTP) {
+TEST_F(QnnABIHTPBackendTests, TestCastInt32ToInt64HTP) {
   RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
                          ExpectedEPNodeAssignment::All, "htp");
 }
 
 // Cast float to bool on HTP.
-TEST_F(QnnHTPBackendTests, TestCastFloatToBoolHTP) {
+TEST_F(QnnABIHTPBackendTests, TestCastFloatToBoolHTP) {
   RunCastOpTest<float>({3, 3},
                        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
                        ExpectedEPNodeAssignment::All,
@@ -162,7 +162,7 @@ TEST_F(QnnHTPBackendTests, TestCastFloatToBoolHTP) {
 }
 
 // Cast float16 to bool on HTP.
-TEST_F(QnnHTPBackendTests, TestCastFloat16ToBoolHTP) {
+TEST_F(QnnABIHTPBackendTests, TestCastFloat16ToBoolHTP) {
   RunCastFP16HTPTest({3, 3},
                      ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
                      ExpectedEPNodeAssignment::All);
@@ -175,25 +175,25 @@ TEST_F(QnnHTPBackendTests, TestCastFloat16ToBoolHTP) {
 //
 
 // Cast int32 to float on GPU
-TEST_F(QnnGPUBackendTests, TestCastInt32ToFloat) {
+TEST_F(QnnABIGPUBackendTests, TestCastInt32ToFloat) {
   RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          "gpu", false);
 }
 
 // Cast uint8 to float on GPU
-TEST_F(QnnGPUBackendTests, TestCastUInt8ToFloat) {
+TEST_F(QnnABIGPUBackendTests, TestCastUInt8ToFloat) {
   RunCastOpTest<uint8_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          "gpu", false);
 }
 
 // Cast float to int32 on GPU
-TEST_F(QnnGPUBackendTests, TestCastFloatToInt32) {
+TEST_F(QnnABIGPUBackendTests, TestCastFloatToInt32) {
   RunCastOpTest<float>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All,
                        "gpu", false);
 }
 
 // Cast int64 to int32 on GPU
-TEST_F(QnnGPUBackendTests, TestCastInt64ToInt32) {
+TEST_F(QnnABIGPUBackendTests, TestCastInt64ToInt32) {
   RunCastOpTest<int64_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                          ExpectedEPNodeAssignment::All, "gpu");
 }
@@ -201,7 +201,7 @@ TEST_F(QnnGPUBackendTests, TestCastInt64ToInt32) {
 // Cast int32 to int64 on GPU
 // Disable Reason : Currently not supported.
 // Can enable after CastOp int32 to int64 is implemented in QnnGpu.
-TEST_F(QnnGPUBackendTests, DISABLED_TestCastInt32ToInt64) {
+TEST_F(QnnABIGPUBackendTests, DISABLED_TestCastInt32ToInt64) {
   RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
                          ExpectedEPNodeAssignment::All, "gpu");
 }
