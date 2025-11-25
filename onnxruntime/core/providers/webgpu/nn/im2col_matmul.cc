@@ -208,10 +208,11 @@ bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
     return false;
   }
 
+  // TODO: Support conv1d
   // TODO: Support conv2d_1x1
   const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(weight_shape[2]);
   const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(weight_shape[3]);
-  if (kernel_height == 1 && kernel_width == 1) {
+  if (kernel_height == 1 || kernel_width == 1) {
     return false;
   }
 

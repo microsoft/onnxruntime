@@ -59,14 +59,18 @@ fn load_weight(n : u32, k_packed_idx : u32) -> weight_value_t {
   return weight_value_t();
 }
 
-fn load_bias(n : u32) -> bias_element_t {
 #if has_bias
+fn load_bias(n : u32) -> bias_element_t {
   if (n < uniforms.im2col_n) {
     return bias[n];
   }
-#endif
   return bias_element_t();
 }
+#else
+fn load_bias(n : u32) -> output_element_t {
+  return output_element_t();
+}
+#endif
 
 // output shape: [N, H_o, W_o, C_o] (NHWC)
 fn write_output(batch : u32, m : u32, n : u32, value : output_element_t) {
