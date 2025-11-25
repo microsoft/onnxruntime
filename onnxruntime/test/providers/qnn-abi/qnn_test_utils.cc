@@ -3,8 +3,9 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 #include <cassert>
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
@@ -12,14 +13,20 @@
 #include "core/platform/env_var_utils.h"
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/error_code_helper.h"
+#include "core/graph/ep_api_types.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
+#include "core/session/abi_devices.h"
+#include "core/session/abi_ep_types.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
 namespace onnxruntime {
 namespace test {
 
-std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems) {
+std::vector<float> GetFloatDataInRangeABI(float min_val, float max_val, size_t num_elems) {
   if (num_elems == 0) {
     return {};
   }
@@ -44,7 +51,7 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
   return data;
 }
 
-std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, float start, float step) {
+std::vector<float> GetSequentialFloatDataABI(const std::vector<int64_t>& shape, float start, float step) {
   if (shape.empty()) {
     return {};
   }
@@ -66,7 +73,7 @@ std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, flo
   return data;
 }
 
-TestInputDef<MLFloat16> ConvertToFP16InputDef(const TestInputDef<float>& input_def) {
+TestInputDef<MLFloat16> ConvertToFP16InputDefABI(const TestInputDef<float>& input_def) {
   if (input_def.IsRawData()) {
     std::vector<MLFloat16> input_data_fp16;
     input_data_fp16.reserve(input_def.GetRawData().size());
@@ -82,7 +89,7 @@ TestInputDef<MLFloat16> ConvertToFP16InputDef(const TestInputDef<float>& input_d
   }
 }
 
-void TryEnableQNNSaver(ProviderOptions& qnn_options) {
+void TryEnableQNNSaverABI(ProviderOptions& qnn_options) {
   // Allow dumping QNN API calls to file by setting an environment variable that enables the QNN Saver backend.
   constexpr auto kEnableQNNSaverEnvironmentVariableName = "ORT_UNIT_TEST_ENABLE_QNN_SAVER";
   static std::optional<int> enable_qnn_saver = onnxruntime::ParseEnvironmentVariable<int>(
@@ -97,10 +104,90 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
   }
 }
 
-void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                     float fp32_abs_err, logging::Severity log_severity, bool verify_outputs,
-                     std::function<void(const Graph&)>* ep_graph_checker) {
+void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
+                          Ort::SessionOptions& session_options,
+                          const std::string& registration_name,
+                          const std::unordered_map<std::string, std::string>& ep_options,
+                          bool simulated) {
+  Ort::Env* ort_env = GetOrtEnv();
+  const OrtApi& c_api = Ort::GetApi();
+
+  std::filesystem::path library_path = "";
+  if (simulated) {
+    library_path =
+#if _WIN32
+        "onnxruntime_providers_qnn_abi_simulation.dll";
+#else
+        "libonnxruntime_providers_qnn_abi_simulation.so";
+#endif
+  } else {
+    library_path =
+#if _WIN32
+        "onnxruntime_providers_qnn_abi.dll";
+#else
+        "libonnxruntime_providers_qnn_abi.so";
+#endif
+  }
+
+  ASSERT_ORTSTATUS_OK(c_api.RegisterExecutionProviderLibrary(*ort_env,
+                                                             registration_name.c_str(),
+                                                             library_path.c_str()));
+
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_devices;
+  ASSERT_ORTSTATUS_OK(c_api.GetEpDevices(*ort_env, &ep_devices, &num_devices));
+
+  auto target_hw_device_type = OrtHardwareDeviceType_CPU;
+  if ((ep_options.find("backend_type") != ep_options.end() && ep_options.at("backend_type") == "htp") ||
+      (ep_options.find("backend_path") != ep_options.end() && ep_options.at("backend_path") ==
+#if _WIN32
+                                                                  "QnnHtp.dll"
+#else
+                                                                  "libQnnHtp.so"
+#endif
+       )) {
+#if defined(__linux__)
+    target_hw_device_type = OrtHardwareDeviceType_CPU;
+#else
+    target_hw_device_type = OrtHardwareDeviceType_NPU;
+#endif
+  } else if ((ep_options.find("backend_type") != ep_options.end() && ep_options.at("backend_type") == "gpu") ||
+             (ep_options.find("backend_path") != ep_options.end() && ep_options.at("backend_path") ==
+#if _WIN32
+                                                                         "QnnGpu.dll"
+#else
+                                                                         "libQnnGpu.so"
+#endif
+              )) {
+#if defined(__linux__)
+    target_hw_device_type = OrtHardwareDeviceType_CPU;
+#else
+    target_hw_device_type = OrtHardwareDeviceType_GPU;
+#endif
+  }
+
+  auto it = std::find_if(ep_devices, ep_devices + num_devices,
+                         [&c_api, &registration_name, &target_hw_device_type](const OrtEpDevice* ep_device) {
+                           return (c_api.EpDevice_EpName(ep_device) == registration_name &&
+                                   c_api.HardwareDevice_Type(c_api.EpDevice_Device(ep_device)) == target_hw_device_type);
+                         });
+
+  ASSERT_NE(it, ep_devices + num_devices);
+
+  registered_ep_device = RegisteredEpDeviceUniquePtr(*it, [registration_name](const OrtEpDevice* /*ep*/) {
+    OrtStatus* status = Ort::GetApi().UnregisterExecutionProviderLibrary(*GetOrtEnv(), registration_name.c_str());
+    if (status != nullptr) {
+      Ort::GetApi().ReleaseStatus(status);
+    }
+  });
+
+  session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(registered_ep_device.get())}, ep_options);
+}
+
+void RunQnnModelTestABI(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
+                        int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
+                        float fp32_abs_err, logging::Severity log_severity, bool verify_outputs,
+                        std::function<void(const Graph&)>* ep_graph_checker) {
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
   verification_params.fp32_abs_err = fp32_abs_err;
@@ -123,36 +210,36 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
-  TryEnableQNNSaver(provider_options);
-  RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
-                            QnnExecutionProviderWithOptions(provider_options),
-                            helper.feeds_, verification_params,
-                            {}, verify_outputs);
+  TryEnableQNNSaverABI(provider_options);
+
+  // Run with QNN-ABI.
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
+  Ort::SessionOptions session_options;
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
+
+  RunAndVerifyOutputsWithEPABI(AsByteSpan(model_data.data(), model_data.size()),
+                               session_options,
+                               registration_name,
+                               "QNN_EP_ABI_TestLogID",
+                               helper.feeds_,
+                               verification_params,
+                               verify_outputs);
 }
 
-void InferenceModel(const std::string& model_data, const char* log_id,
-                    const ProviderOptions& provider_options,
-                    ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<OrtValue>& output_vals,
-                    bool is_qnn_ep,
-                    const std::unordered_map<std::string, std::string>& session_option_pairs,
-                    std::function<void(const Graph&)>* graph_checker) {
+void InferenceModelCPU(const std::string& model_data,
+                       const char* log_id,
+                       ExpectedEPNodeAssignment expected_ep_assignment,
+                       const NameMLValMap& feeds,
+                       std::vector<OrtValue>& output_vals) {
   SessionOptions so;
   so.session_logid = log_id;
-  for (auto key_value : session_option_pairs) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(key_value.first.c_str(), key_value.second.c_str()));
-  }
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   std::string provider_type = kCpuExecutionProvider;
-  if (is_qnn_ep) {
-    auto qnn_ep = QnnExecutionProviderWithOptions(provider_options, &so);
-    provider_type = qnn_ep->Type();
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(qnn_ep)));
-  }
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -168,10 +255,6 @@ void InferenceModel(const std::string& model_data, const char* log_id,
     ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
   }
 
-  if (graph_checker) {
-    (*graph_checker)(graph);
-  }
-
   const auto& outputs = graph.GetOutputs();
   std::vector<std::string> output_names;
 
@@ -185,8 +268,50 @@ void InferenceModel(const std::string& model_data, const char* log_id,
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &output_vals));
 }
 
-NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
-                              bool use_contrib_qdq) {
+void InferenceModelABI(const std::string& model_data,
+                       const char* log_id,
+                       const ProviderOptions& provider_options,
+                       ExpectedEPNodeAssignment expected_ep_assignment,
+                       const NameMLValMap& feeds,
+                       std::vector<OrtValue>& output_vals,
+                       const std::unordered_map<std::string, std::string>& session_option_pairs,
+                       std::function<void(const Graph&)>* graph_checker) {
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
+  Ort::SessionOptions session_options;
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
+
+  session_options.SetLogId(log_id);
+  for (auto key_value : session_option_pairs) {
+    session_options.AddConfigEntry(key_value.first.c_str(), key_value.second.c_str());
+  }
+
+  Ort::RunOptions ort_run_options;
+  ort_run_options.SetRunTag(log_id);
+
+  OrtSessionWrapper ort_session(*GetOrtEnv(), model_data.data(), static_cast<int>(model_data.size()), session_options);
+
+  // Verify node assignment.
+  const auto& graph = ort_session.GetGraph();
+
+  auto ep_nodes = CountAssignedNodes(graph, registration_name);
+  if (expected_ep_assignment == ExpectedEPNodeAssignment::All) {
+    ASSERT_EQ(ep_nodes, graph.NumberOfNodes()) << "Not all nodes were assigned to " << registration_name;
+  } else if (expected_ep_assignment == ExpectedEPNodeAssignment::None) {
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << registration_name;
+  } else {
+    ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << registration_name;
+  }
+
+  if (graph_checker) {
+    (*graph_checker)(graph);
+  }
+
+  RunWithEPABI(&ort_session, ort_run_options, feeds, output_vals);
+}
+
+NodeArg* MakeTestQDQBiasInputABI(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
+                                 bool use_contrib_qdq) {
   NodeArg* bias_int32 = nullptr;
 
   // Bias must be int32 to be detected as a QDQ node unit.
@@ -218,17 +343,6 @@ NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<floa
 
   return bias;
 }
-
-// Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to
-// determine if the HTP backend is supported on specific platforms (e.g., Windows ARM64).
-// TODO: Remove once HTP can be emulated on Windows ARM64.
-class MockKernelLookup : public onnxruntime::IExecutionProvider::IKernelLookup {
- public:
-  const KernelCreateInfo* LookUpKernel(const Node& /* node */) const {
-    // Do nothing.
-    return nullptr;
-  }
-};
 
 // Testing helper function that calls QNN EP's GetCapability() function with a mock graph to check
 // if the HTP backend is available.
@@ -276,19 +390,33 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
   }
 
   // Create QNN EP and call GetCapability().
-  MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
-  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", "htp"}, {"offload_graph_io_quantization", "0"}});
-  GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  if (!EpGraph::Create(graph_viewer, ep_graph).IsOK()) {
+    return BackendSupport::UNSUPPORTED;
+  }
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
 
-  qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
+  Ort::SessionOptions session_options;
+  ProviderOptions provider_options = {{"backend_type", "htp"}, {"offload_graph_io_quantization", "0"}};
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
 
-  return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
+  OrtEpFactory* qnn_ep_factory = registered_ep_device->GetMutableFactory();
+  OrtEp* qnn_ep = nullptr;
+  if (qnn_ep_factory->CreateEp(qnn_ep_factory, nullptr, nullptr, 0, session_options, logger.ToExternal(), &qnn_ep)) {
+    qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+    return BackendSupport::UNSUPPORTED;
+  }
+
+  status = ToStatusAndRelease(qnn_ep->GetCapability(qnn_ep, ep_graph->ToExternal(), &graph_support_info));
+  qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+
+  return status.IsOK() ? BackendSupport::SUPPORTED : BackendSupport::UNSUPPORTED;
 }
 
-void QnnHTPBackendTests::SetUp() {
+void QnnABIHTPBackendTests::SetUp() {
   if (cached_htp_support_ == BackendSupport::SUPPORTED) {
     return;
   }
@@ -307,6 +435,70 @@ void QnnHTPBackendTests::SetUp() {
     LOGS(logger, ERROR) << "Failed to check if QNN HTP backend is available.";
     FAIL();
   }
+}
+
+// TODO
+// There is an unknown behavior that "soc_model" config somehow remains in HTP backend throughout different testcases
+// within the same process. Once the option "soc_model=60" is set, all following testcases would be implicitly applied
+// (which can be checked in verbose logging). This problem causes QnnHTPBackendTests.Inverse_2d/3d/4d on Linux failed
+// with accuracy issue 0.259040415 vs. 0.256103545. Although this precision mismatch may be expected as HTP fp16/fp32
+// behaviors could differ on different platforms, here adopts workaround to avoid modifying non-ABI parts. Concretely,
+// "soc_model=30", which is the default setting, is set to HTP backend again after QnnABIHTPBackendTests testsuite is
+// completed. Note that this is not an ABI-specific issue and exists in non-ABI UT as well but it is not observed
+// previously due to the execution order of testcases.
+void QnnABIHTPBackendTests::TearDownTestSuite() {
+#if !defined(__aarch64__) && !defined(_M_ARM64)
+  if (cached_htp_support_ != BackendSupport::SUPPORTED) {
+    return;
+  }
+
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Build simple Relu graph.
+  onnxruntime::Model model("TearDown QnnABIHTPBackendTests", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+
+  auto build_test_case = BuildOpTestCase<float, float>(
+      "Relu",
+      {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f)},
+      {},
+      {});
+
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  auto status = model.MainGraph().Resolve();
+  if (!status.IsOK()) {
+    LOGS(logger, WARNING) << "Failed to tear down QnnABIHTPBackendTests.";
+    return;
+  }
+
+  // Create QNN EP and call GetCapability().
+  onnxruntime::GraphViewer graph_viewer(graph);
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  if (!EpGraph::Create(graph_viewer, ep_graph).IsOK()) {
+    LOGS(logger, WARNING) << "Failed to tear down QnnABIHTPBackendTests.";
+    return;
+  }
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
+  Ort::SessionOptions session_options;
+  ProviderOptions provider_options = {{"backend_type", "htp"}, {"soc_model", "30"}};
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
+
+  OrtEpFactory* qnn_ep_factory = registered_ep_device->GetMutableFactory();
+  OrtEp* qnn_ep = nullptr;
+  if (qnn_ep_factory->CreateEp(qnn_ep_factory, nullptr, nullptr, 0, session_options, logger.ToExternal(), &qnn_ep)) {
+    qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+    LOGS(logger, WARNING) << "Failed to tear down QnnABIHTPBackendTests.";
+    return;
+  }
+
+  status = ToStatusAndRelease(qnn_ep->GetCapability(qnn_ep, ep_graph->ToExternal(), &graph_support_info));
+  qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+#endif  // !defined(__aarch64__) && !defined(_M_ARM64)
 }
 
 // Checks if Qnn Gpu backend can run a graph on the system.
@@ -334,19 +526,33 @@ static BackendSupport GetGPUSupport(const onnxruntime::logging::Logger& logger) 
   }
 
   // Create QNN EP and call GetCapability().
-  MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
-  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", "gpu"}, {"offload_graph_io_quantization", "0"}});
-  GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  if (!EpGraph::Create(graph_viewer, ep_graph).IsOK()) {
+    return BackendSupport::UNSUPPORTED;
+  }
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
 
-  qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
+  Ort::SessionOptions session_options;
+  ProviderOptions provider_options = {{"backend_type", "gpu"}, {"offload_graph_io_quantization", "0"}};
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
 
-  return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
+  OrtEpFactory* qnn_ep_factory = registered_ep_device->GetMutableFactory();
+  OrtEp* qnn_ep = nullptr;
+  if (qnn_ep_factory->CreateEp(qnn_ep_factory, nullptr, nullptr, 0, session_options, logger.ToExternal(), &qnn_ep)) {
+    qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+    return BackendSupport::UNSUPPORTED;
+  }
+
+  status = ToStatusAndRelease(qnn_ep->GetCapability(qnn_ep, ep_graph->ToExternal(), &graph_support_info));
+  qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+
+  return status.IsOK() ? BackendSupport::SUPPORTED : BackendSupport::UNSUPPORTED;
 }
 
-void QnnGPUBackendTests::SetUp() {
+void QnnABIGPUBackendTests::SetUp() {
   if (cached_gpu_support_ == BackendSupport::SUPPORTED) {
     return;
   }
@@ -369,7 +575,7 @@ void QnnGPUBackendTests::SetUp() {
 
 static BackendSupport GetIRSupport(const onnxruntime::logging::Logger& logger);
 
-BackendSupport QnnHTPBackendTests::IsIRBackendSupported() const {
+BackendSupport QnnABIHTPBackendTests::IsIRBackendSupported() const {
   const auto& logger = DefaultLoggingManager().DefaultLogger();
 
   if (cached_ir_support_ == BackendSupport::SUPPORT_UNKNOWN) {
@@ -410,19 +616,33 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger, 
   }
 
   // Create QNN EP and call GetCapability().
-  MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
-  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", backend_type}, {"offload_graph_io_quantization", "0"}});
-  GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  if (!EpGraph::Create(graph_viewer, ep_graph).IsOK()) {
+    return BackendSupport::UNSUPPORTED;
+  }
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
 
-  qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
+  Ort::SessionOptions session_options;
+  ProviderOptions provider_options = {{"backend_type", backend_type}, {"offload_graph_io_quantization", "0"}};
+  RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
 
-  return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
+  OrtEpFactory* qnn_ep_factory = registered_ep_device->GetMutableFactory();
+  OrtEp* qnn_ep = nullptr;
+  if (qnn_ep_factory->CreateEp(qnn_ep_factory, nullptr, nullptr, 0, session_options, logger.ToExternal(), &qnn_ep)) {
+    qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+    return BackendSupport::UNSUPPORTED;
+  }
+
+  status = ToStatusAndRelease(qnn_ep->GetCapability(qnn_ep, ep_graph->ToExternal(), &graph_support_info));
+  qnn_ep_factory->ReleaseEp(qnn_ep_factory, qnn_ep);
+
+  return status.IsOK() ? BackendSupport::SUPPORTED : BackendSupport::UNSUPPORTED;
 }
 
-void QnnCPUBackendTests::SetUp() {
+void QnnABICPUBackendTests::SetUp() {
   if (cached_cpu_support_ == BackendSupport::SUPPORTED) {
     return;
   }
@@ -449,7 +669,7 @@ static BackendSupport GetIRSupport(const onnxruntime::logging::Logger& logger) {
   return GetCPUSupport(logger, "ir");
 }
 
-void QnnIRBackendTests::SetUp() {
+void QnnABIIRBackendTests::SetUp() {
   if (cached_ir_support_ == BackendSupport::SUPPORTED) {
     return;
   }
@@ -472,20 +692,20 @@ void QnnIRBackendTests::SetUp() {
 
 #if defined(_WIN32)
 // TODO: Remove or set to SUPPORTED once HTP emulation is supported on win arm64.
-BackendSupport QnnHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORT_UNKNOWN;
+BackendSupport QnnABIHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORT_UNKNOWN;
 
 // TODO: Remove or set to SUPPORTED once CPU backend works on win arm64 (pipeline VM).
-BackendSupport QnnCPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORT_UNKNOWN;
+BackendSupport QnnABICPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORT_UNKNOWN;
 #else
-BackendSupport QnnHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORTED;
-BackendSupport QnnCPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORTED;
+BackendSupport QnnABIHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORTED;
+BackendSupport QnnABICPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORTED;
 #endif  // defined(_WIN32)
 
-BackendSupport QnnHTPBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
-BackendSupport QnnIRBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
-BackendSupport QnnGPUBackendTests::cached_gpu_support_ = BackendSupport::SUPPORT_UNKNOWN;
+BackendSupport QnnABIHTPBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
+BackendSupport QnnABIIRBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
+BackendSupport QnnABIGPUBackendTests::cached_gpu_support_ = BackendSupport::SUPPORT_UNKNOWN;
 
-bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version) {
+bool ReduceOpHasAxesInputABI(const std::string& op_type, int opset_version) {
   static const std::unordered_map<std::string, int> opset_with_axes_as_input = {
       {"ReduceMax", 18},
       {"ReduceMin", 18},

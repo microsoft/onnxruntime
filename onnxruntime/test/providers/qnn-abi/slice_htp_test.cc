@@ -7,8 +7,8 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -17,7 +17,7 @@ namespace test {
 
 // Test for "index-out-of-bounds" bug that occurred when a Slice operator
 // shared one of its initializer inputs with another op that was processed by QNN EP first.
-TEST_F(QnnCPUBackendTests, Slice_SharedInitializersBugFix) {
+TEST_F(QnnABICPUBackendTests, Slice_SharedInitializersBugFix) {
   // Model with an Add that processes a shared initializer before Slice is processed.
   GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
     NodeArg* input0 = builder.MakeInput<int32_t>({2, 2}, {1, 2, 3, 4});
@@ -46,10 +46,10 @@ TEST_F(QnnCPUBackendTests, Slice_SharedInitializersBugFix) {
 
   provider_options["backend_type"] = "cpu";
 
-  RunQnnModelTest(model_fn,
-                  provider_options,
-                  13,  // opset
-                  ExpectedEPNodeAssignment::All);
+  RunQnnModelTestABI(model_fn,
+                     provider_options,
+                     13,  // opset
+                     ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -81,12 +81,12 @@ static void RunSliceQDQTest(const TestInputDef<float>& data_def,
   const std::vector<TestInputDef<float>> f32_inputs = {data_def};
   const std::vector<TestInputDef<int64_t>> int64_inputs = {starts_def, ends_def, axes_def, steps_def};
 
-  TestQDQModelAccuracy(BuildOpTestCase<float, int64_t>("Slice", f32_inputs, int64_inputs, {}),
-                       BuildQDQOpTestCase<QuantType, int64_t>("Slice", f32_inputs, int64_inputs, {}, kOnnxDomain,
-                                                              use_contrib_qdq),
-                       provider_options,
-                       18,
-                       expected_ep_assignment);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float, int64_t>("Slice", f32_inputs, int64_inputs, {}),
+                          BuildQDQOpTestCase<QuantType, int64_t>("Slice", f32_inputs, int64_inputs, {}, kOnnxDomain,
+                                                                 use_contrib_qdq),
+                          provider_options,
+                          18,
+                          expected_ep_assignment);
 }
 
 /**
@@ -111,14 +111,14 @@ static void RunSliceNonQDQOnHTP(const TestInputDef<DataType>& data_def,
   provider_options["backend_type"] = "htp";
   auto f32_model_builder = BuildOpTestCase<DataType, int64_t>("Slice", {data_def},
                                                               {starts_def, ends_def, axes_def, steps_def}, {});
-  RunQnnModelTest(f32_model_builder,
-                  provider_options,
-                  13,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(f32_model_builder,
+                     provider_options,
+                     13,
+                     expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.
-TEST_F(QnnHTPBackendTests, SliceSmallDataQDQU8) {
+TEST_F(QnnABIHTPBackendTests, SliceSmallDataQDQU8) {
   RunSliceQDQTest(TestInputDef<float>({8}, false, 0.0f, 1.0f),
                   TestInputDef<int64_t>({1}, true, {0}),
                   TestInputDef<int64_t>({1}, true, {-1}),
@@ -128,7 +128,7 @@ TEST_F(QnnHTPBackendTests, SliceSmallDataQDQU8) {
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.
-TEST_F(QnnHTPBackendTests, SliceLargePositiveDataQDQU8) {
+TEST_F(QnnABIHTPBackendTests, SliceLargePositiveDataQDQU8) {
   RunSliceQDQTest(TestInputDef<float>({5120}, false, 0.0f, 1.0f),
                   TestInputDef<int64_t>({1}, true, {0}),
                   TestInputDef<int64_t>({1}, true, {-1}),
@@ -138,7 +138,7 @@ TEST_F(QnnHTPBackendTests, SliceLargePositiveDataQDQU8) {
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.
-TEST_F(QnnHTPBackendTests, SliceLargeNegativeDataQDQU8) {
+TEST_F(QnnABIHTPBackendTests, SliceLargeNegativeDataQDQU8) {
   RunSliceQDQTest(TestInputDef<float>({5120}, false, 0.0f, 1.0f),
                   TestInputDef<int64_t>({1}, true, {0}),
                   TestInputDef<int64_t>({1}, true, {-1}),
@@ -148,7 +148,7 @@ TEST_F(QnnHTPBackendTests, SliceLargeNegativeDataQDQU8) {
 }
 
 // Check that QNN supports Slice with int32 data input on HTP
-TEST_F(QnnHTPBackendTests, SliceInt32OnHTP) {
+TEST_F(QnnABIHTPBackendTests, SliceInt32OnHTP) {
   RunSliceNonQDQOnHTP<int32_t>(TestInputDef<int32_t>({5120}, false, -100, 100),
                                TestInputDef<int64_t>({1}, true, {0}),
                                TestInputDef<int64_t>({1}, true, {-1}),
@@ -158,7 +158,7 @@ TEST_F(QnnHTPBackendTests, SliceInt32OnHTP) {
 }
 
 // Test 8-bit QDQ Slice with more than 1 axis.
-TEST_F(QnnHTPBackendTests, SliceU8_MultAxes) {
+TEST_F(QnnABIHTPBackendTests, SliceU8_MultAxes) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunSliceQDQTest<uint8_t>(TestInputDef<float>({2, 4}, false, input_data),
                            TestInputDef<int64_t>({2}, true, {1, 0}),  // starts
@@ -169,7 +169,7 @@ TEST_F(QnnHTPBackendTests, SliceU8_MultAxes) {
 }
 
 // Test 16-bit QDQ Slice with more than 1 axis.
-TEST_F(QnnHTPBackendTests, SliceU16_MultAxes) {
+TEST_F(QnnABIHTPBackendTests, SliceU16_MultAxes) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunSliceQDQTest<uint16_t>(TestInputDef<float>({2, 4}, false, input_data),
                             TestInputDef<int64_t>({2}, true, {1, 0}),  // starts
@@ -181,7 +181,7 @@ TEST_F(QnnHTPBackendTests, SliceU16_MultAxes) {
 }
 
 // Test 8-bit QDQ Slice with more than 1 axis and an end value that exceeds the associated dimension size.
-TEST_F(QnnHTPBackendTests, SliceU8_MultAxes_LargeEnd) {
+TEST_F(QnnABIHTPBackendTests, SliceU8_MultAxes_LargeEnd) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunSliceQDQTest<uint8_t>(TestInputDef<float>({2, 4}, false, input_data),
                            TestInputDef<int64_t>({2}, true, {0, 1}),      // starts

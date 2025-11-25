@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
-#include <unordered_map>
-#include <string>
+#include "core/providers/qnn-abi/builder/op_builder_factory.h"
 
-#include "op_builder_factory.h"
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace qnn {
@@ -201,6 +201,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateRandomUniformLikeOpBuilder("RandomUniformLike", *this);
+  }
+
+  {
     CreateGatherNDOpBuilder("GatherND", *this);
   }
 
@@ -210,6 +214,14 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateThresholdedReluOpBuilder("ThresholdedRelu", *this);
+  }
+
+  {
+    CreateSTFTOpBuilder("STFT", *this);
+  }
+
+  {
+    CreateInverseOpBuilder("Inverse", *this);
   }
 }
 

@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
@@ -34,10 +34,10 @@ static void RunClipTest(const TestInputDef<DataType>& input_def,
     }
   }
 
-  RunQnnModelTest(BuildOpTestCase<DataType, DataType>("Clip", {input_def}, min_max_defs, {}),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildOpTestCase<DataType, DataType>("Clip", {input_def}, min_max_defs, {}),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment);
 }
 
 //
@@ -45,7 +45,7 @@ static void RunClipTest(const TestInputDef<DataType>& input_def,
 //
 
 // Test that Clip with a dynamic min or max input is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Clip_Dynamic_MinMax_Unsupported) {
+TEST_F(QnnABICPUBackendTests, Clip_Dynamic_MinMax_Unsupported) {
   // Dynamic min input is not supported.
   RunClipTest<float>(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                      {TestInputDef<float>({}, false /* is_initializer */, {-5.0f})},
@@ -58,15 +58,15 @@ TEST_F(QnnCPUBackendTests, Clip_Dynamic_MinMax_Unsupported) {
 }
 
 // Test Clip with default min/max.
-TEST_F(QnnCPUBackendTests, Clip_4D_f32_DefaultMinMax) {
-  RunClipTest<float>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+TEST_F(QnnABICPUBackendTests, Clip_4D_f32_DefaultMinMax) {
+  RunClipTest<float>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 48)),
                      {},  // Don't specify min/max inputs.
                      ExpectedEPNodeAssignment::All);
 }
 
 // Test Clip with 5D input.
-TEST_F(QnnCPUBackendTests, Clip_5D_f32) {
-  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+TEST_F(QnnABICPUBackendTests, Clip_5D_f32) {
+  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 48)),
                      {TestInputDef<float>({}, true, {-5.0f}),
                       TestInputDef<float>({}, true, {5.0f})},
                      ExpectedEPNodeAssignment::All);
@@ -80,8 +80,8 @@ TEST_F(QnnCPUBackendTests, Clip_5D_f32) {
 // Test Clip with float32 on HTP
 // Fails with QNN SDK 2.35.0:
 // value pair (-4.54545403, -4.54687548) at index #3 don't match, which is -0.00142145 from -4.54545
-TEST_F(QnnHTPBackendTests, DISABLED_Clip_f32) {
-  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 12)),
+TEST_F(QnnABIHTPBackendTests, DISABLED_Clip_f32) {
+  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 12)),
                      {TestInputDef<float>({}, true, {-5.0f}),
                       TestInputDef<float>({}, true, {5.0f})},
                      ExpectedEPNodeAssignment::All,
@@ -91,7 +91,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_Clip_f32) {
 }
 
 // Test Clip with int32 on HTP
-TEST_F(QnnHTPBackendTests, Clip_int32) {
+TEST_F(QnnABIHTPBackendTests, Clip_int32) {
   RunClipTest<int32_t>(TestInputDef<int32_t>({1, 1, 3, 2}, false, {1, 2, -5, 3, -10, 25}),
                        {TestInputDef<int32_t>({}, true, {-5}),
                         TestInputDef<int32_t>({}, true, {5})},
@@ -115,11 +115,11 @@ static void RunQDQClipTestOnHTP(const TestInputDef<float>& input_def,
   auto qdq_model_builder = BuildQDQOpTestCase<QType, float>("Clip", {input_def}, {min_max_defs}, {},
                                                             kOnnxDomain, use_contrib_qdq);
 
-  TestQDQModelAccuracy(f32_model_builder,
-                       qdq_model_builder,
-                       provider_options,
-                       opset,
-                       expected_ep_assignment);
+  TestQDQModelAccuracyABI(f32_model_builder,
+                          qdq_model_builder,
+                          provider_options,
+                          opset,
+                          expected_ep_assignment);
 }
 
 // Test 8-bit QDQ Clip with default min/max.
@@ -128,8 +128,8 @@ static void RunQDQClipTestOnHTP(const TestInputDef<float>& input_def,
 // - Original sequence: Q1 -> DQ1 -> Clip -> Q2 -> DQ2
 // - ClipQuantFusion: Fuses Clip -> QuantizeLinear resulting in Q1 -> DQ1 -> Q2' -> DQ2
 // - DoubleQDQPairsRemover: Simplifies remaining Q1 -> DQ1 -> Q2' -> DQ2 sequence to Q1 -> DQ2.
-TEST_F(QnnHTPBackendTests, Clip_U8_DefaultMinMax_Rank4) {
-  RunQDQClipTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+TEST_F(QnnABIHTPBackendTests, Clip_U8_DefaultMinMax_Rank4) {
+  RunQDQClipTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 48)),
                                {},  // Don't specify min/max inputs.
                                ExpectedEPNodeAssignment::All);
 }
@@ -140,8 +140,8 @@ TEST_F(QnnHTPBackendTests, Clip_U8_DefaultMinMax_Rank4) {
 // - Original sequence: Q1 -> DQ1 -> Clip -> Q2 -> DQ2
 // - ClipQuantFusion: Fuses Clip -> QuantizeLinear resulting in Q1 -> DQ1 -> Q2' -> DQ2
 // - DoubleQDQPairsRemover: Simplifies remaining Q1 -> DQ1 -> Q2' -> DQ2 sequence to Q1 -> DQ2.
-TEST_F(QnnHTPBackendTests, Clip_U16_DefaultMinMax_Rank4) {
-  RunQDQClipTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+TEST_F(QnnABIHTPBackendTests, Clip_U16_DefaultMinMax_Rank4) {
+  RunQDQClipTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 48)),
                                 {},  // Don't specify min/max inputs.
                                 ExpectedEPNodeAssignment::All,
                                 13,     // opset
@@ -149,16 +149,16 @@ TEST_F(QnnHTPBackendTests, Clip_U16_DefaultMinMax_Rank4) {
 }
 
 // Test 8-bit QDQ Clip with non-default min and max inputs. QNN EP will get a graph with a Clip operator.
-TEST_F(QnnHTPBackendTests, Clip_U8_Rank4) {
-  RunQDQClipTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+TEST_F(QnnABIHTPBackendTests, Clip_U8_Rank4) {
+  RunQDQClipTestOnHTP<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 48)),
                                {TestInputDef<float>({}, true, {-5.0f}),
                                 TestInputDef<float>({}, true, {5.0f})},
                                ExpectedEPNodeAssignment::All);
 }
 
 // Test 16-bit QDQ Clip with non-default min and max inputs. QNN EP will get a graph with a Clip operator.
-TEST_F(QnnHTPBackendTests, Clip_U16_Rank4) {
-  RunQDQClipTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+TEST_F(QnnABIHTPBackendTests, Clip_U16_Rank4) {
+  RunQDQClipTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 48)),
                                 {TestInputDef<float>({}, true, {-5.0f}),
                                  TestInputDef<float>({}, true, {5.0f})},
                                 ExpectedEPNodeAssignment::All,
@@ -167,7 +167,7 @@ TEST_F(QnnHTPBackendTests, Clip_U16_Rank4) {
 }
 
 // Test QDQ Clip of rank 5.
-TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
+TEST_F(QnnABIHTPBackendTests, Clip_U8_Rank5) {
   // We can't use the usual model-building functions because they add standalone Quantize and Dequantize nodes
   // at the input and output. These Q/DQ ops get lowered to QNN's Quantize and Dequantize operators, which DO NOT
   // support rank 5 tensors. Therefore, we have to create a test model that only instantiates the DQ -> Clip -> Q
@@ -195,14 +195,14 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(model_fn,
-                  provider_options,
-                  13,  // opset
-                  ExpectedEPNodeAssignment::All);
+  RunQnnModelTestABI(model_fn,
+                     provider_options,
+                     13,  // opset
+                     ExpectedEPNodeAssignment::All);
 }
 
 // Test FP16 Clip with min (FP16)
-TEST_F(QnnHTPBackendTests, Clip_FP16) {
+TEST_F(QnnABIHTPBackendTests, Clip_FP16) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
 
@@ -227,11 +227,11 @@ TEST_F(QnnHTPBackendTests, Clip_FP16) {
   int opset = 13;
   ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All;
 
-  TestFp16ModelAccuracy(f32_model_builder,
-                        f16_model_builder,
-                        provider_options,
-                        opset,
-                        expected_ep_assignment);
+  TestFp16ModelAccuracyABI(f32_model_builder,
+                           f16_model_builder,
+                           provider_options,
+                           opset,
+                           expected_ep_assignment);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -242,8 +242,8 @@ TEST_F(QnnHTPBackendTests, Clip_FP16) {
 //
 
 // Test Clip with float32 on GPU
-TEST_F(QnnGPUBackendTests, Clip_fp32) {
-  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 12)),
+TEST_F(QnnABIGPUBackendTests, Clip_fp32) {
+  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 12)),
                      {TestInputDef<float>({}, true, {-5.0f}),
                       TestInputDef<float>({}, true, {5.0f})},
                      ExpectedEPNodeAssignment::All,
@@ -254,7 +254,7 @@ TEST_F(QnnGPUBackendTests, Clip_fp32) {
 
 // Test Clip with int32 on GPU
 // Disable Reason : Doesn't work.
-TEST_F(QnnGPUBackendTests, DISABLED_Clip_int32) {
+TEST_F(QnnABIGPUBackendTests, DISABLED_Clip_int32) {
   RunClipTest<int32_t>(TestInputDef<int32_t>({1, 1, 3, 2}, false, {1, 2, -5, 3, -10, 25}),
                        {TestInputDef<int32_t>({}, true, {-5}),
                         TestInputDef<int32_t>({}, true, {5})},

@@ -9,7 +9,7 @@
 
 #include "QnnInterface.h"
 
-#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime::qnn {
 
@@ -19,7 +19,7 @@ namespace onnxruntime::qnn {
 class QnnContextMemHandleManager {
  public:
   QnnContextMemHandleManager(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ContextHandle_t qnn_context,
-                             const logging::Logger& logger);
+                             const Ort::Logger& logger);
 
   ~QnnContextMemHandleManager();
 
@@ -27,17 +27,17 @@ class QnnContextMemHandleManager {
 
   // Gets an existing QNN mem handle or registers a new one.
   // `qnn_mem_handle` is set to the QNN mem handle and `did_register` is true if `qnn_mem_handle` was newly registered.
-  Status GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
-                       Qnn_MemHandle_t& qnn_mem_handle, bool& did_register);
+  Ort::Status GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
+                            Qnn_MemHandle_t& qnn_mem_handle, bool& did_register);
 
-  Status Unregister(void* shared_memory_address);
+  Ort::Status Unregister(void* shared_memory_address);
 
   void Clear();
 
  private:
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
   Qnn_ContextHandle_t context_;
-  const logging::Logger& logger_;
+  const Ort::Logger& logger_;
 
   // assume Qnn_MemHandle_t is a pointer and able to be wrapped with std::unique_ptr
   static_assert(std::is_pointer_v<Qnn_MemHandle_t>);

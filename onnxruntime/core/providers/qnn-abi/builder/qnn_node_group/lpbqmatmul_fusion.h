@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
+#include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -23,26 +23,26 @@ class QnnModelWrapper;
 
 class LowPowerBlockQuantizedMatMulFusion : public IQnnNodeGroup {
  public:
-  LowPowerBlockQuantizedMatMulFusion(const NodeUnit& Scale_DQL_node_unit,
-                                     const NodeUnit& W_QL_node_unit,
-                                     const NodeUnit& MatMul_node_unit);
+  LowPowerBlockQuantizedMatMulFusion(const OrtNodeUnit& Scale_DQL_node_unit,
+                                     const OrtNodeUnit& W_QL_node_unit,
+                                     const OrtNodeUnit& MatMul_node_unit);
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(LowPowerBlockQuantizedMatMulFusion);
 
-  Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
-  Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
-  gsl::span<const NodeUnit* const> GetNodeUnits() const override;
-  const NodeUnit* GetTargetNodeUnit() const override;
+  Ort::Status IsSupported(QnnModelWrapper& qmw, const Ort::Logger& logger) const override;
+  Ort::Status AddToModelBuilder(QnnModelWrapper& qmw, const Ort::Logger& logger) const override;
+  gsl::span<const OrtNodeUnit* const> GetNodeUnits() const override;
+  const OrtNodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "LowPowerBlockQuantizedMatMulFusion"; }
 
   static std::unique_ptr<IQnnNodeGroup> TryFusion(
       QnnModelWrapper& qnn_model_wrapper,
-      const NodeUnit& matmul_node_unit,
-      const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-      const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-      const logging::Logger& logger);
+      const OrtNodeUnit& matmul_node_unit,
+      const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_to_node_unit,
+      const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+      const Ort::Logger& logger);
 
  private:
-  std::array<const NodeUnit*, 3> node_units_;
+  std::array<const OrtNodeUnit*, 3> node_units_;
 };
 
 }  // namespace qnn

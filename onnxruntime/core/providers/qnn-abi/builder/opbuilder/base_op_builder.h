@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder.h"
-#include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
-
 #include "QnnOpDef.h"
+
+#include "core/providers/qnn-abi/builder/op_builder.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/qnn_quant_params_wrapper.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -22,14 +22,14 @@ class BaseOpBuilder : public IOpBuilder {
   virtual ~BaseOpBuilder() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BaseOpBuilder);
 
-  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  Ort::Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                            const OrtNodeUnit& node_unit,
+                            const Ort::Logger& logger) const override ORT_MUST_USE_RESULT;
 
-  Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
-                           const NodeUnit& node_unit,
-                           const logging::Logger& logger,
-                           bool do_op_validation) const override final ORT_MUST_USE_RESULT;
+  Ort::Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper,
+                                const OrtNodeUnit& node_unit,
+                                const Ort::Logger& logger,
+                                bool do_op_validation) const override final ORT_MUST_USE_RESULT;
 
   std::string GetOpBuilderType() const override;
 
@@ -52,13 +52,13 @@ class BaseOpBuilder : public IOpBuilder {
    * \param quant_param The quantization parameter object that is overridden.
    * \return An onnxruntime::Status object indicating failure or success.
    */
-  virtual Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
-                                          const NodeUnit& node_unit,
-                                          const logging::Logger& logger,
-                                          const std::vector<std::string>& input_names,
-                                          size_t output_index,
-                                          Qnn_DataType_t qnn_data_type,
-                                          QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT {
+  virtual Ort::Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                               const OrtNodeUnit& node_unit,
+                                               const Ort::Logger& logger,
+                                               const std::vector<std::string>& input_names,
+                                               size_t output_index,
+                                               Qnn_DataType_t qnn_data_type,
+                                               QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT {
     // Do nothing by default. Op builders like Split implement this function to override output quant params.
     ORT_UNUSED_PARAMETER(qnn_model_wrapper);
     ORT_UNUSED_PARAMETER(node_unit);
@@ -67,66 +67,66 @@ class BaseOpBuilder : public IOpBuilder {
     ORT_UNUSED_PARAMETER(output_index);
     ORT_UNUSED_PARAMETER(qnn_data_type);
     ORT_UNUSED_PARAMETER(quant_param);
-    return Status::OK();
+    return Ort::Status();
   }
 
-  Status ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
-                          const NodeUnit& node_unit) const ORT_MUST_USE_RESULT;
+  Ort::Status ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
+                               const OrtNodeUnit& node_unit) const ORT_MUST_USE_RESULT;
 
-  virtual Status CheckCpuDataTypes(const std::vector<Qnn_DataType_t>,
-                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+  virtual Ort::Status CheckCpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                        const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
 
-  virtual Status CheckHtpDataTypes(const std::vector<Qnn_DataType_t>,
-                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+  virtual Ort::Status CheckHtpDataTypes(const std::vector<Qnn_DataType_t>,
+                                        const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
 
-  virtual Status CheckGpuDataTypes(const std::vector<Qnn_DataType_t>,
-                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+  virtual Ort::Status CheckGpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                        const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
 
-  virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                               const NodeUnit& node_unit,
-                               const logging::Logger& logger,
-                               std::vector<std::string>& input_names,
-                               bool do_op_validation = false) const ORT_MUST_USE_RESULT;
+  virtual Ort::Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                    const OrtNodeUnit& node_unit,
+                                    const Ort::Logger& logger,
+                                    std::vector<std::string>& input_names,
+                                    bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
-  Status ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit& node_unit,
-                             std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
+                                  const OrtNodeUnit& node_unit,
+                                  std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  virtual Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                             const NodeUnit& node_unit,
-                                             std::vector<std::string>&& input_names,
-                                             const logging::Logger& logger,
-                                             bool do_op_validation = false) const ORT_MUST_USE_RESULT;
+  virtual Ort::Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                  const OrtNodeUnit& node_unit,
+                                                  std::vector<std::string>&& input_names,
+                                                  const Ort::Logger& logger,
+                                                  bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
-  virtual Status ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                const NodeUnit& node_unit,
-                                std::vector<std::string>&& input_names,
-                                std::vector<std::string>&& param_tensor_names,
-                                const logging::Logger& logger,
-                                bool do_op_validation,
-                                const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
+  virtual Ort::Status ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const OrtNodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     std::vector<std::string>&& param_tensor_names,
+                                     const Ort::Logger& logger,
+                                     bool do_op_validation,
+                                     const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
 
-  Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
-                      const NodeUnitIODef& input,
-                      const logging::Logger& logger,
-                      std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
+                           const OrtNodeUnitIODef& input,
+                           const Ort::Logger& logger,
+                           std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  Status AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
-                          const QnnQuantParamsWrapper& input0_qparams,
-                          const QnnQuantParamsWrapper& input1_qparams,
-                          std::vector<uint32_t>&& bias_shape,
-                          const std::string& bias_name,
-                          const logging::Logger& logger,
-                          std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+  Ort::Status AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
+                               const QnnQuantParamsWrapper& input0_qparams,
+                               const QnnQuantParamsWrapper& input1_qparams,
+                               std::vector<uint32_t>&& bias_shape,
+                               const std::string& bias_name,
+                               const Ort::Logger& logger,
+                               std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  const logging::Logger& logger,
-                                                  const std::vector<std::string>& input_names,
-                                                  size_t input_index,
-                                                  size_t output_index,
-                                                  Qnn_DataType_t qnn_data_type,
-                                                  QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT;
+  Ort::Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
+                                                       const OrtNodeUnit& node_unit,
+                                                       const Ort::Logger& logger,
+                                                       const std::vector<std::string>& input_names,
+                                                       size_t input_index,
+                                                       size_t output_index,
+                                                       Qnn_DataType_t qnn_data_type,
+                                                       QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT;
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
@@ -233,7 +233,9 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"Expand", QNN_OP_ELEMENT_WISE_MULTIPLY}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
-    ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
+    if (it == onnx_op_type_to_qnn_op_type.end()) {
+      ORT_CXX_API_THROW(("Unable to map given ONNX op type to QNN" + onnx_op_type).c_str(), ORT_EP_FAIL);
+    }
     return it->second;
   }
 
@@ -248,18 +250,18 @@ class BaseOpBuilder : public IOpBuilder {
     }
   }
 
-  Status ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
-                              const NodeUnit& node_unit,
-                              Qnn_Scalar_t& axis_qnn_scalar,
-                              int32_t& default_axis_value) const;
+  Ort::Status ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
+                                   const OrtNodeUnit& node_unit,
+                                   Qnn_Scalar_t& axis_qnn_scalar,
+                                   int32_t& default_axis_value) const;
 
-  size_t GetInputCountQnnRequired(const NodeUnit& node_unit) const {
+  size_t GetInputCountQnnRequired(const OrtNodeUnit& node_unit) const {
     auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
 
     return 0 == input_output_cout.first ? node_unit.Inputs().size() : input_output_cout.first;
   }
 
-  size_t GetOutputCountQnnRequired(const NodeUnit& node_unit) const {
+  size_t GetOutputCountQnnRequired(const OrtNodeUnit& node_unit) const {
     auto input_output_cout = GetInputOutputCountQnnRequired(node_unit.OpType());
 
     return 0 == input_output_cout.second ? node_unit.Outputs().size() : input_output_cout.second;
@@ -293,13 +295,148 @@ struct OnnxAttrInfo {
 };
 
 template <typename ValType>
-inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
+inline ValType GetOnnxAttr(const OrtNodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
   return node_helper.Get(attr_info.name, attr_info.default_val);
 }
 
+// QNN-EP COPY START
+// Utility functions copied from core/providers/common.h.
+enum class AutoPadType {
+  NOTSET = 0,
+  VALID = 1,
+  SAME_UPPER = 2,
+  SAME_LOWER = 3,
+};
+
+inline AutoPadType StringToAutoPadType(const std::string& str) {
+  if (str.empty()) {
+    return AutoPadType::NOTSET;
+  }
+  if (str == "NOTSET") {  // in onnx spec, default value is "NOTSET"
+    return AutoPadType::NOTSET;
+  }
+  if (str == "VALID") {
+    return AutoPadType::VALID;
+  }
+  if (str == "SAME_UPPER") {
+    return AutoPadType::SAME_UPPER;
+  }
+  if (str == "SAME_LOWER") {
+    return AutoPadType::SAME_LOWER;
+  }
+  ORT_CXX_API_THROW("Unknown AutoPadType String", ORT_EP_FAIL);
+}
+
+constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
+                                            const int64_t stride,
+                                            const int64_t kernel,
+                                            const int64_t dilation,
+                                            const int64_t pad_head,
+                                            const int64_t pad_tail) {
+  const SafeInt<int64_t> dkernel = SafeInt<int64_t>(dilation) * (kernel - 1) + 1;
+  int64_t dkernel_value = SafeInt<int64_t>(in_dim) + pad_head + pad_tail - dkernel;
+  return static_cast<int64_t>(static_cast<double>(dkernel_value) / stride + 1);
+}
+
+inline Ort::Status ComputePad(const int64_t in_dim,
+                              const int64_t stride,
+                              const int64_t kernel,
+                              const int64_t dilation,
+                              AutoPadType pad_type,
+                              int64_t& pad_head,
+                              int64_t& pad_tail,
+                              bool force_symmetric_auto_padding = false) {
+  switch (pad_type) {
+    case AutoPadType::NOTSET:
+      break;
+    case AutoPadType::VALID: {
+      pad_head = 0;
+      pad_tail = 0;
+    } break;
+    case AutoPadType::SAME_UPPER:
+    case AutoPadType::SAME_LOWER: {
+      if (1 != dilation)
+        return MAKE_EP_FAIL("Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
+
+      // The ONNX spec says if `auto_pad` attribute is set, pad until the `legacy_target_size`
+      // is `ceil (in_dim / stride)`. The following line of code is essentially just that and
+      // is retained as is
+      SafeInt<int64_t> legacy_target_size = (SafeInt<int64_t>(in_dim) + stride - 1) / stride;
+      SafeInt<int64_t> pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
+      // out_dim = floor((in_dim + 2p - k) / s) + 1
+      // => if (in_dim + 2p - k) is not divisible by s we can remove the floor with following equation:
+      // out_dim + eps = ((in_dim + 2p - k) / s) + 1 ;where eps is in [0.0, 1.0]
+      // therefore in edge cases padding can lower calculated above than it should be
+      SafeInt<int64_t> actual_out_size = qnn::ComputeOutputShape(in_dim, stride, kernel, /*dilation*/ 1,
+                                                                 pad_needed, pad_needed);
+      if (actual_out_size < legacy_target_size) {
+        pad_needed += 1;
+      }
+      // make sure padding is symmetric
+      if (force_symmetric_auto_padding) {
+        // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
+        pad_needed = (pad_needed + 1) & ~1;
+      }
+
+      if (pad_type == AutoPadType::SAME_LOWER)
+        pad_head = (pad_needed + 1) / 2;
+      else
+        pad_head = pad_needed / 2;
+
+      pad_tail = pad_needed - pad_head;
+    } break;
+    default:
+      return MAKE_EP_FAIL("ComputePad: pad type not supported.");
+  }
+
+  return Ort::Status();
+}
+
+inline Ort::Status ComputePadAndOutputShape(const int64_t in_dim,
+                                            const int64_t stride,
+                                            const int64_t kernel,
+                                            const int64_t dilation,
+                                            AutoPadType pad_type,
+                                            int64_t& pad_head, int64_t& pad_tail,
+                                            int64_t& out_dim,
+                                            bool force_symmetric_auto_padding = false) {
+  RETURN_IF_ERROR(
+      qnn::ComputePad(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail, force_symmetric_auto_padding));
+  out_dim = qnn::ComputeOutputShape(in_dim, stride, kernel, dilation, pad_head, pad_tail);
+  return Ort::Status();
+}
+
+constexpr inline int64_t ComputeTotalPad(int64_t in_size,
+                                         int64_t stride,
+                                         int64_t adj,
+                                         int64_t kernel,
+                                         int64_t dilation,
+                                         int64_t out_size) {
+  return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
+}
+
+inline void DistributePadding(AutoPadType pad_type,
+                              const int64_t& total_pad,
+                              int64_t& pad_head,
+                              int64_t& pad_tail) {
+  if (pad_type == AutoPadType::SAME_UPPER) {
+    // pad more on tail when total_pad is odd.
+    pad_head = total_pad / 2;
+    pad_tail = total_pad - total_pad / 2;
+  } else {
+    // When pad_type is NOTSET, SAME_LOWER or VALID,
+    // pad more on head when total_pad is odd.
+    pad_head = total_pad - total_pad / 2;
+    pad_tail = total_pad / 2;
+  }
+}
+// QNN-EP COPY END
+
 // Layout sensitive op can't use Qnn Op validation API to verify Op support before layout transformation
 // Need to check this explicitly
-Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper, ONNX_NAMESPACE::DataType onnx_tensor_data_type);
+Ort::Status DataTypeCheckForCpuBackend(QnnModelWrapper& qnn_model_wrapper,
+                                       ONNXTensorElementDataType onnx_tensor_data_type,
+                                       std::string error_msg);
 
 }  // namespace qnn
 }  // namespace onnxruntime

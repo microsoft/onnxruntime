@@ -89,14 +89,18 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   Ort::SessionOptions session_options;
 
   // Add EP devices if any (created by plugin EP)
+  std::vector<std::string> ep_list;
+  std::unordered_set<std::string> ep_set;
+  if (!performance_test_config.registered_plugin_eps.empty() &&
+      !performance_test_config.machine_config.plugin_provider_type_list.empty()) {
+    ep_list = performance_test_config.machine_config.plugin_provider_type_list;
+    ep_set.insert(ep_list.begin(), ep_list.end());
+  }
   if (!performance_test_config.registered_plugin_eps.empty()) {
     std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
     // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
     std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
     std::unordered_set<int> added_ep_device_index_set;
-
-    auto& ep_list = performance_test_config.machine_config.plugin_provider_type_list;
-    std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
 
     // Select EP devices by provided device index
     if (!performance_test_config.selected_ep_device_indices.empty()) {
@@ -339,7 +343,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider ||
+             (!ep_set.empty() && (ep_set.find(std::string(kQnnABIExecutionProvider)) != ep_set.end() ||
+                                  ep_set.find(std::string(kQnnExecutionProvider)) != ep_set.end()))) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -432,7 +438,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       }
     }
-    session_options.AppendExecutionProvider("QNN", provider_options);
+    if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
+      session_options.AppendExecutionProvider("QNN", provider_options);
+    }
 #else
     ORT_THROW("QNN is not supported in this build\n");
 #endif

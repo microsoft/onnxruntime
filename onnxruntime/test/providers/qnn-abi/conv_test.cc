@@ -8,7 +8,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -93,11 +93,11 @@ static void RunConvOpTest(const std::string& conv_op_type, const TestInputDef<fl
 
   auto build_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads,
                                        dilations, group, auto_pad);
-  RunQnnModelTest(build_fn,
-                  provider_options,
-                  opset,
-                  expected_ep_assignment,
-                  fp32_abs_err);
+  RunQnnModelTestABI(build_fn,
+                     provider_options,
+                     opset,
+                     expected_ep_assignment,
+                     fp32_abs_err);
 }
 
 // Creates a graph with a single Q/DQ Conv operator. Used for testing HTP backend.
@@ -139,7 +139,7 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(
       // Bias requirement taken from python quantization tool: onnx_quantizer.py::quantize_bias_static()
       const float bias_scale = input_qparams.scale * weights_qparams.scale;
 
-      conv_inputs.push_back(MakeTestQDQBiasInput(builder, bias_def, bias_scale, use_contrib_qdq));
+      conv_inputs.push_back(MakeTestQDQBiasInputABI(builder, bias_def, bias_scale, use_contrib_qdq));
     }
 
     auto* conv_output = builder.MakeIntermediate();
@@ -312,16 +312,16 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
-                                            group, auto_pad, output_activation),
-                       BuildQDQConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
-                                                                          bias_def, strides, pads, dilations,
-                                                                          group, auto_pad, use_contrib_qdq,
-                                                                          output_activation),
-                       provider_options,
-                       opset,
-                       expected_ep_assignment,
-                       tolerance);
+  TestQDQModelAccuracyABI(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
+                                               group, auto_pad, output_activation),
+                          BuildQDQConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
+                                                                             bias_def, strides, pads, dilations,
+                                                                             group, auto_pad, use_contrib_qdq,
+                                                                             output_activation),
+                          provider_options,
+                          opset,
+                          expected_ep_assignment,
+                          tolerance);
 }
 
 // Runs a QDQ Conv model (per-axis quantization on weight/bias) on the QNN HTP backend.
@@ -351,14 +351,14 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                                                              bias_def, weight_quant_axis, strides,
                                                                              pads, dilations, group, auto_pad,
                                                                              use_contrib_qdq, output_activation);
-  TestQDQModelAccuracy(f32_fn, qdq_fn, provider_options, opset, expected_ep_assignment, tolerance);
+  TestQDQModelAccuracyABI(f32_fn, qdq_fn, provider_options, opset, expected_ep_assignment, tolerance);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as a dynamic input.
 // TODO: Segfaults when calling graphFinalize(). v2.13
 // fixed by QNN 2.32
-TEST_F(QnnCPUBackendTests, Convf32_dynamic_bias) {
+TEST_F(QnnABICPUBackendTests, Convf32_dynamic_bias) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -384,7 +384,7 @@ TEST_F(QnnCPUBackendTests, Convf32_dynamic_bias) {
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as an initializer.
-TEST_F(QnnCPUBackendTests, Convf32_bias_initializer) {
+TEST_F(QnnABICPUBackendTests, Convf32_bias_initializer) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -409,7 +409,7 @@ TEST_F(QnnCPUBackendTests, Convf32_bias_initializer) {
 }
 
 // Tests Conv's auto_pad value "SAME_UPPER" (compares to CPU EP).
-TEST_F(QnnCPUBackendTests, Convf32_AutoPadUpper) {
+TEST_F(QnnABICPUBackendTests, Convf32_AutoPadUpper) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
@@ -434,7 +434,7 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadUpper) {
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_UPPER" (compares to CPU EP).
-TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadUpper) {
+TEST_F(QnnABICPUBackendTests, ConvTransposef32_AutoPadUpper) {
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                 TestInputDef<float>({1, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
@@ -459,7 +459,7 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadUpper) {
 }
 
 // Tests Conv's auto_pad value "SAME_LOWER" (compares to CPU EP).
-TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
+TEST_F(QnnABICPUBackendTests, Convf32_AutoPadLower) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -487,7 +487,7 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
 // 2.31 Exception from qnn_interface.graphAddNode
 // unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
 // fixed by QNN 2.32
-TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
+TEST_F(QnnABICPUBackendTests, ConvTransposef32_AutoPadLower) {
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                 TestInputDef<float>({1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -505,7 +505,7 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
 // Exception thrown at 0x00007FFFB7651630 (QnnCpu.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x0000000000000000.
 // fixed by QNN 2.32
-TEST_F(QnnCPUBackendTests, ConvTranspose3D_f32_AutoPadLower) {
+TEST_F(QnnABICPUBackendTests, ConvTranspose3D_f32_AutoPadLower) {
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                 TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -519,7 +519,7 @@ TEST_F(QnnCPUBackendTests, ConvTranspose3D_f32_AutoPadLower) {
 }
 
 // large input,output, pads
-TEST_F(QnnCPUBackendTests, Convf32_large_input1_pad_bias_initializer) {
+TEST_F(QnnABICPUBackendTests, Convf32_large_input1_pad_bias_initializer) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 3, 60, 452}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({16, 3, 3, 3}, true, 0.0f, 1.0f),      // Random dynamic weights
@@ -549,7 +549,7 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input1_pad_bias_initializer) {
                 2e-4f);
 }
 
-TEST_F(QnnCPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
+TEST_F(QnnABICPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
 #if defined(_WIN32)
   // Tolerance needs to be > 1.52588e-05 on Windows x64
   // TODO: Investigate why
@@ -588,7 +588,7 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
 }
 
 // Test 1D Conv with static weights (implemented in QNN EP as 2D convolution with height of 1).
-TEST_F(QnnCPUBackendTests, Conv1Df32_StaticWeights_DefaultBias) {
+TEST_F(QnnABICPUBackendTests, Conv1Df32_StaticWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
@@ -603,7 +603,7 @@ TEST_F(QnnCPUBackendTests, Conv1Df32_StaticWeights_DefaultBias) {
 }
 
 // Test 1D Conv with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
-TEST_F(QnnCPUBackendTests, Conv1Df32_DynamicWeights_DefaultBias) {
+TEST_F(QnnABICPUBackendTests, Conv1Df32_DynamicWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
@@ -618,7 +618,7 @@ TEST_F(QnnCPUBackendTests, Conv1Df32_DynamicWeights_DefaultBias) {
 }
 
 // Test 1D ConvTranspose with static weights (implemented in QNN EP as 2D convolution with height of 1).
-TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
+TEST_F(QnnABICPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
@@ -636,7 +636,7 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
 // 2.31 Exception from qnn_interface.graphAddNode
 // unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
 // fixed by QNN 2.32
-TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
+TEST_F(QnnABICPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
@@ -661,7 +661,7 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
 // So, Conv gets processed before Mul node
 //
 // Since at least QAIRT 2.33 value pair (3.549, 3.588) at index #12709 don't match, which is 0.039 from 3.549
-TEST_F(QnnHTPBackendTests, DISABLED_Test_QDQConvWithDynamicWeightsFromMul) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_Test_QDQConvWithDynamicWeightsFromMul) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -710,15 +710,15 @@ TEST_F(QnnHTPBackendTests, DISABLED_Test_QDQConvWithDynamicWeightsFromMul) {
     builder.AddDequantizeLinearNode<uint8_t>(q_output, .039f, 0, dq_output);
   };
 
-  RunQnnModelTest(BuildConvMulGraph,
-                  provider_options,
-                  13,
-                  ExpectedEPNodeAssignment::All);
+  RunQnnModelTestABI(BuildConvMulGraph,
+                     provider_options,
+                     13,
+                     ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as a dynamic input.
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.0f, 10.0f),   // Random dynamic input
                                      TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),  // Random static input
@@ -747,17 +747,17 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
 }
 
 // Test per-channel QDQ Conv. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
-TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvU8S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
                                               input_def,
@@ -775,17 +775,17 @@ TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel) {
 }
 
 // Test per-channel QDQ Conv with INT4 weights. in0: u16, in1 (weight): s4, in2 (bias): s32, out: u8
-TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvU16S4S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(0.0f, 1.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, Int4x2>("Conv",
                                                input_def,
@@ -805,14 +805,14 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel) {
 // Test per-channel QDQ Conv with INT4 weights and no bias.
 // in0: u16, in1 (weight): s4, out: u8
 // Tests bug in QNN SDK 2.25 when validating Conv without a bias (QNN EP adds a dummy bias).
-TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias) {
+TEST_F(QnnABIHTPBackendTests, ConvU16S4_PerChannel_NoBias) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(0.0f, 1.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, Int4x2>("Conv",
                                                input_def,
@@ -832,14 +832,14 @@ TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias) {
 // Test per-channel QDQ Conv with uint16 input[0], uint8 weights, and no bias.
 // in0: u16, in1 (weight): s4, out: u8
 // Tests bug in QNN SDK 2.25 when validating Conv without a bias (QNN EP adds a dummy bias).
-TEST_F(QnnHTPBackendTests, ConvU16U8_PerTensor_NoBias) {
+TEST_F(QnnABIHTPBackendTests, ConvU16U8_PerTensor_NoBias) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(0.0f, 1.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
 
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       input_def,
@@ -859,14 +859,14 @@ TEST_F(QnnHTPBackendTests, ConvU16U8_PerTensor_NoBias) {
 // Test per-channel QDQ Conv with uint16 input[0], uint8 weights, and no bias.
 // in0: u16, in1 (weight): s4, out: u8
 // Tests bug in QNN SDK 2.25 when validating Conv without a bias (QNN EP adds a dummy bias).
-TEST_F(QnnHTPBackendTests, ConvU16U16_PerTensor_NoBias) {
+TEST_F(QnnABIHTPBackendTests, ConvU16U16_PerTensor_NoBias) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(0.0f, 1.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
 
   RunHTPConvOpTest<uint16_t, uint16_t>("Conv",
                                        input_def,
@@ -883,7 +883,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U16_PerTensor_NoBias) {
 }
 #endif
 
-TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
+TEST_F(QnnABIHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
   std::vector<int64_t> input_shape = {1, 3072, 1, 512};
   std::vector<int64_t> weight_shape = {9216, 3072, 1, 1};
   std::vector<float> input_data(TensorShape(input_shape).Size(), 0.1f);
@@ -914,17 +914,17 @@ TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
 
 // Test fusion of DQs -> Conv -> Relu/Clip -> Q.
 // User per-tensor quantization.
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_ReluClipFusion) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_ReluClipFusion) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(0.0f, 1.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   // DQs -> Conv (w/ bias) -> Relu -> Q
   OutputActivationInfo relu_info = {"Relu", {}};
@@ -997,17 +997,17 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_ReluClipFusion) {
 
 // Test fusion of DQs -> Conv -> Relu/Clip -> Q.
 // User per-channel quantization.
-TEST_F(QnnHTPBackendTests, ConvS8S8S32_PerChannel_ReluClipFusion) {
+TEST_F(QnnABIHTPBackendTests, ConvS8S8S32_PerChannel_ReluClipFusion) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(0.0f, 1.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   // DQs -> Conv (w/ bias) -> Relu -> Q
   OutputActivationInfo relu_info = {"Relu", {}};
@@ -1047,17 +1047,17 @@ TEST_F(QnnHTPBackendTests, ConvS8S8S32_PerChannel_ReluClipFusion) {
 }
 
 // Test per-channel QDQ Conv with INT4 weights and a negative weight quantization axis that still points to dimension 0.
-TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_NegativeWeightQuantAxis) {
+TEST_F(QnnABIHTPBackendTests, ConvU16S4S32_PerChannel_NegativeWeightQuantAxis) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(0.0f, 1.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, Int4x2>("Conv",
                                               input_def,
@@ -1081,24 +1081,24 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_NegativeWeightQuantAxis) {
 // CPU EP (f32 model): 25.143 21.554 17.964 10.785 7.195 3.605  -3.574  -7.164  -10.753
 // CPU EP (qdq model): 24.670 21.103 17.536 10.254 6.689 2.972  -4.161  -7.728  -10.700
 // QNN EP (qdq model): 27.186 27.186 27.186 21.541 6.685 -8.022 -10.548 -10.548 -10.548
-TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_AccuracyIssue) {
+TEST_F(QnnABIHTPBackendTests, ConvU16S4S32_PerChannel_AccuracyIssue) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   // Wrote out input data explicitly for easier reproduction.
-  // std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size());
+  // std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size());
   std::vector<float> input_data = {-10.000f, -9.355f, -8.710f, -8.065f, -7.419f, -6.774f, -6.129f, -5.484f, -4.839f,
                                    -4.194f, -3.548f, -2.903f, -2.258f, -1.613f, -0.968f, -0.323f, 0.323f, 0.968f,
                                    1.613f, 2.258f, 2.903f, 3.548f, 4.194f, 4.839f, 5.484f, 6.129f, 6.774f,
                                    7.419f, 8.065f, 8.710f, 9.355f, 10.000f};
 
-  // std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 1.0f, TensorShape(weight_shape).Size());
+  // std::vector<float> weight_data = GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(weight_shape).Size());
   std::vector<float> weight_data = {-1.000f, -0.913f, -0.826f, -0.739f, -0.652f, -0.565f, -0.478f, -0.391f, -0.304f,
                                     -0.217f, -0.130f, -0.043f, 0.043f, 0.130f, 0.217f, 0.304f, 0.391f, 0.478f,
                                     0.565f, 0.652f, 0.739f, 0.826f, 0.913f, 1.000f};
 
-  // std::vector<float> bias_data = GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size());
+  // std::vector<float> bias_data = GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size());
   std::vector<float> bias_data = {-1.000f, 0.000f, 1.000f};
 
   TestInputDef<float> input_def(input_shape, false, input_data);
@@ -1122,17 +1122,17 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_AccuracyIssue) {
 }
 
 // Test per-channel QDQ Conv is rejected with weight axis != 0
-TEST_F(QnnHTPBackendTests, Conv_PerChannel_UnsupportedAxis) {
+TEST_F(QnnABIHTPBackendTests, Conv_PerChannel_UnsupportedAxis) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 3, 3};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
                                               input_def,
@@ -1159,17 +1159,17 @@ TEST_F(QnnHTPBackendTests, Conv_PerChannel_UnsupportedAxis) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, Conv3D_U8S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
                                               input_def,
@@ -1188,17 +1188,17 @@ TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel) {
 
 // Test per-channel QDQ Conv that maps to QNN's DepthwiseConv2d (input_chans == output_chans == group).
 // in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
-TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};   // (N, C, H, W)
   std::vector<int64_t> weight_shape = {2, 1, 2, 2};  // (C, M/group, kH, kW)
   std::vector<int64_t> bias_shape = {2};             // (M)
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
                                               input_def,
@@ -1225,17 +1225,17 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel2) {
+TEST_F(QnnABIHTPBackendTests, Conv3D_U8S8S32_PerChannel2) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
   std::vector<int64_t> bias_shape = {2};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
                                               input_def,
@@ -1253,17 +1253,17 @@ TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel2) {
 }
 
 // Test per-channel QDQ ConvTranspose. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
-TEST_F(QnnHTPBackendTests, ConvTransposeU8S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvTransposeU8S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("ConvTranspose",
                                               input_def,
@@ -1281,17 +1281,17 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8S8S32_PerChannel) {
 }
 
 // Test per-channel QDQ ConvTranspose is unsupported with weight axis != 1.
-TEST_F(QnnHTPBackendTests, ConvTranspose_PerChannel_UnsupportedAxis) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose_PerChannel_UnsupportedAxis) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 3, 3};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("ConvTranspose",
                                               input_def,
@@ -1311,17 +1311,17 @@ TEST_F(QnnHTPBackendTests, ConvTranspose_PerChannel_UnsupportedAxis) {
 // ConvTranspose3D per-channel
 // Disable it for 2.21 since it failed, re-enabled it for 2.22
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose3D_U8S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint8_t, int8_t>("ConvTranspose",
                                               input_def,
@@ -1340,17 +1340,17 @@ TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8S8S32_PerChannel) {
 
 #ifndef __linux__
 // Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
-TEST_F(QnnHTPBackendTests, ConvU16S16S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvU16S16S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, int16_t>("Conv",
                                                 input_def,
@@ -1369,17 +1369,17 @@ TEST_F(QnnHTPBackendTests, ConvU16S16S32_PerChannel) {
 #endif
 
 // Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
-TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvU16S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
                                                input_def,
@@ -1406,17 +1406,17 @@ TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, Conv3D_U16S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
                                                input_def,
@@ -1434,17 +1434,17 @@ TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel) {
 }
 
 // Test per-channel QDQ ConvTranspose. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
-TEST_F(QnnHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, int8_t>("ConvTranspose",
                                                input_def,
@@ -1463,17 +1463,17 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
 
 // Disable it for 2.21, re-enable it for 2.22
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, ConvTranspose3D_U16S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose3D_U16S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, int8_t>("ConvTranspose",
                                                input_def,
@@ -1492,17 +1492,17 @@ TEST_F(QnnHTPBackendTests, ConvTranspose3D_U16S8S32_PerChannel) {
 
 // Test per-channel QDQ Conv that maps to QNN's DepthwiseConv2d (input_chans == output_chans == group).
 // in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
-TEST_F(QnnHTPBackendTests, ConvDepthwiseU16S8S32_PerChannel) {
+TEST_F(QnnABIHTPBackendTests, ConvDepthwiseU16S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};   // (N, C, H, W)
   std::vector<int64_t> weight_shape = {2, 1, 2, 2};  // (C, M/group, kH, kW)
   std::vector<int64_t> bias_shape = {2};             // (M)
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
                                                input_def,
@@ -1529,17 +1529,17 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU16S8S32_PerChannel) {
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel2) {
+TEST_F(QnnABIHTPBackendTests, Conv3D_U16S8S32_PerChannel2) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
   std::vector<int64_t> bias_shape = {2};
 
   TestInputDef<float> input_def(input_shape, false,
-                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+                                GetFloatDataInRangeABI(-10.0f, 10.0f, TensorShape(input_shape).Size()));
   TestInputDef<float> weight_def(weight_shape, true,
-                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+                                 GetFloatDataInRangeABI(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
   TestInputDef<float> bias_def(bias_shape, true,
-                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+                               GetFloatDataInRangeABI(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
 
   RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
                                                input_def,
@@ -1562,9 +1562,9 @@ TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel2) {
 // Expected val: 87.354057312011719
 // QNN QDQ val: 0 (err 87.354057312011719)
 // CPU QDQ val: 87.3583984375 (err 0.00434112548828125)
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
-  TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 50));
-  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 18));
+TEST_F(QnnABIHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
+  TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 50));
+  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRangeABI(-1.0f, 5.0f, 18));
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       input_def,                                   // Input
                                       weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
@@ -1580,9 +1580,9 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_DynamicBias) {
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's DepthwiseConv2d)
 // TODO(adrianlizarraga): FAIL: Failed to finalize QNN graph. Error code 1002
-TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_DynamicBias) {
-  TestInputDef<float> input_def({1, 1, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 25));
-  TestInputDef<float> weight_def({1, 1, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 9));
+TEST_F(QnnABIHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_DynamicBias) {
+  TestInputDef<float> input_def({1, 1, 5, 5}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 25));
+  TestInputDef<float> weight_def({1, 1, 3, 3}, false, GetFloatDataInRangeABI(-1.0f, 5.0f, 9));
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       input_def,                                   // Input
                                       weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
@@ -1602,9 +1602,9 @@ TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_DynamicBias) {
 // Expected val: 85.354057312011719
 // QNN QDQ val: 0 (err 85.354057312011719)
 // CPU QDQ val: 85.358139038085938 (err 0.00408172607421875)
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
-  TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRange(-10.0f, 10.0f, 50));
-  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRange(-1.0f, 5.0f, 18));
+TEST_F(QnnABIHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
+  TestInputDef<float> input_def({1, 2, 5, 5}, false, GetFloatDataInRangeABI(-10.0f, 10.0f, 50));
+  TestInputDef<float> weight_def({1, 2, 3, 3}, false, GetFloatDataInRangeABI(-1.0f, 5.0f, 18));
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       input_def,                                   // Input
                                       weight_def.OverrideValueRange(-5.0f, 5.0f),  // Weights (symmetric quant range)
@@ -1620,9 +1620,9 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S16S32_NoBias) {
 
 // Tests 16-bit QDQ Conv with dynamic weights and no bias (uses QNN's DepthWiseConv2d)
 // TODO(adrianlizarraga): FAIL: Failed to finalize QNN graph. Error code 1002
-TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_NoBias) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
-  std::vector<float> weight_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
+TEST_F(QnnABIHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_NoBias) {
+  std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 9);
   RunHTPConvOpTest<uint16_t, int16_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5}, false, input_data),   // Input
                                       TestInputDef<float>({1, 1, 3, 3}, false, weight_data),  // Weights
@@ -1638,9 +1638,9 @@ TEST_F(QnnHTPBackendTests, DISABLED_DepthwiseConvU16S16S32_NoBias) {
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
 // Uses QNN's DepthwiseConv2d operator.
-TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
-  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
+TEST_F(QnnABIHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
+  std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRangeABI(-1.0f, 5.0f, 9);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5}, false, input_data),  // Input
                                       TestInputDef<float>({1, 1, 3, 3}, true, weight_data),  // Weights
@@ -1654,8 +1654,8 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13);
 
-  std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 125);
-  std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 27);
+  std::vector<float> input_data_3d = GetFloatDataInRangeABI(-10.0f, 10.0f, 125);
+  std::vector<float> weight_data_3d = GetFloatDataInRangeABI(-1.0f, 5.0f, 27);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5, 5}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 1, 3, 3, 3}, true, weight_data_3d),  // Weights
@@ -1671,9 +1671,9 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
-TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
-  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
+TEST_F(QnnABIHTPBackendTests, ConvU16U8S32_StaticBias) {
+  std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 50);
+  std::vector<float> weight_data = GetFloatDataInRangeABI(-1.0f, 5.0f, 18);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 2, 5, 5}, false, input_data),  // Input
                                       TestInputDef<float>({1, 2, 3, 3}, true, weight_data),  // Weights
@@ -1687,8 +1687,8 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13);
 
-  std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 150);
-  std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 36);
+  std::vector<float> input_data_3d = GetFloatDataInRangeABI(-10.0f, 10.0f, 150);
+  std::vector<float> weight_data_3d = GetFloatDataInRangeABI(-1.0f, 5.0f, 36);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 2, 3, 3, 2}, true, weight_data_3d),  // Weights
@@ -1705,9 +1705,9 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
 // Uses QNN's DepthwiseConv2d operator.
-TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
-  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
+TEST_F(QnnABIHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
+  std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRangeABI(-1.0f, 5.0f, 9);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5}, false, input_data),  // Input
                                       TestInputDef<float>({1, 1, 3, 3}, true, weight_data),  // Weights
@@ -1721,8 +1721,8 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13);
 
-  std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 75);
-  std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 27);
+  std::vector<float> input_data_3d = GetFloatDataInRangeABI(-10.0f, 10.0f, 75);
+  std::vector<float> weight_data_3d = GetFloatDataInRangeABI(-1.0f, 5.0f, 27);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5, 3}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 1, 3, 3, 3}, true, weight_data_3d),  // Weights
@@ -1738,9 +1738,9 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
-TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
-  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
+TEST_F(QnnABIHTPBackendTests, ConvU16U8S32_DynamicBias) {
+  std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 50);
+  std::vector<float> weight_data = GetFloatDataInRangeABI(-1.0f, 5.0f, 18);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 2, 5, 5}, false, input_data),  // Input
                                       TestInputDef<float>({1, 2, 3, 3}, true, weight_data),  // Weights
@@ -1754,8 +1754,8 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13);
 
-  std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 150);
-  std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 36);
+  std::vector<float> input_data_3d = GetFloatDataInRangeABI(-10.0f, 10.0f, 150);
+  std::vector<float> weight_data_3d = GetFloatDataInRangeABI(-1.0f, 5.0f, 36);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 2, 3, 3, 2}, true, weight_data_3d),  // Weights
@@ -1771,9 +1771,9 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
-TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 50);
-  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 18);
+TEST_F(QnnABIHTPBackendTests, ConvU16U8S32_NoBias) {
+  std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 50);
+  std::vector<float> weight_data = GetFloatDataInRangeABI(-1.0f, 5.0f, 18);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 2, 5, 5}, false, input_data),  // Input
                                       TestInputDef<float>({1, 2, 3, 3}, true, weight_data),  // Weights
@@ -1787,8 +1787,8 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13);
 
-  std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 150);
-  std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 36);
+  std::vector<float> input_data_3d = GetFloatDataInRangeABI(-10.0f, 10.0f, 150);
+  std::vector<float> weight_data_3d = GetFloatDataInRangeABI(-1.0f, 5.0f, 36);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 2, 5, 5, 3}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 2, 3, 3, 2}, true, weight_data_3d),  // Weights
@@ -1805,9 +1805,9 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
 // Uses QNN's DepthwiseConv2d operator.
-TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 25);
-  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 5.0f, 9);
+TEST_F(QnnABIHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
+  std::vector<float> input_data = GetFloatDataInRangeABI(-10.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRangeABI(-1.0f, 5.0f, 9);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5}, false, input_data),  // Input
                                       TestInputDef<float>({1, 1, 3, 3}, true, weight_data),  // Weights
@@ -1821,8 +1821,8 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
                                       true,  // Use com.microsoft QDQ ops for 16-bit
                                       13);
 
-  std::vector<float> input_data_3d = GetFloatDataInRange(-10.0f, 10.0f, 75);
-  std::vector<float> weight_data_3d = GetFloatDataInRange(-1.0f, 5.0f, 18);
+  std::vector<float> input_data_3d = GetFloatDataInRangeABI(-10.0f, 10.0f, 75);
+  std::vector<float> weight_data_3d = GetFloatDataInRangeABI(-1.0f, 5.0f, 18);
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       TestInputDef<float>({1, 1, 5, 5, 3}, false, input_data_3d),  // Input
                                       TestInputDef<float>({1, 1, 3, 3, 2}, true, weight_data_3d),  // Weights
@@ -1839,7 +1839,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
 
 // Test that dynamic weights with default bias works for Conv. This was previously not working
 // on older versions of QNN sdk.
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_DynamicWeight_NoBias) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_DynamicWeight_NoBias) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 3, 32, 32}, false, -10.0f, 10.0f),  // Input
                                      TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),    // Weights
@@ -1865,7 +1865,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_DynamicWeight_NoBias) {
 
 // Test that dynamic weights with default bias works for ConvTranspose. This was previously not working
 // on older versions of QNN sdk.
-TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_DynamicWeight_NoBias) {
+TEST_F(QnnABIHTPBackendTests, ConvTransposeU8U8S32_DynamicWeight_NoBias) {
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 3, 32, 32}, false, -10.0f, 10.0f),  // Input
                                      TestInputDef<float>({3, 1, 4, 4}, false, -10.0f, 10.0f),    // Weights
@@ -1883,7 +1883,7 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_DynamicWeight_NoBias) {
 // Exception thrown at 0x00007FFF9E0128B0 (QnnHtpPrepare.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x7079745F656C706D.
 // Issue fixed in 2.30
-TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 3, 32, 32, 32}, false, -10.0f, 10.0f),  // Input
                                      TestInputDef<float>({3, 1, 4, 4, 4}, false, -10.0f, 10.0f),     // Weights
@@ -1898,7 +1898,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as an initializer.
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_initializer) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.0f, 10.0f),   // Random dynamic input
                                      TestInputDef<float>({1, 1, 3, 3}, true, -10.0f, 10.0f),  // Random static weight
@@ -1927,7 +1927,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_initializer) {
 }
 
 // Tests 1D Conv with bias as an initializer.
-TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_bias_initializer) {
+TEST_F(QnnABIHTPBackendTests, Conv1DU8U8S32_bias_initializer) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -1942,7 +1942,7 @@ TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_bias_initializer) {
 }
 
 // Tests 1D ConvTranspose with bias as an initializer.
-TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_bias_initializer) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose1DU8U8S32_bias_initializer) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -1957,7 +1957,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_bias_initializer) {
 }
 
 // Tests auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadUpper) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_AutoPadUpper) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
@@ -1986,7 +1986,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadUpper) {
 }
 
 // Tests Conv1d auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadUpper) {
+TEST_F(QnnABIHTPBackendTests, Conv1DU8U8S32_AutoPadUpper) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -2003,7 +2003,7 @@ TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadUpper) {
 }
 
 // Tests TransposeConv1d auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadUpper) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadUpper) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -2020,7 +2020,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadUpper) {
 }
 
 // Tests Conv's auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadLower) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_AutoPadLower) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
@@ -2049,7 +2049,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadLower) {
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadLower) {
+TEST_F(QnnABIHTPBackendTests, ConvTransposeU8U8S32_AutoPadLower) {
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
@@ -2078,7 +2078,7 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadLower) {
 }
 
 // Tests Conv1d auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadLower) {
+TEST_F(QnnABIHTPBackendTests, Conv1DU8U8S32_AutoPadLower) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -2095,7 +2095,7 @@ TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadLower) {
 }
 
 // Tests ConvTranspose 1d auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadLower) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadLower) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -2112,7 +2112,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadLower) {
 }
 
 // Tests Conv's auto_pad value "VALID" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadValid) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_AutoPadValid) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
@@ -2141,7 +2141,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadValid) {
 }
 
 // Tests ConvTranspose's auto_pad value "VALID" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadValid) {
+TEST_F(QnnABIHTPBackendTests, ConvTransposeU8U8S32_AutoPadValid) {
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
@@ -2170,7 +2170,7 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadValid) {
 }
 
 // Tests Conv1d auto_pad value "VALID" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadValid) {
+TEST_F(QnnABIHTPBackendTests, Conv1DU8U8S32_AutoPadValid) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -2187,7 +2187,7 @@ TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadValid) {
 }
 
 // Tests ConvTranspose 1d auto_pad value "VALID" on HTP backend (compares to CPU EP).
-TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadValid) {
+TEST_F(QnnABIHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadValid) {
   std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
@@ -2205,7 +2205,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadValid) {
 
 // Fails with QNN SDK 2.35.0:
 // value pair (-4.54545403, -4.54687548) at index #3 don't match, which is -0.00142145 from -4.54545
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU8U8S32_large_input1_padding_bias_initializer) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_ConvU8U8S32_large_input1_padding_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 3, 60, 452}, false, 0.f, 10.f),        // Dynamic input
                                      TestInputDef<float>({16, 3, 3, 3}, true, -1.f, 1.f),           // Static weights
@@ -2222,7 +2222,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU8U8S32_large_input1_padding_bias_initia
                                      QDQTolerance(0.0076f));
 }
 
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 128, 8, 56}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({32, 128, 1, 1}, true, -1.f, 1.f),   // Random static weights
@@ -2237,7 +2237,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
                                      13);
 }
 
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
+TEST_F(QnnABIHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 3, 768, 1152}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({64, 3, 7, 7}, true, -1.f, 1.f),       // Static weights
@@ -2257,7 +2257,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
 //
 
 // Convolution 2D GPU test.
-TEST_F(QnnGPUBackendTests, Conv2D) {
+TEST_F(QnnABIGPUBackendTests, Conv2D) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -2273,7 +2273,7 @@ TEST_F(QnnGPUBackendTests, Conv2D) {
 
 // Convolution 3D GPU test.
 // Disable Reason : 3D Conv is currently not supported by the GPU.
-TEST_F(QnnGPUBackendTests, DISABLED_Conv3D) {
+TEST_F(QnnABIGPUBackendTests, DISABLED_Conv3D) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -2288,7 +2288,7 @@ TEST_F(QnnGPUBackendTests, DISABLED_Conv3D) {
 }
 
 // Convolution 2D dynamic bias GPU test.
-TEST_F(QnnGPUBackendTests, Conv2D_biasDynamic) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_biasDynamic) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -2303,7 +2303,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_biasDynamic) {
 }
 
 // Convolution 2D GPU test, large input feature map, more output feature maps.
-TEST_F(QnnGPUBackendTests, Conv2D_largeInput) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_largeInput) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 3, 60, 452}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({16, 3, 3, 3}, true, 0.0f, 1.0f),      // Random dynamic weights
@@ -2320,7 +2320,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_largeInput) {
 }
 
 // Convolution 2D GPU test, reduce featuremaps with pointwise conv.
-TEST_F(QnnGPUBackendTests, Conv2D_bottleneckSqueeze) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_bottleneckSqueeze) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 32, 16, 113}, false, -3.0f, 3.0f),  // Random dynamic input
                 TestInputDef<float>({16, 32, 1, 1}, false, -1.0f, 1.0f),    // Random dynamic weights
@@ -2337,7 +2337,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_bottleneckSqueeze) {
 }
 
 // Convolution 2D SAME_UPPER pad GPU test.
-TEST_F(QnnGPUBackendTests, Conv2D_padSameUpper) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_padSameUpper) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -2352,7 +2352,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_padSameUpper) {
 }
 
 // Convolution Transpose 2D GPU test.
-TEST_F(QnnGPUBackendTests, ConvTranspose2D) {
+TEST_F(QnnABIGPUBackendTests, ConvTranspose2D) {
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -2367,7 +2367,7 @@ TEST_F(QnnGPUBackendTests, ConvTranspose2D) {
 }
 
 // Convolution Transpose 2D SAME_LOWER pad GPU test.
-TEST_F(QnnGPUBackendTests, ConvTranspose2D_padSameLower) {
+TEST_F(QnnABIGPUBackendTests, ConvTranspose2D_padSameLower) {
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                 TestInputDef<float>({1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -2382,7 +2382,7 @@ TEST_F(QnnGPUBackendTests, ConvTranspose2D_padSameLower) {
 }
 
 // Depthwise Convolution 2D GPU test, depthwise conv.
-TEST_F(QnnGPUBackendTests, Conv2D_depthwise) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_depthwise) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 3, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
                 TestInputDef<float>({3, 1, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
@@ -2397,7 +2397,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_depthwise) {
 }
 
 // Convolution 2D GPU test, reduce featuremaps with depthwise-pointwise conv.
-TEST_F(QnnGPUBackendTests, Conv2D_depthwiseSeparable) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_depthwiseSeparable) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 6, 16, 16}, false, -3.0f, 3.0f),  // Random dynamic input
                 TestInputDef<float>({3, 2, 1, 1}, false, -1.0f, 1.0f),    // Random dynamic weights
@@ -2414,7 +2414,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_depthwiseSeparable) {
 }
 
 // Convolution 2D groups GPU test, use grouping.
-TEST_F(QnnGPUBackendTests, Conv2D_groups) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_groups) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 4, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
                 TestInputDef<float>({2, 2, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
@@ -2431,7 +2431,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_groups) {
 }
 
 // Convolution 2D groups GPU test, use grouping, more than 1 output per group.
-TEST_F(QnnGPUBackendTests, Conv2D_groupsExpand) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_groupsExpand) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 4, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
                 TestInputDef<float>({4, 2, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
@@ -2448,7 +2448,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_groupsExpand) {
 }
 
 // Convolution 2D groups GPU test, use grouping, 1 group of 3.
-TEST_F(QnnGPUBackendTests, Conv2D_1groupOf3) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_1groupOf3) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 3, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
                 TestInputDef<float>({2, 3, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
@@ -2466,7 +2466,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_1groupOf3) {
 
 // Convolution 2D groups GPU test, use grouping, more than 1 group of 3.
 // Disable Reason : doesn't work.
-TEST_F(QnnGPUBackendTests, DISABLED_Conv2D_2groupsOf3) {
+TEST_F(QnnABIGPUBackendTests, DISABLED_Conv2D_2groupsOf3) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 6, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
                 TestInputDef<float>({2, 3, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
@@ -2483,7 +2483,7 @@ TEST_F(QnnGPUBackendTests, DISABLED_Conv2D_2groupsOf3) {
 }
 
 // Convolution 2D groups GPU test, use grouping, more than 1 group of 2.
-TEST_F(QnnGPUBackendTests, Conv2D_3groupsOf2) {
+TEST_F(QnnABIGPUBackendTests, Conv2D_3groupsOf2) {
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 6, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
                 TestInputDef<float>({3, 2, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
@@ -2500,7 +2500,7 @@ TEST_F(QnnGPUBackendTests, Conv2D_3groupsOf2) {
 }
 
 // Convolution 1D GPU test.
-TEST_F(QnnGPUBackendTests, Conv1D) {
+TEST_F(QnnABIGPUBackendTests, Conv1D) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunConvOpTest("Conv",
                 TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
@@ -2516,7 +2516,7 @@ TEST_F(QnnGPUBackendTests, Conv1D) {
 }
 
 // Convolution Transpose 1D GPU test.
-TEST_F(QnnGPUBackendTests, ConvTranspose1D) {
+TEST_F(QnnABIGPUBackendTests, ConvTranspose1D) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunConvOpTest("ConvTranspose",
                 TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input

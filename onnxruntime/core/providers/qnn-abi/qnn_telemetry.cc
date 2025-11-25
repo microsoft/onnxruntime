@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/qnn_telemetry.h"
+#include "core/providers/qnn-abi/qnn_telemetry.h"
 
 #ifdef _WIN32
 #if !BUILD_QNN_EP_STATIC_LIB
@@ -9,6 +9,7 @@
 // need space after Windows.h to prevent clang-format re-ordering breaking the build.
 // TraceLoggingProvider.h must follow Windows.h
 #include <Windows.h>
+#include <ntverp.h>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -54,7 +55,7 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 #endif
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
-#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -103,6 +104,22 @@ QnnTelemetry& QnnTelemetry::Instance() {
   return instance;
 }
 
+bool QnnTelemetry::SupportsETW() {
+#if BUILD_QNN_EP_STATIC_LIB
+  const Env& env = GetDefaultEnv();
+  auto& provider = env.GetTelemetryProvider();
+  return provider.SupportsETW();
+#else
+  // Check for Windows 10 SDK or later (same logic as etw_sink.h)
+  // VER_PRODUCTBUILD > 9600 means Windows 10 SDK or later
+#if VER_PRODUCTBUILD > 9600
+  return true;
+#else
+  return false;
+#endif
+#endif
+}
+
 bool QnnTelemetry::IsEnabled() const {
 #if BUILD_QNN_EP_STATIC_LIB
   const Env& env = GetDefaultEnv();
@@ -136,6 +153,29 @@ UINT64 QnnTelemetry::Keyword() const {
 #endif
 }
 
+OrtLoggingLevel QnnTelemetry::MapLevelToOrtLoggingLevel() {
+#if BUILD_QNN_EP_STATIC_LIB
+  ORT_CXX_API_THROW("Unexpected reach to QnnTelemetry::MapLevelToOrtLoggingLevel.", ORT_EP_FAIL);
+#else
+  switch (level_) {
+    case TRACE_LEVEL_NONE:
+      return ORT_LOGGING_LEVEL_FATAL;  // There is no none logging level option
+    case TRACE_LEVEL_VERBOSE:
+      return ORT_LOGGING_LEVEL_VERBOSE;
+    case TRACE_LEVEL_INFORMATION:
+      return ORT_LOGGING_LEVEL_INFO;
+    case TRACE_LEVEL_WARNING:
+      return ORT_LOGGING_LEVEL_WARNING;
+    case TRACE_LEVEL_ERROR:
+      return ORT_LOGGING_LEVEL_ERROR;
+    case TRACE_LEVEL_CRITICAL:
+      return ORT_LOGGING_LEVEL_FATAL;
+    default:
+      return ORT_LOGGING_LEVEL_VERBOSE;
+  }
+#endif
+}
+
 void QnnTelemetry::LogQnnProfileEvent(uint64_t timestamp,
                                       const std::string& message,
                                       const std::string& qnnScalarValue,
@@ -146,7 +186,7 @@ void QnnTelemetry::LogQnnProfileEvent(uint64_t timestamp,
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
-      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)),
+      TraceLoggingKeyword(static_cast<uint64_t>(qnn::ORTTraceLoggingKeyword::Profiling)),
       TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
       TraceLoggingValue(timestamp, "Timestamp"),
       TraceLoggingString(message.c_str(), "Message"),
@@ -205,6 +245,22 @@ void QnnTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Leve
   }
 }
 #endif  // !BUILD_QNN_EP_STATIC_LIB
+
+}  // namespace qnn
+}  // namespace onnxruntime
+#else
+// ETW is not supported on non-Windows platforms
+namespace onnxruntime {
+namespace qnn {
+
+QnnTelemetry& QnnTelemetry::Instance() {
+  static QnnTelemetry instance;
+  return instance;
+}
+
+bool QnnTelemetry::SupportsETW() {
+  return false;
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

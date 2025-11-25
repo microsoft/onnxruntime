@@ -39,7 +39,7 @@ constexpr HandlerInfo ep_aware_resize_handler = {&FirstInput, &EPAwareHandleResi
 
 static bool EPAwareHandleReshape(HandlerArgs& args) {
   const auto ep_type = args.node.GetExecutionProviderType();
-  if (ep_type == kQnnExecutionProvider) {
+  if (ep_type == kQnnExecutionProvider || ep_type == kQnnABIExecutionProvider) {
     // In some cases, the pattern of Transpose-Reshape-Transpose can be optimized to a single Reshape.
     // For example, [N,H,W,C] - [N,C,H,W] - [N,C,HxW] - [N,HxW,C] is functionally equivalent to [N,H,W,C] - [N,HxW,C].
     // In this optimization, we attempt to handle those "channel" Transpose and "spatial" Reshape cases, like the

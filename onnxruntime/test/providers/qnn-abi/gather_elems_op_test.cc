@@ -8,8 +8,8 @@
 #include <unordered_map>
 
 #include "core/graph/node_attr_utils.h"
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
 
@@ -65,11 +65,11 @@ static void RunCPUGatherElemsOpTest(const TestInputDef<float>& input_def,
   provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(BuildOpTestCase<DataType, IndexType>("GatherElements", {input_def}, {indices_def}, attrs),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment,
-                  fp32_abs_err);
+  RunQnnModelTestABI(BuildOpTestCase<DataType, IndexType>("GatherElements", {input_def}, {indices_def}, attrs),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment,
+                     fp32_abs_err);
 }
 
 // Runs a QDQ GatherElements model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -90,11 +90,11 @@ static void RunHTPQDQGatherElemsOpTest(const TestInputDef<float>& input_def,
   auto qdq_model_builder = BuildQDQGatherElemsTestCase<QuantType, IndexType>(input_def, indices_def, attrs,
                                                                              use_contrib_qdq);
 
-  TestQDQModelAccuracy<QuantType>(f32_model_builder,
-                                  qdq_model_builder,
-                                  provider_options,
-                                  opset,
-                                  expected_ep_assignment);
+  TestQDQModelAccuracyABI<QuantType>(f32_model_builder,
+                                     qdq_model_builder,
+                                     provider_options,
+                                     opset,
+                                     expected_ep_assignment);
 }
 
 // Runs a non-quantized GatherElements model on the QNN HTP backend. Checks the graph node assignment,
@@ -111,11 +111,11 @@ static void RunHTPGatherElemsOpTest(const TestInputDef<DataType>& input_def,
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(BuildOpTestCase<DataType, IndexType>("GatherElements", {input_def}, {indices_def}, attrs),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment,
-                  fp32_abs_err);
+  RunQnnModelTestABI(BuildOpTestCase<DataType, IndexType>("GatherElements", {input_def}, {indices_def}, attrs),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment,
+                     fp32_abs_err);
 }
 
 //
@@ -124,7 +124,7 @@ static void RunHTPGatherElemsOpTest(const TestInputDef<DataType>& input_def,
 
 // Test GatherElements op on CPU backend:
 // positive, dynamic, int64 indices.
-TEST_F(QnnCPUBackendTests, GatherElems_DataF32_IndicesInt64) {
+TEST_F(QnnABICPUBackendTests, GatherElems_DataF32_IndicesInt64) {
   RunCPUGatherElemsOpTest<float, int64_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int64_t>({2, 3}, false, {1, 2, 0, 2, 0, 0}),
@@ -134,7 +134,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_DataF32_IndicesInt64) {
 
 // Test GatherElements op on CPU backend:
 // positive, dynamic, int32 indices.
-TEST_F(QnnCPUBackendTests, GatherElems_DataF32_IndicesInt32) {
+TEST_F(QnnABICPUBackendTests, GatherElems_DataF32_IndicesInt32) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int32_t>({2, 3}, false, {1, 2, 0, 2, 0, 0}),
@@ -144,7 +144,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_DataF32_IndicesInt32) {
 
 // Test GatherElements op on CPU backend:
 // positive, static, int64 indices.
-TEST_F(QnnCPUBackendTests, GatherElems_DataF32_StaticIndicesInt64) {
+TEST_F(QnnABICPUBackendTests, GatherElems_DataF32_StaticIndicesInt64) {
   RunCPUGatherElemsOpTest<float, int64_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int64_t>({2, 3}, true, {1, 2, 0, 2, 0, 0}),
@@ -154,7 +154,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_DataF32_StaticIndicesInt64) {
 
 // Test GatherElements op on CPU backend:
 // positive, static, int32 indices.
-TEST_F(QnnCPUBackendTests, GatherElems_DataF32_StaticIndicesInt32) {
+TEST_F(QnnABICPUBackendTests, GatherElems_DataF32_StaticIndicesInt32) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int32_t>({2, 3}, true, {1, 2, 0, 2, 0, 0}),
@@ -169,7 +169,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_DataF32_StaticIndicesInt32) {
 
 // Test non-quantized GatherElements op on HTP backend:
 // Input[0] is int32. Indices are int32, positive, and dynamic. Both inputs are rank 1.
-TEST_F(QnnHTPBackendTests, GatherElems_DataInt32_IndicesInt32_Rank1) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataInt32_IndicesInt32_Rank1) {
   RunHTPGatherElemsOpTest<int32_t, int32_t>(
       TestInputDef<int32_t>({3}, false, {1, 2, 3}),
       TestInputDef<int32_t>({2}, false, {1, 2}),
@@ -179,7 +179,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataInt32_IndicesInt32_Rank1) {
 
 // Test uint8 QDQ GatherElements op on HTP backend:
 // positive, dynamic, int32 indices.
-TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_IndicesInt32) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataUint8_IndicesInt32) {
   RunHTPQDQGatherElemsOpTest<uint8_t, int32_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int32_t>({2, 3}, false, {1, 2, 0, 2, 0, 0}),
@@ -189,7 +189,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_IndicesInt32) {
 
 // Test uint8 QDQ GatherElements op on HTP backend:
 // positive, static, int32 indices.
-TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticIndicesInt32) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataUint8_StaticIndicesInt32) {
   RunHTPQDQGatherElemsOpTest<uint8_t, int32_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int32_t>({2, 3}, true, {1, 2, 0, 2, 0, 0}),
@@ -200,7 +200,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticIndicesInt32) {
 // Test GatherElements op on HTP backend:
 // positive, static, int64 indices.
 // HTP does not support int64, but QNN EP converts static int64 indices into int32.
-TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticIndicesInt64) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataUint8_StaticIndicesInt64) {
   RunHTPQDQGatherElemsOpTest<uint8_t, int64_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int64_t>({2, 3}, true, {1, 2, 0, 2, 0, 0}),
@@ -210,7 +210,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticIndicesInt64) {
 
 // Test GatherElements op on HTP backend:
 // negative, static, int32 indices.
-TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticNegIndicesInt32) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataUint8_StaticNegIndicesInt32) {
   RunHTPQDQGatherElemsOpTest<uint8_t, int32_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int32_t>({2, 3}, true, {1, 2, -3, 2, 0, 0}),
@@ -220,7 +220,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticNegIndicesInt32) {
 
 // Test GatherElements op on HTP backend:
 // negative, static, int64 indices.
-TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticNegIndicesInt64) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataUint8_StaticNegIndicesInt64) {
   RunHTPQDQGatherElemsOpTest<uint8_t, int64_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int64_t>({2, 3}, true, {1, -1, -3, 2, 0, 0}),
@@ -231,9 +231,9 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_StaticNegIndicesInt64) {
 // Test QDQ GatherElements op on HTP backend:
 // Input[0] is uint16_t, and rank 4. Indices are int64_t, rank 4, negative, and static.
 // Axis is negative (points to last dim).
-TEST_F(QnnHTPBackendTests, GatherElems_DataUint16_StaticNegIndicesInt64) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataUint16_StaticNegIndicesInt64) {
   const std::vector<int64_t> input_shape = {1, 2, 3, 3};
-  const std::vector<float> input_data = GetSequentialFloatData(input_shape, -8.0f, 1.0f);
+  const std::vector<float> input_data = GetSequentialFloatDataABI(input_shape, -8.0f, 1.0f);
   RunHTPQDQGatherElemsOpTest<uint16_t, int64_t>(
       TestInputDef<float>(input_shape, false, input_data),
       TestInputDef<int64_t>({1, 1, 2, 2}, true, {0, -1, -3, 2}),
@@ -243,7 +243,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint16_StaticNegIndicesInt64) {
 }
 
 // Test QDQ GatherElements op on HTP backend with large number of indices:
-TEST_F(QnnHTPBackendTests, GatherElems_DataUint16_StaticNegIndicesInt64_Large) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DataUint16_StaticNegIndicesInt64_Large) {
   const std::vector<int64_t> input_shape = {12, 1024, 512};
   std::vector<float> input_data(12 * 1024 * 512);
   for (size_t i = 0; i < input_data.size(); i++) {
@@ -267,7 +267,7 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint16_StaticNegIndicesInt64_Large) {
 // qdq@QNN_EP val: -97.999542236328125 (err: 218.99954223632812, err/output_range: 72.999847412109375%)
 // qdq@CPU_EP val: 120.99794006347656 (err: 0.0020599365234375, err/output_range: 0.0006866455078125%)
 // abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 72.999160766601562%
-TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_DataUint16_StaticNegIndicesInt64_Large2) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_GatherElems_DataUint16_StaticNegIndicesInt64_Large2) {
   // Input data with sequential values from -98.0f to 202.0f
   const std::vector<int64_t> input_shape = {12, 1024, 512};
   std::vector<float> input_data(12 * 1024 * 512);
@@ -294,7 +294,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_DataUint16_StaticNegIndicesInt64
 // Test GatherElements op on HTP backend:
 // Tests that dynamic int64 indices are supported on HTP backend if the indices are a graph input.
 // QNN SDK 2.23 added support for Cast from int64 to int32.
-TEST_F(QnnHTPBackendTests, GatherElems_DynamicInt64IndicesSupportedAsGraphInput) {
+TEST_F(QnnABIHTPBackendTests, GatherElems_DynamicInt64IndicesSupportedAsGraphInput) {
   RunHTPQDQGatherElemsOpTest<uint8_t, int64_t>(
       TestInputDef<float>({3, 3}, false, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f}),
       TestInputDef<int64_t>({2, 3}, false, {1, 2, 0, 2, 0, 0}),

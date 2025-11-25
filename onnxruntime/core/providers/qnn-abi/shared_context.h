@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
+#pragma once
+
 #include <memory>
 #include <mutex>
 #include <vector>
 
-#include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/builder/qnn_model.h"
-
-#pragma once
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_model.h"
 
 namespace onnxruntime {
 

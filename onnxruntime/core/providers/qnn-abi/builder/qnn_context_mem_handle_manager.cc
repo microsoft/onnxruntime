@@ -1,20 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
+#include "core/providers/qnn-abi/builder/qnn_context_mem_handle_manager.h"
 
 #include "HTP/QnnHtpMem.h"
 
-#include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/builder/qnn_def.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/qnn-abi/builder/qnn_def.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/qnn_allocator.h"
 
 namespace onnxruntime::qnn {
 
 QnnContextMemHandleManager::QnnContextMemHandleManager(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                                        Qnn_ContextHandle_t context,
-                                                       const logging::Logger& logger)
+                                                       const Ort::Logger& logger)
     : qnn_interface_{qnn_interface},
       context_{context},
       logger_{logger} {
@@ -24,8 +24,8 @@ QnnContextMemHandleManager::~QnnContextMemHandleManager() {
   Clear();
 }
 
-Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
-                                                 Qnn_MemHandle_t& qnn_mem_handle, bool& did_register) {
+Ort::Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, const Qnn_Tensor_t& qnn_tensor,
+                                                      Qnn_MemHandle_t& qnn_mem_handle, bool& did_register) {
   const auto qnn_tensor_rank = GetQnnTensorRank(qnn_tensor);
   auto* const qnn_tensor_dims = GetQnnTensorDims(qnn_tensor);
   const auto qnn_tensor_data_type = GetQnnTensorDataType(qnn_tensor);
@@ -42,20 +42,20 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
       const auto& mem_handle_record = mem_handles_it->second;
 
       // check that actual tensor size is less than or equal to registered tensor size
-      ORT_RETURN_IF_NOT(qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size,
-                        "Actual tensor data size (", qnn_tensor_data_size,
-                        ") is larger than registered tensor data size (", mem_handle_record.registered_tensor_data_size,
-                        ").");
+      RETURN_IF_NOT(qnn_tensor_data_size <= mem_handle_record.registered_tensor_data_size,
+                    ("Actual tensor data size (" + std::to_string(qnn_tensor_data_size) +
+                     ") is larger than registered tensor data size (" +
+                     std::to_string(mem_handle_record.registered_tensor_data_size) + ").")
+                        .c_str());
 
       qnn_mem_handle = mem_handle_record.mem_handle.get();
       did_register = false;
-      return Status::OK();
+      return Ort::Status();
     }
 
     // register a new mem handle
     HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
-    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(shared_memory_address,
-                                                                                shared_memory_info));
+    RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(shared_memory_address, shared_memory_info));
 
     Qnn_MemDescriptor_t mem_descriptor = QNN_MEM_DESCRIPTOR_INIT;
     mem_descriptor.memShape.dimSize = qnn_tensor_dims;
@@ -72,31 +72,39 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
 
     mem_descriptor.customInfo = &htp_mem_descriptor;
 
-    LOGS(logger_, VERBOSE) << "Registering QNN mem handle for context: " << context_
-                           << ", shared memory (address: " << shared_memory_address
-                           << ", offset: " << shared_memory_info.offset
-                           << ", fd: " << shared_memory_info.fd
-                           << ")";
+    std::ostringstream oss1;
+    oss1 << "Registering QNN mem handle for context: " << context_
+         << ", shared memory (address: " << shared_memory_address
+         << ", offset: " << shared_memory_info.offset
+         << ", fd: " << shared_memory_info.fd
+         << ")";
+    ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_VERBOSE, oss1.str().c_str());
 
     Qnn_MemHandle_t raw_mem_handle{};
     const auto register_result = qnn_interface_.memRegister(context_, &mem_descriptor, 1, &raw_mem_handle);
-    ORT_RETURN_IF_NOT(register_result == QNN_SUCCESS,
-                      "qnn_interface.memRegister() failed: ",
-                      utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result));
+    RETURN_IF_NOT(register_result == QNN_SUCCESS,
+                  ("qnn_interface.memRegister() failed: " +
+                   utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result))
+                      .c_str());
 
-    LOGS(logger_, VERBOSE) << "Registered QNN mem handle. mem_handle: " << raw_mem_handle;
+    std::ostringstream oss2;
+    oss2 << "Registered QNN mem handle. mem_handle: " << raw_mem_handle;
+    ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_VERBOSE, oss2.str().c_str());
 
     // NOTE: Must use the default ORT logger inside this lambda. Don't capture this->logger_ because it may be deleted
     // by the time we need to unregister all memory handles. This happens when this->logger_ is a session logger:
     //   ~InferenceSession() -> ~Logger() -> ~QnnExecutionProvider() -> ~QnnBackendManager() ->
     //   ~QnnContextMemHandleManager() -> unregister_mem_handle() segfault
     const auto unregister_mem_handle = [&qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
-      LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
+      ORT_CXX_LOG(OrtLoggingManager::GetDefaultLogger(), ORT_LOGGING_LEVEL_VERBOSE, "Unregistering QNN mem handle.");
 
       const auto unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
       if (unregister_result != QNN_SUCCESS) {
-        LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed: "
-                            << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
+        ORT_CXX_LOG(OrtLoggingManager::GetDefaultLogger(),
+                    ORT_LOGGING_LEVEL_ERROR,
+                    ("qnn_interface.memDeRegister() failed: " +
+                     utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result))
+                        .c_str());
       }
     };
 
@@ -106,20 +114,19 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
 
     qnn_mem_handle = raw_mem_handle;
     did_register = true;
-    return Status::OK();
+    return Ort::Status();
   }
 }
 
-Status QnnContextMemHandleManager::Unregister(void* shared_memory_address) {
+Ort::Status QnnContextMemHandleManager::Unregister(void* shared_memory_address) {
   std::scoped_lock g{mem_handles_mutex_};
 
   auto mem_handles_it = mem_handles_.find(shared_memory_address);
-  ORT_RETURN_IF_NOT(mem_handles_it != mem_handles_.end(),
-                    "No mem handle found for address (", shared_memory_address, ").");
+  RETURN_IF_NOT(mem_handles_it != mem_handles_.end(), "No mem handle found for address.");
 
   mem_handles_.erase(mem_handles_it);
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 void QnnContextMemHandleManager::Clear() {

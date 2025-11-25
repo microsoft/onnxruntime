@@ -5,15 +5,17 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <cmath>
+#include <filesystem>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/qmath.h"
 
-#include "test/optimizer/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/default_providers.h"
@@ -138,7 +140,7 @@ inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data, bool s
  * \param num_elems The number of elements in the result. Should be at least 3 to include min, 0, and max.
  * \return A vector of floats with elements set to values in the specified range.
  */
-std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems);
+std::vector<float> GetFloatDataInRangeABI(float min_val, float max_val, size_t num_elems);
 
 /**
  * Returns a float vector with sequential data.
@@ -148,7 +150,7 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
  * \param step The step size.
  * \return A vector of sequential floats.
  */
-std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, float start = 0.0f, float step = 1.0f);
+std::vector<float> GetSequentialFloatDataABI(const std::vector<int64_t>& shape, float start = 0.0f, float step = 1.0f);
 
 // Class that defines an input that can be created with ModelTestBuilder.
 // Defines whether the input is an initializer and if the data should be randomized or if
@@ -306,7 +308,7 @@ struct TestInputDef {
 };
 
 // Convert a float input definition to a float16 input definition.
-TestInputDef<MLFloat16> ConvertToFP16InputDef(const TestInputDef<float>& input_def);
+TestInputDef<MLFloat16> ConvertToFP16InputDefABI(const TestInputDef<float>& input_def);
 
 template <typename QType>
 inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def, bool symmetric = false) {
@@ -446,6 +448,16 @@ static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType
 DEF_QUANTIZE_VALUES_INT4_FUNC(Int4x2, ParQuantizeLinearStdS4)
 DEF_QUANTIZE_VALUES_INT4_FUNC(UInt4x2, ParQuantizeLinearStdU4)
 
+// Refer to test_autoep_utils.h for leveraging unique pointer to unregister plugin EP.
+using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::function<void(const OrtEpDevice*)>>;
+
+// Register QnnEP as plugin EP.
+void RegisterQnnEpLibrary(RegisteredEpDeviceUniquePtr& registered_ep_device,
+                          Ort::SessionOptions& session_options,
+                          const std::string& registration_name,
+                          const std::unordered_map<std::string, std::string>& ep_options,
+                          bool simulated = false);
+
 /**
  * Inferences a given serialized model. Returns output values via an out-param.
  *
@@ -459,13 +471,20 @@ DEF_QUANTIZE_VALUES_INT4_FUNC(UInt4x2, ParQuantizeLinearStdU4)
  * \param session_option_pairs extra session options.
  * \param graph_checker Function called on the Graph.
  */
-void InferenceModel(const std::string& model_data, const char* log_id,
-                    const ProviderOptions& provider_options,
-                    ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<OrtValue>& output_vals,
-                    bool is_qnn_ep = false,
-                    const std::unordered_map<std::string, std::string>& session_option_pairs = {},
-                    std::function<void(const Graph&)>* graph_checker = nullptr);
+void InferenceModelCPU(const std::string& model_data,
+                       const char* log_id,
+                       ExpectedEPNodeAssignment expected_ep_assignment,
+                       const NameMLValMap& feeds,
+                       std::vector<OrtValue>& output_vals);
+
+void InferenceModelABI(const std::string& model_data,
+                       const char* log_id,
+                       const ProviderOptions& provider_options,
+                       ExpectedEPNodeAssignment expected_ep_assignment,
+                       const NameMLValMap& feeds,
+                       std::vector<OrtValue>& output_vals,
+                       const std::unordered_map<std::string, std::string>& session_option_pairs = {},
+                       std::function<void(const Graph&)>* graph_checker = nullptr);
 
 /**
  * If the ORT_UNIT_TEST_ENABLE_QNN_SAVER environment variable is enabled (set to 1), this function modifies
@@ -480,11 +499,11 @@ void InferenceModel(const std::string& model_data, const char* log_id,
  * 2. Inference output returns dummy data.
  *
  * Because output files from QNN Saver are always overwritten, it is recommended to run individual unit tests via the
- * --gtest_filter command-line option. Ex: --gtest_filter=QnnHTPBackendTests.Resize_DownSample_Linear_AlignCorners
+ * --gtest_filter command-line option. Ex: --gtest_filter=QnnABIHTPBackendTests.Resize_DownSample_Linear_AlignCorners
  *
  * \param qnn_options QNN EP provider options that may be modified to enable QNN Saver.
  */
-void TryEnableQNNSaver(ProviderOptions& qnn_options);
+void TryEnableQNNSaverABI(ProviderOptions& qnn_options);
 
 struct QDQTolerance {
   // When comparing output activations between QNN EP and CPU EP (both running the QDQ model),
@@ -498,6 +517,107 @@ struct QDQTolerance {
 
   float value;
 };
+
+template <typename QuantType>
+void VerifyQDQOutput(const std::vector<OrtValue>& cpu_qdq_outputs,
+                     const std::vector<OrtValue>& qnn_qdq_outputs,
+                     const std::vector<OrtValue>& cpu_f32_outputs,
+                     const std::vector<QuantParams<QuantType>>& output_qparams,
+                     const std::vector<gsl::span<const float>>& output_vals,
+                     const std::vector<int32_t>& output_types,
+                     const QDQTolerance& tolerance) {
+  const size_t num_outputs = cpu_f32_outputs.size();
+  ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
+  ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);
+
+  // limit the error message count in case test with large data failed
+  size_t max_error_count = 10;
+  size_t error_count = 0;
+
+  // Compare accuracy of QDQ results with float model.
+  // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
+  const std::string base_output_name = "output_";
+  for (size_t i = 0; i < num_outputs; i++) {
+    std::string debug_output_name = base_output_name + std::to_string(i);
+    auto& cpu_qdq_tensor = cpu_qdq_outputs[i].Get<Tensor>();
+    auto& qnn_qdq_tensor = qnn_qdq_outputs[i].Get<Tensor>();
+
+    ASSERT_EQ(cpu_qdq_tensor.GetElementType(), output_types[i]);
+    ASSERT_EQ(qnn_qdq_tensor.GetElementType(), output_types[i]);
+
+    if (output_types[i] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      const size_t num_vals = output_vals[i].size();
+      gsl::span<const float> cpu_f32_vals = output_vals[i];
+      gsl::span<const float> cpu_qdq_vals = cpu_qdq_tensor.DataAsSpan<float>();
+      gsl::span<const float> qnn_qdq_vals = qnn_qdq_tensor.DataAsSpan<float>();
+      constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+      constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+      const float output_range = output_qparams[i].scale * static_cast<float>(qmax - qmin);
+
+      ASSERT_EQ(num_vals, cpu_qdq_vals.size());
+      ASSERT_EQ(num_vals, qnn_qdq_vals.size());
+
+      float max_f32_err = 0.0f;
+      float max_qdq_err = 0.0f;
+      bool print_accuracy_warning = false;
+
+      for (size_t j = 0; j < num_vals && error_count < max_error_count; j++) {
+        const float expected_val = cpu_f32_vals[j];  // f32@CPU_EP val ("ground-truth")
+        const float qnn_qdq_val = qnn_qdq_vals[j];   // qdq@QNN_EP val
+        const float cpu_qdq_val = cpu_qdq_vals[j];   // qdq@CPU_EP val
+
+        // Get errors of qdq@CPU_EP and qdq@QNN_EP against f32@CPU_EP.
+        const float cpu_err = std::fabs(expected_val - cpu_qdq_val);
+        const float cpu_err_norm = cpu_err / output_range;
+        const float qnn_err = std::fabs(expected_val - qnn_qdq_val);
+        const float qnn_err_norm = qnn_err / output_range;
+
+        // Also compare the QDQ values against each other.
+        // This is equivalent to abs(qdq@QNN_EP - qdq@CPU_EP) / output_range
+        const float qdq_vals_err_norm = std::fabs(qnn_err_norm - cpu_err_norm);
+
+        // True if qdq@QNN_EP is at least as accurate as qdq@CPU_EP when compared to expected f32@CPU_EP value.
+        const bool is_as_accurate_as_cpu_ep = qnn_err_norm <= cpu_err_norm;
+
+        // True if the normalized difference between qdq@QNN_EP and qdq@CPU_EP is within tolerance.
+        const bool qdq_vals_diff_within_tolerance = qdq_vals_err_norm <= tolerance.value;
+
+        const bool passed_test = is_as_accurate_as_cpu_ep || qdq_vals_diff_within_tolerance;
+        if (!passed_test) {
+          ++error_count;
+        }
+        EXPECT_TRUE(passed_test)
+            << "Inaccuracy detected for output '" << debug_output_name
+            << "', element " << j
+            << "\noutput_range=" << output_range << ", tolerance=" << (tolerance.value * 100) << "%"
+            << ".\nExpected val (f32@CPU_EP): " << expected_val << "\n"
+            << "qdq@QNN_EP val: " << qnn_qdq_val << " (err: " << qnn_err << ", err/output_range: "
+            << qnn_err_norm * 100.0f << "%)\n"
+            << "qdq@CPU_EP val: " << cpu_qdq_val << " (err: " << cpu_err << ", err/output_range: "
+            << cpu_err_norm * 100.0f << "%)\n"
+            << "abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = " << qdq_vals_err_norm * 100.0f << "%";
+
+        max_f32_err = std::max(max_f32_err, qnn_err_norm);
+        max_qdq_err = std::max(max_qdq_err, qdq_vals_err_norm);
+        if (passed_test && !is_as_accurate_as_cpu_ep && (qdq_vals_err_norm > QDQTolerance::DEFAULT_QDQ_TOLERANCE)) {
+          print_accuracy_warning = true;
+        }
+      }
+
+      if (print_accuracy_warning) {
+        std::cerr << std::endl
+                  << "[WARNING]: Output " << i
+                  << " required larger tolerance to pass accuracy checks" << std::endl
+                  << "Max normalized error against f32@CPU_EP = " << max_f32_err * 100.0f << "%" << std::endl
+                  << "Max normalized error against qdq@CPU_EP = " << max_qdq_err * 100.0f << "%" << std::endl
+                  << "Default tolerance = " << QDQTolerance::DEFAULT_QDQ_TOLERANCE * 100.0f << "%" << std::endl
+                  << "Tolerance used = " << tolerance.value * 100.0f << "%" << std::endl;
+      }
+    } else {
+      VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, 1e-4f);
+    }
+  }
+}
 
 /**
  * Tests the accuracy of a QDQ model on QNN EP by runnning 3 inferences:
@@ -521,14 +641,15 @@ struct QDQTolerance {
  *                         EP assignment.
  */
 template <typename QuantType>
-inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
-                                 ProviderOptions qnn_options, int opset_version,
-                                 ExpectedEPNodeAssignment expected_ep_assignment,
-                                 QDQTolerance tolerance = QDQTolerance(),
-                                 logging::Severity log_severity = logging::Severity::kERROR,
-                                 const std::string& qnn_ctx_model_path = "",
-                                 const std::unordered_map<std::string, std::string>& session_option_pairs = {},
-                                 std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr) {
+inline void TestQDQModelAccuracyABI(const GetTestModelFn& f32_model_fn,
+                                    const GetTestQDQModelFn<QuantType>& qdq_model_fn,
+                                    ProviderOptions qnn_options, int opset_version,
+                                    ExpectedEPNodeAssignment expected_ep_assignment,
+                                    QDQTolerance tolerance = QDQTolerance(),
+                                    logging::Severity log_severity = logging::Severity::kERROR,
+                                    const std::string& qnn_ctx_model_path = "",
+                                    const std::unordered_map<std::string, std::string>& session_option_pairs = {},
+                                    std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
@@ -556,8 +677,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
-  InferenceModel(f32_model_data, "f32_model_logger", {}, ExpectedEPNodeAssignment::All,
-                 f32_helper.feeds_, cpu_f32_outputs);
+  InferenceModelCPU(f32_model_data, "f32_model_logger", ExpectedEPNodeAssignment::All,
+                    f32_helper.feeds_, cpu_f32_outputs);
   ASSERT_FALSE(cpu_f32_outputs.empty());
 
   const size_t num_outputs = cpu_f32_outputs.size();
@@ -597,120 +718,127 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   // Uncomment to save QDQ model to disk for debugging.
   // ASSERT_STATUS_OK(onnxruntime::Model::Save(qdq_model, ToPathString("cmp_accuracy.qdq.onnx")));
 
-  bool is_qnn_ep = true;
-  TryEnableQNNSaver(qnn_options);
-  std::vector<OrtValue> qnn_qdq_outputs;
+  // Run QDQ model on CPU EP and collect outputs.
+  std::vector<OrtValue> cpu_qdq_outputs;
+  InferenceModelCPU(qdq_model_data, "qdq_model_logger", ExpectedEPNodeAssignment::All,
+                    qdq_helper.feeds_, cpu_qdq_outputs);
+
+  TryEnableQNNSaverABI(qnn_options);
+
+  // Run with QNN-ABI.
+  std::vector<OrtValue> qnn_abi_qdq_outputs;
   if (!qnn_ctx_model_path.empty()) {
     onnx::ModelProto model_proto;
     onnxruntime::Model qnn_ctx_model;
-    // Load the QNN context cache model from path specified
     ASSERT_STATUS_OK(qnn_ctx_model.Load(ToPathString(qnn_ctx_model_path), model_proto));
     std::string qnn_ctx_model_data;
     model_proto.SerializeToString(&qnn_ctx_model_data);
-    // Run QNN context cache model on QNN EP and collect outputs.
-    InferenceModel(qnn_ctx_model_data, "qnn_ctx_model_logger", qnn_options,
-                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs);
+    InferenceModelABI(qnn_ctx_model_data,
+                      "qnn_abi_ctx_model_logger",
+                      qnn_options,
+                      expected_ep_assignment,
+                      qdq_helper.feeds_,
+                      qnn_abi_qdq_outputs,
+                      session_option_pairs);
   } else {
-    // Run QDQ model on QNN EP and collect outputs.
-    // Only need to apply the extra session options to this QDQ model inference on QNN EP
-    InferenceModel(qdq_model_data, "qdq_model_logger", qnn_options, expected_ep_assignment,
-                   qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs, qnn_ep_graph_checker);
+    InferenceModelABI(qdq_model_data,
+                      "qdq_abi_model_logger",
+                      qnn_options,
+                      expected_ep_assignment,
+                      qdq_helper.feeds_,
+                      qnn_abi_qdq_outputs,
+                      session_option_pairs,
+                      qnn_ep_graph_checker);
   }
 
   if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {
-    // Run QDQ model on CPU EP and collect outputs.
-    std::vector<OrtValue> cpu_qdq_outputs;
-    InferenceModel(qdq_model_data, "qdq_model_logger", {}, ExpectedEPNodeAssignment::All,
-                   qdq_helper.feeds_, cpu_qdq_outputs);
-    ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
-    ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);
+    VerifyQDQOutput(cpu_qdq_outputs,
+                    qnn_abi_qdq_outputs,
+                    cpu_f32_outputs,
+                    output_qparams,
+                    output_vals,
+                    output_types,
+                    tolerance);
+  }
+}
 
-    // limit the error message count in case test with large data failed
-    size_t max_error_count = 10;
-    size_t error_count = 0;
+inline void VerifyFp16Output(const std::vector<OrtValue>& cpu_f16_outputs,
+                             const std::vector<OrtValue>& qnn_f16_outputs,
+                             const std::vector<gsl::span<const float>>& output_vals,
+                             const std::vector<int32_t>& output_types,
+                             const float tolerance) {
+  const size_t num_outputs = output_vals.size();
+  ASSERT_EQ(cpu_f16_outputs.size(), num_outputs);
+  ASSERT_EQ(qnn_f16_outputs.size(), num_outputs);
 
-    // Compare accuracy of QDQ results with float model.
-    // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
-    const std::string base_output_name = "output_";
-    for (size_t i = 0; i < num_outputs; i++) {
-      std::string debug_output_name = base_output_name + std::to_string(i);
-      auto& cpu_qdq_tensor = cpu_qdq_outputs[i].Get<Tensor>();
-      auto& qnn_qdq_tensor = qnn_qdq_outputs[i].Get<Tensor>();
+  // limit the error message count in case test with large data failed
+  size_t max_error_count = 10;
+  size_t error_count = 0;
 
-      ASSERT_EQ(cpu_qdq_tensor.GetElementType(), output_types[i]);
-      ASSERT_EQ(qnn_qdq_tensor.GetElementType(), output_types[i]);
+  // Compare accuracy of QDQ results with float model.
+  // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
+  const std::string base_output_name = "output_";
+  for (size_t i = 0; i < num_outputs; i++) {
+    std::string debug_output_name = base_output_name + std::to_string(i);
+    auto& cpu_f16_tensor = cpu_f16_outputs[i].Get<Tensor>();
+    auto& qnn_f16_tensor = qnn_f16_outputs[i].Get<Tensor>();
 
-      if (output_types[i] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        const size_t num_vals = output_vals[i].size();
-        gsl::span<const float> cpu_f32_vals = output_vals[i];
-        gsl::span<const float> cpu_qdq_vals = cpu_qdq_tensor.DataAsSpan<float>();
-        gsl::span<const float> qnn_qdq_vals = qnn_qdq_tensor.DataAsSpan<float>();
-        constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
-        constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
-        const float output_range = output_qparams[i].scale * static_cast<float>(qmax - qmin);
+    ASSERT_EQ(cpu_f16_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    ASSERT_EQ(qnn_f16_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    ASSERT_EQ(output_types[i], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-        ASSERT_EQ(num_vals, cpu_qdq_vals.size());
-        ASSERT_EQ(num_vals, qnn_qdq_vals.size());
+    const size_t num_vals = output_vals[i].size();
+    gsl::span<const float> cpu_f32_vals = output_vals[i];
+    gsl::span<const MLFloat16> cpu_f16_vals = cpu_f16_tensor.DataAsSpan<MLFloat16>();
+    gsl::span<const MLFloat16> qnn_f16_vals = qnn_f16_tensor.DataAsSpan<MLFloat16>();
 
-        float max_f32_err = 0.0f;
-        float max_qdq_err = 0.0f;
-        bool print_accuracy_warning = false;
+    ASSERT_EQ(num_vals, cpu_f16_vals.size());
+    ASSERT_EQ(num_vals, qnn_f16_vals.size());
 
-        for (size_t j = 0; j < num_vals && error_count < max_error_count; j++) {
-          const float expected_val = cpu_f32_vals[j];  // f32@CPU_EP val ("ground-truth")
-          const float qnn_qdq_val = qnn_qdq_vals[j];   // qdq@QNN_EP val
-          const float cpu_qdq_val = cpu_qdq_vals[j];   // qdq@CPU_EP val
+    float max_f16_cpu_err = 0.0f;
+    float max_f16_qnn_err = 0.0f;
 
-          // Get errors of qdq@CPU_EP and qdq@QNN_EP against f32@CPU_EP.
-          const float cpu_err = std::fabs(expected_val - cpu_qdq_val);
-          const float cpu_err_norm = cpu_err / output_range;
-          const float qnn_err = std::fabs(expected_val - qnn_qdq_val);
-          const float qnn_err_norm = qnn_err / output_range;
+    for (size_t j = 0; j < num_vals && error_count < max_error_count; j++) {
+      const float expected_val = cpu_f32_vals[j];           // f32@CPU_EP val ("ground-truth")
+      const float qnn_f16_val = qnn_f16_vals[j].ToFloat();  // f16@QNN_EP val
+      const float cpu_f16_val = cpu_f16_vals[j].ToFloat();  // f16@CPU_EP val
 
-          // Also compare the QDQ values against each other.
-          // This is equivalent to abs(qdq@QNN_EP - qdq@CPU_EP) / output_range
-          const float qdq_vals_err_norm = std::fabs(qnn_err_norm - cpu_err_norm);
+      // Get errors of f16@CPU_EP and f16@QNN_EP against f32@CPU_EP.
+      constexpr float epsilon = 1e-16f;
+      const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / (expected_val + epsilon);
+      const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / (expected_val + epsilon);
 
-          // True if qdq@QNN_EP is at least as accurate as qdq@CPU_EP when compared to expected f32@CPU_EP value.
-          const bool is_as_accurate_as_cpu_ep = qnn_err_norm <= cpu_err_norm;
+      // Also compare the FP16 values against each other.
+      // This is equivalent to abs(f16@QNN_EP - f16@CPU_EP) / output_range
+      const float f16_vals_err = std::fabs(qnn_relative_err - cpu_relative_err);
 
-          // True if the normalized difference between qdq@QNN_EP and qdq@CPU_EP is within tolerance.
-          const bool qdq_vals_diff_within_tolerance = qdq_vals_err_norm <= tolerance.value;
+      // True if f16@QNN_EP is at least as accurate as f16@CPU_EP when compared to expected f32@CPU_EP value.
+      const bool is_as_accurate_as_cpu_ep = qnn_relative_err <= qnn_relative_err;
 
-          const bool passed_test = is_as_accurate_as_cpu_ep || qdq_vals_diff_within_tolerance;
-          if (!passed_test) {
-            ++error_count;
-          }
-          EXPECT_TRUE(passed_test)
-              << "Inaccuracy detected for output '" << debug_output_name
-              << "', element " << j
-              << "\noutput_range=" << output_range << ", tolerance=" << (tolerance.value * 100) << "%"
-              << ".\nExpected val (f32@CPU_EP): " << expected_val << "\n"
-              << "qdq@QNN_EP val: " << qnn_qdq_val << " (err: " << qnn_err << ", err/output_range: "
-              << qnn_err_norm * 100.0f << "%)\n"
-              << "qdq@CPU_EP val: " << cpu_qdq_val << " (err: " << cpu_err << ", err/output_range: "
-              << cpu_err_norm * 100.0f << "%)\n"
-              << "abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = " << qdq_vals_err_norm * 100.0f << "%";
+      // True if the normalized difference between f16@QNN_EP and f16@CPU_EP is within tolerance.
+      const bool f16_vals_diff_within_tolerance = f16_vals_err <= tolerance;
 
-          max_f32_err = std::max(max_f32_err, qnn_err_norm);
-          max_qdq_err = std::max(max_qdq_err, qdq_vals_err_norm);
-          if (passed_test && !is_as_accurate_as_cpu_ep && (qdq_vals_err_norm > QDQTolerance::DEFAULT_QDQ_TOLERANCE)) {
-            print_accuracy_warning = true;
-          }
-        }
-
-        if (print_accuracy_warning) {
-          std::cerr << std::endl
-                    << "[WARNING]: Output " << i
-                    << " required larger tolerance to pass accuracy checks" << std::endl
-                    << "Max normalized error against f32@CPU_EP = " << max_f32_err * 100.0f << "%" << std::endl
-                    << "Max normalized error against qdq@CPU_EP = " << max_qdq_err * 100.0f << "%" << std::endl
-                    << "Default tolerance = " << QDQTolerance::DEFAULT_QDQ_TOLERANCE * 100.0f << "%" << std::endl
-                    << "Tolerance used = " << tolerance.value * 100.0f << "%" << std::endl;
-        }
-      } else {
-        VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, 1e-4f);
+      const bool passed_test = is_as_accurate_as_cpu_ep || f16_vals_diff_within_tolerance;
+      if (!passed_test) {
+        ++error_count;
       }
+      EXPECT_TRUE(passed_test)
+          << "Inaccuracy detected for output '" << debug_output_name
+          << "', element " << j << ", tolerance=" << (tolerance * 100) << "%"
+          << ".\nExpected val (f32@CPU_EP): " << expected_val << "\n"
+          << "f16@QNN_EP val: " << qnn_f16_val << " (err: " << qnn_relative_err << ")\n"
+          << "f16@CPU_EP val: " << cpu_f16_val << " (err: " << cpu_relative_err << ")\n";
+
+      max_f16_cpu_err = std::max(max_f16_cpu_err, cpu_relative_err);
+      max_f16_qnn_err = std::max(max_f16_qnn_err, qnn_relative_err);
+    }
+
+    if (error_count > 0) {
+      std::cerr << std::endl
+                << "[WARNING]: Output " << i
+                << " required larger tolerance to pass accuracy checks" << std::endl
+                << "Max relative error against f32@CPU_EP = " << max_f16_cpu_err << std::endl
+                << "Max relative error against f16@CPU_EP = " << max_f16_qnn_err << std::endl;
     }
   }
 }
@@ -734,15 +862,15 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
  *                  on CPU EP. This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
  */
-inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
-                                  const GetTestModelFn& f16_model_fn,
-                                  ProviderOptions qnn_options,
-                                  int opset_version,
-                                  ExpectedEPNodeAssignment expected_ep_assignment,
-                                  float tolerance = 0.004,
-                                  logging::Severity log_severity = logging::Severity::kERROR,
-                                  const std::string& qnn_ctx_model_path = "",
-                                  const std::unordered_map<std::string, std::string>& session_option_pairs = {}) {
+inline void TestFp16ModelAccuracyABI(const GetTestModelFn& f32_model_fn,
+                                     const GetTestModelFn& f16_model_fn,
+                                     ProviderOptions qnn_options,
+                                     int opset_version,
+                                     ExpectedEPNodeAssignment expected_ep_assignment,
+                                     float tolerance = 0.004,
+                                     logging::Severity log_severity = logging::Severity::kERROR,
+                                     const std::string& qnn_ctx_model_path = "",
+                                     const std::unordered_map<std::string, std::string>& session_option_pairs = {}) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
@@ -762,8 +890,8 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
-  InferenceModel(f32_model_data, "f32_model_logger", {}, ExpectedEPNodeAssignment::All,
-                 f32_helper.feeds_, cpu_f32_outputs);
+  InferenceModelCPU(f32_model_data, "f32_model_logger", ExpectedEPNodeAssignment::All,
+                    f32_helper.feeds_, cpu_f32_outputs);
   ASSERT_FALSE(cpu_f32_outputs.empty());
 
   const size_t num_outputs = cpu_f32_outputs.size();
@@ -796,104 +924,40 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
   ASSERT_STATUS_OK(f16_model.MainGraph().Resolve());
   f16_model.ToProto().SerializeToString(&f16_model_data);
 
-  bool is_qnn_ep = true;
-  TryEnableQNNSaver(qnn_options);
-  std::vector<OrtValue> qnn_f16_outputs;
+  // Run QDQ model on CPU EP and collect outputs.
+  std::vector<OrtValue> cpu_f16_outputs;
+  InferenceModelCPU(f16_model_data, "fp16_model_logger", ExpectedEPNodeAssignment::All,
+                    f16_helper.feeds_, cpu_f16_outputs);
+
+  TryEnableQNNSaverABI(qnn_options);
+
+  // Run with QNN-ABI.
+  std::vector<OrtValue> qnn_abi_f16_outputs;
   if (!qnn_ctx_model_path.empty()) {
     onnx::ModelProto model_proto;
     onnxruntime::Model qnn_ctx_model;
-    // Load the QNN context cache model from path specified
     ASSERT_STATUS_OK(qnn_ctx_model.Load(ToPathString(qnn_ctx_model_path), model_proto));
     std::string qnn_ctx_model_data;
     model_proto.SerializeToString(&qnn_ctx_model_data);
-    // Run QNN context cache model on QNN EP and collect outputs.
-    InferenceModel(qnn_ctx_model_data, "qnn_ctx_model_logger", qnn_options,
-                   expected_ep_assignment, f16_helper.feeds_, qnn_f16_outputs, is_qnn_ep, session_option_pairs);
+    InferenceModelABI(qnn_ctx_model_data,
+                      "qnn_ctx_model_logger",
+                      qnn_options,
+                      expected_ep_assignment,
+                      f16_helper.feeds_,
+                      qnn_abi_f16_outputs,
+                      session_option_pairs);
   } else {
-    // Run QDQ model on QNN EP and collect outputs.
-    // Only need to apply the extra session options to this QDQ model inference on QNN EP
-    InferenceModel(f16_model_data, "fp16_model_logger", qnn_options, expected_ep_assignment,
-                   f16_helper.feeds_, qnn_f16_outputs, is_qnn_ep, session_option_pairs);
+    InferenceModelABI(f16_model_data,
+                      "fp16_model_logger",
+                      qnn_options,
+                      expected_ep_assignment,
+                      f16_helper.feeds_,
+                      qnn_abi_f16_outputs,
+                      session_option_pairs);
   }
 
   if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {
-    // Run QDQ model on CPU EP and collect outputs.
-    std::vector<OrtValue> cpu_f16_outputs;
-    InferenceModel(f16_model_data, "fp16_model_logger", {}, ExpectedEPNodeAssignment::All,
-                   f16_helper.feeds_, cpu_f16_outputs);
-    ASSERT_EQ(cpu_f16_outputs.size(), num_outputs);
-    ASSERT_EQ(qnn_f16_outputs.size(), num_outputs);
-
-    // limit the error message count in case test with large data failed
-    size_t max_error_count = 10;
-    size_t error_count = 0;
-
-    // Compare accuracy of QDQ results with float model.
-    // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
-    const std::string base_output_name = "output_";
-    for (size_t i = 0; i < num_outputs; i++) {
-      std::string debug_output_name = base_output_name + std::to_string(i);
-      auto& cpu_f16_tensor = cpu_f16_outputs[i].Get<Tensor>();
-      auto& qnn_f16_tensor = qnn_f16_outputs[i].Get<Tensor>();
-
-      ASSERT_EQ(cpu_f16_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-      ASSERT_EQ(qnn_f16_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-      ASSERT_EQ(output_types[i], ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-
-      const size_t num_vals = output_vals[i].size();
-      gsl::span<const float> cpu_f32_vals = output_vals[i];
-      gsl::span<const MLFloat16> cpu_f16_vals = cpu_f16_tensor.DataAsSpan<MLFloat16>();
-      gsl::span<const MLFloat16> qnn_f16_vals = qnn_f16_tensor.DataAsSpan<MLFloat16>();
-
-      ASSERT_EQ(num_vals, cpu_f16_vals.size());
-      ASSERT_EQ(num_vals, qnn_f16_vals.size());
-
-      float max_f16_cpu_err = 0.0f;
-      float max_f16_qnn_err = 0.0f;
-
-      for (size_t j = 0; j < num_vals && error_count < max_error_count; j++) {
-        const float expected_val = cpu_f32_vals[j];           // f32@CPU_EP val ("ground-truth")
-        const float qnn_f16_val = qnn_f16_vals[j].ToFloat();  // f16@QNN_EP val
-        const float cpu_f16_val = cpu_f16_vals[j].ToFloat();  // f16@CPU_EP val
-
-        // Get errors of f16@CPU_EP and f16@QNN_EP against f32@CPU_EP.
-        constexpr float epsilon = 1e-16f;
-        const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / (expected_val + epsilon);
-        const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / (expected_val + epsilon);
-
-        // Also compare the FP16 values against each other.
-        // This is equivalent to abs(f16@QNN_EP - f16@CPU_EP) / output_range
-        const float f16_vals_err = std::fabs(qnn_relative_err - cpu_relative_err);
-
-        // True if f16@QNN_EP is at least as accurate as f16@CPU_EP when compared to expected f32@CPU_EP value.
-        const bool is_as_accurate_as_cpu_ep = qnn_relative_err <= qnn_relative_err;
-
-        // True if the normalized difference between f16@QNN_EP and f16@CPU_EP is within tolerance.
-        const bool f16_vals_diff_within_tolerance = f16_vals_err <= tolerance;
-
-        const bool passed_test = is_as_accurate_as_cpu_ep || f16_vals_diff_within_tolerance;
-        if (!passed_test) {
-          ++error_count;
-        }
-        EXPECT_TRUE(passed_test)
-            << "Inaccuracy detected for output '" << debug_output_name
-            << "', element " << j << ", tolerance=" << (tolerance * 100) << "%"
-            << ".\nExpected val (f32@CPU_EP): " << expected_val << "\n"
-            << "f16@QNN_EP val: " << qnn_f16_val << " (err: " << qnn_relative_err << ")\n"
-            << "f16@CPU_EP val: " << cpu_f16_val << " (err: " << cpu_relative_err << ")\n";
-
-        max_f16_cpu_err = std::max(max_f16_cpu_err, cpu_relative_err);
-        max_f16_qnn_err = std::max(max_f16_qnn_err, qnn_relative_err);
-      }
-
-      if (error_count > 0) {
-        std::cerr << std::endl
-                  << "[WARNING]: Output " << i
-                  << " required larger tolerance to pass accuracy checks" << std::endl
-                  << "Max relative error against f32@CPU_EP = " << max_f16_cpu_err << std::endl
-                  << "Max relative error against f16@CPU_EP = " << max_f16_qnn_err << std::endl;
-      }
-    }
+    VerifyFp16Output(cpu_f16_outputs, qnn_abi_f16_outputs, output_vals, output_types, tolerance);
   }
 }
 
@@ -966,8 +1030,8 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
 // See quantization tool: onnx_quantizer.py::quantize_bias_static()
 //
 // i.e., initial bias => manual quantization (int32) => DQ => final float bias
-NodeArg* MakeTestQDQBiasInput(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
-                              bool use_contrib_qdq = false);
+NodeArg* MakeTestQDQBiasInputABI(ModelTestBuilder& builder, const TestInputDef<float>& bias_def, float bias_scale,
+                                 bool use_contrib_qdq = false);
 
 /**
  * Returns a function that builds a model with a single operator with N inputs type InputType1 and M inputs
@@ -1159,7 +1223,7 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
  *
- * \param build_test_case Function that builds a test model. See test/optimizer/qdq_test_utils.h
+ * \param build_test_case Function that builds a test model. See test/unittest_util/qdq_test_utils.h
  * \param provider_options Provider options for QNN EP.
  * \param opset_version The opset version.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
@@ -1169,12 +1233,12 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
  * \param ep_graph_checker Function called on the Graph generated for the EP's session. Used to check node
  *                         EP assignment.
  */
-void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                     float fp32_abs_err = 1e-5f,
-                     logging::Severity log_severity = logging::Severity::kERROR,
-                     bool verify_outputs = true,
-                     std::function<void(const Graph&)>* ep_graph_checker = nullptr);
+void RunQnnModelTestABI(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
+                        int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
+                        float fp32_abs_err = 1e-5f,
+                        logging::Severity log_severity = logging::Severity::kERROR,
+                        bool verify_outputs = true,
+                        std::function<void(const Graph&)>* ep_graph_checker = nullptr);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,
@@ -1186,7 +1250,10 @@ enum class BackendSupport {
 // Testing fixture class for tests that require the QNN HTP backend. Checks if HTP is available before the test begins.
 // The test is skipped if HTP is unavailable (may occur on Windows ARM64).
 // TODO: Remove once HTP can be emulated on Windows ARM64.
-class QnnHTPBackendTests : public ::testing::Test {
+class QnnABIHTPBackendTests : public ::testing::Test {
+ public:
+  static void TearDownTestSuite();
+
  protected:
   void SetUp() override;
 
@@ -1199,7 +1266,7 @@ class QnnHTPBackendTests : public ::testing::Test {
 
 // Testing fixture class for tests that require the QNN GPU backend. Checks if QNN GPU is available before the test
 // begins. The test is skipped if the GPU backend is unavailable (may occur on Windows ARM64).
-class QnnGPUBackendTests : public ::testing::Test {
+class QnnABIGPUBackendTests : public ::testing::Test {
  protected:
   void SetUp() override;
 
@@ -1209,7 +1276,7 @@ class QnnGPUBackendTests : public ::testing::Test {
 // Testing fixture class for tests that require the QNN CPU backend. Checks if QNN CPU is available before the test
 // begins. The test is skipped if the CPU backend is unavailable (may occur on Windows ARM64 VM).
 // TODO: Remove once QNN CPU backend works on Windows ARM64 pipeline VM.
-class QnnCPUBackendTests : public ::testing::Test {
+class QnnABICPUBackendTests : public ::testing::Test {
  protected:
   void SetUp() override;
 
@@ -1218,7 +1285,7 @@ class QnnCPUBackendTests : public ::testing::Test {
 
 // Testing fixture class for tests that require the QNN Ir backend. Checks if QNN IR is available before the test
 // begins. The test is skipped if the IR backend is unavailable (may occur with certain QNN versions).
-class QnnIRBackendTests : public ::testing::Test {
+class QnnABIIRBackendTests : public ::testing::Test {
  protected:
   void SetUp() override;
 
@@ -1234,7 +1301,7 @@ class QnnIRBackendTests : public ::testing::Test {
  *
  * \return True if "axes" is an input, or false if "axes" is an attribute.
  */
-bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version);
+bool ReduceOpHasAxesInputABI(const std::string& op_type, int opset_version);
 
 }  // namespace test
 }  // namespace onnxruntime

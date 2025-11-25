@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
 
@@ -35,10 +35,10 @@ static void RunMatMulOpTest(const std::vector<int64_t>& shape_0,
   provider_options["backend_type"] = backend_name;
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(BuildMatMulOpTestCase(
-                      TestInputDef<float>(shape_0, is_initializer_0, GetSequentialFloatData(shape_0, 0.01f, 0.02f)),
-                      TestInputDef<float>(shape_1, is_initializer_1, GetSequentialFloatData(shape_1, 0.02f, 0.02f))),
-                  provider_options, opset, expected_ep_assignment, f32_abs_err);
+  RunQnnModelTestABI(BuildMatMulOpTestCase(
+                         TestInputDef<float>(shape_0, is_initializer_0, GetSequentialFloatDataABI(shape_0, 0.01f, 0.02f)),
+                         TestInputDef<float>(shape_1, is_initializer_1, GetSequentialFloatDataABI(shape_1, 0.02f, 0.02f))),
+                     provider_options, opset, expected_ep_assignment, f32_abs_err);
 }
 
 // Returns a function that creates a graph with a QDQ MatMul operator.
@@ -133,16 +133,16 @@ static void RunQDQMatMulOpTest(const std::vector<int64_t>& shape_0, const std::v
 
   TestInputDef<float> input0_def(
       shape_0, is_initializer_0,
-      GetFloatDataInRange(-0.1f, 0.1f,
-                          static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
-                                                              std::multiplies<int64_t>()))));
+      GetFloatDataInRangeABI(-0.1f, 0.1f,
+                             static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                 std::multiplies<int64_t>()))));
   TestInputDef<float> input1_def(
       shape_1, is_initializer_1,
-      GetFloatDataInRange(-0.1f, 0.1f,
-                          static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
-                                                              std::multiplies<int64_t>()))));
+      GetFloatDataInRangeABI(-0.1f, 0.1f,
+                             static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                 std::multiplies<int64_t>()))));
 
-  TestQDQModelAccuracy(
+  TestQDQModelAccuracyABI(
       BuildMatMulOpTestCase(input0_def, input1_def),
       BuildMatMulOpQDQTestCase<Input0QType, Input1QType, OutputQType>(input0_def, input1_def, use_contrib_qdq),
       provider_options, opset, expected_ep_assignment, tolerance);
@@ -166,25 +166,25 @@ static void RunQDQPerChannelMatMulOpTest(
 
   TestInputDef<float> input_def(
       shape_input, false,
-      GetFloatDataInRange(-0.1f, 0.1f,
-                          static_cast<size_t>(std::accumulate(shape_input.begin(), shape_input.end(),
-                                                              static_cast<int64_t>(1), std::multiplies<int64_t>()))));
+      GetFloatDataInRangeABI(-0.1f, 0.1f,
+                             static_cast<size_t>(std::accumulate(shape_input.begin(), shape_input.end(),
+                                                                 static_cast<int64_t>(1), std::multiplies<int64_t>()))));
   TestInputDef<float> weight_def(
       shape_weight, true,
-      GetFloatDataInRange(-0.1f, 0.1f,
-                          static_cast<size_t>(std::accumulate(shape_weight.begin(), shape_weight.end(),
-                                                              static_cast<int64_t>(1), std::multiplies<int64_t>()))));
+      GetFloatDataInRangeABI(-0.1f, 0.1f,
+                             static_cast<size_t>(std::accumulate(shape_weight.begin(), shape_weight.end(),
+                                                                 static_cast<int64_t>(1), std::multiplies<int64_t>()))));
 
-  TestQDQModelAccuracy(BuildMatMulOpTestCase(input_def, weight_def),
-                       BuildQDQPerChannelMatMulTestCase<InputQType, WeightQType, OutputQType>(
-                           input_def, weight_def, weight_quant_axis, use_contrib_qdq),
-                       provider_options, opset, expected_ep_assignment, tolerance);
+  TestQDQModelAccuracyABI(BuildMatMulOpTestCase(input_def, weight_def),
+                          BuildQDQPerChannelMatMulTestCase<InputQType, WeightQType, OutputQType>(
+                              input_def, weight_def, weight_quant_axis, use_contrib_qdq),
+                          provider_options, opset, expected_ep_assignment, tolerance);
 }
 
 //
 // CPU tests:
 //
-TEST_F(QnnCPUBackendTests, MatMulOp) {
+TEST_F(QnnABICPUBackendTests, MatMulOp) {
   // RunMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1)
   RunMatMulOpTest({2, 3}, {3, 2}, false, false);
   RunMatMulOpTest({2, 3}, {3, 2}, false, true);
@@ -220,7 +220,7 @@ TEST_F(QnnCPUBackendTests, MatMulOp) {
 // HTP tests:
 //
 // Disable this for now as the QNN HTP backend is not stable on different versions and platforms so it failed randomly.
-TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_MatMulOp) {
   // RunMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment,
   // opset, f32_abs_err)
   RunMatMulOpTest({2, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "htp", 18, 1e-2f);
@@ -259,9 +259,9 @@ TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp) {
 // qdq@CPU_EP val: 0.010000000707805157 (err: 0, err/output_range: 0%)
 // abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 0.78431320190429688%
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
-TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_QDQ) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_MatMulOp_QDQ) {
 #else
-TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
+TEST_F(QnnABIHTPBackendTests, MatMulOp_QDQ) {
 #endif
   // UINT8
   // RunQDQMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment, opset,
@@ -299,7 +299,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
 // This exercises a workaround in QNN EP that inserts a QNN Convert op before input[1] (converts from uint16 to uint8).
 // This workaround prevents a validation error for this specific MatMul configuration.
 // Got specific shapes and input ranges (quant params) from customer model.
-TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
+TEST_F(QnnABIHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -309,17 +309,17 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
     std::vector<int64_t> shape_0 = {1, 12, 512, 96};
     TestInputDef<float> input0_def(
         {1, 12, 512, 96}, false,
-        GetFloatDataInRange(-5.087f, 4.992f,
-                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-5.087f, 4.992f,
+                               static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
     std::vector<int64_t> shape_1 = {1, 12, 96, 512};
     TestInputDef<float> input1_def(
         shape_1, false,
-        GetFloatDataInRange(-6.772f, 7.258f,
-                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-6.772f, 7.258f,
+                               static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
 
-    TestQDQModelAccuracy(
+    TestQDQModelAccuracyABI(
         BuildMatMulOpTestCase(input0_def, input1_def),
         BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
         provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
@@ -330,17 +330,17 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
     std::vector<int64_t> shape_0 = {1, 12, 512, 96};
     TestInputDef<float> input0_def(
         {1, 12, 512, 96}, false,
-        GetFloatDataInRange(-5.087f, 4.992f,
-                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-5.087f, 4.992f,
+                               static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
     std::vector<int64_t> shape_1 = {96};
     TestInputDef<float> input1_def(
         shape_1, false,
-        GetFloatDataInRange(-6.772f, 7.258f,
-                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-6.772f, 7.258f,
+                               static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
 
-    TestQDQModelAccuracy(
+    TestQDQModelAccuracyABI(
         BuildMatMulOpTestCase(input0_def, input1_def),
         BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
         provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
@@ -352,7 +352,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
 // This exercises a workaround in QNN EP that inserts a QNN Convert op before input[1] (converts from uint16 to sint16).
 // This workaround prevents a validation error for this specific MatMul configuration.
 // Got specific shapes and input ranges (quant params) from customer model.
-TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
+TEST_F(QnnABIHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -362,17 +362,17 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
     std::vector<int64_t> shape_0 = {1, 12, 512, 96};
     TestInputDef<float> input0_def(
         {1, 12, 512, 96}, false,
-        GetFloatDataInRange(-5.087f, 4.992f,
-                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-5.087f, 4.992f,
+                               static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
     std::vector<int64_t> shape_1 = {1, 12, 96, 512};
     TestInputDef<float> input1_def(
         shape_1, true,
-        GetFloatDataInRange(-6.772f, 7.258f,
-                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-6.772f, 7.258f,
+                               static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
 
-    TestQDQModelAccuracy(
+    TestQDQModelAccuracyABI(
         BuildMatMulOpTestCase(input0_def, input1_def),
         BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
         provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
@@ -383,17 +383,17 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
     std::vector<int64_t> shape_0 = {1, 12, 512, 96};
     TestInputDef<float> input0_def(
         {1, 12, 512, 96}, false,
-        GetFloatDataInRange(-5.087f, 4.992f,
-                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-5.087f, 4.992f,
+                               static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
     std::vector<int64_t> shape_1 = {96};
     TestInputDef<float> input1_def(
         shape_1, true,
-        GetFloatDataInRange(-6.772f, 7.258f,
-                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
-                                                                std::multiplies<int64_t>()))));
+        GetFloatDataInRangeABI(-6.772f, 7.258f,
+                               static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                   std::multiplies<int64_t>()))));
 
-    TestQDQModelAccuracy(
+    TestQDQModelAccuracyABI(
         BuildMatMulOpTestCase(input0_def, input1_def),
         BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
         provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
@@ -410,47 +410,47 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
 
 // RunMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment, backend);
 
-TEST_F(QnnGPUBackendTests, MatMulOp_simple) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_simple) {
   RunMatMulOpTest({2, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "gpu");
   RunMatMulOpTest({2, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
   RunMatMulOpTest({2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, "gpu");
   RunMatMulOpTest({2, 3}, {3, 2}, true, true, ExpectedEPNodeAssignment::All, "gpu");  // constant folding
 }
 
-TEST_F(QnnGPUBackendTests, MatMulOp_batches) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_batches) {
   RunMatMulOpTest({3, 3, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
   RunMatMulOpTest({2, 3, 3, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, MatMulOp_batchesWtsSameDim) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_batchesWtsSameDim) {
   RunMatMulOpTest({3, 3, 3}, {3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, MatMulOp_batchesWtsSameDim2) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_batchesWtsSameDim2) {
   RunMatMulOpTest({2, 3, 3, 3}, {2, 3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, MatMulOp_wtsDimBcast) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_wtsDimBcast) {
   RunMatMulOpTest({3, 3, 3}, {1, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, DISABLED_MatMulOp_batchesDimBcast) {
+TEST_F(QnnABIGPUBackendTests, DISABLED_MatMulOp_batchesDimBcast) {
   RunMatMulOpTest({1, 3, 3}, {3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, DISABLED_MatMulOp_batchesDimBcast2) {
+TEST_F(QnnABIGPUBackendTests, DISABLED_MatMulOp_batchesDimBcast2) {
   RunMatMulOpTest({2, 1, 3, 3}, {3, 3, 2}, false, true, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, MatMulOp_inp0DimBcast) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_inp0DimBcast) {
   RunMatMulOpTest({3, 3}, {3, 3, 2}, false, false, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, MatMulOp_inp1DimBcast) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_inp1DimBcast) {
   RunMatMulOpTest({2, 3, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, "gpu");
 }
 
-TEST_F(QnnGPUBackendTests, MatMulOp_rank1) {
+TEST_F(QnnABIGPUBackendTests, MatMulOp_rank1) {
   RunMatMulOpTest({3}, {3}, false, false, ExpectedEPNodeAssignment::All, "gpu");
   RunMatMulOpTest({3}, {3}, false, true, ExpectedEPNodeAssignment::All, "gpu");
   RunMatMulOpTest({3}, {3}, true, false, ExpectedEPNodeAssignment::All, "gpu");

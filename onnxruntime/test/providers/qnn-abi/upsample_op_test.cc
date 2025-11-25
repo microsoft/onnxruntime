@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
@@ -31,15 +31,15 @@ static void RunUpsampleTestOnCPU(const TestInputDef<DataType>& input_def,
     const std::vector<float>& scales = scales_def.GetRawData();
     attrs.push_back(utils::MakeAttribute("scales", scales));
 
-    RunQnnModelTest(BuildOpTestCase<DataType>("Upsample", {input_def}, {}, attrs),
-                    provider_options,
-                    opset,
-                    expected_ep_assignment);
+    RunQnnModelTestABI(BuildOpTestCase<DataType>("Upsample", {input_def}, {}, attrs),
+                       provider_options,
+                       opset,
+                       expected_ep_assignment);
   } else {
-    RunQnnModelTest(BuildOpTestCase<DataType, float>("Upsample", {input_def}, {scales_def}, attrs),
-                    provider_options,
-                    opset,
-                    expected_ep_assignment);
+    RunQnnModelTestABI(BuildOpTestCase<DataType, float>("Upsample", {input_def}, {scales_def}, attrs),
+                       provider_options,
+                       opset,
+                       expected_ep_assignment);
   }
 }
 
@@ -48,7 +48,7 @@ static void RunUpsampleTestOnCPU(const TestInputDef<DataType>& input_def,
 //
 
 // Test that Upsample with a dynamic scales input is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Upsample_DynamicScales_Unsupported) {
+TEST_F(QnnABICPUBackendTests, Upsample_DynamicScales_Unsupported) {
   RunUpsampleTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                        TestInputDef<float>({4}, false /* is_initializer */, {1.0f, 1.0f, 1.5f, 1.5f}),
                        {utils::MakeAttribute("mode", "nearest")},  // Attributes
@@ -57,7 +57,7 @@ TEST_F(QnnCPUBackendTests, Upsample_DynamicScales_Unsupported) {
 }
 
 // Test Upsample with opset-9, mode `nearest`
-TEST_F(QnnCPUBackendTests, Upsample_4D_Nearest_opset9) {
+TEST_F(QnnABICPUBackendTests, Upsample_4D_Nearest_opset9) {
   RunUpsampleTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                        TestInputDef<float>({4}, true, {1.0f, 1.0f, 1.5f, 1.5f}),
                        {utils::MakeAttribute("mode", "nearest")},  // Attributes
@@ -66,7 +66,7 @@ TEST_F(QnnCPUBackendTests, Upsample_4D_Nearest_opset9) {
 }
 
 // Test Upsample with opset-9, mode `linear`
-TEST_F(QnnCPUBackendTests, Upsample_4D_Linear_opset9) {
+TEST_F(QnnABICPUBackendTests, Upsample_4D_Linear_opset9) {
   RunUpsampleTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                        TestInputDef<float>({4}, true, {1.0f, 1.0f, 1.5f, 1.5f}),
                        {utils::MakeAttribute("mode", "linear")},  // Attributes
@@ -75,7 +75,7 @@ TEST_F(QnnCPUBackendTests, Upsample_4D_Linear_opset9) {
 }
 
 // Test Upsample with opset-7, mode `nearest`
-TEST_F(QnnCPUBackendTests, Upsample_4D_Nearest_opset7) {
+TEST_F(QnnABICPUBackendTests, Upsample_4D_Nearest_opset7) {
   RunUpsampleTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                        TestInputDef<float>({4}, true, {1.0f, 1.0f, 1.5f, 1.5f}),
                        {utils::MakeAttribute("mode", "nearest")},  // Attributes
@@ -84,7 +84,7 @@ TEST_F(QnnCPUBackendTests, Upsample_4D_Nearest_opset7) {
 }
 
 // Test Upsample with opset-7, mode `linear`
-TEST_F(QnnCPUBackendTests, Upsample_4D_Linear_opset7) {
+TEST_F(QnnABICPUBackendTests, Upsample_4D_Linear_opset7) {
   RunUpsampleTestOnCPU(TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                        TestInputDef<float>({4}, true, {1.0f, 1.0f, 1.5f, 1.5f}),
                        {utils::MakeAttribute("mode", "linear")},  // Attributes
@@ -93,7 +93,7 @@ TEST_F(QnnCPUBackendTests, Upsample_4D_Linear_opset7) {
 }
 
 // Test Upsample 5D
-TEST_F(QnnCPUBackendTests, Upsample_5D) {
+TEST_F(QnnABICPUBackendTests, Upsample_5D) {
   RunUpsampleTestOnCPU(TestInputDef<float>({1, 3, 4, 4, 4}, false, -10.0f, 10.0f),
                        TestInputDef<float>({5}, true, {1.0f, 1.0f, 1.5f, 1.5f, 1.5f}),
                        {utils::MakeAttribute("mode", "nearest")},  // Attributes

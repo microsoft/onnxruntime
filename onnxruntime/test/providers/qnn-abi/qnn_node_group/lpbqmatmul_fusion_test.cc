@@ -14,8 +14,8 @@
 
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -108,18 +108,18 @@ ProviderOptions GetProviderOptions() {
 
 #if defined(_WIN32)
 // Graph fails to compose on ARM64 Windows since QNN 2.37.0
-TEST_F(QnnHTPBackendTests, DISABLED_LPBQMatMulFusion) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LPBQMatMulFusion) {
 #else
-TEST_F(QnnHTPBackendTests, LPBQMatMulFusion) {
+TEST_F(QnnABIHTPBackendTests, LPBQMatMulFusion) {
 #endif
   ProviderOptions provider_options = GetProviderOptions();
-  RunQnnModelTest(BuildLPBQMatMulTestCase(),
-                  provider_options,
-                  /*opset_version=*/21,
-                  /*expected_ep_assignment=*/ExpectedEPNodeAssignment::Some,
-                  /*fp32_abs_err=*/1e-2f,
-                  /*log_severity =*/logging::Severity::kERROR,
-                  /*verify_outputs=*/false);
+  RunQnnModelTestABI(BuildLPBQMatMulTestCase(),
+                     provider_options,
+                     /*opset_version=*/21,
+                     /*expected_ep_assignment=*/ExpectedEPNodeAssignment::Some,
+                     /*fp32_abs_err=*/1e-2f,
+                     /*log_severity =*/logging::Severity::kERROR,
+                     /*verify_outputs=*/false);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64)

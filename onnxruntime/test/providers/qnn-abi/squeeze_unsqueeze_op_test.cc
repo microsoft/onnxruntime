@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
@@ -25,10 +25,10 @@ static void RunSqueezeTestOnCPU(const std::string& op_type,  // Squeeze or Unsqu
 
   provider_options["backend_type"] = "cpu";
 
-  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment);
 }
 
 //
@@ -36,7 +36,7 @@ static void RunSqueezeTestOnCPU(const std::string& op_type,  // Squeeze or Unsqu
 //
 
 // Test that Squeeze with a dynamic axes input is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Squeeze_DynamicAxes_Unsupported) {
+TEST_F(QnnABICPUBackendTests, Squeeze_DynamicAxes_Unsupported) {
   RunSqueezeTestOnCPU("Squeeze",
                       TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                       TestInputDef<int64_t>({1}, false /* is_initializer */, {0}),
@@ -44,7 +44,7 @@ TEST_F(QnnCPUBackendTests, Squeeze_DynamicAxes_Unsupported) {
 }
 
 // Test that Unsqueeze with a dynamic axes input is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Unsqueeze_DynamicAxes_Unsupported) {
+TEST_F(QnnABICPUBackendTests, Unsqueeze_DynamicAxes_Unsupported) {
   RunSqueezeTestOnCPU("Unsqueeze",
                       TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                       TestInputDef<int64_t>({1}, false /* is_initializer */, {0}),
@@ -52,7 +52,7 @@ TEST_F(QnnCPUBackendTests, Unsqueeze_DynamicAxes_Unsupported) {
 }
 
 // Test Squeeze of rank 5 -> rank 2.
-TEST_F(QnnCPUBackendTests, Squeeze_Rank5_Rank2_f32) {
+TEST_F(QnnABICPUBackendTests, Squeeze_Rank5_Rank2_f32) {
   RunSqueezeTestOnCPU("Squeeze",
                       TestInputDef<float>({1, 3, 1, 2, 4}, false, -10.0f, 10.0f),
                       TestInputDef<int64_t>({2}, true, {0, 2}),  // Squeeze axes 0 and 2 => (3, 2, 4)
@@ -60,7 +60,7 @@ TEST_F(QnnCPUBackendTests, Squeeze_Rank5_Rank2_f32) {
 }
 
 // Test Squeeze of rank 4 -> rank 3 with a negative axes value.
-TEST_F(QnnCPUBackendTests, Squeeze_Rank4_Rank3_NegAxes_f32) {
+TEST_F(QnnABICPUBackendTests, Squeeze_Rank4_Rank3_NegAxes_f32) {
   RunSqueezeTestOnCPU("Squeeze",
                       TestInputDef<float>({1, 3, 2, 1}, false, -10.0f, 10.0f),
                       TestInputDef<int64_t>({1}, true, {-1}),  // Squeeze last axis => (1, 3, 2)
@@ -68,7 +68,7 @@ TEST_F(QnnCPUBackendTests, Squeeze_Rank4_Rank3_NegAxes_f32) {
 }
 
 // Test Unsqueeze of rank 3 -> rank 5.
-TEST_F(QnnCPUBackendTests, Unsqueeze_Rank3_Rank5_f32) {
+TEST_F(QnnABICPUBackendTests, Unsqueeze_Rank3_Rank5_f32) {
   RunSqueezeTestOnCPU("Unsqueeze",
                       TestInputDef<float>({3, 2, 4}, false, -10.0f, 10.0f),
                       TestInputDef<int64_t>({2}, true, {0, 2}),  // Add 1's => (1, 3, 1, 2, 4)
@@ -76,7 +76,7 @@ TEST_F(QnnCPUBackendTests, Unsqueeze_Rank3_Rank5_f32) {
 }
 
 // Test Unsqueeze of rank 3 -> rank 4 with a negative axes value.
-TEST_F(QnnCPUBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_f32) {
+TEST_F(QnnABICPUBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_f32) {
   RunSqueezeTestOnCPU("Unsqueeze",
                       TestInputDef<float>({1, 3, 2}, false, -10.0f, 10.0f),
                       TestInputDef<int64_t>({1}, true, {-1}),  // Add 1 as last axis => (1, 3, 2, 1)
@@ -130,10 +130,10 @@ static void RunSqueezeTestOnHTP(const std::string& op_type,  // Squeeze or Unsqu
 
   provider_options["backend_type"] = "htp";
 
-  RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment);
+  RunQnnModelTestABI(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment);
 }
 
 // Runs a QDQ (Un)Squeeze model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and
@@ -154,15 +154,15 @@ static void RunQDQSqueezeTestOnHTP(const std::string& op_type,
   auto f32_model_builder = BuildOpTestCase<float, int64_t>(op_type, {input_def}, {axes_def}, {});
   auto qdq_model_builder = BuildQDQSqueezeTestCase<QType>(op_type, input_def, axes_def, use_contrib_qdq);
 
-  TestQDQModelAccuracy(f32_model_builder,
-                       qdq_model_builder,
-                       provider_options,
-                       opset,
-                       expected_ep_assignment);
+  TestQDQModelAccuracyABI(f32_model_builder,
+                          qdq_model_builder,
+                          provider_options,
+                          opset,
+                          expected_ep_assignment);
 }
 
 // Test that QDQ Squeeze with a dynamic axes input is not supported by QNN EP.
-TEST_F(QnnHTPBackendTests, Squeeze_DynamicAxes_Unsupported) {
+TEST_F(QnnABIHTPBackendTests, Squeeze_DynamicAxes_Unsupported) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Squeeze",
                                   TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                                   TestInputDef<int64_t>({1}, false /* is_initializer */, {0}),
@@ -170,7 +170,7 @@ TEST_F(QnnHTPBackendTests, Squeeze_DynamicAxes_Unsupported) {
 }
 
 // Test that Unsqueeze with a dynamic axes input is not supported by QNN EP.
-TEST_F(QnnHTPBackendTests, Unsqueeze_DynamicAxes_Unsupported) {
+TEST_F(QnnABIHTPBackendTests, Unsqueeze_DynamicAxes_Unsupported) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Unsqueeze",
                                   TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
                                   TestInputDef<int64_t>({1}, false /* is_initializer */, {0}),
@@ -178,7 +178,7 @@ TEST_F(QnnHTPBackendTests, Unsqueeze_DynamicAxes_Unsupported) {
 }
 
 // Test Squeeze of rank 5 -> rank 2.
-TEST_F(QnnHTPBackendTests, Squeeze_Rank5_Rank2_f32) {
+TEST_F(QnnABIHTPBackendTests, Squeeze_Rank5_Rank2_f32) {
   // We can't use the usual model-building functions because they add standalone Quantize and Dequantize nodes
   // at the input and output. These Q/DQ ops get lowered to QNN's Quantize and Dequantize operators, which DO NOT
   // support rank 5 tensors. Therefore, we have to create a test model that only instantiates the DQ -> Squeeze -> Q
@@ -206,14 +206,14 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank5_Rank2_f32) {
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(model_fn,
-                  provider_options,
-                  13,  // opset
-                  ExpectedEPNodeAssignment::All);
+  RunQnnModelTestABI(model_fn,
+                     provider_options,
+                     13,  // opset
+                     ExpectedEPNodeAssignment::All);
 }
 
 // Test 8-bit QDQ Squeeze of rank 4 -> rank 3 with a negative axes value.
-TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u8) {
+TEST_F(QnnABIHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u8) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Squeeze",
                                   TestInputDef<float>({1, 3, 2, 1}, false, -10.0f, 10.0f),
                                   TestInputDef<int64_t>({1}, true, {-1}),  // Squeeze last axis => (1, 3, 2)
@@ -221,7 +221,7 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u8) {
 }
 
 // Test 16-bit QDQ Squeeze of rank 4 -> rank 3 with a negative axes value.
-TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u16) {
+TEST_F(QnnABIHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u16) {
   RunQDQSqueezeTestOnHTP<uint16_t>("Squeeze",
                                    TestInputDef<float>({1, 3, 2, 1}, false, -10.0f, 10.0f),
                                    TestInputDef<int64_t>({1}, true, {-1}),  // Squeeze last axis => (1, 3, 2)
@@ -231,7 +231,7 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank4_Rank3_NegAxes_u16) {
 }
 
 // Test QDQ Unsqueeze of rank 3 -> rank 5.
-TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank5_f32) {
+TEST_F(QnnABIHTPBackendTests, Unsqueeze_Rank3_Rank5_f32) {
   // We can't use the usual model-building functions because they add standalone Quantize and Dequantize nodes
   // at the input and output. These Q/DQ ops get lowered to QNN's Quantize and Dequantize operators, which DO NOT
   // support rank 5 tensors. Therefore, we have to create a test model that only instantiates the DQ -> Unsqueeze -> Q
@@ -259,14 +259,14 @@ TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank5_f32) {
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(model_fn,
-                  provider_options,
-                  13,  // opset
-                  ExpectedEPNodeAssignment::All);
+  RunQnnModelTestABI(model_fn,
+                     provider_options,
+                     13,  // opset
+                     ExpectedEPNodeAssignment::All);
 }
 
 // Test 8-bit QDQ Unsqueeze of rank 3 -> rank 4 with a negative axes value.
-TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u8) {
+TEST_F(QnnABIHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u8) {
   RunQDQSqueezeTestOnHTP<uint8_t>("Unsqueeze",
                                   TestInputDef<float>({1, 3, 2}, false, -10.0f, 10.0f),
                                   TestInputDef<int64_t>({1}, true, {-1}),  // Add 1 as last axis => (1, 3, 2, 1)
@@ -274,7 +274,7 @@ TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u8) {
 }
 
 // Test 16-bit QDQ Unsqueeze of rank 3 -> rank 4 with a negative axes value.
-TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u16) {
+TEST_F(QnnABIHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u16) {
   RunQDQSqueezeTestOnHTP<uint16_t>("Unsqueeze",
                                    TestInputDef<float>({1, 3, 2}, false, -10.0f, 10.0f),
                                    TestInputDef<int64_t>({1}, true, {-1}),  // Add 1 as last axis => (1, 3, 2, 1)
@@ -284,7 +284,7 @@ TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank4_NegAxes_u16) {
 }
 
 // Test that int32 Squeeze runs on HTP backend.
-TEST_F(QnnHTPBackendTests, Squeeze_Int32_Rank4_Rank3) {
+TEST_F(QnnABIHTPBackendTests, Squeeze_Int32_Rank4_Rank3) {
   std::vector<int32_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   RunSqueezeTestOnHTP<int32_t>("Squeeze",
                                TestInputDef<int32_t>({1, 3, 2, 2}, false, input_data),
@@ -293,7 +293,7 @@ TEST_F(QnnHTPBackendTests, Squeeze_Int32_Rank4_Rank3) {
 }
 
 // Test that int32 Unsqueeze runs on HTP backend.
-TEST_F(QnnHTPBackendTests, Unsqueeze_Int32_Rank3_Rank4) {
+TEST_F(QnnABIHTPBackendTests, Unsqueeze_Int32_Rank3_Rank4) {
   std::vector<int32_t> input_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   RunSqueezeTestOnHTP<int32_t>("Unsqueeze",
                                TestInputDef<int32_t>({3, 2, 2}, false, input_data),

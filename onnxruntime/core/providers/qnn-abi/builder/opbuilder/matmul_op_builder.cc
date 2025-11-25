@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/builder/op_builder_factory.h"
+#include "core/providers/qnn-abi/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -24,28 +24,31 @@ class MatMulOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulOpBuilder);
 
  protected:
-  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit, const logging::Logger& logger,
-                       std::vector<std::string>& input_names, bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                            const OrtNodeUnit& node_unit,
+                            const Ort::Logger& logger,
+                            std::vector<std::string>& input_names,
+                            bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names, const logging::Logger& logger,
-                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnit& node_unit,
+                                          std::vector<std::string>&& input_names, const Ort::Logger& logger,
+                                          bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wrapper,
-                                   const NodeUnit& node_unit,
-                                   const TensorInfo& input_info_0,
-                                   const TensorInfo& input_info_1,
-                                   const logging::Logger& logger,
-                                   std::vector<std::string>& input_names,
-                                   bool do_op_validation) const ORT_MUST_USE_RESULT;
-  Status ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_model_wrapper,
-                                           const NodeUnit& node_unit,
-                                           const TensorInfo& input_info_0,
-                                           const TensorInfo& input_info_1,
-                                           const logging::Logger& logger,
-                                           std::vector<std::string>& input_names,
-                                           bool do_op_validation) const ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wrapper,
+                                        const OrtNodeUnit& node_unit,
+                                        const TensorInfo& input_info_0,
+                                        const TensorInfo& input_info_1,
+                                        const Ort::Logger& logger,
+                                        std::vector<std::string>& input_names,
+                                        bool do_op_validation) const ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_model_wrapper,
+                                                const OrtNodeUnit& node_unit,
+                                                const TensorInfo& input_info_0,
+                                                const TensorInfo& input_info_1,
+                                                const Ort::Logger& logger,
+                                                std::vector<std::string>& input_names,
+                                                bool do_op_validation) const ORT_MUST_USE_RESULT;
 };
 
 namespace {
@@ -53,11 +56,11 @@ inline bool IsQuant16bit(Qnn_DataType_t qnn_data_type) {
   return qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 || qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16;
 }
 
-Status CheckInputs(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef& input_def_0,
-                   const NodeUnitIODef& input_def_1, TensorInfo& input_info_0, TensorInfo& input_info_1,
-                   bool& use_fully_connected) {
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_def_0, input_info_0));
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_def_1, input_info_1));
+Ort::Status CheckInputs(const QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnitIODef& input_def_0,
+                        const OrtNodeUnitIODef& input_def_1, TensorInfo& input_info_0, TensorInfo& input_info_1,
+                        bool& use_fully_connected) {
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_def_0, input_info_0));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_def_1, input_info_1));
 
 #if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR <= 20
   // Validation crashes if use QNN FullyConnected in QNN SDK versions 2.26 - 2.27
@@ -78,16 +81,16 @@ Status CheckInputs(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef
                                                  IsQuant16bit(input_info_1.qnn_data_type) &&
                                                  !input_info_1.is_initializer);
 #endif
-  return Status::OK();
+  return Ort::Status();
 }
 
 // Process input[0] for ONNX MatMul that can be translated to either a QNN MatMul or a QNN FullyConnected.
-Status ProcessInput0(QnnModelWrapper& qnn_model_wrapper,
-                     const TensorInfo& input_0_info,
-                     const std::string& original_input_0_name,
-                     std::vector<std::string>& input_names,
-                     const logging::Logger& logger,
-                     bool do_op_validation) {
+Ort::Status ProcessInput0(QnnModelWrapper& qnn_model_wrapper,
+                          const TensorInfo& input_0_info,
+                          const std::string& original_input_0_name,
+                          std::vector<std::string>& input_names,
+                          const Ort::Logger& logger,
+                          bool do_op_validation) {
   bool reshape_input_0 = input_0_info.shape.size() == 1;
   std::string actual_input_0_name = original_input_0_name;
 
@@ -95,48 +98,48 @@ Status ProcessInput0(QnnModelWrapper& qnn_model_wrapper,
     actual_input_0_name = utils::GetUniqueName(original_input_0_name, "_reshape");
     std::vector<uint32_t> shape_2d{1, input_0_info.shape[0]};
     QnnQuantParamsWrapper quant_param_2d = input_0_info.quant_param.Copy();
-    ORT_RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_0_info.shape, shape_2d));
+    RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_0_info.shape, shape_2d));
 
     // If input_0 is initializer, unpack it and add the tensor with new quantization parameter and shape.
     // Otherwise, add a Reshape node.
     if (input_0_info.is_initializer) {
       std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_0_info.initializer_tensor, unpacked_tensor));
+      RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(input_0_info.initializer_tensor, unpacked_tensor));
       QnnTensorWrapper input_tensorwrapper(actual_input_0_name, QNN_TENSOR_TYPE_STATIC, input_0_info.qnn_data_type,
                                            std::move(quant_param_2d), std::move(shape_2d), std::move(unpacked_tensor));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+      RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
     } else {
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(original_input_0_name, actual_input_0_name,
-                                                           input_0_info.shape, shape_2d,
-                                                           input_0_info.qnn_data_type, input_0_info.quant_param,
-                                                           quant_param_2d, do_op_validation,
-                                                           qnn_model_wrapper.IsGraphInput(original_input_0_name), false));
+      RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(original_input_0_name, actual_input_0_name,
+                                                       input_0_info.shape, shape_2d,
+                                                       input_0_info.qnn_data_type, input_0_info.quant_param,
+                                                       quant_param_2d, do_op_validation,
+                                                       qnn_model_wrapper.IsGraphInput(original_input_0_name), false));
     }
   } else {
     if (qnn_model_wrapper.IsQnnTensorWrapperExist(actual_input_0_name)) {
-      LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << actual_input_0_name;
+      ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_VERBOSE, ("Tensor already added, skip it: " + actual_input_0_name).c_str());
     } else {
       QnnTensorWrapper input_0_tensor;
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_0_info, actual_input_0_name, input_0_tensor));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_0_tensor)), "Failed to add tensor.");
+      RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_0_info, actual_input_0_name, input_0_tensor));
+      RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_0_tensor)), "Failed to add tensor.");
     }
   }
   input_names.emplace_back(actual_input_0_name);
 
-  return Status::OK();
+  return Ort::Status();
 }
 }  // namespace
 
 // Process operator inputs. Dispatches to other processing functions depending on whether we're
 // translating an ONNX MatMul to a QNN MatMul or a QNN FullyConnected.
-Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                      const logging::Logger& logger, std::vector<std::string>& input_names,
-                                      bool do_op_validation) const {
+Ort::Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnit& node_unit,
+                                           const Ort::Logger& logger, std::vector<std::string>& input_names,
+                                           bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   TensorInfo input_info_0{};
   TensorInfo input_info_1{};
   bool use_fully_connected = false;
-  ORT_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       CheckInputs(qnn_model_wrapper, inputs[0], inputs[1], input_info_0, input_info_1, use_fully_connected));
 
   if (use_fully_connected) {
@@ -157,22 +160,22 @@ Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const 
                                    do_op_validation);
 }
 
-Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  const TensorInfo& input_info_0,
-                                                  const TensorInfo& input_info_1,
-                                                  const logging::Logger& logger,
-                                                  std::vector<std::string>& input_names,
-                                                  bool do_op_validation) const {
+Ort::Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wrapper,
+                                                       const OrtNodeUnit& node_unit,
+                                                       const TensorInfo& input_info_0,
+                                                       const TensorInfo& input_info_1,
+                                                       const Ort::Logger& logger,
+                                                       std::vector<std::string>& input_names,
+                                                       bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   const bool reshape_input_1 = input_info_1.shape.size() == 1;
 
-  const std::string& org_input_0_name = inputs[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(ProcessInput0(qnn_model_wrapper, input_info_0, org_input_0_name, input_names,
-                                    logger, do_op_validation));
+  const std::string& org_input_0_name = inputs[0].name;
+  RETURN_IF_ERROR(ProcessInput0(qnn_model_wrapper, input_info_0, org_input_0_name, input_names,
+                                logger, do_op_validation));
 
   // Process input 1.
-  const std::string& org_input_1_name = inputs[1].node_arg.Name();
+  const std::string& org_input_1_name = inputs[1].name;
   std::string input_1_name = org_input_1_name;
   if (reshape_input_1) {
     // Input[1] is a rank 1 tensor that needs to be reshaped.
@@ -180,31 +183,31 @@ Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wra
     QnnQuantParamsWrapper quant_param_2d = input_info_1.quant_param.Copy();
     input_1_name = utils::GetUniqueName(org_input_1_name, "_reshape");
     shape_2d = {input_info_1.shape[0], 1};
-    ORT_RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_info_1.shape, shape_2d));
+    RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_info_1.shape, shape_2d));
 
     // If input_1 is initializer, unpack it and add the tensor with new quantization parameter and shape.
     // Otherwise, add a Reshape node.
     if (input_info_1.is_initializer) {
       std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info_1.initializer_tensor, unpacked_tensor));
+      RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(input_info_1.initializer_tensor, unpacked_tensor));
 
       Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(org_input_1_name);
       QnnTensorWrapper input_tensorwrapper(input_1_name, tensor_type, input_info_1.qnn_data_type,
                                            std::move(quant_param_2d), std::move(shape_2d), std::move(unpacked_tensor));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+      RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
     } else {
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(org_input_1_name, input_1_name, input_info_1.shape, shape_2d,
-                                                           input_info_1.qnn_data_type, input_info_1.quant_param,
-                                                           quant_param_2d, do_op_validation,
-                                                           qnn_model_wrapper.IsGraphInput(org_input_1_name), false));
+      RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(org_input_1_name, input_1_name, input_info_1.shape, shape_2d,
+                                                       input_info_1.qnn_data_type, input_info_1.quant_param,
+                                                       quant_param_2d, do_op_validation,
+                                                       qnn_model_wrapper.IsGraphInput(org_input_1_name), false));
     }
   } else {
     if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_1_name)) {
-      LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_1_name;
+      ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_VERBOSE, ("Tensor already added, skip it: " + input_1_name).c_str());
     } else {
       QnnTensorWrapper input_1_tensor;
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], input_1_tensor));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_1_tensor)), "Failed to add tensor.");
+      RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], input_1_tensor));
+      RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_1_tensor)), "Failed to add tensor.");
     }
   }
   input_names.emplace_back(input_1_name);
@@ -233,8 +236,8 @@ Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wra
   if (!input_info_0.is_initializer &&
       input_info_0.qnn_data_type == input_info_1.qnn_data_type &&
       input_info_0.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
-    ORT_RETURN_IF_NOT(input_info_1.quant_param.IsPerTensor(),
-                      "MatMul's activation inputs only support per-tensor quantization");
+    RETURN_IF_NOT(input_info_1.quant_param.IsPerTensor(),
+                  "MatMul's activation inputs only support per-tensor quantization");
     const Qnn_QuantizeParams_t& quant_param = input_info_1.quant_param.Get();
     // insert Convert op after input1
     std::string convert_input_name = input_names.back();
@@ -245,49 +248,49 @@ Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wra
       input_1_shape = {input_info_1.shape[0], 1};
     }
     if (!input_info_1.is_initializer) {
-      ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
-                                                 convert_input_name,
-                                                 convert_output_name,
-                                                 input_info_1.qnn_data_type,
-                                                 QNN_DATATYPE_UFIXED_POINT_8,
-                                                 quant_param.scaleOffsetEncoding.offset,
-                                                 quant_param.scaleOffsetEncoding.scale,
-                                                 input_1_shape,
-                                                 false,  // asymmetric
-                                                 do_op_validation));
+      RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
+                                             convert_input_name,
+                                             convert_output_name,
+                                             input_info_1.qnn_data_type,
+                                             QNN_DATATYPE_UFIXED_POINT_8,
+                                             quant_param.scaleOffsetEncoding.offset,
+                                             quant_param.scaleOffsetEncoding.scale,
+                                             input_1_shape,
+                                             false,  // asymmetric
+                                             do_op_validation));
     } else {
-      ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
-                                                 convert_input_name,
-                                                 convert_output_name,
-                                                 input_info_1.qnn_data_type,
-                                                 QNN_DATATYPE_SFIXED_POINT_16,
-                                                 quant_param.scaleOffsetEncoding.offset,
-                                                 quant_param.scaleOffsetEncoding.scale,
-                                                 input_1_shape,
-                                                 true,  // symmetric
-                                                 do_op_validation));
+      RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
+                                             convert_input_name,
+                                             convert_output_name,
+                                             input_info_1.qnn_data_type,
+                                             QNN_DATATYPE_SFIXED_POINT_16,
+                                             quant_param.scaleOffsetEncoding.offset,
+                                             quant_param.scaleOffsetEncoding.scale,
+                                             input_1_shape,
+                                             true,  // symmetric
+                                             do_op_validation));
     }
     input_names.push_back(convert_output_name);
   }
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_model_wrapper,
-                                                          const NodeUnit& node_unit,
-                                                          const TensorInfo& input_info_0,
-                                                          const TensorInfo& input_info_1,
-                                                          const logging::Logger& logger,
-                                                          std::vector<std::string>& input_names,
-                                                          bool do_op_validation) const {
+Ort::Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_model_wrapper,
+                                                               const OrtNodeUnit& node_unit,
+                                                               const TensorInfo& input_info_0,
+                                                               const TensorInfo& input_info_1,
+                                                               const Ort::Logger& logger,
+                                                               std::vector<std::string>& input_names,
+                                                               bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   const bool reshape_input_1 = input_info_1.shape.size() == 1;
 
-  const std::string& org_input_0_name = inputs[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(ProcessInput0(qnn_model_wrapper, input_info_0, org_input_0_name, input_names,
-                                    logger, do_op_validation));
+  const std::string& org_input_0_name = inputs[0].name;
+  RETURN_IF_ERROR(ProcessInput0(qnn_model_wrapper, input_info_0, org_input_0_name, input_names,
+                                logger, do_op_validation));
 
   // Process input 1.
-  const std::string& org_input_1_name = inputs[1].node_arg.Name();
+  const std::string& org_input_1_name = inputs[1].name;
   std::string input_1_name = org_input_1_name;
   std::vector<uint32_t> shape_2d;
   QnnQuantParamsWrapper quant_param_2d = input_info_1.quant_param.Copy();
@@ -297,12 +300,12 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
 
     // FullyConnected requires input_1's shape to be [n, k].
     shape_2d = {1, input_info_1.shape[0]};
-    ORT_RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_info_1.shape, shape_2d));
+    RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_info_1.shape, shape_2d));
   } else {
     assert(input_info_1.shape.size() == 2);
     input_1_name = utils::GetUniqueName(org_input_1_name, "_transpose");
     shape_2d = {input_info_1.shape[1], input_info_1.shape[0]};
-    ORT_RETURN_IF_ERROR(quant_param_2d.HandleTranspose<uint32_t>(std::vector<uint32_t>({1, 0})));
+    RETURN_IF_ERROR(quant_param_2d.HandleTranspose<uint32_t>(std::vector<uint32_t>({1, 0})));
   }
 
   // If input_1 is initializer, unpack it and add the tensor with new quantization parameter and shape.
@@ -312,23 +315,23 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
     if (!reshape_input_1) {
       // 2D initializer should be transposed to [n, k].
       std::vector<uint32_t> original_shape_copy = input_info_1.shape;
-      ORT_RETURN_IF_ERROR(utils::TwoDimensionTranspose(qnn_model_wrapper,
-                                                       original_shape_copy,  // Will be modified to new shape (unnecessary)
-                                                       *input_info_1.initializer_tensor,
-                                                       unpacked_tensor));
+      RETURN_IF_ERROR(utils::TwoDimensionTranspose(qnn_model_wrapper,
+                                                   original_shape_copy,  // Will be modified to new shape (unnecessary)
+                                                   input_info_1.initializer_tensor,
+                                                   unpacked_tensor));
     } else {
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info_1.initializer_tensor, unpacked_tensor));
+      RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(input_info_1.initializer_tensor, unpacked_tensor));
     }
 
     Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(org_input_1_name);
     QnnTensorWrapper input_tensorwrapper(input_1_name, tensor_type, input_info_1.qnn_data_type,
                                          std::move(quant_param_2d), std::move(shape_2d), std::move(unpacked_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   } else {
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(org_input_1_name, input_1_name, input_info_1.shape, shape_2d,
-                                                         input_info_1.qnn_data_type, input_info_1.quant_param,
-                                                         quant_param_2d, do_op_validation,
-                                                         qnn_model_wrapper.IsGraphInput(org_input_1_name), false));
+    RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(org_input_1_name, input_1_name, input_info_1.shape, shape_2d,
+                                                     input_info_1.qnn_data_type, input_info_1.quant_param,
+                                                     quant_param_2d, do_op_validation,
+                                                     qnn_model_wrapper.IsGraphInput(org_input_1_name), false));
   }
   input_names.emplace_back(input_1_name);
 
@@ -355,36 +358,37 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
     const Qnn_QuantizeParams_t& quant_param = quant_param_wrapper.Get();
     const auto& transformed_input1_shape = weight_tensor_wrapper.GetTensorDims();
 
-    ORT_RETURN_IF_NOT(quant_param_wrapper.IsPerTensor(),
-                      "FC's INT16 weight inputs only support INT16 per-tensor quantization");
+    RETURN_IF_NOT(quant_param_wrapper.IsPerTensor(),
+                  "FC's INT16 weight inputs only support INT16 per-tensor quantization");
 
     // Pop Conv weight. Insert Convert op after Weight
     input_names.pop_back();
     std::string convert_output_name = utils::GetUniqueName(weight_input_name, "_convert");
 
-    ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
-                                               weight_input_name,
-                                               convert_output_name,
-                                               QNN_DATATYPE_UFIXED_POINT_16,
-                                               QNN_DATATYPE_SFIXED_POINT_16,
-                                               quant_param.scaleOffsetEncoding.offset,
-                                               quant_param.scaleOffsetEncoding.scale,
-                                               transformed_input1_shape,
-                                               true,  // Symmetric
-                                               do_op_validation));
+    RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
+                                           weight_input_name,
+                                           convert_output_name,
+                                           QNN_DATATYPE_UFIXED_POINT_16,
+                                           QNN_DATATYPE_SFIXED_POINT_16,
+                                           quant_param.scaleOffsetEncoding.offset,
+                                           quant_param.scaleOffsetEncoding.scale,
+                                           transformed_input1_shape,
+                                           true,  // Symmetric
+                                           do_op_validation));
     input_names.push_back(convert_output_name);
   }
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                                    std::vector<std::string>&& input_names,
-                                                    const logging::Logger& /*logger*/, bool do_op_validation) const {
+Ort::Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                         const OrtNodeUnit& node_unit,
+                                                         std::vector<std::string>&& input_names,
+                                                         const Ort::Logger& /*logger*/, bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   TensorInfo input_info_0{};
   TensorInfo input_info_1{};
   bool use_fully_connected = false;
-  ORT_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       CheckInputs(qnn_model_wrapper, inputs[0], inputs[1], input_info_0, input_info_1, use_fully_connected));
   bool reshape_input_0 = input_info_0.shape.size() == 1;
   bool reshape_input_1 = input_info_1.shape.size() == 1;
@@ -408,10 +412,10 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_model_wrapper.AddParamWrapper(std::move(transpose_in1_param));
   }
 
-  const std::string& org_output_name = node_unit.Outputs()[0].node_arg.Name();
+  const std::string& org_output_name = node_unit.Outputs()[0].name;
   std::string op_output_name = org_output_name;
   TensorInfo output_info{};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
   std::vector<uint32_t> op_output_shape = output_info.shape;
   QnnQuantParamsWrapper op_output_quant_param = output_info.quant_param.Copy();
   if (reshape_output) {
@@ -420,7 +424,7 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
       op_output_shape = {std::accumulate(input_info_0.shape.begin(), input_info_0.shape.end() - 1,
                                          static_cast<uint32_t>(1), std::multiplies<uint32_t>()),
                          reshape_input_1 ? 1 : input_info_1.shape.back()};
-      ORT_ENFORCE(!op_output_quant_param.IsPerChannel());
+      RETURN_IF(op_output_quant_param.IsPerChannel(), "QNN MatMul output does not support per-channel quant.");
     } else {
       // If both inputs are 1D tensors, the output shape is [1] instead of scalar. So if both inputs are 1D tensors,
       // we only need to add one "1" to the op_output_shape.
@@ -429,7 +433,7 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
       } else if (reshape_input_0) {
         op_output_shape.insert(op_output_shape.end() - 1, 1);
       }
-      ORT_RETURN_IF_ERROR(op_output_quant_param.HandleUnsqueeze<uint32_t>(output_info.shape, op_output_shape));
+      RETURN_IF_ERROR(op_output_quant_param.HandleUnsqueeze<uint32_t>(output_info.shape, op_output_shape));
     }
   }
 
@@ -439,21 +443,21 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
       is_op_output_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper op_output_tensor_wrapper(op_output_name, op_output_tensor_type, output_info.qnn_data_type,
                                             op_output_quant_param.Copy(), std::vector<uint32_t>(op_output_shape));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(op_output_tensor_wrapper)),
-                    "Failed to add output tensor.");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit), QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    use_fully_connected ? QNN_OP_FULLY_CONNECTED : QNN_OP_MAT_MUL,
-                                                    std::move(input_names), {op_output_name},
-                                                    std::move(param_tensor_names), do_op_validation),
-                    "Failed to add fused Matmul node.");
+  RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(op_output_tensor_wrapper)),
+                "Failed to add output tensor.");
+  RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit), QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                use_fully_connected ? QNN_OP_FULLY_CONNECTED : QNN_OP_MAT_MUL,
+                                                std::move(input_names), {op_output_name},
+                                                std::move(param_tensor_names), do_op_validation),
+                "Failed to add fused Matmul node.");
 
   if (reshape_output) {
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(
+    RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(
         op_output_name, org_output_name, op_output_shape, output_info.shape, output_info.qnn_data_type,
         op_output_quant_param, output_info.quant_param, do_op_validation, false, is_graph_output));
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 void CreateMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

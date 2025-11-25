@@ -8,6 +8,7 @@
 #include "core/framework/ort_value.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/tensorprotoutils.h"
 
 #include "test/util/include/asserts.h"
@@ -194,6 +195,101 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
+  if (verify_outputs) {
+    VerifyOutputs(output_names, expected_fetches, fetches, params);
+  }
+
+  if (params.graph_verifier) {
+    (*params.graph_verifier)(graph2);
+  }
+}
+
+void RunWithEPABI(OrtSessionWrapper* ort_session,
+                  const Ort::RunOptions& ort_ro,
+                  const NameMLValMap& feeds,
+                  std::vector<OrtValue>& output_vals) {
+  const auto& graph = ort_session->GetGraph();
+
+  // Fetch all inputs.
+  std::vector<const char*> ort_input_names;
+  std::vector<const OrtValue*> inputs;
+  for (const auto* node_arg : graph.GetInputs()) {
+    const std::string& input_name = node_arg->Name();
+    ort_input_names.push_back(input_name.c_str());
+    inputs.push_back(&feeds.at(input_name));
+  }
+  auto ort_inputs = reinterpret_cast<const Ort::Value*>(inputs.data());
+
+  // Fetch all outputs.
+  std::vector<const char*> ort_output_names;
+  for (const auto* node_arg : graph.GetOutputs()) {
+    if (node_arg->Exists()) {
+      ort_output_names.push_back(node_arg->Name().c_str());
+    }
+  }
+
+  // Run.
+  std::vector<Ort::Value> ort_fetches = ort_session->Run(ort_ro,
+                                                         ort_input_names.data(),
+                                                         ort_inputs,
+                                                         inputs.size(),
+                                                         ort_output_names.data(),
+                                                         ort_output_names.size());
+  auto fetches_data = reinterpret_cast<OrtValue**>(ort_fetches.data());
+  for (size_t output_idx = 0; output_idx < ort_output_names.size(); ++output_idx) {
+    output_vals.push_back(*fetches_data[output_idx]);
+  }
+}
+
+void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
+                                  Ort::SessionOptions& ort_so,
+                                  const std::string& provider_type,
+                                  std::string_view log_id,
+                                  const NameMLValMap& feeds,
+                                  const EPVerificationParams& params,
+                                  bool verify_outputs) {
+  std::vector<std::byte> model_data_buffer{};
+  const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
+
+  SessionOptions so;
+  so.session_logid = log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  //
+  // get expected output from CPU EP
+  //
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto& graph = session_object.GetGraph();
+  const auto& outputs = graph.GetOutputs();
+
+  // fetch all outputs
+  std::vector<std::string> output_names;
+  output_names.reserve(outputs.size());
+  for (const auto* node_arg : outputs) {
+    if (node_arg->Exists()) {
+      output_names.push_back(node_arg->Name());
+    }
+  }
+
+  std::vector<OrtValue> expected_fetches;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
+
+  // Run with EP and verify the result
+  OrtSessionWrapper ort_session(*GetOrtEnv(), model_data.data(), static_cast<int>(model_data.size()), ort_so);
+
+  const auto& graph2 = ort_session.GetGraph();
+  ASSERT_NO_FATAL_FAILURE(VerifyEPNodeAssignment(graph2, provider_type, params.ep_node_assignment));
+
+  Ort::RunOptions ort_run_options;
+  ort_run_options.SetRunTag(log_id.data());
+
+  std::vector<OrtValue> fetches;
+  RunWithEPABI(&ort_session, ort_run_options, feeds, fetches);
+
   if (verify_outputs) {
     VerifyOutputs(output_names, expected_fetches, fetches, params);
   }

@@ -7,8 +7,8 @@
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -26,18 +26,18 @@ static void RunLeakyReluOpQDQTest(const TestInputDef<float>& input_def,
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  TestQDQModelAccuracy(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
-                       BuildQDQOpTestCase<QuantType>("LeakyRelu", {input_def}, {}, attrs),
-                       provider_options,
-                       opset,
-                       expected_ep_assignment);
+  TestQDQModelAccuracyABI(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
+                          BuildQDQOpTestCase<QuantType>("LeakyRelu", {input_def}, {}, attrs),
+                          provider_options,
+                          opset,
+                          expected_ep_assignment);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
-TEST_F(QnnHTPBackendTests, LeakyReluOpSet15) {
+TEST_F(QnnABIHTPBackendTests, LeakyReluOpSet15) {
   RunLeakyReluOpQDQTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 0.0f, 10.0f, 30.0f, 40.0f}),
                                  {utils::MakeAttribute("alpha", 0.2f)},
                                  15,
@@ -48,7 +48,7 @@ TEST_F(QnnHTPBackendTests, LeakyReluOpSet15) {
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
-TEST_F(QnnHTPBackendTests, LeakyReluOpSet16) {
+TEST_F(QnnABIHTPBackendTests, LeakyReluOpSet16) {
   RunLeakyReluOpQDQTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 0.0f, 10.0f, 30.0f, 40.0f}),
                                  {utils::MakeAttribute("alpha", 0.2f)},
                                  16,
@@ -56,19 +56,19 @@ TEST_F(QnnHTPBackendTests, LeakyReluOpSet16) {
 }
 
 // Test Leaky Relu where input is FP16 and alpha is FP32
-TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
+TEST_F(QnnABIHTPBackendTests, LeakyReluFP16OpSet16) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto input_def = TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 1.0f, 10.0f, 30.0f, 40.0f});
-  TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDef(input_def);
+  TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDefABI(input_def);
   auto attrs = {utils::MakeAttribute("alpha", 0.2f)};
-  TestFp16ModelAccuracy(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
-                        BuildOpTestCase<MLFloat16>("LeakyRelu", {input_fp16_def}, {}, attrs),
-                        provider_options,
-                        16,
-                        ExpectedEPNodeAssignment::All);
+  TestFp16ModelAccuracyABI(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
+                           BuildOpTestCase<MLFloat16>("LeakyRelu", {input_fp16_def}, {}, attrs),
+                           provider_options,
+                           16,
+                           ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

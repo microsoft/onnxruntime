@@ -6,8 +6,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
+#include "test/providers/qnn-abi/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "core/graph/onnx_protobuf.h"
 
@@ -71,11 +71,11 @@ static void RunCPULRNOpTest(const TestInputDef<float>& input_def, int64_t size,
   provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(BuildLRNTestCase(input_def, size, alpha, beta, bias),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment,
-                  fp32_abs_err);
+  RunQnnModelTestABI(BuildLRNTestCase(input_def, size, alpha, beta, bias),
+                     provider_options,
+                     opset,
+                     expected_ep_assignment,
+                     fp32_abs_err);
 }
 
 // Runs an LRN model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -89,31 +89,31 @@ static void RunQDQLRNOpTest(const TestInputDef<float>& input_def, int64_t size,
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  TestQDQModelAccuracy(BuildLRNTestCase(input_def, size, alpha, beta, bias),
-                       BuildQDQLRNTestCase<QuantType>(input_def, size, alpha, beta, bias),
-                       provider_options,
-                       opset,
-                       expected_ep_assignment,
-                       tolerance);
+  TestQDQModelAccuracyABI(BuildLRNTestCase(input_def, size, alpha, beta, bias),
+                          BuildQDQLRNTestCase<QuantType>(input_def, size, alpha, beta, bias),
+                          provider_options,
+                          opset,
+                          expected_ep_assignment,
+                          tolerance);
 }
 
 //
 // CPU tests:
 //
 
-TEST_F(QnnCPUBackendTests, LRNSize3) {
+TEST_F(QnnABICPUBackendTests, LRNSize3) {
   RunCPULRNOpTest(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                   3,  // Size
                   ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LRNSize5) {
+TEST_F(QnnABICPUBackendTests, LRNSize5) {
   RunCPULRNOpTest(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                   5,  // Size
                   ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, LRN_size_larger_than_channel) {
+TEST_F(QnnABICPUBackendTests, LRN_size_larger_than_channel) {
   RunCPULRNOpTest(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                   255,  // Size
                   ExpectedEPNodeAssignment::All);
@@ -132,9 +132,9 @@ TEST_F(QnnCPUBackendTests, LRN_size_larger_than_channel) {
 // qdq@CPU_EP val: -9.5258598327636719 (err: 0.038257598876953125, err/output_range: 0.19214680790901184%)
 // abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 0.40001851320266724%
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
-TEST_F(QnnHTPBackendTests, DISABLED_LRNSize3) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LRNSize3) {
 #else
-TEST_F(QnnHTPBackendTests, LRNSize3) {
+TEST_F(QnnABIHTPBackendTests, LRNSize3) {
 #endif
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            3,  // Size
@@ -153,9 +153,9 @@ TEST_F(QnnHTPBackendTests, LRNSize3) {
 // qdq@CPU_EP val: -5.3878731727600098 (err: 0.037573337554931641, err/output_range: 0.18869975209236145%)
 // abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 0.40691488981246948%
 #if defined(__aarch64__)
-TEST_F(QnnHTPBackendTests, DISABLED_LRNSize5) {
+TEST_F(QnnABIHTPBackendTests, DISABLED_LRNSize5) {
 #else
-TEST_F(QnnHTPBackendTests, LRNSize5) {
+TEST_F(QnnABIHTPBackendTests, LRNSize5) {
 #endif
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            5,  // Size
@@ -166,7 +166,7 @@ TEST_F(QnnHTPBackendTests, LRNSize5) {
                            13);      // opset
 }
 
-TEST_F(QnnHTPBackendTests, LRN_size_larger_than_channel) {
+TEST_F(QnnABIHTPBackendTests, LRN_size_larger_than_channel) {
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            255,  // Size
                            ExpectedEPNodeAssignment::All,
