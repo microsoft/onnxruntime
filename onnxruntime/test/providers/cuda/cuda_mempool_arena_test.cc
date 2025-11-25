@@ -89,7 +89,9 @@ static ::cudaStream_t NewCudaStream() {
 }
 
 static void DestroyCudaStream(::cudaStream_t s) {
-  if (s) EXPECT_EQ(cudaSuccess, ::cudaStreamDestroy(s));
+  if (s) {
+    EXPECT_EQ(cudaSuccess, ::cudaStreamDestroy(s));
+  }
 }
 
 static void TouchDevice(void* p, size_t bytes, ::cudaStream_t s, unsigned char value = 0xAB) {
