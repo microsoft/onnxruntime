@@ -3642,7 +3642,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<BFCArena*>(alloc.get())->Shrink();
+    auto status = static_cast<IArena*>(alloc.get())->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()

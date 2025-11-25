@@ -472,7 +472,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
       }
       ss << ": array<";
       if (is_atomic) {
-        if (output->type_ == ProgramVariableDataType::Float32) {
+        if (output->type_ == ProgramVariableDataType::Float32 || output->type_ == ProgramVariableDataType::Float16x4 || output->type_ == ProgramVariableDataType::Float32x4) {
           ss << "atomic<i32>";  // emulate float atomic via i32
         } else if (output->type_ == ProgramVariableDataType::Uint32) {
           ss << "atomic<u32>";

@@ -152,6 +152,13 @@ class ComputeContext final {
     return webgpu_context_.Run(*this, program);
   }
 
+  //
+  // Get Split-K configuration.
+  //
+  // `split_k_config_` won't be initialized until the first call to this method.
+  //
+  const SplitKConfig& GetSplitKConfig();
+
  private:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
