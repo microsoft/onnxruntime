@@ -32,7 +32,7 @@ class Conv : public WebGpuKernel {
  protected:
   ConvAttributes conv_attrs_;
   Activation activation_;
-  std::unique_ptr<Tensor> transposed_kernel_;  // should only has value when `is_initializer` AND `is_4D` AND `is_NHWC`
+  std::unique_ptr<Tensor> transposed_kernel_;  // should only have value when `is_initializer` AND `is_4D` AND `is_NHWC`
 };
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);
