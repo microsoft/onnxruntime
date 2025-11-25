@@ -3486,6 +3486,10 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 
 template <typename T>
 void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
+  if (session_profiler_.IsEnabled()) {
+    LOGS(*session_logger_, WARNING) << "Profiler is already running.";
+    return;
+  }
   std::basic_ostringstream<T> ss;
   ss << file_prefix << "_" << GetCurrentTimeString<T>() << ".json";
   session_profiler_.StartProfiling(ss.str());
