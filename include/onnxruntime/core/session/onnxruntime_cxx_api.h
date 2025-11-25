@@ -2768,6 +2768,8 @@ struct KernelInfoImpl : Base<T> {
 
   std::string GetNodeName() const;
   Logger GetLogger() const;
+
+  KeyValuePairs GetConfigEntries() const;
 };
 
 }  // namespace detail
