@@ -28,6 +28,28 @@ from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, Te
 from onnxruntime.quantization.quant_utils import quantize_nparray
 
 
+# TODO(titaiwang and justinchuby): What is the recommendation here after onnx deleted this function?
+def _unpack_single_4bitx2(x: np.ndarray | np.dtype | float, signed: bool) -> tuple[np.ndarray, np.ndarray]:
+    def unpack_signed(x):
+        return np.where((x >> 3) == 0, x, x | 0xF0)
+
+    """Unpack a single byte 4bitx2 to two 4 bit elements
+    Args:
+        x: Input data
+        signed: boolean, whether to interpret as signed int4.
+    Returns:
+        A tuple of ndarrays containing int4 elements (sign-extended to int8/uint8)
+    """
+    if not isinstance(x, np.ndarray):
+        x = np.asarray(x)
+    x_low = x & 0x0F
+    x_high = x >> 4
+    x_low = unpack_signed(x_low) if signed else x_low
+    x_high = unpack_signed(x_high) if signed else x_high
+    dtype = np.int8 if signed else np.uint8
+    return (x_low.astype(dtype), x_high.astype(dtype))
+
+
 class TestQDQFormat(unittest.TestCase):
     def input_feeds(self, n, name2shape, np_float_type=np.float32):
         input_data_list = []
@@ -1653,7 +1675,7 @@ class TestQDQ4bit(TestQDQFormat):
             float_data = weight_data.flatten().tolist()
             for index, float_val in enumerate(float_data):
                 expected_int4_val = np.clip(np.float32(float_val / scale_val).round() + zp_val, -8, 7)
-                int4_pair = onnx.subbyte.unpack_single_4bitx2(weight_quant_init.raw_data[index >> 1], True)
+                int4_pair = _unpack_single_4bitx2(weight_quant_init.raw_data[index >> 1], True)
                 int4_val = int4_pair[index & 0x1]
 
                 self.assertEqual(np.float32(int4_val), expected_int4_val)
