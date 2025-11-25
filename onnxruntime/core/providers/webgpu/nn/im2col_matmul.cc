@@ -107,8 +107,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(kernel_shape[2]);
   const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(kernel_shape[3]);
 
-  TensorShape nhwc_kernel_shape{channel_output, kernel_height, kernel_width, channel_input};
-  Tensor nhwc_kernel = context.CreateGPUTensor(kernel->DataType(), nhwc_kernel_shape);
+  TensorShape ohwi_kernel_shape{channel_output, kernel_height, kernel_width, channel_input};
+  Tensor ohwi_kernel = context.CreateGPUTensor(kernel->DataType(), ohwi_kernel_shape);
   OIHW2OHWIProgram transpose_program{};
   transpose_program.SetWorkgroupSize(64);
 
@@ -117,7 +117,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
 
   transpose_program.AddInput({kernel,
                               ProgramTensorMetadataDependency::TypeAndRank});
-  transpose_program.AddOutput({&nhwc_kernel,
+  transpose_program.AddOutput({&ohwi_kernel,
                                ProgramTensorMetadataDependency::TypeAndRank});
   transpose_program.AddUniformVariables({{channel_output},
                                          {channel_input},
@@ -143,6 +143,11 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
 
   const auto [tile_m, tile_n] = ChooseTileSize(im2col_m, im2col_n);
   const uint32_t workgroup_size = tile_n;
+
+  // Check the device's subgroup size before shader compilation to avoid potential performance penalties
+  // associated with conditional checks in the shader runtime.
+  // Ensure the subgroup size must be greater than or equal to `tile_m` to safely enable `use_subgroup`.
+  // If this condition is not met, the feature must be disabled.
   const bool use_subgroup = true;
   Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, use_subgroup};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
@@ -154,7 +159,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   im2col_mm_program.AddInput({input,
                               ProgramTensorMetadataDependency::TypeAndRank,
                               4});
-  im2col_mm_program.AddInput({&nhwc_kernel,
+  im2col_mm_program.AddInput({&ohwi_kernel,
                               ProgramTensorMetadataDependency::TypeAndRank,
                               4});
   if (has_bias) {
