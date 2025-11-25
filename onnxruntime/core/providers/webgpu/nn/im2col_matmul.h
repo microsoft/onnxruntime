@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
