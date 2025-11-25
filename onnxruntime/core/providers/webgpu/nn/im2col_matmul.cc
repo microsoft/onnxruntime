@@ -96,28 +96,28 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const std::vector<uint32_t>& strides,
                                 Tensor* output) {
   const auto* input = context.Input<Tensor>(0);
-  const auto* kernel = context.Input<Tensor>(1);
+  const auto* weight = context.Input<Tensor>(1);
   const bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
 
   // Transpose OIHW Weight to OHWI
-  TensorShape kernel_shape = kernel->Shape();
-  const uint32_t channel_output = onnxruntime::narrow<uint32_t>(kernel_shape[0]);
-  const uint32_t channel_input = onnxruntime::narrow<uint32_t>(kernel_shape[1]);
-  const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(kernel_shape[2]);
-  const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(kernel_shape[3]);
+  TensorShape weight_shape = weight->Shape();
+  const uint32_t channel_output = onnxruntime::narrow<uint32_t>(weight_shape[0]);
+  const uint32_t channel_input = onnxruntime::narrow<uint32_t>(weight_shape[1]);
+  const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(weight_shape[2]);
+  const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(weight_shape[3]);
 
-  TensorShape ohwi_kernel_shape{channel_output, kernel_height, kernel_width, channel_input};
-  Tensor ohwi_kernel = context.CreateGPUTensor(kernel->DataType(), ohwi_kernel_shape);
+  TensorShape ohwi_weight_shape{channel_output, kernel_height, kernel_width, channel_input};
+  Tensor ohwi_weight = context.CreateGPUTensor(weight->DataType(), ohwi_weight_shape);
   OIHW2OHWIProgram transpose_program{};
   transpose_program.SetWorkgroupSize(64);
 
   const uint32_t Ci_tiles = ceil_div(channel_input, 64u);
   transpose_program.SetDispatchGroupSize(channel_output, Ci_tiles);
 
-  transpose_program.AddInput({kernel,
+  transpose_program.AddInput({weight,
                               ProgramTensorMetadataDependency::TypeAndRank});
-  transpose_program.AddOutput({&ohwi_kernel,
+  transpose_program.AddOutput({&ohwi_weight,
                                ProgramTensorMetadataDependency::TypeAndRank});
   transpose_program.AddUniformVariables({{channel_output},
                                          {channel_input},
@@ -159,7 +159,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   im2col_mm_program.AddInput({input,
                               ProgramTensorMetadataDependency::TypeAndRank,
                               4});
-  im2col_mm_program.AddInput({&ohwi_kernel,
+  im2col_mm_program.AddInput({&ohwi_weight,
                               ProgramTensorMetadataDependency::TypeAndRank,
                               4});
   if (has_bias) {
@@ -193,7 +193,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
 bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
                                  const bool is_channels_last,
                                  const ActivationKind activation_kind,
-                                 const TensorShape kernel_shape,
+                                 const TensorShape weight_shape,
                                  const AutoPadType auto_pad,
                                  const uint32_t group) {
   if (!IsDeviceSupported(context)) {
@@ -209,14 +209,14 @@ bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
   }
 
   // TODO: Support conv2d_1x1
-  const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(kernel_shape[2]);
-  const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(kernel_shape[3]);
+  const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(weight_shape[2]);
+  const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(weight_shape[3]);
   if (kernel_height == 1 && kernel_width == 1) {
     return false;
   }
 
   // TODO: Support channel input vec1
-  const uint32_t channel_input = onnxruntime::narrow<uint32_t>(kernel_shape[1]);
+  const uint32_t channel_input = onnxruntime::narrow<uint32_t>(weight_shape[1]);
   if (channel_input % 4 != 0) {
     return false;
   }
