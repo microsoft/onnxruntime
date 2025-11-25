@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <mutex>
 
 #include "core/framework/error_code_helper.h"
 #include "core/providers/webgpu/buffer_manager.h"
@@ -16,12 +17,13 @@
 using namespace onnxruntime::webgpu::options;
 
 namespace onnxruntime {
-// Helper to get default context config, buffer cache config, backend type, and enable_pix_capture
+// Helper struct that holds configuration parameters for creating a WebGPU context with default settings.
+// This is used during lazy initialization of the data transfer to create a context if one doesn't exist.
 struct WebGpuContextParams {
-  webgpu::WebGpuContextConfig context_config;
-  webgpu::WebGpuBufferCacheConfig buffer_cache_config;
-  int backend_type;
-  bool enable_pix_capture;
+  webgpu::WebGpuContextConfig context_config;           // WebGPU context configuration
+  webgpu::WebGpuBufferCacheConfig buffer_cache_config;  // Buffer cache settings
+  int backend_type;                                     // Dawn backend type (D3D12, Vulkan, etc.)
+  bool enable_pix_capture;                              // Enable PIX GPU capture for debugging
 };
 
 static WebGpuContextParams GetDefaultWebGpuContextParams() {
@@ -336,11 +338,12 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
         data_transfer_{nullptr},
-        context_id_{-1} {
+        context_id_{-1},
+        init_mutex_{} {
     ort_version_supported = ORT_API_VERSION;
-    CanCopy = CanCopyImpl;
-    CopyTensors = CopyTensorsImpl;
-    Release = ReleaseImpl;
+    CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback
+    CopyTensors = CopyTensorsImpl;  // OrtDataTransferImpl::CopyTensors callback
+    Release = ReleaseImpl;          // OrtDataTransferImpl::Release callback
   }
 
   static bool CanCopyImpl(const OrtDataTransferImpl* this_ptr,
@@ -414,24 +417,40 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       }
     }
 
-    // Initialize data_transfer if not already done or if context_id changed
-    if (impl.data_transfer_ == nullptr || impl.context_id_ != context_id) {
-      impl.context_id_ = context_id;
-
-      // Check if context exists, create a default one if it doesn't
-      webgpu::WebGpuContext* context_ptr = nullptr;
-      if (webgpu::WebGpuContextFactory::HasContext(context_id)) {
-        context_ptr = &webgpu::WebGpuContextFactory::GetContext(context_id);
-      } else {
-        WebGpuContextParams params = GetDefaultWebGpuContextParams();
-        params.context_config.context_id = context_id;
-        context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
-        context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
-      }
-
-      // Create the DataTransfer instance
-      impl.data_transfer_ = std::make_unique<webgpu::DataTransfer>(context_ptr->BufferManager());
+    // If no GPU tensor found, return an error as this indicates an invalid state
+    // CanCopy should have rejected CPU-only tensor copies
+    if (!found_gpu_tensor) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "No GPU tensor found in CopyTensors call - all tensors are CPU-only. "
+                                   "This indicates an invalid call as CanCopy should have rejected this.");
     }
+
+    // Initialize data_transfer if not already done or if context_id changed
+    // Use mutex to ensure thread-safe lazy initialization
+    {
+      std::lock_guard<std::mutex> lock(impl.init_mutex_);
+
+      if (impl.data_transfer_ == nullptr || impl.context_id_ != context_id) {
+        impl.context_id_ = context_id;
+
+        // Check if context exists, create a default one if it doesn't
+        webgpu::WebGpuContext* context_ptr = nullptr;
+        if (webgpu::WebGpuContextFactory::HasContext(context_id)) {
+          context_ptr = &webgpu::WebGpuContextFactory::GetContext(context_id);
+        } else {
+          WebGpuContextParams params = GetDefaultWebGpuContextParams();
+          params.context_config.context_id = context_id;
+          context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
+          context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
+        }
+
+        // Create the DataTransfer instance
+        // Note: The DataTransfer holds a const reference to BufferManager. The BufferManager's lifecycle
+        // is managed by the WebGpuContext, which is stored in a static WebGpuContextFactory and persists
+        // for the lifetime of the application, ensuring the reference remains valid.
+        impl.data_transfer_ = std::make_unique<webgpu::DataTransfer>(context_ptr->BufferManager());
+      }
+    }  // Release lock
 
     // Now perform the actual tensor copy
     for (size_t idx = 0; idx < num_tensors; ++idx) {
@@ -453,10 +472,17 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
   const OrtEpApi& ep_api;
   std::unique_ptr<webgpu::DataTransfer> data_transfer_;  // Lazy-initialized
   int context_id_;                                       // Track which context we're using
+  std::mutex init_mutex_;                                // Protects lazy initialization
 };
 
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer() {
-  return new WebGpuDataTransferImpl(*OrtApis::GetApi(ORT_API_VERSION));
+  // Validate API version is supported
+  const OrtApi* api = OrtApis::GetApi(ORT_API_VERSION);
+  if (!api) {
+    // API version not supported - return nullptr to indicate failure
+    return nullptr;
+  }
+  return new WebGpuDataTransferImpl(*api);
 }
 
 }  // namespace onnxruntime
