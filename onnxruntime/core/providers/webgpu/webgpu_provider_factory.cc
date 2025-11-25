@@ -350,7 +350,29 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     OrtMemoryInfoDeviceType src_type = impl.ep_api.MemoryDevice_GetDeviceType(src_memory_device);
     OrtMemoryInfoDeviceType dst_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_memory_device);
 
-    // WebGPU supports GPU<->GPU, GPU<->CPU copies
+    // Check if at least one device is GPU
+    bool has_gpu = (src_type == OrtMemoryInfoDeviceType_GPU) || (dst_type == OrtMemoryInfoDeviceType_GPU);
+    if (!has_gpu) {
+      return false;
+    }
+
+    // WebGPU uses vendor ID 0 (VendorIds::NONE). Only handle GPU devices with vendor ID 0.
+    // This prevents attempting to copy data for other EPs' fake GPU devices (e.g., example EP with vendor 0xBE57)
+    if (src_type == OrtMemoryInfoDeviceType_GPU) {
+      uint32_t src_vendor = impl.ep_api.MemoryDevice_GetVendorId(src_memory_device);
+      if (src_vendor != 0) {
+        return false;  // Not a WebGPU device
+      }
+    }
+
+    if (dst_type == OrtMemoryInfoDeviceType_GPU) {
+      uint32_t dst_vendor = impl.ep_api.MemoryDevice_GetVendorId(dst_memory_device);
+      if (dst_vendor != 0) {
+        return false;  // Not a WebGPU device
+      }
+    }
+
+    // WebGPU supports GPU<->GPU, GPU<->CPU copies (where GPU has vendor ID 0)
     return (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) ||
            (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_CPU) ||
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
