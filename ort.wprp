@@ -17,11 +17,6 @@
         <Keyword Value="0x1"/> <!-- Session rundown -->
       </CaptureStateOnSave>
     </EventProvider>
-
-    <!-- OpenVINO EP provider -->
-    <EventProvider Id="EventProvider_OpenVINOExecutionProvider"
-      Name="b5a8c2e1-4d7f-4a3b-9c2e-1f8e5a6b7c9d" Level="5" />
-
     <Profile Id="OrtTraceLoggingProvider.Verbose.File"
       Name="OrtTraceLoggingProvider" Description="OrtTraceLoggingProvider"
       LoggingMode="File" DetailLevel="Verbose">
@@ -29,7 +24,6 @@
         <EventCollectorId Value="EventCollector_OrtTraceLoggingProvider">
           <EventProviders>
             <EventProviderId Value="EventProvider_OrtTraceLoggingProvider" />
-            <EventProviderId Value="EventProvider_OpenVINOExecutionProvider" />
           </EventProviders>
         </EventCollectorId>
       </Collectors>
