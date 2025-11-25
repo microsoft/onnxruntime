@@ -358,7 +358,7 @@ Status CreateOrValidateOnQnn(
     std::vector<std::string> transpose_output_names = {t2_name};
 
     ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(
-                          utils::GetUniqueName(*transpose),
+                          utils::GetNodeName(*transpose),
                           QNN_OP_PACKAGE_NAME_QTI_AISW,
                           QNN_OP_TRANSPOSE,
                           std::move(transpose_input_names),
