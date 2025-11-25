@@ -5,23 +5,15 @@
 //
 
 #include "mlasi_kleidiai.h"
-#include <float.h>
-
-#include <cstddef>
 #include <algorithm>
-#include <cassert>
-#include <cmath>
-#include <iomanip>
+#include <cstddef>
 #include <iostream>
-#include <random>
-#include <sstream>
+#include <stdexcept>
 #include <vector>
 
 #include "kai/kai_common.h"
 #include "kai/ukernels/dwconv/dwconv_f32_f32_f32p/kai_dwconv_clamp_f32_f32_f32p1vlx1b_3x3_s1_4xc_sme2_mla.h"
 #include "kai/ukernels/dwconv/pack/kai_rhs_dwconv_pack_x32p1vlx1b_x32_x32_sme.h"
-
-using VEC_TYPE = std::vector<float>;
 
 struct Padding2D {
     size_t left = 0;
@@ -61,15 +53,6 @@ struct Shape {
     }
 };
 
-void print_raw(const Shape& shape, const char* name, const VEC_TYPE& src) {
-    std::cout << "\n\n" << name << " = [";
-    for (size_t i = 0; i < shape.size(); i++) {
-        if (i != 0) std::cout << " , ";
-        std::cout << std::setprecision(1) << std::fixed << (float)src[i];
-    }
-    std::cout << "]\n";
-}
-
 static void ConvertNchwToNhwc(const float* src,
                               float* dst,
                               size_t batches,
@@ -98,6 +81,8 @@ static void ConvertNchwToNhwc(const float* src,
     }
 }
 
+
+/// Convert input to NHWC from MLAS Default NCHW to ensure KleidiAI kernel compatibility
 static void ConvertNhwcToNchw(const float* src,
                               float* dst,
                               size_t batches,
@@ -126,6 +111,21 @@ static void ConvertNhwcToNchw(const float* src,
     }
 }
 
+struct DwconvTlsBuffers {
+    std::vector<float> feature_map_nhwc;
+    std::vector<float> weights_hwcn;
+    std::vector<uint8_t> weights_packed;
+    std::vector<float> nhwc_out;
+    std::vector<float> bias_fallback;
+};
+
+static thread_local DwconvTlsBuffers g_dwconv_tls;
+constexpr size_t kDwconvRowsPerTile = 4;
+constexpr size_t kDwconvColsPerTile = 4;
+
+/// Rearranges depthwise-filter weights from channel-major (C x H x W) layout
+/// into an HWCN layout so each (kh, kw) tap stores all channel weights
+/// contiguously and matches what is expected from the kleidiai kernel.
 static void ConvertDepthwiseWeightsToHwcn(const float* src,
                                           float* dst,
                                           size_t channels,
@@ -143,78 +143,12 @@ static void ConvertDepthwiseWeightsToHwcn(const float* src,
     }
 }
 
-/// Depthwise Convolution - Expects NHWC dataformat. Padding value is 0.
-///
-/// @tparam T Data type.
-///
-/// @param[in] batches   Batch dimension of feature map.
-/// @param[in] in_height height of feature map.
-/// @param[in] in_width  width of feature map.
-/// @param[in] channels  Number of channels in feature map.
-/// @param[in] filter_height Height dimension in filter.
-/// @param[in] filter_width  Width of convolution filter.
-/// @param[in] feature_map Ptr to start of feature map.
-/// @param[in] weights Ptr to start of weights buffer/tensor.
-/// @param[in] bias Ptr to start of bias buffer.
-/// @param[in] clamp_min float value to clamp output to (lower bound).
-/// @param[in] clamp_max float value to clamp output to (upper bound).
-///
-/// @return The result data buffer.
-void DepthwiseReference(const size_t batches, const size_t in_height, const size_t in_width, const size_t channels,
-    const size_t filter_height, const size_t filter_width, const void* feature_map, const void* weights,
-    const void* bias, void* out, float clamp_min, float clamp_max){
-            // Calculate output dims (Padding = Valid).
-    const Padding2D padding = Padding2D{}; //Using default padding value
-    const size_t out_height = (in_height + padding.top + padding.bottom + 1 - filter_height);
-    const size_t out_width = in_width + padding.left + padding.right + 1 - filter_width;
-    const size_t out_size = out_height * out_width * batches * channels;
-
-    // We accumulate in FP32 and clamp and cast to return type later.
-    std::vector<float> acc(out_size, 0.0f);
-
-    for (size_t b = 0; b < batches; ++b) {
-        for (size_t out_h = 0; out_h < out_height; ++out_h) {
-            for (size_t out_w = 0; out_w < out_width; ++out_w) {
-                const size_t out_base = ((b * out_height + out_h) * out_width + out_w) * channels;
-
-                // Apply filter to feature map.
-                for (size_t ic = 0; ic < channels; ++ic) {
-                    float sum = 0.0f;
-
-                    for (size_t kernel_h = 0; kernel_h < filter_height; ++kernel_h) {
-                        // Determine if input height bounds. If not, then this is padding.
-                        const int in_y = static_cast<int>(out_h + kernel_h) - static_cast<int>(padding.top);
-                        if (in_y < 0 || in_height <= static_cast<size_t>(in_y)) continue;
-
-                        for (size_t kernel_w = 0; kernel_w < filter_width; ++kernel_w) {
-                            // Determine if in input width bounds, if not this is padding.
-                            const int in_x = static_cast<int>(out_w + kernel_w) - static_cast<int>(padding.left);
-                            if (in_x < 0 || in_width <= static_cast<size_t>(in_x)) continue;
-
-                            auto in_idx = ((b * in_height + in_y) * in_width + in_x) * channels + ic;
-                            auto weights_idx = ((kernel_h * filter_width) + kernel_w) * channels + ic;
-
-                            auto wei_value = reinterpret_cast<const float*>(weights)[weights_idx];
-                            auto in_value = reinterpret_cast<const float*>(feature_map)[in_idx];
-
-                            // Perform actual accumulation and store in output vector
-                            sum += in_value * wei_value;
-                        }
-                    }
-
-                    auto out_idx = out_base + ic;
-                    float bias_value = reinterpret_cast<const float*>(bias)[ic];
-                    sum = sum + bias_value;
-                    sum = std::clamp(sum, clamp_min, clamp_max);
-                    reinterpret_cast<float*>(out)[out_idx] = sum;
-                }
-            }
-        }
-    }
-}
-
 bool DepthwiseConvKleidiAISupported(const MLAS_CONV_PARAMETERS* Parameters) {
     if (Parameters == nullptr) {
+        return false;
+    }
+
+    if (!ArmKleidiAI::SMEInfo::CanUseSME2) {
         return false;
     }
 
@@ -297,15 +231,19 @@ bool DepthwiseConvKleidiAI(const size_t batches,
         return false;
     }
 
+    auto& tls = g_dwconv_tls;
+
     const size_t input_size = batches * in_height * in_width * channels;
-    std::vector<float> feature_map_nhwc(input_size);
+    auto& feature_map_nhwc = tls.feature_map_nhwc;
+    feature_map_nhwc.resize(input_size);
     ConvertNchwToNhwc(feature_map, feature_map_nhwc.data(), batches, channels, in_height, in_width);
 
     const size_t weights_size = filter_height * filter_width * channels;
-    std::vector<float> weights_hwcn(weights_size);
+    auto& weights_hwcn = tls.weights_hwcn;
+    weights_hwcn.resize(weights_size);
     ConvertDepthwiseWeightsToHwcn(weights, weights_hwcn.data(), channels, filter_height, filter_width);
 
-    if (out_h <= 4 || out_w <= 4) {
+    if (out_h < static_cast<int>(kDwconvRowsPerTile) || out_w < static_cast<int>(kDwconvColsPerTile)) {
         return false;
     }
 
@@ -316,20 +254,13 @@ bool DepthwiseConvKleidiAI(const size_t batches,
     Shape out_shape{batches, static_cast<size_t>(out_h), static_cast<size_t>(out_w), channels};
 
     // -------------------------------------------------
-    // 2. Calculate Reference Depthwise Values.
-    // -------------------------------------------------
-    //DepthwiseReference(
-    //    batches, in_height, in_width, channels, filter_height, filter_width, feature_map,
-    //    weights, bias, out, clamp_min, clamp_max);
-
-    // -------------------------------------------------
-    // 3. Pack weights for use in SME Kernel
+    // 2. Pack weights for use in SME Kernel
     // -------------------------------------------------
     // const size_t vec_length = kai_get_sme_vector_length_u32();
     // Bias is optional in MLAS so fall back to zeros when not supplied.
-    std::vector<float> bias_fallback;
     const float* bias_data = bias;
     if (bias_data == nullptr) {
+        auto& bias_fallback = tls.bias_fallback;
         bias_fallback.assign(channels, 0.0f);
         bias_data = bias_fallback.data();
     }
@@ -338,17 +269,19 @@ bool DepthwiseConvKleidiAI(const size_t batches,
         kai_rhs_get_dst_size_dwconv_pack_x32p1vlx1b_x32_x32_sme(filter_height, filter_width, channels);
 
     // Run packing kernel.
-    std::vector<uint8_t> weights_packed(packed_size_bytes);
+    auto& weights_packed = tls.weights_packed;
+    weights_packed.resize(packed_size_bytes);
     kai_run_rhs_dwconv_pack_x32p1vlx1b_x32_x32_sme(
         filter_height, filter_width, filter_height, filter_width, channels,
         static_cast<const void*>(weights_hwcn.data()), static_cast<const void*>(bias_data), weights_packed.data());
 
     // -------------------------------------------------
-    // 4. Kernel takes in 6 rows of input and generates
+    // 3. Kernel takes in 4 rows of input and generates
     //    rows of output across all channels at a time.
     // -------------------------------------------------
-    std::vector<float> nhwc_out_buffer(out_shape.size(), 0.0f);
-    constexpr size_t rows_handled = 4;  // no of rows kernel handles each time.
+    auto& nhwc_out_buffer = tls.nhwc_out;
+    nhwc_out_buffer.assign(out_shape.size(), 0.0f);
+    constexpr size_t rows_handled = kDwconvRowsPerTile;  // number of rows kernel handles each time.
     for (size_t out_row = 0; out_row < out_shape.h; out_row += rows_handled) {
         // Variables below used to calculate start of input pointer.
         const ptrdiff_t start_in_row = static_cast<ptrdiff_t>(out_row) - static_cast<ptrdiff_t>(padding.top);
