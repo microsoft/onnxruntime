@@ -220,6 +220,8 @@ MlasDynamicQGemmBatch (
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
 ) {
+    assert(MlasIsDynamicQGemmAvailable());
+
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback
     ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
@@ -341,6 +343,8 @@ MlasDynamicQgemmPackBSize(
     size_t K
 )
 {
+    assert(MlasIsDynamicQGemmAvailable());
+
     size_t bytes = 0;
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback available
@@ -430,6 +434,8 @@ MlasDynamicQgemmPackB(
     void* PackedB
 )
 {
+    assert(MlasIsDynamicQGemmAvailable());
+
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback
     ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
