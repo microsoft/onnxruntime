@@ -59,18 +59,14 @@ fn load_weight(n : u32, k_packed_idx : u32) -> weight_value_t {
   return weight_value_t();
 }
 
-#if has_bias
-fn load_bias(n : u32) -> bias_element_t {
-  if (n < uniforms.im2col_n) {
-    return bias[n];
-  }
-  return bias_element_t();
-}
-#else
 fn load_bias(n : u32) -> output_element_t {
+#if has_bias
+  if (n < uniforms.im2col_n) {
+    return output_element_t(bias[n]);
+  }
+#endif
   return output_element_t();
 }
-#endif
 
 // output shape: [N, H_o, W_o, C_o] (NHWC)
 fn write_output(batch : u32, m : u32, n : u32, value : output_element_t) {
@@ -137,7 +133,7 @@ $MAIN {
 
   let bias = load_bias(n_base);
   for (var m_idx = 0u; m_idx < TILE_M_SIZE; m_idx++) {
-    var output_data = results[m_idx] + output_element_t(bias);
+    var output_data = results[m_idx] + bias;
     write_output(batch, m_base + m_idx, n_base, output_data);
   }
 }  // MAIN
