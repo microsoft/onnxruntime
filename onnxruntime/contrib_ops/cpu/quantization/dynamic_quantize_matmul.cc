@@ -255,6 +255,8 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);
       }
 
+      assert(can_use_dynamic_quant_mlas_ && MlasIsDynamicQGemmAvailable());
+
       const size_t packed_b_size = MlasDynamicQgemmPackBSize(N, K);
       if (packed_b_size == 0) {
         return Status::OK();
@@ -384,6 +386,8 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   // TODO: migrate to a suitable override function call for kleidi dynamic qgemm function calls
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
   else {
+    assert(can_use_dynamic_quant_mlas_ && MlasIsDynamicQGemmAvailable());
+
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(ctx->Input<Tensor>(IN_A)->Shape(),
                                        b_shape_,  // ctx->Input<Tensor>(IN_B)->Shape(), this is not available now constant data is
