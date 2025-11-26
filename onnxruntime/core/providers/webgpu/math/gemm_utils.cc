@@ -280,9 +280,10 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
   // `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
   // `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
   shader.MainFunctionBody()
-      << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
-      << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroups_xy = uniforms.logical_dispatch_x * uniforms.logical_dispatch_y;\n"
+      << "  let logical_workgroup_id_z = workgroup_idx / logical_workgroups_xy;\n"
+      << "  let logical_workgroup_id_y = (workgroup_idx % logical_workgroups_xy) / uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_x = (workgroup_idx % logical_workgroups_xy) % uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
       << "  let logical_global_id = logical_workgroup_id * workgroup_size + local_id;\n";
 
@@ -516,9 +517,10 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
   // `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
   // `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
   shader.MainFunctionBody()
-      << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
-      << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroups_xy = uniforms.logical_dispatch_x * uniforms.logical_dispatch_y;\n"
+      << "  let logical_workgroup_id_z = workgroup_idx / logical_workgroups_xy;\n"
+      << "  let logical_workgroup_id_y = (workgroup_idx % logical_workgroups_xy) / uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_x = (workgroup_idx % logical_workgroups_xy) % uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
       << "  let logical_global_id = logical_workgroup_id * workgroup_size + local_id;\n";
 
