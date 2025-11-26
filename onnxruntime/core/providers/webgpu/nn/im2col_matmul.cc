@@ -102,6 +102,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
 
   // Transpose OIHW Weight to OHWI
+  // TODO: Move to `Transpose`
+  // TODO: Use prepack
   TensorShape weight_shape = weight->Shape();
   const uint32_t channel_output = onnxruntime::narrow<uint32_t>(weight_shape[0]);
   const uint32_t channel_input = onnxruntime::narrow<uint32_t>(weight_shape[1]);
@@ -147,9 +149,10 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
 
   // Check the device's subgroup size before shader compilation to avoid potential performance penalties
   // associated with conditional checks in the shader runtime.
+  //
   // Ensure the subgroup size must be greater than or equal to `tile_m` to safely enable `use_subgroup`.
-  // If this condition is not met, the feature must be disabled.
-  const bool use_subgroup = true;
+  // If the status of this condition is uncertain, the feature must be disabled.
+  const bool use_subgroup = false;
   Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, use_subgroup};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
 
