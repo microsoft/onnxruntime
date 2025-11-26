@@ -24,7 +24,10 @@ class MatMulProgram final : public Program<MatMulProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-                                          {"dim_inner", ProgramUniformVariableDataType::Uint32});
+                                          {"dim_inner", ProgramUniformVariableDataType::Uint32},
+                                          {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
+                                          {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
+                                          {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
 
   bool NeedSplitK() const;
 
