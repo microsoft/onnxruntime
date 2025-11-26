@@ -98,7 +98,7 @@ Status ApplyGemmPacked(const Tensor* a,
 
   program.CacheHint(alpha, transA, transB, c_is_scalar)
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
-      .SetDispatchGroupSize(dispatch_x, dispatch_y, 1)
+      .SetDispatchGroupSize(dispatch_x, dispatch_y, 1u)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddUniformVariables({{alpha},
                             {beta},
@@ -107,7 +107,7 @@ Status ApplyGemmPacked(const Tensor* a,
                             {K},          /*dim_inner */
                             {dispatch_x}, /* logical_dispatch_x */
                             {dispatch_y}, /* logical_dispatch_y */
-                            {1}}          /* logical_dispatch_z */
+                            {1u}}         /* logical_dispatch_z */
       );
 
   return context.RunProgram(program);

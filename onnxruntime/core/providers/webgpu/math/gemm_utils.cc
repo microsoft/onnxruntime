@@ -273,7 +273,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "const colPerThread = " << elements_per_thread_x << ";\n"
       << "const innerElementSize = " << inner_elements_size << ";\n"
       << "const tileInner = " << tile_inner << ";\n"
-      << "const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n";
+      << "const workgroup_size = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n";
 
   // Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
   // `ProgramBase.SetDispatchGroupSize()` may be normalized in
@@ -284,7 +284,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
-      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
+      << "  let logical_global_id = logical_workgroup_id * workgroup_size + local_id;\n";
 
   shader.MainFunctionBody()
       << "  let localRow = i32(local_id.y);\n"
@@ -509,7 +509,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
       << "const rowPerThread = " << elements_per_thread_y << ";\n"
       << "const colPerThread = " << elements_per_thread_x << ";\n"
       << "const tileInner = " << tile_inner << ";\n"
-      << "const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n";
+      << "const workgroup_size = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n";
 
   // Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
   // `ProgramBase.SetDispatchGroupSize()` may be normalized in
@@ -520,7 +520,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
       << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
       << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
-      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
+      << "  let logical_global_id = logical_workgroup_id * workgroup_size + local_id;\n";
 
   shader.MainFunctionBody() << " let batch = i32(logical_global_id.z);\n"
                             << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
