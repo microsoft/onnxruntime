@@ -401,7 +401,7 @@ void
         size_t StrideWidth,
         size_t InputChannels,
         size_t FilterCount,
-        size_t /*InputStride*/,
+        size_t InputStride,
         size_t FilterStride,
         size_t OutputStride,
         size_t OutputCount,
@@ -416,13 +416,14 @@ void
     const size_t FilterStrideElements = FilterStride / sizeof(float);
     const size_t OutputStrideElements = OutputStride / sizeof(float);
 
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+
     std::vector<MLAS_SGEMM_DATA_PARAMS> gemm_params(FilterCount);
     
     for (size_t f = 0; f < FilterCount; f++) {
         const float* filter = Filter + f * FilterStrideElements;
         float* output = Output + f * OutputStrideElements;
 
-        // Pre-initialize output with bias if needed
         if (BiasAddition) {
             for (size_t output_idx = 0; output_idx < OutputCount; output_idx++) {
                 for (size_t i = 0; i < BlockSize; i++) {
