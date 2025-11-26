@@ -96,7 +96,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const std::vector<uint32_t>& pads,
                                 const std::vector<uint32_t>& strides,
                                 Tensor* output) {
-  const auto* input = context.Input<Tensor>(0);
+  const auto* src = context.Input<Tensor>(0);
   const auto* weight = context.Input<Tensor>(1);
   const bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
@@ -129,12 +129,12 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
 
   // im2col-matmul
-  const TensorShape input_shape = input->Shape();
+  const TensorShape src_shape = src->Shape();
   const TensorShape output_shape = output->Shape();
 
-  const uint32_t batch = onnxruntime::narrow<uint32_t>(input_shape[0]);
-  const uint32_t input_height = onnxruntime::narrow<uint32_t>(input_shape[is_channels_last ? 1 : 2]);
-  const uint32_t input_width = onnxruntime::narrow<uint32_t>(input_shape[is_channels_last ? 2 : 3]);
+  const uint32_t batch = onnxruntime::narrow<uint32_t>(src_shape[0]);
+  const uint32_t src_height = onnxruntime::narrow<uint32_t>(src_shape[is_channels_last ? 1 : 2]);
+  const uint32_t src_width = onnxruntime::narrow<uint32_t>(src_shape[is_channels_last ? 2 : 3]);
   const uint32_t output_height = onnxruntime::narrow<uint32_t>(output_shape[is_channels_last ? 1 : 2]);
   const uint32_t output_width = onnxruntime::narrow<uint32_t>(output_shape[is_channels_last ? 2 : 3]);
 
@@ -157,7 +157,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   const uint32_t N_tiles = ceil_div(im2col_n, tile_n);
   im2col_mm_program.SetDispatchGroupSize(M_tiles, N_tiles, batch);
 
-  im2col_mm_program.AddInput({input,
+  im2col_mm_program.AddInput({src,
                               ProgramTensorMetadataDependency::TypeAndRank,
                               4});
   im2col_mm_program.AddInput({&ohwi_weight,
@@ -170,8 +170,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   im2col_mm_program.AddOutput({output,
                                ProgramTensorMetadataDependency::TypeAndRank});
   im2col_mm_program.AddUniformVariables({{batch},
-                                         {input_height},
-                                         {input_width},
+                                         {src_height},
+                                         {src_width},
                                          {channel_input},
                                          {kernel_height},
                                          {kernel_width},
