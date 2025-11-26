@@ -42,7 +42,9 @@ var<workgroup> tile_qk: array<q_element_t, tile_size>;
     let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
 
     // Calculate flat offset with broadcasting applied
-    let offset = bias_batch_idx * uniforms.num_heads * total_seq_length +
+    // attention_bias shape: [attn_bias_dim0, attn_bias_dim1, new_seq_length, total_seq_length]
+    // For decode, new_seq_length is 1, so we can simplify:
+    let offset = bias_batch_idx * uniforms.attn_bias_dim1 * total_seq_length +
                  bias_head_idx * total_seq_length +
                  k_idx;
     return attention_bias[offset];
