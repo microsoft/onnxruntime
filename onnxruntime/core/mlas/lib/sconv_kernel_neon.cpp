@@ -302,11 +302,10 @@ void
         unsigned KernelFlags
     )
 {
-    const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
-    const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
-    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
-
     const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
+    const float32x4_t AccumulateMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT)));
+    const float32x4_t BiasMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION)));
+    const float32x4_t ReluMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(-(KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION)));
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
@@ -320,31 +319,20 @@ void
 
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
 
-        float32x4_t Accumulator0, Accumulator1, Accumulator2, Accumulator3;
+        float32x4_t OldOutput0 = MlasLoadFloat32x4(&Output[output_idx * BlockSize]);
+        float32x4_t OldOutput1 = MlasLoadFloat32x4(&Output[output_idx * BlockSize + 4]);
+        float32x4_t OldOutput2 = MlasLoadFloat32x4(&Output[output_idx * BlockSize + 8]);
+        float32x4_t OldOutput3 = MlasLoadFloat32x4(&Output[output_idx * BlockSize + 12]);
 
-        if (AccumulateOutput) {
-            Accumulator0 = MlasLoadFloat32x4(&Output[output_idx * BlockSize]);
-            Accumulator1 = MlasLoadFloat32x4(&Output[output_idx * BlockSize + 4]);
-            Accumulator2 = MlasLoadFloat32x4(&Output[output_idx * BlockSize + 8]);
-            Accumulator3 = MlasLoadFloat32x4(&Output[output_idx * BlockSize + 12]);
-        } else {
-            Accumulator0 = MlasBroadcastFloat32x4(0.0f);
-            Accumulator1 = MlasBroadcastFloat32x4(0.0f);
-            Accumulator2 = MlasBroadcastFloat32x4(0.0f);
-            Accumulator3 = MlasBroadcastFloat32x4(0.0f);
-        }
+        float32x4_t Accumulator0 = MlasBroadcastFloat32x4(0.0f);
+        float32x4_t Accumulator1 = MlasBroadcastFloat32x4(0.0f);
+        float32x4_t Accumulator2 = MlasBroadcastFloat32x4(0.0f);
+        float32x4_t Accumulator3 = MlasBroadcastFloat32x4(0.0f);
 
-        if (BiasAddition) {
-            const float32x4_t BiasVector0 = MlasLoadFloat32x4(Bias);
-            const float32x4_t BiasVector1 = MlasLoadFloat32x4(Bias + 4);
-            const float32x4_t BiasVector2 = MlasLoadFloat32x4(Bias + 8);
-            const float32x4_t BiasVector3 = MlasLoadFloat32x4(Bias + 12);
-
-            Accumulator0 = MlasAddFloat32x4(Accumulator0, BiasVector0);
-            Accumulator1 = MlasAddFloat32x4(Accumulator1, BiasVector1);
-            Accumulator2 = MlasAddFloat32x4(Accumulator2, BiasVector2);
-            Accumulator3 = MlasAddFloat32x4(Accumulator3, BiasVector3);
-        }
+        const float32x4_t BiasVector0 = MlasLoadFloat32x4(Bias);
+        const float32x4_t BiasVector1 = MlasLoadFloat32x4(Bias + 4);
+        const float32x4_t BiasVector2 = MlasLoadFloat32x4(Bias + 8);
+        const float32x4_t BiasVector3 = MlasLoadFloat32x4(Bias + 12);
 
         for (size_t kernel_pos = 0; kernel_pos < KernelHeight * KernelWidth; kernel_pos++) {
             size_t kh = kernel_pos / KernelWidth;
@@ -369,12 +357,25 @@ void
             Accumulator3 = MlasMultiplyAddFloat32x4(InputVector3, FilterVector3, Accumulator3);
         }
 
-        if (ReluActivation) {
-            Accumulator0 = MlasMaximumFloat32x4(Accumulator0, ZeroVector);
-            Accumulator1 = MlasMaximumFloat32x4(Accumulator1, ZeroVector);
-            Accumulator2 = MlasMaximumFloat32x4(Accumulator2, ZeroVector);
-            Accumulator3 = MlasMaximumFloat32x4(Accumulator3, ZeroVector);
-        }
+        Accumulator0 = MlasAddFloat32x4(Accumulator0, MlasAndFloat32x4(OldOutput0, AccumulateMask));
+        Accumulator1 = MlasAddFloat32x4(Accumulator1, MlasAndFloat32x4(OldOutput1, AccumulateMask));
+        Accumulator2 = MlasAddFloat32x4(Accumulator2, MlasAndFloat32x4(OldOutput2, AccumulateMask));
+        Accumulator3 = MlasAddFloat32x4(Accumulator3, MlasAndFloat32x4(OldOutput3, AccumulateMask));
+
+        Accumulator0 = MlasAddFloat32x4(Accumulator0, MlasAndFloat32x4(BiasVector0, BiasMask));
+        Accumulator1 = MlasAddFloat32x4(Accumulator1, MlasAndFloat32x4(BiasVector1, BiasMask));
+        Accumulator2 = MlasAddFloat32x4(Accumulator2, MlasAndFloat32x4(BiasVector2, BiasMask));
+        Accumulator3 = MlasAddFloat32x4(Accumulator3, MlasAndFloat32x4(BiasVector3, BiasMask));
+
+        float32x4_t Relu0 = MlasMaximumFloat32x4(Accumulator0, ZeroVector);
+        float32x4_t Relu1 = MlasMaximumFloat32x4(Accumulator1, ZeroVector);
+        float32x4_t Relu2 = MlasMaximumFloat32x4(Accumulator2, ZeroVector);
+        float32x4_t Relu3 = MlasMaximumFloat32x4(Accumulator3, ZeroVector);
+
+        Accumulator0 = MlasBlendFloat32x4(Accumulator0, Relu0, ReluMask);
+        Accumulator1 = MlasBlendFloat32x4(Accumulator1, Relu1, ReluMask);
+        Accumulator2 = MlasBlendFloat32x4(Accumulator2, Relu2, ReluMask);
+        Accumulator3 = MlasBlendFloat32x4(Accumulator3, Relu3, ReluMask);
 
         MlasStoreFloat32x4(&Output[output_idx * BlockSize], Accumulator0);
         MlasStoreFloat32x4(&Output[output_idx * BlockSize + 4], Accumulator1);
