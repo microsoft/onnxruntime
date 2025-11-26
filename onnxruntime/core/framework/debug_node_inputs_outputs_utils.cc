@@ -99,8 +99,22 @@ struct TensorMetadata {
   std::string producer;
   std::string consumer;
   std::string device_type;
+  std::string ep_type;
   size_t step;
 };
+
+std::string GetCleanedEpType(const Node& node) {
+  std::string ep_type = node.GetExecutionProviderType();
+
+  // Remove "ExecutionProvider" suffix from ep type to reduce length.
+  const std::string suffix_to_remove = "ExecutionProvider";
+  size_t pos = ep_type.find(suffix_to_remove);
+  if (pos != std::string::npos) {
+    ep_type.erase(pos, suffix_to_remove.length());
+  }
+
+  return ep_type;
+}
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
   auto match_pattern =
@@ -139,14 +153,18 @@ void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_option
   }
 }
 
-PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOptions& dump_options) {
+PathString MakeTensorFileName(const TensorMetadata& tensor_metadata, const NodeDumpOptions& dump_options) {
   auto make_valid_name = [](std::string name) {
     std::replace_if(
         name.begin(), name.end(), [](char c) { return !std::isalnum(c); }, '_');
     return name;
   };
 
-  return path_utils::MakePathString(make_valid_name(tensor_name), dump_options.file_suffix, ".tensorproto");
+  if (dump_options.prepend_ep_to_file_name) {
+    return path_utils::MakePathString(make_valid_name(tensor_metadata.ep_type + "_" + tensor_metadata.name), dump_options.file_suffix, ".tensorproto");
+  } else {
+    return path_utils::MakePathString(make_valid_name(tensor_metadata.name), dump_options.file_suffix, ".tensorproto");
+  }
 }
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const std::filesystem::path& file_path) {
@@ -375,7 +393,7 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
-      const std::filesystem::path tensor_file = dump_options.output_dir / MakeTensorFileName(tensor_metadata.name, dump_options);
+      const std::filesystem::path tensor_file = dump_options.output_dir / MakeTensorFileName(tensor_metadata, dump_options);
       DumpTensorToFile(tensor, tensor_metadata.name, tensor_file);
       break;
     }
@@ -485,6 +503,8 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
                 debug_node_inputs_outputs_env_vars::kHalfOverflowThreshold, " shall be a positive integer <= ", kMaxHalfThreshold);
     opts.half_overflow_threshold = static_cast<float>(threshold);
 
+    opts.prepend_ep_to_file_name = ParseEnvironmentVariableWithDefault<bool>(env_vars::kPrependEpToFileName, false);
+
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
       std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
       if (rank.empty()) {
@@ -582,6 +602,7 @@ void DumpNodeInputs(
               tensor_metadata.name = input_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
+              tensor_metadata.ep_type = GetCleanedEpType(node);
 
               TensorStatisticsData tensor_statistics;
               DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
@@ -678,6 +699,7 @@ void DumpNodeOutputs(
               tensor_metadata.name = output_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
+              tensor_metadata.ep_type = GetCleanedEpType(node);
 
               TensorStatisticsData tensor_statistics;
               DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
