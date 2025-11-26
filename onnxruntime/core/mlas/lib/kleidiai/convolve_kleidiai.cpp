@@ -145,6 +145,8 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
 
 static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
 
+    size_t kMinimumChannelsForKleidiConv = 16;
+
     //functional checks - logically can the conv be performed
     if ((Parameters->Dimensions != 2) ||
         (Parameters->BatchCount != 1) ||
@@ -165,6 +167,19 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     auto N = Parameters->FilterCount;
     if (N == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
         KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on optimization checks.");
+        return false;
+    }
+
+    // Kleidi kernels target reasonably wide GEMMs; very small channel counts or
+    // stride > 1 end up dominated by packing/transposes, so fall back to MLAS
+    if (Parameters->InputChannels < kMinimumChannelsForKleidiConv ||
+        Parameters->FilterCount < kMinimumChannelsForKleidiConv) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme rejecting small channel configuration.");
+        return false;
+    }
+
+    if ((Parameters->StrideShape[0] != 1) || (Parameters->StrideShape[1] != 1)) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme rejecting non-unit stride.");
         return false;
     }
     return true;
