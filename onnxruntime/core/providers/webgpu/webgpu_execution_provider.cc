@@ -794,8 +794,7 @@ using namespace webgpu;
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
                                                  WebGpuContext& context,
                                                  WebGpuExecutionProviderConfig&& config)
-    : IExecutionProvider{kWebGpuExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0)},
+    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice},
       context_id_{context_id},
       context_{context},
       preferred_data_layout_{config.data_layout},
