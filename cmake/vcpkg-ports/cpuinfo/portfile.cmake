@@ -11,7 +11,8 @@ vcpkg_from_github(
     HEAD_REF master
     PATCHES
         patch_cpuinfo_h_for_arm64ec.patch
-        patch_vcpkg_arm64ec_support.patch  # https://github.com/pytorch/cpuinfo/pull/324
+        patch_vcpkg_arm64ec_support.patch       # https://github.com/pytorch/cpuinfo/pull/324
+        win_arm_fp16_detection_fallback.patch   # https://github.com/pytorch/cpuinfo/pull/348
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS

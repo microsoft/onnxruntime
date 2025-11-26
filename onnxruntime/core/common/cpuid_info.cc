@@ -302,22 +302,6 @@ void CPUIDInfo::ArmWindowsInit() {
   if (pytorch_cpuinfo_init_) {
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-
-    // Note:
-    // cpuinfo is using IsProcessorFeaturePresent(PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE):
-    // https://github.com/pytorch/cpuinfo/blob/403d652dca4c1046e8145950b1c0997a9f748b57/src/arm/windows/init.c#L224-L225
-    // However, on some systems (notably, a Windows ARM64 CI build agent), cpuinfo_has_arm_neon_fp16_arith() started to
-    // return false in the newer cpuinfo version that uses IsProcessorFeaturePresent(). Perhaps the newer
-    // PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE constant is not supported yet in the Windows version on those systems.
-    // To avoid regressing in fp16 instructions detection, we fall back to what cpuinfo used to do, i.e., use the
-    // detection of dot product instructions:
-    // https://github.com/pytorch/cpuinfo/blob/877328f188a3c7d1fa855871a278eb48d530c4c0/src/arm/windows/init.c#L206-L209
-    // This workaround can be removed when cpuinfo_has_arm_neon_fp16_arith() works correctly on all the Windows
-    // versions that we want to support.
-    if (!has_fp16_) {
-      has_fp16_ = has_arm_neon_dot_;
-    }
-
     has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
     has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
