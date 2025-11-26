@@ -319,7 +319,6 @@ void
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
-        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
 
         float32x4_t Accumulator0, Accumulator1, Accumulator2, Accumulator3;
 
@@ -354,10 +353,10 @@ void
             const float* input_base = Input + output_idx * StrideWidthElements +
                                       kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
-            float32x4_t InputVector0 = LoadInputVectorWithBounds(input_base, 0, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
-            float32x4_t InputVector1 = LoadInputVectorWithBounds(input_base, 4, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
-            float32x4_t InputVector2 = LoadInputVectorWithBounds(input_base, 8, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
-            float32x4_t InputVector3 = LoadInputVectorWithBounds(input_base, 12, is_main_region, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
+            float32x4_t InputVector0 = LoadInputVectorWithBounds(input_base, 0, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
+            float32x4_t InputVector1 = LoadInputVectorWithBounds(input_base, 4, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
+            float32x4_t InputVector2 = LoadInputVectorWithBounds(input_base, 8, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
+            float32x4_t InputVector3 = LoadInputVectorWithBounds(input_base, 12, InputBase, kh, DilatedInputWidthElements, InputWidthElements);
 
             const float32x4_t FilterVector0 = MlasLoadFloat32x4(&Filter[kernel_pos * BlockSize]);
             const float32x4_t FilterVector1 = MlasLoadFloat32x4(&Filter[kernel_pos * BlockSize + 4]);
