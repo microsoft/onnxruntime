@@ -1068,6 +1068,7 @@ struct ProviderHost {
   virtual const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const = 0;
   virtual IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const = 0;
   virtual bool Graph__SetOpSchemaFromRegistryForNode(Graph* p, Node& node) = 0;
+  virtual Status Graph__LoadExternalInitializerAsOrtValue(const Graph* p, const std::string& name, OrtValue& value) const = 0;
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;

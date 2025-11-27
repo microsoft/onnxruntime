@@ -340,6 +340,7 @@ class NvExecutionProvider : public IExecutionProvider {
                                     size_t onnx_model_bytestream_size,
                                     const void* onnx_external_data_bytestream,
                                     size_t onnx_external_data_bytestream_size,
+                                    std::unordered_map<std::string, TensorrtUserWeights>& in_memory_weights,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool detailed_build_log);
 
@@ -392,6 +393,9 @@ class NvExecutionProvider : public IExecutionProvider {
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.
   OrtAllocator* alloc_ = nullptr;
+
+  // Cache initializer's external data as an OrtValue
+  mutable std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
 
   // For create/dump EP context node model
   bool dump_ep_context_model_ = false;
@@ -637,5 +641,14 @@ class NvExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  /**
+   * This function fetches the initializers data that are external data and caches them,
+   * and populate the 'TensorrtUserWeights' data structure with the OrtValue or raw data.
+   * 'TensorrtUserWeights' data structure later will be used by TRT parser.
+   * for later use, e.g. refit weightless engine.
+   */
+  Status GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
+                                 std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const;
 };
 }  // namespace onnxruntime

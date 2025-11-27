@@ -157,26 +157,28 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
-// Struct to hold user weights when ModelProtos are serialized with data.
+// Data structure to hold user weights when ModelProtos are serialized with external data
 class TensorrtUserWeights {
  public:
-  TensorrtUserWeights(const std::string& name, const std::string& data) : name_(name), data_(data) {};
+  TensorrtUserWeights(const std::string& name, const void* data, size_t size) : name_(name), data_(data), size_(size) {
+                                                                                };
 
   const char* Name() const {
     return name_.c_str();
   };
 
   const void* Data() const {
-    return static_cast<void const*>(data_.data());
+    return data_;
   }
 
   int64_t Size() const {
-    return static_cast<int64_t>(data_.size());
+    return static_cast<int64_t>(size_);
   }
 
  private:
-  std::string name_{};
-  std::string data_{};
+  const std::string& name_;
+  void const* data_;
+  size_t size_;
 };
 
 // Information to construct kernel function state.
@@ -227,7 +229,6 @@ struct TensorrtFuncState {
   std::string cache_suffix;
   bool engine_hw_compatible = false;
   std::vector<nvinfer1::PreviewFeature> preview_features;
-  std::unique_ptr<std::vector<TensorrtUserWeights>>* userWeights = nullptr;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -312,6 +313,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                     size_t onnx_model_bytestream_size,
                                     const void* onnx_external_data_bytestream,
                                     size_t onnx_external_data_bytestream_size,
+                                    std::unordered_map<std::string, TensorrtUserWeights>& in_memory_weights,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
                                     bool detailed_build_log);
@@ -367,7 +369,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
   std::vector<nvinfer1::PreviewFeature> preview_features_;
-  bool load_user_initializer_ = false;
+  mutable bool load_user_initializer_ = false;
+
+  // Cache initializer's external data as an OrtValue
+  mutable std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -629,6 +634,15 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  /**
+   * This function fetches the initializers data that are external data and caches them,
+   * and populate the 'TensorrtUserWeights' data structure with the OrtValue or raw data.
+   * 'TensorrtUserWeights' data structure later will be used by TRT parser.
+   * for later use, e.g. refit weightless engine.
+   */
+  Status GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
+                                 std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const;
 
   /**
    *  This is the helper function for ConstantFoldingDQ graph transformer.

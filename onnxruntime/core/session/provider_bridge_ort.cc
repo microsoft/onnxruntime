@@ -1347,6 +1347,7 @@ struct ProviderHostImpl : ProviderHost {
   const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
   IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const override { return p->GetSchemaRegistry(); }
   bool Graph__SetOpSchemaFromRegistryForNode(Graph* p, Node& node) override { return p->SetOpSchemaFromRegistryForNode(node); }
+  Status Graph__LoadExternalInitializerAsOrtValue(const Graph* p, const std::string& name, OrtValue& value) const override { return p->LoadExternalInitializerAsOrtValue(name, value); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
@@ -1775,27 +1776,24 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
-} g_provider_host;
+} provider_host_;
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
 struct ProviderSharedLibrary {
-  Status Initialize() {
-    if (handle_) {
-      return Status::OK();
-    }
+  void Ensure() {
+    if (handle_)
+      return;
 
     auto full_path = Env::Default().GetRuntimePath() +
                      PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
-    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
+    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
 
-    PProvider_SetHost(&g_provider_host);
-
-    return Status::OK();
+    PProvider_SetHost(&provider_host_);
   }
 
   void Unload() {
@@ -1822,7 +1820,7 @@ struct ProviderSharedLibrary {
 static ProviderSharedLibrary s_library_shared;
 
 bool InitProvidersSharedLibrary() try {
-  ORT_THROW_IF_ERROR(s_library_shared.Initialize());
+  s_library_shared.Ensure();
   return true;
 } catch (const std::exception&) {
   return false;
@@ -1844,7 +1842,7 @@ Status ProviderLibrary::Load() {
   try {
     std::lock_guard<std::mutex> lock{mutex_};
     if (!provider_) {
-      ORT_RETURN_IF_ERROR(s_library_shared.Initialize());
+      s_library_shared.Ensure();
 
       if (absolute_) {
         // If filename_ is not absolute it should not be loaded.

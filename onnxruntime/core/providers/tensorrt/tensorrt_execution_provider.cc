@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/framework/ort_value.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
 #include "tensorrt_execution_provider_custom_ops.h"
@@ -2334,23 +2335,25 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // the model proto that has different node ordering compared to original onnx model.
         // Save Initializer Data.
 
-        std::vector<TensorrtUserWeights> userWeights;
+        std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
 
+#if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
         // Keep inits in memory instead of writing to ModelProto.
         if (load_user_initializer_) {
-          auto allInitializers = graph_viewer->GetAllInitializedTensors();
-
-          for (auto& entry : allInitializers) {
-            auto* tp = entry.second;
-            if (tp->has_raw_data()) {
-              userWeights.emplace_back(tp->name(), tp->raw_data());
-            } else if (utils::HasExternalDataInMemory(*tp)) {
-              std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-              ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-              userWeights.emplace_back(full_init->name(), full_init->raw_data());
-            }
+          auto status = GetInMemoryInitializers(*graph_viewer, in_memory_weights);
+          if (status != Status::OK()) {
+            ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                               "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
           }
         }
+#else
+        if (load_user_initializer_) {
+          std::string warning_msg = "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto."
+                                    "Initializer data will be included in model proto.";
+          LOGS_DEFAULT(WARNING) << warning_msg;
+          load_user_initializer_ = false;
+        }
+#endif
 
         graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !load_user_initializer_ /*include_initializer_data*/);
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -2383,8 +2386,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
         if (load_user_initializer_) {
           trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-          for (auto const& userWeight : userWeights) {
-            trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+          for (auto const& iter : in_memory_weights) {
+            trt_parser->loadInitializer(iter.first.c_str(), iter.second.Data(), iter.second.Size());
           }
           is_model_supported = trt_parser->parseModelProto();
         } else {
@@ -2842,6 +2845,64 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   return result;
 }
 
+common::Status TensorrtExecutionProvider::GetInMemoryInitializers(const GraphViewer& graph_body_viewer,
+                                                                  std::unordered_map<std::string, TensorrtUserWeights>& user_weights) const {
+  const InitializedTensorSet& all_initializers = graph_body_viewer.GetAllInitializedTensors();
+
+  auto populate_tensorrt_weight_with_ort_value = [&](const std::string& name, OrtValue& value) -> void {
+    Ort::ConstValue ort_value(&value);
+    size_t size = ort_value.GetTensorSizeInBytes();
+    const void* ptr = ort_value.GetTensorRawData();
+
+    if (size > 0) {
+      user_weights.insert(std::make_pair(name, TensorrtUserWeights(name, ptr, size)));
+    }
+  };
+
+  for (auto& entry : all_initializers) {
+    const auto* tp = entry.second;
+
+    // Check the initializer data in the cache
+    if (auto iter = initializer_values_.find(tp->name());
+        iter != initializer_values_.end()) {
+      populate_tensorrt_weight_with_ort_value(tp->name(), *iter->second);
+      continue;
+    }
+
+    // If the initializer data is not in the cache, then try to fetch it and cache it.
+
+    // Initializer has external data
+    if (utils::HasExternalData(*tp)) {
+      // Get the OrtValue for this initializer
+      std::unique_ptr<OrtValue> ort_value = std::make_unique<OrtValue>();
+
+      // Check if this is in-memory external data (data stored in OrtValue).
+      if (utils::HasExternalDataInMemory(*tp)) {
+        // If we can't get the OrtValue, it is a bug
+        if (!graph_body_viewer.GetOrtValueInitializer(tp->name(), *ort_value)) {
+          ORT_THROW("Initializer ", tp->name(),
+                    " has in-memory external data but cannot get OrtValue.");
+        }
+      }
+      // If external data is not in memory, meaning ORT hasn't converted it to a OrtValue yet at this moment,
+      // then loads this initializer with data in an external file into an OrtValue.
+      // Note: The OrtValue is not cached in the graph, so we need to copy data.
+      else {
+        ORT_RETURN_IF_ERROR(graph_body_viewer.GetGraph().LoadExternalInitializerAsOrtValue(tp->name(), *ort_value));
+      }
+
+      populate_tensorrt_weight_with_ort_value(tp->name(), *ort_value);
+      initializer_values_.emplace(tp->name(), std::move(ort_value));
+    }
+    // Initializer has raw data
+    else if (utils::HasRawData(*tp)) {
+      user_weights.insert(std::make_pair(tp->name(), TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size())));
+    }
+  }
+
+  return Status::OK();
+}
+
 /**
  * Refit the weight-stripped engine
  */
@@ -2853,12 +2914,15 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                                                       size_t onnx_model_bytestream_size,
                                                       const void* onnx_external_data_bytestream,
                                                       size_t onnx_external_data_bytestream_size,
+                                                      std::unordered_map<std::string, TensorrtUserWeights>& in_memory_weights,
                                                       nvinfer1::ICudaEngine* trt_engine,
                                                       bool serialize_refitted_engine,
                                                       bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
   bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
-  bool refit_with_external_data = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
+  bool refit_with_external_data_bytestream = onnx_external_data_bytestream != nullptr && onnx_external_data_bytestream_size != 0;
+  bool refit_with_weights_in_memory = in_memory_weights.size() > 0;
+  bool refit_with_external_data = refit_with_weights_in_memory || refit_with_external_data_bytestream;
   bool refit_complete = false;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
   if (refit_from_file) {
@@ -2951,23 +3015,36 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
       if (weight_is_refittable) {
         if (proto.has_data_location()) {
           if (proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
-            // Default values for reading into external_data blob.
-            int64_t offset = 0;
-            size_t length = 0;
-            auto external_data = proto.mutable_external_data();
-            const std::string kOffset = "offset", kLength = "length";
-            for (int entry_idx = 0; entry_idx < external_data->size(); ++entry_idx) {
-              auto current_key = external_data->at(entry_idx).mutable_key();
-              auto current_value = external_data->at(entry_idx).mutable_value();
-              if (*current_key == kOffset && !current_value->empty()) {
-                offset = std::stoll(*current_value);
-              } else if (*current_key == kLength && !current_value->empty()) {
-                length = std::stoul(*current_value);
+            if (refit_with_weights_in_memory) {
+              auto it = in_memory_weights.find(proto_name);
+              if (it != in_memory_weights.end()) {
+                auto& weight = it->second;
+                names.push_back(weight.Name());
+                bytes.push_back(static_cast<const char*>(weight.Data()));
+                sizes.push_back(weight.Size());
+                continue;
               }
             }
-            names.push_back(proto.name());
-            bytes.push_back(static_cast<const char*>(onnx_external_data_bytestream) + offset);
-            sizes.push_back(length);
+
+            if (refit_with_external_data_bytestream) {
+              // Default values for reading into external_data blob.
+              int64_t offset = 0;
+              size_t length = 0;
+              auto external_data = proto.mutable_external_data();
+              const std::string kOffset = "offset", kLength = "length";
+              for (int entry_idx = 0; entry_idx < external_data->size(); ++entry_idx) {
+                auto current_key = external_data->at(entry_idx).mutable_key();
+                auto current_value = external_data->at(entry_idx).mutable_value();
+                if (*current_key == kOffset && !current_value->empty()) {
+                  offset = std::stoll(*current_value);
+                } else if (*current_key == kLength && !current_value->empty()) {
+                  length = std::stoul(*current_value);
+                }
+              }
+              names.push_back(proto.name());
+              bytes.push_back(static_cast<const char*>(onnx_external_data_bytestream) + offset);
+              sizes.push_back(length);
+            }
           } else {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "[TensorRT EP] Proto: " + proto_name + " expected to have external datalocation, but default datalocation was provided instead.");
@@ -3083,9 +3160,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       status = CreateNodeComputeInfoFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
     }
     if (status != Status::OK()) {
+      initializer_values_.clear();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
     }
   }
+
+  // Release the OrtValues that are cached in TRT EP
+  initializer_values_.clear();
+
   return Status::OK();
 }
 
@@ -3098,25 +3180,25 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
 
-  auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
+  std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
 
+#if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
   if (load_user_initializer_) {
-    auto allInitializers = graph_body_viewer.GetAllInitializedTensors();
-
-    for (auto& entry : allInitializers) {
-      auto name = entry.first;
-      auto* tp = entry.second;
-      if (tp->has_raw_data()) {
-        userWeights->emplace_back(
-            TensorrtUserWeights(tp->name(), tp->raw_data()));
-      } else if (utils::HasExternalDataInMemory(*tp)) {
-        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-        userWeights->emplace_back(
-            TensorrtUserWeights(full_init->name(), full_init->raw_data()));
-      }
+    auto status = GetInMemoryInitializers(graph_body_viewer, in_memory_weights);
+    if (status != Status::OK()) {
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                         "[TensorRT EP] Can't get initializers in memory. TensorRT parser might not be able load those initializers."));
     }
   }
+#else
+  if (load_user_initializer_) {
+    std::string warning_msg =
+        "TensorRT EP is built agasint TRT version < 10.12 which doesn't support separating out initializer data from model proto."
+        "Initializer data will be included in model proto.";
+    LOGS_DEFAULT(WARNING) << warning_msg;
+    load_user_initializer_ = false;
+  }
+#endif
 
   // ORT's default topological sort is using reversed DFS.
   // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
@@ -3148,8 +3230,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #if (NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR > 12) || NV_TENSORRT_MAJOR > 10
   if (load_user_initializer_) {
     trt_parser->loadModelProto(string_buf.data(), string_buf.size(), model_path_);
-    for (auto const& userWeight : *userWeights) {
-      trt_parser->loadInitializer(userWeight.Name(), userWeight.Data(), userWeight.Size());
+    for (auto const& iter : in_memory_weights) {
+      trt_parser->loadInitializer(iter.first.c_str(), iter.second.Data(), iter.second.Size());
     }
     trt_parser->parseModelProto();
   } else {
@@ -3686,6 +3768,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     if (weight_stripped_engine_refit_) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refit engine from main ONNX file after engine build";
+      std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
+      ORT_RETURN_IF_ERROR(GetInMemoryInitializers(graph_body_viewer, in_memory_weights));
+
       auto status = RefitEngine(model_path_,
                                 onnx_model_folder_path_,
                                 engine_cache_path,
@@ -3694,6 +3779,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                 onnx_model_bytestream_size_,
                                 onnx_external_data_bytestream_,
                                 onnx_external_data_bytestream_size_,
+                                in_memory_weights,
                                 trt_engine.get(),
                                 true /* serialize refitted engine to disk */,
                                 detailed_build_log_);
@@ -3750,7 +3836,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   engines_.emplace(fused_node.Name(), std::move(trt_engine));
   contexts_.emplace(fused_node.Name(), std::move(trt_context));
   networks_.emplace(fused_node.Name(), std::move(trt_network));
-  weights_.emplace(fused_node.Name(), std::move(userWeights));
   input_info_[fused_node.Name()].push_back(input_indexes);
   output_info_[fused_node.Name()].push_back(output_indexes);
   output_info_[fused_node.Name()].push_back(output_types);
@@ -3803,7 +3888,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
           auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
-          preview_features_, &weights_[context->node_name]};
+          preview_features_};
     *state = p.release();
     return 0;
   };
@@ -4179,6 +4264,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       context_update = true;
 
       if (weight_stripped_engine_refit_) {
+        std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
         auto status = RefitEngine(model_path_,
                                   onnx_model_folder_path_,
                                   engine_cache_path,
@@ -4187,6 +4273,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                   onnx_model_bytestream_size_,
                                   onnx_external_data_bytestream_,
                                   onnx_external_data_bytestream_size_,
+                                  in_memory_weights /* passing in empty map */,
                                   trt_engine,
                                   true /* serialize refitted engine to disk */,
                                   detailed_build_log_);
@@ -4411,6 +4498,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
+  std::unordered_map<std::string, TensorrtUserWeights> in_memory_weights;
+  if (weight_stripped_engine_enable_) {
+    ORT_RETURN_IF_ERROR(GetInMemoryInitializers(graph_body_viewer, in_memory_weights));
+  }
+
   // Get engine binary data and deserialize it
   auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine,
                                                            runtime_.get(),
@@ -4422,6 +4514,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                            onnx_model_bytestream_size_,
                                                            onnx_external_data_bytestream_,
                                                            onnx_external_data_bytestream_size_,
+                                                           in_memory_weights,
                                                            detailed_build_log_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
