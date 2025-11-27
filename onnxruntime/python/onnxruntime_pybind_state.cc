@@ -1083,7 +1083,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     ProviderOptions OV_provider_options_map;
     const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                  "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
-                                                                 "enable_causallm", "disable_dynamic_shapes", "reshape_input"};
+                                                                 "enable_causallm", "disable_dynamic_shapes", "reshape_input", "layout"};
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
@@ -1892,7 +1892,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::class_<OrtSyncStream> py_sync_stream(m, "OrtSyncStream",
                                            R"pbdoc(Represents a synchronization stream for model inference.)pbdoc");
-  py_sync_stream.def("get_handle", [](OrtSyncStream* stream) -> uintptr_t { 
+  py_sync_stream.def("get_handle", [](OrtSyncStream* stream) -> uintptr_t {
       Ort::UnownedSyncStream ort_stream(stream);
       return reinterpret_cast<uintptr_t>(ort_stream.GetHandle()); }, R"pbdoc(SyncStream handle that can be converted to a string and added to SessionOptions)pbdoc");
 
@@ -2006,7 +2006,7 @@ for model inference.)pbdoc");
       .def_property_readonly("allocator_type", [](const OrtMemoryInfo* mem_info) -> OrtAllocatorType { return mem_info->alloc_type; }, R"pbdoc(Allocator type)pbdoc")
       .def_property_readonly("device_mem_type", [](const OrtMemoryInfo* mem_info) -> OrtDeviceMemoryType {
               auto mem_type = mem_info->device.MemType();
-              return (mem_type == OrtDevice::MemType::DEFAULT) ? 
+              return (mem_type == OrtDevice::MemType::DEFAULT) ?
                   OrtDeviceMemoryType_DEFAULT: OrtDeviceMemoryType_HOST_ACCESSIBLE ; }, R"pbdoc(Device memory type (Device or Host accessible).)pbdoc")
       .def_property_readonly("device_vendor_id", [](const OrtMemoryInfo* mem_info) -> uint32_t { return mem_info->device.Vendor(); });
 
@@ -2748,7 +2748,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             auto res = sess->GetSessionHandle()->GetModelMetadata();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list {
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto inputs_mem_info = session.GetMemoryInfoForInputs();
           py::list result;
@@ -2757,7 +2757,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             result.append(py::cast(p_info, py::return_value_policy::reference));
           }
           return result; })
-      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list {
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto outputs_mem_info = session.GetMemoryInfoForOutputs();
           py::list result;
@@ -2810,6 +2810,53 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
 #endif
       })
+      .def("set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) {
+            std::vector<const char*> keys;
+            std::vector<const char*> values;
+            std::vector<std::string> key_strings;
+            std::vector<std::string> value_strings;
+
+            // Reserve space to avoid reallocations
+            key_strings.reserve(options.size());
+            value_strings.reserve(options.size());
+            keys.reserve(options.size());
+            values.reserve(options.size());
+
+            // Convert Python dict to C-style arrays
+            for (const auto& item : options) {
+              key_strings.emplace_back(py::str(item.first));
+              value_strings.emplace_back(py::str(item.second));
+              keys.push_back(key_strings.back().c_str());
+              values.push_back(value_strings.back().c_str());
+            }
+
+            if (keys.empty()) {
+              ORT_THROW("No options were provided");
+            }
+
+            auto status = sess->GetSessionHandle()->SetEpDynamicOptions(
+                gsl::make_span(keys.data(), keys.size()),
+                gsl::make_span(values.data(), values.size()));
+
+            if (!status.IsOK()) {
+              ORT_THROW("Failed to set EP dynamic options: " + status.ErrorMessage());
+            } },
+           R"pbdoc(Set dynamic options for execution providers.
+
+          Args:
+              options (dict): Dictionary of key-value pairs where both keys and values are strings.
+                            These options will be passed to the execution providers to modify
+                            their runtime behavior.
+
+          Example:
+              session.set_ep_dynamic_options({
+                  "option1": "value1",
+                  "option2": "value2"
+              })
+
+          Raises:
+              RuntimeError: If no options are provided or if setting the options fails.
+          )pbdoc")
       .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
         std::vector<TuningResults> tuning_results;
