@@ -93,7 +93,7 @@ $MAIN {
 
   if (local_idx == 0u) {
     // Calculate the max and sum in current split.
-    var l_max = f32(-3.402823e+38f);
+    var l_max = f32(-3.4028234663852886e+38f);
     var l_sum = f32(0);
     for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
       l_max = max(l_max, f32(tile_qk[i]));
