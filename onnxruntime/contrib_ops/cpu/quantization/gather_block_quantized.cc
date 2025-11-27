@@ -193,7 +193,16 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
                                                              concurrency::ThreadPool* tp) const {
   auto data_full_block = gather_axis_dim * gather_block;
   auto quantize_full_block = quantize_axis_dim * quantize_N;
-  auto scale_full_block = (quantize_axis_dim + block_size_ - 1) / block_size_ * quantize_N;
+  auto num_quantize_blocks = (quantize_axis_dim + block_size_ - 1) / block_size_;
+  auto scale_full_block = num_quantize_blocks * quantize_N;
+  auto zp_full_block = scale_full_block;
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    // for uint8_t with bits==4, packing happens along last dimensions, i.e. quantize_axis
+    // for odd num_quantize_blocks, we have a padding block
+    int32_t components = 8 / static_cast<int>(bits_);
+    auto quantize_block_padding = (components - (num_quantize_blocks % components)) % components;
+    zp_full_block += quantize_block_padding * quantize_N;
+  }
 
   auto lambda = [&](int64_t gather_MN_idx, std::unordered_map<int64_t, int64_t>& cache) {
     int64_t gather_M_idx = gather_MN_idx / gather_N;
@@ -233,20 +242,21 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int64_t y = data_idx % quantize_full_block / quantize_N;
       int64_t z = data_idx % quantize_N;
       int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
+      int64_t zp_idx = x * zp_full_block + y / block_size_ * quantize_N + z;
       auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
       int32_t zp_val;
 
       if constexpr (std::is_same_v<T1, uint8_t>) {
         if (zero_points_ptr) {
           if (bits_ == 4) {
-            uint8_t packed = zero_points_ptr[scale_idx >> 1];
-            if (scale_idx & 1) {
+            uint8_t packed = zero_points_ptr[zp_idx >> 1];
+            if (zp_idx & 1) {
               zp_val = static_cast<int32_t>((packed >> 4) & 0x0F);
             } else {
               zp_val = static_cast<int32_t>(packed & 0x0F);
             }
           } else {  // bits_ == 8
-            zp_val = static_cast<int32_t>(zero_points_ptr[scale_idx]);
+            zp_val = static_cast<int32_t>(zero_points_ptr[zp_idx]);
           }
         } else {
           const int32_t default_zero_point = bits_ == 4 ? 8 : 128;
