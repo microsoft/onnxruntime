@@ -117,6 +117,20 @@ void HandleMatMulWithSplitK(
   }
 }
 
+// Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
+// `ProgramBase.SetDispatchGroupSize()` may be normalized in
+// `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
+// `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
+void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
+  shader.MainFunctionBody()
+      << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
+      << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
+      << "  const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n"
+      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
+}
+
 }  // namespace
 
 void MatMulReadFnSource(ShaderHelper& shader,
@@ -272,20 +286,9 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "const rowPerThread = " << elements_per_thread_y << ";\n"
       << "const colPerThread = " << elements_per_thread_x << ";\n"
       << "const innerElementSize = " << inner_elements_size << ";\n"
-      << "const tileInner = " << tile_inner << ";\n"
-      << "const workgroup_size = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n";
+      << "const tileInner = " << tile_inner << ";\n";
 
-  // Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
-  // `ProgramBase.SetDispatchGroupSize()` may be normalized in
-  // `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
-  // `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
-  shader.MainFunctionBody()
-      << "  let logical_workgroups_xy = uniforms.logical_dispatch_x * uniforms.logical_dispatch_y;\n"
-      << "  let logical_workgroup_id_z = workgroup_idx / logical_workgroups_xy;\n"
-      << "  let logical_workgroup_id_y = (workgroup_idx % logical_workgroups_xy) / uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id_x = (workgroup_idx % logical_workgroups_xy) % uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
-      << "  let logical_global_id = logical_workgroup_id * workgroup_size + local_id;\n";
+  InitializeLogicalWorkgroupIDAndGlobalID(shader);
 
   shader.MainFunctionBody()
       << "  let localRow = i32(local_id.y);\n"
@@ -509,20 +512,9 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
       << "var<workgroup> mm_Bsub: array<array<" << data_type << ", " << tile_b_outer << ">, " << tile_inner << ">;\n"
       << "const rowPerThread = " << elements_per_thread_y << ";\n"
       << "const colPerThread = " << elements_per_thread_x << ";\n"
-      << "const tileInner = " << tile_inner << ";\n"
-      << "const workgroup_size = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n";
+      << "const tileInner = " << tile_inner << ";\n";
 
-  // Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
-  // `ProgramBase.SetDispatchGroupSize()` may be normalized in
-  // `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
-  // `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
-  shader.MainFunctionBody()
-      << "  let logical_workgroups_xy = uniforms.logical_dispatch_x * uniforms.logical_dispatch_y;\n"
-      << "  let logical_workgroup_id_z = workgroup_idx / logical_workgroups_xy;\n"
-      << "  let logical_workgroup_id_y = (workgroup_idx % logical_workgroups_xy) / uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id_x = (workgroup_idx % logical_workgroups_xy) % uniforms.logical_dispatch_x;\n"
-      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
-      << "  let logical_global_id = logical_workgroup_id * workgroup_size + local_id;\n";
+  InitializeLogicalWorkgroupIDAndGlobalID(shader);
 
   shader.MainFunctionBody() << " let batch = i32(logical_global_id.z);\n"
                             << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
