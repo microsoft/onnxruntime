@@ -21,23 +21,12 @@ class MlasDynamicQgemmTestBase {
   MatrixGuardBuffer<float> buffer_c;
   MatrixGuardBuffer<float> buffer_c_ref;
 
-<<<<<<< HEAD
- public:
-  void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
-    // Currently, MlasDynamicQGemmBatch() and associated functions require SME2 or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME2 but it was not detected. Skipping test.";
-    }
-=======
  protected:
   void Run(size_t M, size_t N, size_t K, size_t BatchSize,
           MLAS_THREADPOOL* threadpool, bool require_threadpool, const char* run_tag) {
-    // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME())
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
+
     if (require_threadpool && threadpool == nullptr)
       GTEST_SKIP() << "Dynamic QGEMM threading path requested but no MLAS thread pool is available.";
->>>>>>> 9a4339e55e (multithreaded qgemms coverage with single-multi threaded)
 
     // Setup buffers for holding various data
     float* A = buffer_a.GetBuffer(M * K * BatchSize);
@@ -182,6 +171,10 @@ class MlasDynamicQgemmTestBase {
   class MlasDynamicQgemmSingleThreadTest : public MlasDynamicQgemmTestBase {
     public:
     void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
+
+    // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2())
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME2 but it was not detected. Skipping test.";
       Run(M, N, K, BatchSize, /*threadpool*/ nullptr, /*require_threadpool*/ false, "SingleThread");
     }
     static const char* GetTestSuiteName() { return "DynamicQgemmSingleThread"; }
@@ -190,6 +183,10 @@ class MlasDynamicQgemmTestBase {
   class MlasDynamicQgemmThreadPoolTest : public MlasDynamicQgemmTestBase {
     public:
     void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
+
+    // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2())
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME2 but it was not detected. Skipping test.";
       MLAS_THREADPOOL* tp = GetMlasThreadPool();
       if (!tp) GTEST_SKIP() << "Mlas thread pool not available";
       Run(M, N, K, BatchSize, tp, /*require_threadpool*/ true, "ThreadPool");
