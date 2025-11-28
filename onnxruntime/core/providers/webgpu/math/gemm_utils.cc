@@ -34,7 +34,7 @@ void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
     } else if (c_is_scalar) {
       shader.AdditionalImplementation() << "output_value_t(C[0]);\n";
     } else {
-      shader.AdditionalImplementation() << "output_value_t(C[row]);\n";
+      shader.AdditionalImplementation() << "output_value_t(" << C.GetByOffset("row") << ");\n";
     }
   }
   shader.AdditionalImplementation() << output.SetByIndices("coords", "value") << "\n";
@@ -47,7 +47,8 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                               bool is_channels_last) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
   if (has_bias) {
-    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? "bias[colIn]" : "bias[row]") << ");\n";
+    const ShaderVariableHelper& bias = shader.AddInput("bias", ShaderUsage::UseUniform);
+    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? bias.GetByOffset("colIn") : bias.GetByOffset("row")) << ");\n";
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
                                     << output.SetByIndices("coords", "value") << "\n";
