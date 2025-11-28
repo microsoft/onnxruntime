@@ -697,6 +697,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- Nv ---
     nv_group = parser.add_argument_group("Nv Execution Provider")
     nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
+    nv_group.add_argument("--tensorrt_rtx_plugin_path", help="Provide path to TensorRT RTX Plugin Libs")
 
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
