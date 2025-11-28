@@ -17,6 +17,7 @@ from ...fusions import FusionGelu, FusionLayerNormalization
 from ...onnx_model import ONNXModel
 from .fusion_lpnorm import FusionLpNormalization
 from .fusion_spacetodepth import FusionSpaceToDepth
+from .shape_nonzero import ShapeNonZero
 
 
 def qnn_preprocess_model(
@@ -108,6 +109,9 @@ def qnn_preprocess_model(
     if exclude_initializer_from_input:
         modified |= remove_initializer_from_input(onnx_model.model)
 
+    # Shape dynamic-shaped NonZero.
+    modified |= ShapeNonZero(onnx_model).apply()
+
     # Fuse Erf sequence into a single Gelu
     fusion_gelu = FusionGelu(onnx_model)
     if fusion_gelu.apply():
@@ -166,7 +170,7 @@ def qnn_preprocess_model(
     if modified:
         onnx_model.topological_sort()
         onnx.save_model(
-            model,
+            onnx_model.model,
             model_output,
             save_as_external_data=save_as_external_data,
             all_tensors_to_one_file=all_tensors_to_one_file,
