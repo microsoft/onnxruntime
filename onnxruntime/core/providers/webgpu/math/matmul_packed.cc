@@ -26,9 +26,6 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
-  if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
   // declare the read and write functions
@@ -53,10 +50,6 @@ bool MatMulProgram::NeedSplitK() const {
 
 Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-
-  if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
 
   // Handle bias with `MatMulWriteFnSource()`.
   // Here `use_split_k` is false because we just initialize `output` with bias.
