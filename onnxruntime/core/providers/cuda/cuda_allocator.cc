@@ -43,13 +43,8 @@ void* CUDAAllocator::Alloc(size_t size) {
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
-    // Heuristic H1: Bucket Allocations
-    // Round up to 256 KB to reduce fragmentation
-    constexpr size_t kBucketSize = 256 * 1024;
-    size_t bucketed_size = ((size + kBucketSize - 1) / kBucketSize) * kBucketSize;
-
     // BFCArena was updated recently to handle the exception and adjust the request size
-    CUDA_CALL_THROW(cudaMalloc((void**)&p, bucketed_size));
+    CUDA_CALL_THROW(cudaMalloc((void**)&p, size));
   }
   return p;
 }

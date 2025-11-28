@@ -15,36 +15,31 @@ size_t AttentionMemoryPlanner::PredictWorkspaceSize(int64_t batch_size, int64_t 
     return std::min(kLimit, static_cast<size_t>(predicted * 1.25));
 }
 
-void* AttentionMemoryPlanner::Allocate(size_t size, const std::vector<int64_t>& shape) {
+void* AttentionMemoryPlanner::Allocate(size_t size) {
+    std::lock_guard<std::mutex> lock(mutex_);
     size_t bucketed_size = BucketSize(size);
     
-    // Heuristic H3: Tensor Lifetime Reuse
-    // Try to find a free block with exact shape match (preferred)
-    for (auto& alloc : allocations_) {
-        if (alloc.free && alloc.size >= bucketed_size) {
-             if (alloc.shape == shape) {
-                 alloc.free = false;
-                 return alloc.ptr;
-             }
-        }
-    }
+    // Heuristic H3: Tensor Lifetime Reuse (Best Fit / First Fit with size >= requested)
+    // We look for a free block that is large enough.
+    // Since we bucket, we are likely to find exact matches or slightly larger ones.
+    // We pick the first one that fits to avoid scanning the whole list (First Fit).
+    // Ideally we might want Best Fit, but First Fit is faster and usually sufficient with bucketing.
     
-    // Fallback: find any free block large enough
     for (auto& alloc : allocations_) {
         if (alloc.free && alloc.size >= bucketed_size) {
-            alloc.free = false;
-            alloc.shape = shape; 
-            return alloc.ptr;
+             alloc.free = false;
+             return alloc.ptr;
         }
     }
 
     // Allocate new
     void* p = allocator_->Alloc(bucketed_size);
-    allocations_.push_back({p, bucketed_size, false, shape});
+    allocations_.push_back({p, bucketed_size, false});
     return p;
 }
 
 void AttentionMemoryPlanner::Free(void* p) {
+    std::lock_guard<std::mutex> lock(mutex_);
     for (auto& alloc : allocations_) {
         if (alloc.ptr == p) {
             alloc.free = true;
