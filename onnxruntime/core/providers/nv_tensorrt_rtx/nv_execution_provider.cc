@@ -2635,15 +2635,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   }
 
   // Only set compute capability for Turing
-  const std::string kTuringComputeCapability{"75"};
-
-  if (compute_capability_ == kTuringComputeCapability) {
-    constexpr int kDefaultNumComputeCapabilities = 1;
-    if (trt_config->getNbComputeCapabilities() == 0) {
-      trt_config->setNbComputeCapabilities(kDefaultNumComputeCapabilities);
-      trt_config->setComputeCapability(nvinfer1::ComputeCapability::kSM75, 0);
-    }
-  }
+  trt_config->setComputeCapability(nvinfer1::ComputeCapability::kCURRENT, 0);
 
   int num_inputs = trt_network->getNbInputs();
   int num_outputs = trt_network->getNbOutputs();
