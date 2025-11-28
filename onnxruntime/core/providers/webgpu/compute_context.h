@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
+#include <memory>
 #include <utility>
 
 #include "core/framework/data_transfer_manager.h"
@@ -55,6 +56,12 @@ class ComputeContextBase {
   inline decltype(auto) NodeName() const {
     return op_kernel_.Node().Name();
   }
+
+  inline const Node& Node() const {
+    return op_kernel_.Node();
+  }
+
+  Status CreateUnmappedGPUTensor(AllocatorPtr alloc, MLDataType data_type, const TensorShape& shape, std::unique_ptr<Tensor>& tensor) const;
 
   //
   // Get the operator type.
