@@ -629,7 +629,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "2D output tensor with shape (token_count, v_hidden_size)",
                 "T")
         .TypeConstraint("T",
-                        {"tensor(float)", "tensor(float16)"},
+                        {"tensor(bfloat16)", "tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
         .TypeConstraint("M",
                         {"tensor(int32)"},
@@ -761,7 +761,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "output",
                 "output tensor with shape (token_count, v_hidden_size)",
                 "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask, offset and sequence length to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           PackedMultiHeadAttentionTypeAndShapeInference(ctx);

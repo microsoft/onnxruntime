@@ -32,6 +32,7 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 TrtFusedAttention<T>::TrtFusedAttention(const OpKernelInfo& info)
@@ -85,6 +86,7 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 // template class instantiation
 template class TrtFusedAttention<float>;
 template class TrtFusedAttention<MLFloat16>;
+template class TrtFusedAttention<BFloat16>;
 
 template <typename T>
 PackedAttention<T>::PackedAttention(const OpKernelInfo& info)
