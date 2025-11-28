@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/compute_context.h"
+#include "core/framework/tensor.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
@@ -17,6 +18,18 @@ ComputeContextBase::ComputeContextBase(WebGpuContext& webgpu_context,
 
 const webgpu::BufferManager& ComputeContextBase::BufferManagerAccessor::Get(const ComputeContextBase& context) {
   return context.ep_.BufferManager();
+}
+
+void ComputeContextBase::EnsureGpuBufferUnmapped(Tensor& tensor) const {
+  void* data = tensor.MutableDataRaw();
+  if (!data) {
+    return;
+  }
+
+  auto buffer = reinterpret_cast<WGPUBuffer>(data);
+  if (buffer != nullptr && wgpuBufferGetMapState(buffer) != WGPUBufferMapState_Unmapped) {
+    wgpuBufferUnmap(buffer);
+  }
 }
 
 ComputeContext::ComputeContext(WebGpuContext& webgpu_context,

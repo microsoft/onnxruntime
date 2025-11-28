@@ -56,6 +56,14 @@ class ComputeContextBase {
     return op_kernel_.Node().Name();
   }
 
+  inline const Node& Node() const {
+    return op_kernel_.Node();
+  }
+
+  // Some read-only WebGPU allocators map buffers for CPU initialization. Before binding a
+  // tensor to a GPU program ensure the buffer is unmapped.
+  void EnsureGpuBufferUnmapped(Tensor& tensor) const;
+
   //
   // Get the operator type.
   //
