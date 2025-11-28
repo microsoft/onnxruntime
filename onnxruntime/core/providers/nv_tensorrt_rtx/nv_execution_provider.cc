@@ -85,6 +85,25 @@ struct ShutdownProtobuf {
 
 namespace onnxruntime {
 
+// Helper function to check if a data type is supported by input output nodes ofNvTensorRTRTX EP
+static bool IsSupportedInputOutputDataType(ONNXTensorElementDataType data_type) {
+  switch (data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:         // kFLOAT - 32-bit floating point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:       // kHALF - IEEE 16-bit floating-point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:      // kBF16 - Brain float 16
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:          // kBOOL - 8-bit boolean
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:          // kINT4 - 4-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:          // kINT8 - 8-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:         // kUINT8 - 8-bit unsigned integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:         // kINT32 - 32-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:         // kINT64 - 64-bit signed integer
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:  // kFP8 - 8-bit floating point
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Helper function to check if a data type is supported by NvTensorRTRTX EP
 static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
   switch (data_type) {
@@ -98,6 +117,7 @@ static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:         // kINT32 - 32-bit signed integer
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:         // kINT64 - 64-bit signed integer
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:  // kFP8 - 8-bit floating point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:        // kDOUBLE - 64-bit floating point
       return true;
     default:
       return false;
@@ -1938,6 +1958,28 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   strncpy(model_path_, path_string.c_str(), sizeof(model_path_) - 1);
 #endif
   model_path_[sizeof(model_path_) - 1] = '\0';
+
+  // Early return if the model has unsupported input/output data types
+  for (const auto* input : graph.GetInputs()) {
+    const auto* tp = input->TypeAsProto();
+    if (tp && tp->has_tensor_type()) {
+      auto data_type = static_cast<ONNXTensorElementDataType>(tp->tensor_type().elem_type());
+      if (!IsSupportedInputOutputDataType(data_type)) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unsupported data type " << GetDataTypeName(data_type) << " for input node: " << input->Name();
+        return result;
+      }
+    }
+  }
+  for (const auto* output : graph.GetOutputs()) {
+    const auto* tp = output->TypeAsProto();
+    if (tp && tp->has_tensor_type()) {
+      auto data_type = static_cast<ONNXTensorElementDataType>(tp->tensor_type().elem_type());
+      if (!IsSupportedInputOutputDataType(data_type)) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unsupported data type " << GetDataTypeName(data_type) << " for output node: " << output->Name();
+        return result;
+      }
+    }
+  }
 
   const int number_of_ort_nodes = graph.NumberOfNodes();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);

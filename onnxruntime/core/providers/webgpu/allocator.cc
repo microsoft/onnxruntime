@@ -13,7 +13,7 @@ GpuBufferAllocator::GpuBufferAllocator(const BufferManager& buffer_manager, bool
           OrtMemoryInfo(WEBGPU_BUFFER,
                         is_read_only_allocator ? OrtAllocatorType::OrtReadOnlyAllocator
                                                : OrtAllocatorType::OrtDeviceAllocator,
-                        OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0),
+                        WebGpuDevice,
                         OrtMemTypeDefault)),
       buffer_manager_{buffer_manager},
       mapped_at_creation_{is_read_only_allocator && buffer_manager.SupportsUMA()} {

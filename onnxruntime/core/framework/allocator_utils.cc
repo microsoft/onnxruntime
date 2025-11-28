@@ -52,14 +52,14 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
     if (info.use_stream_aware_arena) {
 #ifdef ORT_ENABLE_STREAM
       return AllocatorPtr(
-          std::make_unique<StreamAwareArena>(std::move(device_allocator),
-                                             max_mem,
-                                             arena_extend_str,
-                                             initial_chunk_size_bytes,
-                                             max_dead_bytes_per_chunk,
-                                             initial_growth_chunk_size_bytes));
+          std::make_unique<StreamAwareBFCArena>(std::move(device_allocator),
+                                                max_mem,
+                                                arena_extend_str,
+                                                initial_chunk_size_bytes,
+                                                max_dead_bytes_per_chunk,
+                                                initial_growth_chunk_size_bytes));
 #else
-      ORT_THROW("StreamAwareArena should be transparent to minimal build.");
+      ORT_THROW("StreamAwareBFCArena should be transparent to minimal build.");
 #endif
     } else {
       return AllocatorPtr(
