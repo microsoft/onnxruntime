@@ -44,6 +44,11 @@
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
         "^test_castlike_INT4_to*",  // ORT does not support ml_dtypes
+        "^test_castlike_INT2_to*",  // ORT does not support int2
+        "^test_castlike_UINT2_to*",  // ORT does not support uint2
+        "^test_cast_INT2_to*",  // ORT does not support int2
+        "^test_cast_UINT2_to*",  // ORT does not support uint2
+        "^test_convinteger_with_padding*",  // ORT does not support per-channel quantization for ConvInteger
         "^test_cast_e8m0_*",  // ORT does not support float8e8m0
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_training_mode",
