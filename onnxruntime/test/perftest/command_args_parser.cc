@@ -116,6 +116,8 @@ ABSL_FLAG(std::string, i, "",
           "  [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer, used while generating QNN context binary.\n"
           "  [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared memory allocator and use it for inputs and outputs. Requires libcdsprpc.so/dll to be available.\n"
           "  Defaults to '0' (disabled).\n"
+          "  [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
+          "  '0' (disabled), '1' (enabled). Default: '0'. \n"
           "  [Example] [For QNN EP] -e qnn -i \"backend_type|cpu\" \n"
           "\n"
           "  [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
