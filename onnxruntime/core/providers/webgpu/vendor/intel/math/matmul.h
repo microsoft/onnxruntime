@@ -10,6 +10,7 @@
 
 namespace onnxruntime {
 namespace webgpu {
+namespace intel {
 
 class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
  public:
@@ -42,5 +43,6 @@ Status ApplyMatMulIntel(ComputeContext& context,
                         std::vector<const Tensor*>& inputs,
                         Tensor* output);
 
+}  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime

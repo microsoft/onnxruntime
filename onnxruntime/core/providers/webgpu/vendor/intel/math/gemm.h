@@ -9,6 +9,7 @@
 
 namespace onnxruntime {
 namespace webgpu {
+namespace intel {
 
 class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
  public:
@@ -60,5 +61,6 @@ Status ApplyGemmIntel(const Tensor* a,
                       float beta,
                       ComputeContext& context);
 
+}  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime
