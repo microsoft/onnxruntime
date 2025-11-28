@@ -47,7 +47,6 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
 
 // Add support for more devices.
 bool IsDeviceSupported(ComputeContext& context) {
-#if 0
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
 
   if (adapter_info.vendor == std::string_view("intel")) {
@@ -57,10 +56,6 @@ bool IsDeviceSupported(ComputeContext& context) {
   }
 
   return false;
-#else
-  (void)context;  // <-- This line suppresses the unused variable warning
-  return true;
-#endif
 }
 
 }  // namespace
