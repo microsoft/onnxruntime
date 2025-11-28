@@ -1205,7 +1205,15 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
                                                 all_graph_configs_ptr, json_graph_filepath));
-    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
+
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_START, GetPerThreadContext().GetHtpPowerConfigId(), default_htp_performance_mode_));
+
+    auto rtVal = qnn_model->FinalizeGraphs(logger);
+
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_DONE, GetPerThreadContext().GetHtpPowerConfigId(), default_htp_performance_mode_));
+
+    ORT_RETURN_IF_ERROR(rtVal);
+
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
@@ -1272,12 +1280,18 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     for (auto main_context_pos : main_context_pos_list) {
       const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
       // Create QNN context from the cached binary, deserialize the QNN graph from the binary
-      ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
-                                                       context_model_path,
-                                                       qnn_backend_manager_.get(),
-                                                       qnn_models,
-                                                       logger,
-                                                       max_spill_fill_size));
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_START, GetPerThreadContext().GetHtpPowerConfigId(), default_htp_performance_mode_));
+
+      Status rtVal = qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
+                                                  context_model_path,
+                                                  qnn_backend_manager_.get(),
+                                                  qnn_models,
+                                                  logger,
+                                                  max_spill_fill_size);
+
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::INIT_DONE, GetPerThreadContext().GetHtpPowerConfigId(), default_htp_performance_mode_));
+
+      ORT_RETURN_IF_ERROR(rtVal);
     }
 
     for (auto fused_node_and_graph : fused_nodes_and_graphs) {
@@ -1365,19 +1379,14 @@ const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const
 QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
                                                          uint32_t device_id,
                                                          uint32_t core_id,
-                                                         qnn::HtpPerformanceMode default_htp_performance_mode,
                                                          uint32_t default_rpc_control_latency,
                                                          uint32_t default_rpc_polling_time)
     : qnn_backend_manager_(qnn_backend_manager) {
-  Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
+  Status rt = qnn_backend_manager_->InitializePowerCfgId(device_id, core_id, htp_power_config_id_);
   is_htp_power_config_id_valid_ = rt.IsOK();
-  // default_htp_performance_mode and default_rpc_control_latency are from QNN EP option.
+  // default_rpc_control_latency are from QNN EP option.
   // set it once only for each thread as default so user don't need to set it for every session run
   if (is_htp_power_config_id_valid_) {
-    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
-                                                                      default_htp_performance_mode));
-    }
     if (default_rpc_control_latency > 0 || default_rpc_polling_time > 0) {
       ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id_,
                                                                        default_rpc_control_latency,
@@ -1388,7 +1397,7 @@ QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager*
 
 QNNExecutionProvider::PerThreadContext::~PerThreadContext() {
   if (is_htp_power_config_id_valid_) {
-    ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
+    ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DeInitializePowerCfgId(htp_power_config_id_));
   }
 }
 
@@ -1412,7 +1421,7 @@ QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContex
     if (context_state_.retired_context_pool.empty()) {
       uint32_t core_id = 0;
       context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
-                                                   default_htp_performance_mode_, default_rpc_control_latency_,
+                                                   default_rpc_control_latency_,
                                                    default_rpc_polling_time_);
     } else {
       context = context_state_.retired_context_pool.back();
@@ -1488,8 +1497,9 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 
   if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
     if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                  htp_performance_mode));
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::RUN_START, GetPerThreadContext().GetHtpPowerConfigId(), htp_performance_mode));
+    } else if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode_) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::RUN_START, GetPerThreadContext().GetHtpPowerConfigId(), default_htp_performance_mode_));
     }
 
     if (rpc_control_latency > 0 || rpc_polling_time > 0) {
@@ -1504,7 +1514,6 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
     LOGS_DEFAULT(VERBOSE) << "lora_config: " << lora_config;
     ORT_RETURN_IF_ERROR(qnn_backend_manager_->ParseLoraConfig(lora_config));
   }
-
   return Status::OK();
 }
 
@@ -1523,12 +1532,12 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
     ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
   }
 
-  if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-    if (!GetPerThreadContext().IsHtpPowerConfigIdValid()) {
-      return Status::OK();
+  if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
+    if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::RUN_DONE, GetPerThreadContext().GetHtpPowerConfigId(), htp_performance_mode));
+    } else if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode_) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetState(onnxruntime::qnn::GraphState::RUN_DONE, GetPerThreadContext().GetHtpPowerConfigId(), default_htp_performance_mode_));
     }
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                htp_performance_mode));
   }
 
   return Status::OK();

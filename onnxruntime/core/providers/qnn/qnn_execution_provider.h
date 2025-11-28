@@ -119,7 +119,6 @@ class QNNExecutionProvider : public IExecutionProvider {
    public:
     PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
                      uint32_t device_id, uint32_t core_id,
-                     qnn::HtpPerformanceMode default_htp_performance_mode,
                      uint32_t default_rpc_control_latency,
                      uint32_t default_rpc_polling_time);
     ~PerThreadContext();
