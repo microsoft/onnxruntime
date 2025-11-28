@@ -1777,6 +1777,11 @@ inline void SessionImpl<T>::FinalizeModelEditorSession(const Model& model, const
 }
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
+template <typename T>
+inline void SessionImpl<T>::StartProfiling() {
+  ThrowOnError(GetApi().SessionStartProfiling(this->p_));
+}
+
 }  // namespace detail
 
 inline SessionOptions::SessionOptions() {
