@@ -337,7 +337,7 @@ MlasDynamicQgemmPackBSize(
     //No fallback available
     //TODO: Insert Override
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
-        bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
+        bytes = ArmKleidiAI::MlasDynamicQGemmPackBSize(N, K);
     }
 #endif
 
@@ -426,7 +426,7 @@ MlasDynamicQgemmPackB(
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
-        ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
+        ArmKleidiAI::MlasDynamicQGemmPackB(N, K, B, Scales, Bias, PackedB);
     }
 #endif
 
