@@ -78,6 +78,7 @@ MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptio
 MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const OrtMIGraphXProviderOptions& options) noexcept
     : device_id{static_cast<OrtDevice::DeviceId>(options.device_id)},
       fp16_enable{options.migraphx_fp16_enable != 0},
+      bf16_enable{options.migraphx_bf16_enable != 0},
       fp8_enable{options.migraphx_fp8_enable != 0},
       int8_enable{options.migraphx_int8_enable != 0},
       exhaustive_tune{options.migraphx_exhaustive_tune != 0},
