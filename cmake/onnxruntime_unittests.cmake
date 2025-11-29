@@ -1528,8 +1528,14 @@ endif()
       onnxruntime_add_shared_library(onnxruntime_runtime_path_test_shared_library
                                      ${onnxruntime_runtime_path_test_shared_library_src})
 
-      target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
-                            onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
+      if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+        target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                              onnxruntime_common ${CMAKE_DL_LIBS})
+        set_target_properties(onnxruntime_runtime_path_test_shared_library PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+      else()
+        target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                              onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
+      endif()
       target_include_directories(onnxruntime_runtime_path_test_shared_library PRIVATE ${ONNXRUNTIME_ROOT})
 
       if(UNIX)
@@ -1614,6 +1620,10 @@ endif()
         "${TEST_SRC_DIR}/platform/android/cxa_demangle_test.cc"
       )
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+    endif()
+
+    if (CMAKE_SYSTEM_NAME MATCHES "AIX" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      set_target_properties(onnxruntime_shared_lib_test PROPERTIES ENABLE_EXPORTS 1)
     endif()
 
     if (IOS)
