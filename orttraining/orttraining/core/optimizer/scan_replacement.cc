@@ -19,7 +19,6 @@ bool ScanReplacement::SatisfyCondition(const Graph& graph, const Node& node, con
 Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
   // Get necessary variables
   NodeAttributes& attributes = node.GetMutableAttributes();
-  // Graph body = Graph(graph, node, *attributes.at("body").mutable_g());
   Graph* body = node.GetMutableGraphAttribute("body");
   ORT_ENFORCE(body != nullptr);
   auto n_carries = body->GetInputs().size() - attributes.at("num_scan_inputs").i();
@@ -46,7 +45,7 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     ORT_ENFORCE(carry_type != nullptr);
     ONNX_NAMESPACE::TypeProto type = *carry_type;
     type.mutable_tensor_type()->clear_shape();
-    node_outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_inputs[i]->Name() + "_carries"), &type));
+    node_outputs.push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_outputs[i]->Name() + "_carries"), &type));
   }
 
   // Modify attributes
@@ -61,38 +60,8 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
       attr.add_ints(0);
   }
 
-  // *attributes.at("body").mutable_g() = body->ToGraphProto();
-
   graph.SetGraphResolveNeeded();
-
-  /*
-  Graph::ResolveOptions options;
-  std::vector<Graph *> additional_graphs = {body};
-  options.additional_graphs = &additional_graphs;
-  LOGS(logger, INFO) << "ScanReplace resolving";
-  body->SetGraphResolveNeeded();
-  graph.SetGraphResolveNeeded();
-  ORT_RETURN_IF_ERROR(body->Resolve(options));
-  LOGS(logger, INFO) << "ScanReplace resolved";
-  //*/
-
-  /*
-  Node& scan_training = graph.AddNode(graph.GenerateNodeName(node.Name() + std::string("_training")), "Scan", "Modified Scan operation for training",
-                          node_inputs,
-                          node_outputs,
-                          &attributes,
-                          kOnnxDomain);
-  scan_training.SetExecutionProviderType(node.GetExecutionProviderType());
-  graph_utils::FinalizeNodeFusion(graph, scan_training, node);
-  */
   rule_effect = RewriteRuleEffect::kUpdatedCurrentNode;
-
-  /*
-  LOGS(logger, INFO) << "Scan resolving";
-  ORT_RETURN_IF_ERROR(body.Resolve());
-  LOGS(logger, INFO) << "Scan resolved";
-  *attributes.at("body").mutable_g() = body.ToGraphProto(); // Update body subgraph
-  //*/
 
   return Status::OK();
 }
