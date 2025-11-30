@@ -4,6 +4,8 @@
 #include "core/session/plugin_ep/ep_api.h"
 
 #include <algorithm>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "core/common/semver.h"
@@ -205,6 +207,32 @@ ORT_API(uint64_t, GetSyncIdForLastWaitOnSyncStream, _In_ const OrtSyncStream* pr
   return id;
 }
 
+ORT_API_STATUS_IMPL(CreateHardwareDevice, _In_ OrtHardwareDeviceType type,
+                    _In_ uint32_t vendor_id,
+                    _In_ uint32_t device_id,
+                    _In_ const char* vendor_name,
+                    _In_opt_ const OrtKeyValuePairs* metadata,
+                    _Out_ OrtHardwareDevice** hardware_device) {
+  API_IMPL_BEGIN
+  auto device = std::make_unique<OrtHardwareDevice>();
+  device->type = type;
+  device->vendor_id = vendor_id;
+  device->device_id = device_id;
+  device->vendor = std::string(vendor_name);
+
+  if (metadata) {
+    device->metadata = *metadata;
+  }
+
+  *hardware_device = device.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseHardwareDevice, _Frees_ptr_opt_ OrtHardwareDevice* device) {
+  delete device;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -230,11 +258,17 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::SyncStream_GetImpl,
     &OrtExecutionProviderApi::SyncStream_GetSyncId,
     &OrtExecutionProviderApi::GetSyncIdForLastWaitOnSyncStream,
+    // End of Version 23 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::CreateHardwareDevice,
+    &OrtExecutionProviderApi::ReleaseHardwareDevice,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
 static_assert(offsetof(OrtEpApi, ReleaseEpDevice) / sizeof(void*) == 1,
               "Size of version 22 API cannot change");  // initial version in ORT 1.22
+static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void*) == 15,
+              "Size of version 23 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
 
