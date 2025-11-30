@@ -430,7 +430,7 @@ else:
     libs.extend(["DirectML.dll"])
     # WebGPU/Dawn Libs
     libs.extend(["dxcompiler.dll", "dxil.dll"])
-    # QNN V68/V73 dependencies
+    # QNN V68/V73/V81 dependencies
     qnn_deps = [
         "QnnCpu.dll",
         "QnnGpu.dll",
@@ -438,6 +438,9 @@ else:
         "QnnSaver.dll",
         "QnnSystem.dll",
         "QnnHtpPrepare.dll",
+        "QnnHtpV81Stub.dll",
+        "libQnnHtpV81Skel.so",
+        "libqnnhtpv81.cat",
         "QnnHtpV73Stub.dll",
         "libQnnHtpV73Skel.so",
         "libqnnhtpv73.cat",
