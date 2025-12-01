@@ -143,9 +143,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   contribop_parameters.scale = parameters.scale;
   contribop_parameters.use_tf32 = UseTF32();
 
-  // QKV format: Always Q_K_V_BSNH for separate Q, K, V inputs
-  // (3D inputs get internally transposed to 4D BNSH, then treated as BSNH)
-  contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH;
+  // QKV format: Determine based on input dimensions
+  // 3D inputs (B, S, D): Q_K_V_BSNH - will be transposed by PrepareQkv to BNSH
+  // 4D inputs (B, N, S, H): Q_K_V_BNSH - already in correct format, no transpose needed
+  bool is_4d_input = Q->Shape().NumDimensions() == 4;
+  if (is_4d_input) {
+    // 4D inputs are currently not supported
+    ORT_ENFORCE(false, "4D input is currently not supported yet in Attention op.");
+  } else {
+    // 3D inputs in BSNH format (will be transposed)
+    contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH;
+  }
 
   // TODO(titaiwang): Continue on these parameters
   // Construct AttentionData to pass to QkvToContext
@@ -180,6 +188,30 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.use_memory_efficient_attention = false;
   data.fused_runner = nullptr;
   data.fused_cross_attention_kernel = nullptr;
+
+  // Allocate workspace for Q, K, V processing and scratch buffer
+  const bool no_qkv_workspace = onnxruntime::contrib::cuda::NoQkvWorkspace(contribop_parameters, data);
+  size_t workspace_bytes = onnxruntime::contrib::cuda::GetAttentionWorkspaceSize(
+      sizeof(T),
+      parameters.batch_size,
+      parameters.q_num_heads,
+      parameters.head_size,
+      parameters.v_head_size,
+      parameters.q_sequence_length,
+      parameters.kv_sequence_length,
+      parameters.total_sequence_length,
+      nullptr,  // fused_runner
+      false,    // use_flash_attention
+      false,    // use_lean_attention
+      false,    // use_fused_cross_attention
+      false,    // use_memory_efficient_attention
+      false,    // use_cudnn_flash_attention
+      no_qkv_workspace);
+  auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+
+  data.has_qkv_workspace = !no_qkv_workspace;
+  data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.workspace_bytes = workspace_bytes;
 
   // Call QkvToContext to perform the attention computation
   auto& device_prop = GetDeviceProp();
