@@ -85,65 +85,66 @@ void
             const float32x4_t BiasVector2 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 8]);
             const float32x4_t BiasVector3 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 12]);
 
-            for (size_t kh = 0; kh < KernelHeight; kh++) {
-                for (size_t kw = 0; kw < KernelWidth; kw++) {
-                    const float* input_base = Input + output_idx * StrideWidthElements +
-                                              kh * DilatedInputWidthElements + kw * DilationWidthElements;
+            for (size_t kernel_pos = 0; kernel_pos < KernelHeight * KernelWidth; kernel_pos++) {
+                size_t kh = kernel_pos / KernelWidth;
+                size_t kw = kernel_pos % KernelWidth;
 
-                    if constexpr (IsNchwcFormat) {
-                        for (size_t filterBlock = 0; filterBlock < BlockSize; filterBlock++) {
-                            const float* input_element = input_base + filterBlock;
-                            const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                            const float* input_row_end = input_row_start + InputWidthElements;
+                const float* input_base = Input + output_idx * StrideWidthElements +
+                                          kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
-                            float input_value;
-                            if (input_element >= input_row_start && input_element < input_row_end) {
-                                input_value = *input_element;
-                            } else {
-                                input_value = 0.0f;
-                            }
-
-                            const float32x4_t InputVector = MlasBroadcastFloat32x4(input_value);
-
-                            size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
-                                                     kw * (BlockSize * BlockSize) +
-                                                     filterBlock * BlockSize;
-
-                            const float32x4_t FilterVector0 = MlasLoadFloat32x4(&filter[kernel_base_pos]);
-                            const float32x4_t FilterVector1 = MlasLoadFloat32x4(&filter[kernel_base_pos + 4]);
-                            const float32x4_t FilterVector2 = MlasLoadFloat32x4(&filter[kernel_base_pos + 8]);
-                            const float32x4_t FilterVector3 = MlasLoadFloat32x4(&filter[kernel_base_pos + 12]);
-
-                            Accumulator0 = MlasMultiplyAddFloat32x4(InputVector, FilterVector0, Accumulator0);
-                            Accumulator1 = MlasMultiplyAddFloat32x4(InputVector, FilterVector1, Accumulator1);
-                            Accumulator2 = MlasMultiplyAddFloat32x4(InputVector, FilterVector2, Accumulator2);
-                            Accumulator3 = MlasMultiplyAddFloat32x4(InputVector, FilterVector3, Accumulator3);
-                        }
-                    } else {
+                if constexpr (IsNchwcFormat) {
+                    for (size_t filterBlock = 0; filterBlock < BlockSize; filterBlock++) {
+                        const float* input_element = input_base + filterBlock;
                         const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
                         const float* input_row_end = input_row_start + InputWidthElements;
 
                         float input_value;
-                        if (input_base >= input_row_start && input_base < input_row_end) {
-                            input_value = *input_base;
+                        if (input_element >= input_row_start && input_element < input_row_end) {
+                            input_value = *input_element;
                         } else {
                             input_value = 0.0f;
                         }
 
                         const float32x4_t InputVector = MlasBroadcastFloat32x4(input_value);
 
-                        size_t kernel_base_pos = kh * KernelWidth + kw;
+                        size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
+                                                 kw * (BlockSize * BlockSize) +
+                                                 filterBlock * BlockSize;
 
-                        const float32x4_t FilterVector0 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize]);
-                        const float32x4_t FilterVector1 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize + 4]);
-                        const float32x4_t FilterVector2 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize + 8]);
-                        const float32x4_t FilterVector3 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize + 12]);
+                        const float32x4_t FilterVector0 = MlasLoadFloat32x4(&filter[kernel_base_pos]);
+                        const float32x4_t FilterVector1 = MlasLoadFloat32x4(&filter[kernel_base_pos + 4]);
+                        const float32x4_t FilterVector2 = MlasLoadFloat32x4(&filter[kernel_base_pos + 8]);
+                        const float32x4_t FilterVector3 = MlasLoadFloat32x4(&filter[kernel_base_pos + 12]);
 
                         Accumulator0 = MlasMultiplyAddFloat32x4(InputVector, FilterVector0, Accumulator0);
                         Accumulator1 = MlasMultiplyAddFloat32x4(InputVector, FilterVector1, Accumulator1);
                         Accumulator2 = MlasMultiplyAddFloat32x4(InputVector, FilterVector2, Accumulator2);
                         Accumulator3 = MlasMultiplyAddFloat32x4(InputVector, FilterVector3, Accumulator3);
                     }
+                } else {
+                    const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+                    const float* input_row_end = input_row_start + InputWidthElements;
+
+                    float input_value;
+                    if (input_base >= input_row_start && input_base < input_row_end) {
+                        input_value = *input_base;
+                    } else {
+                        input_value = 0.0f;
+                    }
+
+                    const float32x4_t InputVector = MlasBroadcastFloat32x4(input_value);
+
+                    size_t kernel_base_pos = kh * KernelWidth + kw;
+
+                    const float32x4_t FilterVector0 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize]);
+                    const float32x4_t FilterVector1 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize + 4]);
+                    const float32x4_t FilterVector2 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize + 8]);
+                    const float32x4_t FilterVector3 = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize + 12]);
+
+                    Accumulator0 = MlasMultiplyAddFloat32x4(InputVector, FilterVector0, Accumulator0);
+                    Accumulator1 = MlasMultiplyAddFloat32x4(InputVector, FilterVector1, Accumulator1);
+                    Accumulator2 = MlasMultiplyAddFloat32x4(InputVector, FilterVector2, Accumulator2);
+                    Accumulator3 = MlasMultiplyAddFloat32x4(InputVector, FilterVector3, Accumulator3);
                 }
             }
 
