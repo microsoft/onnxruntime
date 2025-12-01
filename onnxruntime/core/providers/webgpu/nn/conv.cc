@@ -216,6 +216,46 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   return context.RunProgram(conv2d_mm_program);
 }
 
+template <bool is_channels_last, bool is_fused>
+Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& /* context */,
+                                                         const Tensor& tensor,
+                                                         int input_idx,
+                                                         AllocatorPtr /* alloc */,
+                                                         /*out*/ bool& is_packed) {
+  is_packed = false;
+
+  if constexpr (is_channels_last) {
+    if (input_idx == 1 && tensor.Shape().NumDimensions() == 4) {
+      // only deal with 4D NHWC weights
+
+      // TODO: implement weight transpose for pre-pack here
+      //       Conv::ComputeInternal() should be updated to reflect the change:
+      //       - if the initializer is packed, `context.Input<Tensor>(1)` will be nullptr.
+      //       - in this case, use `transposed_kernel_` instead.
+
+      // // Step.1 - calculate transposed weight shape
+      // TensorShape transposed_kernel_shape{tensor.Shape()[2],
+      //                                     tensor.Shape()[3],
+      //                                     tensor.Shape()[1],
+      //                                     tensor.Shape()[0]};
+
+      // // Step.2 - create transposed weight tensor
+      // transposed_kernel_ = std::make_unique<Tensor>(tensor.DataType(), transposed_kernel_shape, alloc);
+
+      // // Step.3 - do transpose
+      // size_t perm[] = {2, 3, 1, 0};
+      // ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context,
+      //                                            perm,
+      //                                            tensor,
+      //                                            *transposed_kernel_));
+
+      // is_packed = true;  // set this flag to true so that ORT will release the initializer tensor
+    }
+  }
+
+  return Status::OK();
+}
+
 // Explicit template instantiation for FusedConv
 template class Conv<false, false>;
 template class Conv<false, true>;

@@ -6591,6 +6591,23 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /** \brief Get all config entries from ::OrtKernelInfo.
+   *
+   * Gets all configuration entries from the ::OrtKernelInfo object as key-value pairs.
+   * Config entries are set on the ::OrtSessionOptions and are accessible in custom operator kernels.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to access all session configuration entries
+   * during kernel construction.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance containing all config entries.
+   *                 Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
 };
 
 /*
