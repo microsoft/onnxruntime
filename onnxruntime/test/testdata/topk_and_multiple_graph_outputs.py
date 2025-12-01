@@ -11,7 +11,7 @@ def create_model_with_topk_graph_output(model_path):
     # ======================
     # ---- Initializers ----
     # ======================
-    K = helper.make_tensor("K", TensorProto.INT64, dims=[1], vals=[300])
+    k = helper.make_tensor("K", TensorProto.INT64, dims=[1], vals=[300])
     zero = helper.make_tensor("zero", TensorProto.INT64, dims=[], vals=[0])
     twenty_six = helper.make_tensor("twenty_six", TensorProto.INT64, dims=[], vals=[26])
 
@@ -62,7 +62,7 @@ def create_model_with_topk_graph_output(model_path):
         name="TopKGraph",
         inputs=[input_tensor],
         outputs=[scores_out, less_out, div_out, labels_out],
-        initializer=[K, zero, twenty_six],
+        initializer=[k, zero, twenty_six],
     )
 
     model = helper.make_model(graph, opset_imports=[helper.make_operatorsetid("", 13)])

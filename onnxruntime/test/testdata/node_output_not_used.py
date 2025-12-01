@@ -4,9 +4,9 @@ from onnx import TensorProto, helper
 
 def create_model_with_node_output_not_used(model_path):
     # Create graph
-    X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 2])
-    W = helper.make_tensor_value_info("W", TensorProto.FLOAT, [2, 3])
-    Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 2])
+    w = helper.make_tensor_value_info("W", TensorProto.FLOAT, [2, 3])
+    y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
 
     # Dropout node (two outputs)
     dropout_node = helper.make_node(
@@ -27,8 +27,8 @@ def create_model_with_node_output_not_used(model_path):
     graph = helper.make_graph(
         nodes=[dropout_node, matmul_node],
         name="DropoutMatMulGraph",
-        inputs=[X, W],
-        outputs=[Y],
+        inputs=[x, w],
+        outputs=[y],
     )
 
     model = helper.make_model(graph, opset_imports=[helper.make_operatorsetid("", 13)])
