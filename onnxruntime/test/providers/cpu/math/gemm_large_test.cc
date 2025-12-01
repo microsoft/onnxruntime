@@ -48,7 +48,7 @@ Status ComputeGemmOutputShape(const TensorShape& left, int64_t trans_left, const
     K = left.NumDimensions() == 2 ? left[1] : left[0];
   }
 
-  N = trans_right == 1 ? N = right[0] : N = right[1];
+  N = trans_right == 1 ? right[0] : right[1];
   int k_dim = trans_right == 1 ? 1 : 0;
 
   Status status;
@@ -173,7 +173,6 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, int64_t a_trans, std::i
 TEST(Gemm_Large, Float32_Subgroup) {
   RunTestTyped<float, 13>({512, 1024}, 0, {1024, 1024}, 0, {512, 1024});
   RunTestTyped<float, 13>({127, 1024}, 0, {1024, 1024}, 0, {1024});
-  RunTestTyped<float, 13>({127, 1024}, 0, {1024, 1024}, 0, {1024});
   RunTestTyped<float, 13>({127, 1023}, 0, {1023, 1023}, 0, {1023});
   RunTestTyped<float, 13>({511, 1024}, 0, {1024, 1023}, 0, {511, 1});
   RunTestTyped<float, 13>({1024, 512}, 1, {1024, 1024}, 0, {512, 1});
@@ -184,7 +183,6 @@ TEST(Gemm_Large, Float32_Subgroup) {
 
 TEST(Gemm_Large, Float16_Subgroup) {
   RunTestTyped<MLFloat16, 13>({512, 1024}, 0, {1024, 1024}, 0, {512, 1024});
-  RunTestTyped<MLFloat16, 13>({127, 1024}, 0, {1024, 1024}, 0, {1024});
   RunTestTyped<MLFloat16, 13>({127, 1024}, 0, {1024, 1024}, 0, {1024});
   RunTestTyped<MLFloat16, 13>({127, 1023}, 0, {1023, 1023}, 0, {1023});
   RunTestTyped<MLFloat16, 13>({511, 1024}, 0, {1024, 1023}, 0, {511, 1});
@@ -226,10 +224,10 @@ TEST(Gemm_Large, Float16_Split_Dim_Inner) {
   RunTestTyped<MLFloat16, 13>({6, 1024}, 0, {1024, 192}, 0, {6, 1});
   RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 600}, 0, {1, 600});
   RunTestTyped<MLFloat16, 13>({49, 1024}, 0, {1024, 600}, 0, {49, 600});
-  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {16, 1}, 1.3f, 1.5f);
-  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {1, 192}, 1.3f, 1.5f);
-  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {192}, 1.3f, 1.5f);
-  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {16, 192}, 1.3f, 1.5f);
+  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {16, 1}, 1.5, 1.3);
+  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {1, 192}, 1.5, 1.3);
+  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {192}, 1.5, 1.3);
+  RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {1024, 192}, 0, {16, 192}, 1.5, 1.3);
   RunTestTyped<MLFloat16, 13>({1024, 16}, 1, {1024, 192}, 0, {192});
   RunTestTyped<MLFloat16, 13>({16, 1024}, 0, {192, 1024}, 1, {192});
   RunTestTyped<MLFloat16, 13>({1024, 16}, 1, {192, 1024}, 1, {192});

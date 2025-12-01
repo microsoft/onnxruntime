@@ -129,8 +129,8 @@ Status GetExpectedResult(const std::vector<float>& a_vals, const std::vector<flo
 
 template <typename T1, int version>
 void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
-  assert(a_dims.size() < 5 && b_dims.size() < 5, "max supported tensor dim is 4-D.");
-  assert(a_dims.size() > 1 && b_dims.size() > 1, "cannot support 1-D tensor.");
+  ASSERT_TRUE(a_dims.size() < 5 && b_dims.size() < 5, "max supported tensor dim is 4-D.");
+  ASSERT_TRUE(a_dims.size() > 1 && b_dims.size() > 1, "cannot support 1-D tensor.");
   static_assert(std::is_same_v<T1, float> || std::is_same_v<T1, MLFloat16>, "unexpected type for T1");
 
   int64_t M = 0;
@@ -170,7 +170,6 @@ TEST(MatMul_Large, Float32_Subgroup) {
   RunTestTyped<float, 13>({512, 1024}, {1024, 1024});
   RunTestTyped<float, 13>({511, 1024}, {1024, 1024});
   RunTestTyped<float, 13>({511, 1024}, {1024, 1023});
-  RunTestTyped<float, 13>({512, 1024}, {1024, 1024});
   RunTestTyped<float, 13>({1, 512, 1024}, {1024, 1024});
   RunTestTyped<float, 13>({2, 512, 1024}, {1024, 1024});
   RunTestTyped<float, 13>({2, 512, 1024}, {2, 1024, 1024});
@@ -178,14 +177,13 @@ TEST(MatMul_Large, Float32_Subgroup) {
 }
 
 TEST(MatMul_Large, Float16_Subgroup) {
-  RunTestTyped<float, 13>({512, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({511, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({511, 1024}, {1024, 1023});
-  RunTestTyped<float, 13>({512, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({1, 512, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({2, 512, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({2, 512, 1024}, {2, 1024, 1024});
-  RunTestTyped<float, 13>({2, 2, 512, 1024}, {2, 1024, 1024});
+  RunTestTyped<MLFloat16, 13>({512, 1024}, {1024, 1024});
+  RunTestTyped<MLFloat16, 13>({511, 1024}, {1024, 1024});
+  RunTestTyped<MLFloat16, 13>({511, 1024}, {1024, 1023});
+  RunTestTyped<MLFloat16, 13>({1, 512, 1024}, {1024, 1024});
+  RunTestTyped<MLFloat16, 13>({2, 512, 1024}, {1024, 1024});
+  RunTestTyped<MLFloat16, 13>({2, 512, 1024}, {2, 1024, 1024});
+  RunTestTyped<MLFloat16, 13>({2, 2, 512, 1024}, {2, 1024, 1024});
 }
 
 }  // namespace test
