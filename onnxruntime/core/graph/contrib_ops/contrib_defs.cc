@@ -685,6 +685,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Inverse, 1,
                                   }
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(MultiHeadLatentAttention, 1,
+                            OpSchema()
+                                .Input(0, "QK_nope", "QK nope input tensor (B, H, S, N)", "T")
+                                .Input(1, "QK_rope", "QK rope input tensor (B, H, S, R)", "T")
+                                .Input(2, "K_rope", "K rope input tensor (B, H, S, R)", "T")
+                                .Input(3, "KV_nope", "KV nope input tensor (B, H, S, N)", "T")
+                                .Input(4, "position_ids", "Position ids input tensor (B, S)", "tensor(int64)")
+                                .Input(5, "sin_cache", "Cached sin embeddings (M, R)", "T")
+                                .Input(6, "cos_cache", "Cached cos embeddings (M, R)", "T")
+                                .Input(7, "attention_mask", "Attention mask input tensor (B, H, S, S + L)", "T")
+                                .Input(8, "past_key", "Past key tensor (B, H, L, R + N)", "T")
+                                // .Input(9, "past_value", "Past value tensor (B, H, L, R + N)", "T")
+                                .Output(0, "attention_weights", "Output attention weights tensor tensor (B, H, S, N)", "T")
+                                .Output(1, "present_key", "Present key tensor (B, H, L + S, R + N)", "T")
+                                // .Output(2, "present_value", "Present value tensor (B, H, L + S, R + N)", "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float)"},
+                                    "Constrain input and output types to float tensors.")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                    // TODO: Implemente shape propagation
+                                    using namespace ONNX_NAMESPACE;
+                                }));
+
 constexpr const char* TorchEmbedding_ver1_doc = R"DOC(
       Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
        for a dictionary of fixed size.
