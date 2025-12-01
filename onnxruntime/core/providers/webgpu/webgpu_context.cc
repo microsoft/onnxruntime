@@ -147,6 +147,9 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(*this);
 
+    // create split-k config
+    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
+
     // set query type
 #if !defined(__wasm__)
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
@@ -178,7 +181,7 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
+Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -288,8 +291,8 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
 
   if (is_profiling_) {
-    PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
-                                          context.KernelContext().GetOpType(),
+    PendingKernelInfo pending_kernel_info(context.NodeName(),
+                                          context.OpType(),
                                           program.Name(),
                                           key,
                                           inputs,
@@ -442,7 +445,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;
-  const webgpu::BufferManager& buffer_mgr = ComputeContext::BufferManagerAccessor::Get(context);
+  const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 

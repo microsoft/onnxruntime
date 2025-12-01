@@ -75,7 +75,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Python ${{ inputs.python_version }}
         if: inputs.architecture != 'arm64'

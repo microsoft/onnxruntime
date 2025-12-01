@@ -108,7 +108,7 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
+Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
                               gsl::span<const size_t> permutations,
                               const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();

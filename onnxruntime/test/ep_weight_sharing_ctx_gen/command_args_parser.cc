@@ -4,6 +4,7 @@
 #include "command_args_parser.h"
 
 #include <string.h>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -21,6 +22,7 @@
 #include <core/platform/path_lib.h>
 #include <core/optimizer/graph_transformer_level.h>
 
+#include "nlohmann/json.hpp"
 #include "test_configuration.h"
 
 namespace onnxruntime {
@@ -35,6 +37,23 @@ namespace qnnctxgen {
       "\n"
       "Options:\n"
       "\t-e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn', 'tensorrt', 'openvino', 'vitisai'. Default: 'qnn'.\n"
+      "\t-p [plugin_ep_config_json_file]: Specify JSON configuration file for a plugin EP. Takes precedence over the '-e' and '-i' options.\n"
+      "\n"
+      "\t                                 Example JSON configuration that selects plugin EP devices via EP name:\n"
+      "\t                                   {\n"
+      "\t                                     \"ep_library_registration_name\": \"example_plugin_ep\",\n"
+      "\t                                     \"ep_library_path\": \"example_plugin_ep.dll\",\n"
+      "\t                                     \"selected_ep_name\": \"example_plugin_ep\",\n"
+      "\t                                     \"default_ep_options\": { \"key\": \"value\" }\n"
+      "\t                                   }\n"
+      "\n"
+      "\t                                 Example JSON configuration that selects plugin EP devices via index:\n"
+      "\t                                   {\n"
+      "\t                                     \"ep_library_registration_name\": \"example_plugin_ep\",\n"
+      "\t                                     \"ep_library_path\": \"example_plugin_ep.dll\",\n"
+      "\t                                     \"selected_ep_device_indices\": [ 0 ],\n"
+      "\t                                     \"default_ep_options\": { \"key\": \"value\" }\n"
+      "\t                                   }\n"
       "\t-v: Show verbose information.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
@@ -58,6 +77,7 @@ namespace qnnctxgen {
       "\n"
       "\t-h: help\n");
 }
+
 #ifdef _WIN32
 static const ORTCHAR_T* delimiter = L",";
 #else
@@ -110,9 +130,63 @@ static bool ParseSessionConfigs(const std::string& configs_string,
   return true;
 }
 
+static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfig& config_out) {
+  using json = nlohmann::json;
+  bool success = true;
+
+  ORT_TRY {
+    std::ifstream ifs{json_file_path};
+    if (!ifs) {
+      std::cerr << "ERROR: Failed to open plugin EP configuration file at path: "
+                << json_file_path.c_str() << std::endl;
+      return false;
+    }
+
+    std::string content(std::istreambuf_iterator<char>{ifs},
+                        std::istreambuf_iterator<char>{});
+    PluginEpConfig config{};
+    const auto parsed_json = json::parse(content);
+
+    // required keys
+    parsed_json.at("ep_library_registration_name").get_to(config.ep_library_registration_name);
+    parsed_json.at("ep_library_path").get_to(config.ep_library_path);
+
+    // optional keys
+    config.default_ep_options = parsed_json.value<decltype(config.default_ep_options)>("default_ep_options", {});
+    config.selected_ep_name = parsed_json.value<decltype(config.selected_ep_name)>("selected_ep_name", {});
+    config.selected_ep_device_indices =
+        parsed_json.value<decltype(config.selected_ep_device_indices)>("selected_ep_device_indices", {});
+
+    if (config.selected_ep_name.empty() == config.selected_ep_device_indices.empty()) {
+      std::cerr << "ERROR: Plugin EP configuration must specify exactly one of 'selected_ep_name' "
+                << "or 'selected_ep_device_indices'" << std::endl;
+      return false;
+    }
+
+    config_out = std::move(config);
+    return success;
+  }
+  ORT_CATCH(const json::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::string kExampleValidJsonStr =
+          "{\n"
+          "  \"ep_library_registration_name\": \"example_plugin_ep\",\n"
+          "  \"ep_library_path\": \"/path/to/example_plugin_ep.dll\",\n"
+          "  \"selected_ep_name\": \"example_plugin_ep\"\n"
+          "}";
+
+      success = false;
+      std::cerr << "ERROR: JSON parse error: " << e.what() << std::endl;
+      std::cerr << "This is an example valid JSON configuration:\n"
+                << kExampleValidJsonStr.c_str() << std::endl;
+    });
+  }
+  return success;
+}
+
 /*static*/ bool CommandLineParser::ParseArguments(TestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("e:o:u:i:C:vh"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("e:p:o:u:i:C:vh"))) != -1) {
     switch (ch) {
       case 'e':
         if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
@@ -128,6 +202,20 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           return false;
         }
         break;
+      case 'p': {
+#ifdef _MSC_VER
+        std::string plugin_ep_config_file_path = ToUTF8String(optarg);
+#else
+        std::string plugin_ep_config_file_path = optarg;
+#endif
+        PluginEpConfig plugin_ep_config{};
+        if (!ParsePluginEpConfig(plugin_ep_config_file_path, plugin_ep_config)) {
+          return false;
+        }
+
+        test_config.machine_config.plugin_ep_config = std::move(plugin_ep_config);
+        break;
+      }
       case 'v':
         test_config.run_config.f_verbose = true;
         break;
@@ -201,6 +289,11 @@ static bool ParseSessionConfigs(const std::string& configs_string,
   // parse model_path
   argc -= optind;
   argv += optind;
+
+  if (argc == 0) {
+    std::cerr << "ERROR: Did not specify model paths" << std::endl;
+    return false;
+  }
 
   ParsePaths(argv[0], test_config.model_file_paths);
 

@@ -21,7 +21,11 @@ bool IsDirectorySeparator(PathChar c) {
 }
 }  // namespace
 
+#if !defined(_AIX)
 TEST(GetRuntimePathFromSharedLibraryTest, Basic) {
+#else
+TEST(GetRuntimePathFromSharedLibraryTest, DISABLED_Basic) {
+#endif
   const auto* runtime_path_cstr = OrtTestGetSharedLibraryRuntimePath();
   ASSERT_NE(runtime_path_cstr, nullptr);
 
