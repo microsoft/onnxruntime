@@ -307,7 +307,6 @@ endfunction()
 function (setup_arm_neon_nchwc)
   target_sources(onnxruntime_mlas PRIVATE
    ${MLAS_SRC_DIR}/sconv.h
-   ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
    ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
   )
   list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
@@ -460,6 +459,7 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+          ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
         )
 
         # Conditionally add the SVE implementation if compiler supports it
