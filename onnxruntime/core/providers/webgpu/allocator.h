@@ -11,6 +11,11 @@ namespace webgpu {
 
 class BufferManager;
 
+inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
+                                        OrtDevice::MemType::DEFAULT,
+                                        OrtDevice::VendorIds::NONE,
+                                        0};
+
 class GpuBufferAllocator : public IAllocator {
  public:
   GpuBufferAllocator(const BufferManager& buffer_manager, bool is_read_only_allocator);

@@ -2943,6 +2943,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
                                  << cached_execution_provider_for_graph_replay_.Type()
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag
                                  << " with graph annotation id: " << graph_annotation_id;
+    // log evaluation start to trace logging provider
+    env.GetTelemetryProvider().LogEvaluationStart(session_id_);
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
@@ -3642,7 +3644,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<BFCArena*>(alloc.get())->Shrink();
+    auto status = static_cast<IArena*>(alloc.get())->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()

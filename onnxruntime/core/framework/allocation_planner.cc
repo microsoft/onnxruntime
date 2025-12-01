@@ -499,8 +499,7 @@ class PlannerImpl {
   /*! \brief Given a tensor-type, return the size of an element of the tensor.
    */
   static size_t GetElementSize(const DataType& tensor_type) {
-    const TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
-    MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
+    MLDataType ml_data_type = DataTypeImpl::GetDataType(*tensor_type);
     const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
     ORT_ENFORCE(nullptr != tensor_type_base);
     MLDataType elt_type = tensor_type_base->GetElementType();
