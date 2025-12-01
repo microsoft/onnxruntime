@@ -985,7 +985,7 @@ Return Value:
         return;
     }
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
     if (Algorithm == MlasConvAlgorithmDepthwise) {
         // Fill the Working Buffer with Zero for use by the depthwise kernel.
@@ -1082,7 +1082,7 @@ Return Value:
                     break;
                 }
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
                 case MlasConvAlgorithmDepthwise:
                 {
@@ -1337,9 +1337,9 @@ Return Value:
 
     } else {
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
-        // Scalar direct conv for depthwise convolution.
+        // Scalar (WASM_SCALAR) / vectorized (ARM64) direct conv for depthwise convolution.
         // Currently only support 3x3 kernel with padding <=1 and dilations = 1.
         // TODO: support more general depthwise convolution.
 
@@ -1411,8 +1411,8 @@ Return Value:
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
-            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K, 
-                                                          Parameters->FilterCount * Parameters->OutputSize, 
+            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K,
+                                                          Parameters->FilterCount * Parameters->OutputSize,
                                                           static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
             TargetThreadCount = MaximumThreadCount;
             if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
