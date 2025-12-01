@@ -805,6 +805,8 @@ Return Value:
     }
 }
 
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+
 void
 MlasDepthwiseThreaded(
     void* Context,
@@ -884,6 +886,8 @@ Return Value:
         MlasActivation(Parameters->Activation, output, bias, FilterCount, OutputSize, OutputSize);
     }
 }
+
+#endif
 
 inline
 bool
@@ -1099,6 +1103,9 @@ Return Value:
         return;
     }
 
+
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+
     if (Algorithm == MlasConvAlgorithmDepthwise && ((BatchCount > 1) || (GroupCount > 1))) {
         const size_t BatchGroupCount = BatchCount * GroupCount;
 
@@ -1123,6 +1130,8 @@ Return Value:
 
         return;
     }
+
+#endif
 
     //
     // Iterate over each batch and group.
