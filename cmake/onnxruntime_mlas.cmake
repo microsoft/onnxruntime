@@ -496,6 +496,7 @@ else()
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
             ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
+            ${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
@@ -511,6 +512,7 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/cast_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
