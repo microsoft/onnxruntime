@@ -128,8 +128,8 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
           {static_cast<uint32_t>(params.kv_hidden_size_ / components)},
           {static_cast<uint32_t>(params.num_heads_)},
           {static_cast<uint32_t>(params.kv_num_heads_)},
-          {head_size_vec},
-          {half_rotary_embedding_dim_vec},
+          {static_cast<uint32_t>(head_size_vec)},
+          {static_cast<uint32_t>(half_rotary_embedding_dim_vec)},
           {static_cast<uint32_t>(dispatch_size)},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
