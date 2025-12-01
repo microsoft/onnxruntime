@@ -11,10 +11,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 
-struct OrtKernelRegistry {
-  std::shared_ptr<onnxruntime::KernelRegistry> registry;
-};
-
 namespace onnxruntime {
 
 /// <summary>

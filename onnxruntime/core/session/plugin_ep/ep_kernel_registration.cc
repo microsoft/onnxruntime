@@ -94,6 +94,7 @@ KernelCreateInfo MakePluginEpKernelCreateInfo(const KernelDef* kernel_def,
   return KernelCreateInfo(std::move(kernel_def_copy), kernel_create_functor);
 }
 
+// Copies a const OrtKernelRegistry into a shared_ptr<KernelRegistry>.
 static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
                                    /*out*/ std::shared_ptr<KernelRegistry>& registry_copy) {
   if (ep_registry == nullptr) {
@@ -101,9 +102,10 @@ static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
     return Status::OK();
   }
 
+  const KernelRegistry* src_registry = reinterpret_cast<const KernelRegistry*>(ep_registry);
   auto dst_registry = std::make_shared<KernelRegistry>();
 
-  for (const auto& [key, src_create_info] : ep_registry->registry->GetKernelCreateMap()) {
+  for (const auto& [key, src_create_info] : src_registry->GetKernelCreateMap()) {
     auto dst_kernel_def = std::make_unique<KernelDef>(*src_create_info.kernel_def);
     KernelCreateInfo dst_create_info(std::move(dst_kernel_def), src_create_info.kernel_create_func);
 
@@ -127,6 +129,10 @@ Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRe
     const OrtKernelRegistry* ep_registry = nullptr;
 
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep.GetKernelRegistry(&ort_ep, &ep_registry)));
+
+    // ORT needs a shared_ptr<KernelRegistry> due to the IExecutionProvider::GetKernelRegistry() interface.
+    // We copy the EP's OrtKernelRegistry into a new shared_ptr<KernelRegistry> to ensure the EP fully owns
+    // the lifetime of the registry it created.
     ORT_RETURN_IF_ERROR(CopyEpKernelRegistry(ep_registry, kernel_registry));
   }
 

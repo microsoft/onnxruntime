@@ -239,16 +239,15 @@ ORT_API(void, ReleaseHardwareDevice, _Frees_ptr_opt_ OrtHardwareDevice* device) 
 
 ORT_API_STATUS_IMPL(CreateKernelRegistry, _Outptr_ OrtKernelRegistry** kernel_registry) {
   API_IMPL_BEGIN
-  auto unique_kernel_registry = std::make_unique<OrtKernelRegistry>();
-  unique_kernel_registry->registry = std::make_shared<onnxruntime::KernelRegistry>();
+  auto unique_kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
-  *kernel_registry = unique_kernel_registry.release();
+  *kernel_registry = reinterpret_cast<OrtKernelRegistry*>(unique_kernel_registry.release());
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API(void, ReleaseKernelRegistry, _Frees_ptr_opt_ OrtKernelRegistry* kernel_registry) {
-  delete kernel_registry;
+  delete reinterpret_cast<onnxruntime::KernelRegistry*>(kernel_registry);
 }
 
 ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_registry,
@@ -272,7 +271,8 @@ ORT_API_STATUS_IMPL(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_reg
                                                                                   kernel_create_func,
                                                                                   kernel_create_func_state);
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(kernel_registry->registry->Register(std::move(kernel_create_info)));
+  auto* actual_registry = reinterpret_cast<onnxruntime::KernelRegistry*>(kernel_registry);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(actual_registry->Register(std::move(kernel_create_info)));
   return nullptr;
   API_IMPL_END
 }
