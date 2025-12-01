@@ -222,14 +222,14 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
 
   if (Status::OK() != result) {
-    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name();
+    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name() + ". " + result.ErrorMessage();
     LOGS(logger, ERROR) << message;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
   if (Status::OK() != result) {
-    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name();
+    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name() + ". " + result.ErrorMessage();
     LOGS(logger, ERROR) << message;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
