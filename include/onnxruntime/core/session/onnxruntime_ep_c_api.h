@@ -1145,7 +1145,7 @@ struct OrtEp {
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[out] kernel_registry Output parameter set to the EP's kernel registry, which must remain valid throughout
-   *                             the lifetime of the EP.
+   *                             the lifetime of the EP. Can be NULL if the EP doesn't use a kernel registry.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP compiles nodes.

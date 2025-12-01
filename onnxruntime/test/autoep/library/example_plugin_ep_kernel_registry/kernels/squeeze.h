@@ -3,24 +3,16 @@
 
 #pragma once
 
-#include "utils.h"
+#include "base.h"
 #include "../../plugin_ep_utils.h"
 
-struct Squeeze : public OrtKernelImpl {
+struct Squeeze : public BaseKernelImpl {
  private:
   struct PrivateTag {};
 
  public:
   static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel);
-
   Squeeze(const OrtKernelInfo* info, void* state, PrivateTag);
 
-  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
-  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
-
-  OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) noexcept;
-
- private:
-  const OrtKernelInfo* info_;
-  void* state_;  // Custom state passed from OrtEp
+  OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) noexcept override;
 };

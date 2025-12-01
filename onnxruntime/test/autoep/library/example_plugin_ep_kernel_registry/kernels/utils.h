@@ -4,7 +4,19 @@
 #pragma once
 
 #include "../../plugin_ep_utils.h"
-#include "data_types.h"
+
+/// <summary>
+/// Gets an OrtMLDataType for a tensor type. Throws on error.
+/// </summary>
+/// <param name="elem_type"></param>
+/// <returns></returns>
+inline const OrtMLDataType* GetTensorType(ONNXTensorElementDataType elem_type) {
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+  const OrtMLDataType* result = nullptr;
+
+  Ort::ThrowOnError(ep_api.GetTensorMLDataType(elem_type, &result));
+  return result;
+}
 
 /// <summary>
 /// Contains information to create a kernel: kernel definition, creation function + state.

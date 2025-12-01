@@ -10,14 +10,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     7, 24,
     (Ort::KernelDefBuilder()
-         .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
+         .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     Mul)
 
-Mul::Mul(const OrtKernelInfo* info, void* state, PrivateTag) : info_{info}, state_{state} {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = ComputeImpl;
-  Release = ReleaseImpl;
-}
+Mul::Mul(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(info, state) {}
 
 /*static*/
 OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
@@ -25,17 +21,6 @@ OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
   // Note: can do basic validation or preprocessing via the OrtKernelInfo APIs.
   result = std::make_unique<Mul>(info, state, PrivateTag{});
   return nullptr;
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL Mul::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
-  Mul* mul = static_cast<Mul*>(this_ptr);
-  return mul->DoCompute(kernel_ctx);
-}
-
-/*static*/
-void ORT_API_CALL Mul::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
-  delete static_cast<Mul*>(this_ptr);
 }
 
 OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) noexcept {

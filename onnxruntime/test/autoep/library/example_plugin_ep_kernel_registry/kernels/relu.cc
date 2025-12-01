@@ -14,17 +14,11 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     14, 24,
     (Ort::KernelDefBuilder()
-         .AddTypeConstraint("T", MLDataTypes::GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
+         .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddInputOutputMutableAlias(0, 0)),
     Relu)
 
-Relu::Relu(const OrtKernelInfo* info, void* state, PrivateTag)
-    : info_(info),
-      state_(state) {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = ComputeImpl;
-  Release = ReleaseImpl;
-}
+Relu::Relu(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(info, state) {}
 
 /*static*/
 OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) {
@@ -41,17 +35,6 @@ OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::uni
   }
 
   return nullptr;
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL Relu::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
-  Relu* relu = static_cast<Relu*>(this_ptr);
-  return relu->DoCompute(kernel_ctx);
-}
-
-/*static*/
-void ORT_API_CALL Relu::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
-  delete static_cast<Relu*>(this_ptr);
 }
 
 OrtStatus* Relu::DoCompute(OrtKernelContext* kernel_ctx) noexcept {

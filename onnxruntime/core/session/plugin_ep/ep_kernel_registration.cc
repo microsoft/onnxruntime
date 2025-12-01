@@ -89,9 +89,29 @@ class PluginEpKernelCreateFunctor {
 KernelCreateInfo MakePluginEpKernelCreateInfo(const KernelDef* kernel_def,
                                               OrtKernelCreateFunc kernel_create_func,
                                               void* kernel_create_func_state) {
-  auto kernel_def_copy = std::make_unique<onnxruntime::KernelDef>(*kernel_def);
+  auto kernel_def_copy = std::make_unique<KernelDef>(*kernel_def);
   PluginEpKernelCreateFunctor kernel_create_functor(kernel_create_func, kernel_create_func_state);
   return KernelCreateInfo(std::move(kernel_def_copy), kernel_create_functor);
+}
+
+static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
+                                   /*out*/ std::shared_ptr<KernelRegistry>& registry_copy) {
+  if (ep_registry == nullptr) {
+    registry_copy = nullptr;
+    return Status::OK();
+  }
+
+  auto dst_registry = std::make_shared<KernelRegistry>();
+
+  for (const auto& [key, src_create_info] : ep_registry->registry->GetKernelCreateMap()) {
+    auto dst_kernel_def = std::make_unique<KernelDef>(*src_create_info.kernel_def);
+    KernelCreateInfo dst_create_info(std::move(dst_kernel_def), src_create_info.kernel_create_func);
+
+    ORT_RETURN_IF_ERROR(dst_registry->Register(std::move(dst_create_info)));
+  }
+
+  registry_copy = std::move(dst_registry);
+  return Status::OK();
 }
 
 // Gets an OrtEp instance's kernel registry.
@@ -104,10 +124,10 @@ Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRe
   }
 
   if (ort_ep.GetKernelRegistry != nullptr) {
-    const OrtKernelRegistry* ep_kernel_registry = nullptr;
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep.GetKernelRegistry(&ort_ep, &ep_kernel_registry)));
+    const OrtKernelRegistry* ep_registry = nullptr;
 
-    kernel_registry = ep_kernel_registry != nullptr ? ep_kernel_registry->registry : nullptr;
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep.GetKernelRegistry(&ort_ep, &ep_registry)));
+    ORT_RETURN_IF_ERROR(CopyEpKernelRegistry(ep_registry, kernel_registry));
   }
 
   return Status::OK();
