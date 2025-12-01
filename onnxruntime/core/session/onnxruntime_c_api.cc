@@ -2293,6 +2293,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
       cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "max_power_of_two_extend_bytes") == 0) {
       cfg->max_power_of_two_extend_bytes = static_cast<int64_t>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "use_cuda_mempool") == 0) {
+      cfg->use_cuda_mempool = static_cast<bool>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "cuda_mempool_release_threshold") == 0) {
+      cfg->cuda_mempool_release_threshold = static_cast<uint64_t>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "cuda_mempool_bytes_to_keep_on_shrink") == 0) {
+      cfg->cuda_mempool_bytes_to_keep_on_shrink = static_cast<size_t>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];
@@ -4231,6 +4237,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
     // End of Version 23 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::TensorTypeAndShape_HasShape,
+    &OrtApis::KernelInfo_GetConfigEntries,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
