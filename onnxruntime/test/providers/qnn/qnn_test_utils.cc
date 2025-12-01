@@ -101,6 +101,12 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err, logging::Severity log_severity, bool verify_outputs,
                      std::function<void(const Graph&)>* ep_graph_checker) {
+  std::filesystem::path output_dir;
+  if (QNNTestEnvironment::GetInstance().dump_onnx() ||
+      QNNTestEnvironment::GetInstance().dump_json() ||
+      QNNTestEnvironment::GetInstance().dump_dlc()) {
+    output_dir = QNNTestEnvironment::GetInstance().CreateTestcaseDirs();
+  }
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
   verification_params.fp32_abs_err = fp32_abs_err;
@@ -110,6 +116,10 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
 
   auto& logging_manager = DefaultLoggingManager();
   logging_manager.SetDefaultLoggerSeverity(log_severity);
+  if (QNNTestEnvironment::GetInstance().verbose()) {
+    logging_manager.RemoveSink(logging::SinkType::EtwSink);
+    logging_manager.SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+  }
 
   onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
@@ -123,7 +133,27 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+
+  if (QNNTestEnvironment::GetInstance().dump_onnx()) {
+    auto dump_path = output_dir / ToPathString("dumped_f32_model.onnx");
+    LOGS(logging_manager.DefaultLogger(), VERBOSE) << "Save onnx model at: " << dump_path;
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(model, dump_path));
+  }
+
   TryEnableQNNSaver(provider_options);
+  if (QNNTestEnvironment::GetInstance().dump_dlc()) {
+    provider_options["dump_qnn_ir_dlc"] = "1";
+    provider_options["dump_qnn_ir_dlc_dir"] = output_dir.string();
+#if defined(_WIN32)
+    provider_options["qnn_ir_backend_path"] = "QnnIr.dll";
+#else
+    provider_options["qnn_ir_backend_path"] = "libQnnIr.so";
+#endif  // defined(_WIN32)
+  }
+  if (QNNTestEnvironment::GetInstance().dump_json()) {
+    provider_options["dump_json_qnn_graph"] = "1";
+    provider_options["json_qnn_graph_dir"] = output_dir.string();
+  }
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params,
@@ -134,11 +164,21 @@ void RunQnnModelTestHTPNoVerify(const GetTestModelFn& build_test_case, ProviderO
                                 int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                                 logging::Severity log_severity,
                                 std::function<void(const Graph&)>* ep_graph_checker) {
+  std::filesystem::path output_dir;
+  if (QNNTestEnvironment::GetInstance().dump_onnx() ||
+      QNNTestEnvironment::GetInstance().dump_dlc() ||
+      QNNTestEnvironment::GetInstance().dump_json()) {
+    output_dir = QNNTestEnvironment::GetInstance().CreateTestcaseDirs();
+  }
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
   auto& logging_manager = DefaultLoggingManager();
   logging_manager.SetDefaultLoggerSeverity(log_severity);
+  if (QNNTestEnvironment::GetInstance().verbose()) {
+    logging_manager.RemoveSink(logging::SinkType::EtwSink);
+    logging_manager.SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+  }
 
   onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
@@ -152,7 +192,27 @@ void RunQnnModelTestHTPNoVerify(const GetTestModelFn& build_test_case, ProviderO
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+
+  if (QNNTestEnvironment::GetInstance().dump_onnx()) {
+    auto dump_path = output_dir / ToPathString("dumped_f32_model.onnx");
+    LOGS(logging_manager.DefaultLogger(), VERBOSE) << "Save onnx model at: " << dump_path;
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(model, dump_path));
+  }
+
   TryEnableQNNSaver(provider_options);
+  if (QNNTestEnvironment::GetInstance().dump_dlc()) {
+    provider_options["dump_qnn_ir_dlc"] = "1";
+    provider_options["dump_qnn_ir_dlc_dir"] = output_dir.string();
+#if defined(_WIN32)
+    provider_options["qnn_ir_backend_path"] = "QnnIr.dll";
+#else
+    provider_options["qnn_ir_backend_path"] = "libQnnIr.so";
+#endif  // defined(_WIN32)
+  }
+  if (QNNTestEnvironment::GetInstance().dump_json()) {
+    provider_options["dump_json_qnn_graph"] = "1";
+    provider_options["json_qnn_graph_dir"] = output_dir.string();
+  }
 
   SessionOptions so;
   so.session_logid = "QNN_EP_TestLogID";
