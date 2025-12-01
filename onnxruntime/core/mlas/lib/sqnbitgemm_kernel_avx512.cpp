@@ -32,7 +32,6 @@ Abstract:
 //
 
 #include "sqnbitgemm_kernel_avx_common_fp32.h"
-#include "sqnbitgemm_bitnet_kernel_avx2.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32_avx512(

@@ -29,8 +29,6 @@ Abstract:
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen32.h"
 #include "sqnbitgemm_m1_sym_kernel_avx2_int8_blklen64.h"
 
-#include "sqnbitgemm_bitnet_kernel_avx2.h"
-
 void
 MlasCastF16ToF32KernelAvx2(const unsigned short* src_fp16, float* dst_fp32, size_t size)
 {
@@ -1476,7 +1474,7 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni = []() {
     d.SQ8BitGemmPackQuantBDataAndBlkSum = SQ8BitGemmPackQuantBDataAndBlkSum;
 
     //d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
-    //d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData; 
+    //d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
 
     d.QNBitGemmPerGemmWorkspaceSize = QNBitGemmPerGemmWorkspaceSize;
     d.QNBitGemmPerGemmWorkspaceAlignment = QNBitGemmPerGemmWorkspaceAlignment;

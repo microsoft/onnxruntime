@@ -411,7 +411,7 @@ Return Value:
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
 
-                // TODO: check if this really goes here or if there are other platform reqs that we need to fulfill
+                // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LUTGenKernel = &MlasLUTGenKernelAvx2;
 
                 //

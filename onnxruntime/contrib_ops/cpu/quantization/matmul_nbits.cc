@@ -390,6 +390,30 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
   return Status::OK();
 }
 
+template<typename T1>
+Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
+                                          const Tensor* scales,
+                                          const Tensor* zero_points,
+                                          const Tensor* bias,
+                                          Tensor* y,
+                                          AllocatorPtr& allocator,
+                                          concurrency::ThreadPool* thread_pool,
+                                          const MatMulComputeHelper& helper) const {
+  const auto* a_data = a->Data<T1>();
+  const auto* scales_data = scales == nullptr ? nullptr : scales->Data<T1>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
+  auto* y_data = y->MutableData<T1>();
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  // TODO(vraspar): Should we batch it here?
+  //MlasInitLUTGemmKernelConfig(N, K, nbits_, block_size_, has_zp_input_);
+  MlasLUTGemm(a_data, block_size_, packed_b_.get(), packed_scales_zp_.get(), y_data, K, M, N, thread_pool);
+  return Status::OK();
+}
+
 template <typename T1>
 Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
                                        const Tensor* scales,
@@ -410,15 +434,6 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
 
-  // TODO: add the logic for generating lookup table here -- for now we can assume that
-  // 2 bits + acc level 4 = use look up table but in the future adapt so that we use a mamtulnbits attr to decide
-  // if we want to do lut generation
-
-  // TODO(vraspar): Should we batch it here?
-  if (prefer_lut_gemm_) {
-    MlasLUTGemm(a_data, block_size_, packed_b_.get(), packed_scales_zp_.get(), y_data, K, M, N, thread_pool);
-    return Status::OK();
-  }
   const size_t lda = helper.Lda(false);
 
   IAllocatorUniquePtr<std::byte> workspace{};
@@ -859,11 +874,11 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // If this changes, i.e., if MlasIsQNBitGemmAvailable() can return true while
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
-   /* if (MlasIsLUTGemmAvailable(nbits_, block_size_) && prefer_lut_gemm_) {
+    if (prefer_lut_gemm_ && MlasIsLUTGemmAvailable(nbits_, block_size_)) {
       return ComputeBPackedLUT(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
-    }*/
+    }
       
-      if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) || (prefer_lut_gemm_ && MlasIsLUTGemmAvailable(nbits_, block_size_))) {
+    if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
       return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }
   }

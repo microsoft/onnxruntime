@@ -344,6 +344,7 @@ bool MLASCALL MlasIsLUTGemmAvailable(
     const auto* Dispatch = GetMlasPlatform().LUTGenKernel;
     return Dispatch != nullptr;
     // return Dispatch != nullptr && BlkLen == 4; // only support group sizes of 4 for now
+    // add check for M, N sizes
 }
 
 

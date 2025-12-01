@@ -234,14 +234,6 @@ MlasQNBitGemmPackQuantBDataSize(
             N, K, BlkLen, HasZeroPoint, ComputeType
         );
     }
-
-    // This would be for non LUT based 2-bit gemm kernel
-    if (BlkBitWidth == 2 && Dispatch->Q2BitGemmPackQuantBDataSize != nullptr) {
-        return Dispatch->Q2BitGemmPackQuantBDataSize(
-            N, K, BlkLen, ComputeType
-        );
-    }
-
     return 0;
 }
 
@@ -311,19 +303,6 @@ MlasQNBitGemmPackQuantBData(
             // assert(QuantBScale == nullptr);
             // assert(QuantBZeroPoint == nullptr);
             Dispatch->SQ4BitGemmPackQuantBData(
-                N,
-                K,
-                BlkLen,
-                ComputeType,
-                static_cast<const std::byte*>(QuantBData),
-                static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
-                ThreadPool
-            );
-            return;
-        }
-    } else if (BlkBitWidth == 2) {  // TODO:: might switch to for TMAC type if other 2-bit kernels like i2s are added
-        if (Dispatch->SQ2BitGemmPackQuantBData != nullptr) {
-            Dispatch->SQ2BitGemmPackQuantBData(
                 N,
                 K,
                 BlkLen,

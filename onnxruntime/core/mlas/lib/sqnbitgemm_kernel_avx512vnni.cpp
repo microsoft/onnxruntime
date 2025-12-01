@@ -27,7 +27,6 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen32.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
-#include "sqnbitgemm_bitnet_kernel_avx2.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32(
