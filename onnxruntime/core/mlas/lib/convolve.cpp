@@ -805,6 +805,86 @@ Return Value:
     }
 }
 
+void
+MlasDepthwiseThreaded(
+    void* Context,
+    ptrdiff_t Index
+)
+
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    convolution operation.
+
+    If using this, the entire convolution operation is parallelized on the
+    (batch size * group count) parameter and this routine has logic to
+    perform a specific thread's shard of the entire Convolution operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    Index - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+
+{
+
+    MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
+
+    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
+
+    const size_t GroupCount = Parameters->GroupCount;
+    const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+
+    const size_t TargetThreadCount = WorkBlock->TargetThreadCount;
+
+    const size_t BatchGroupCountPerThread = BatchGroupCount / TargetThreadCount;
+    const size_t BatchGroupCountExtra = BatchGroupCount % TargetThreadCount;
+
+    size_t BatchGroupStart;
+    size_t BatchGroupEnd;
+
+    if (static_cast<size_t>(Index) < BatchGroupCountExtra) {
+        BatchGroupStart = (BatchGroupCountPerThread + 1) * Index;
+        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread + 1;
+    } else {
+        BatchGroupStart = BatchGroupCountPerThread * Index + BatchGroupCountExtra;
+        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread;
+    }
+
+    const size_t FilterCount = Parameters->FilterCount;
+    const size_t OutputSize = Parameters->OutputSize;
+    const size_t K = Parameters->K;
+
+    const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
+    const size_t OutputGroupSize = FilterCount * OutputSize;
+    const size_t FilterGroupSize = FilterCount * K;
+
+    for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
+        size_t group = bg % GroupCount;
+
+        const float* input = WorkBlock->Input + bg * InputGroupSize;
+        const float* filter = WorkBlock->Filter + group * FilterGroupSize;
+        float* output = WorkBlock->Output + bg * OutputGroupSize;
+        const float* bias = WorkBlock->Bias;
+        if (bias != nullptr) {
+            bias += group * FilterCount;
+        }
+
+        float* WorkingBuffer = WorkBlock->WorkingBuffer;
+
+        MlasConvDepthwiseFloat_CHW(Parameters, input, filter, output, WorkingBuffer);
+        MlasActivation(Parameters->Activation, output, bias, FilterCount, OutputSize, OutputSize);
+    }
+}
+
 inline
 bool
 MlasConvTryMultithread(
@@ -1015,6 +1095,31 @@ Return Value:
         WorkBlock.TargetThreadCount = TargetThreadCount;
 
         MlasExecuteThreaded(MlasConvExpandThenGemmSegmentedThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
+
+        return;
+    }
+
+    if (Algorithm == MlasConvAlgorithmDepthwise && ((BatchCount > 1) || (GroupCount > 1))) {
+        const size_t BatchGroupCount = BatchCount * GroupCount;
+
+        ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+
+        if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
+            TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
+        }
+
+        MLAS_CONV_WORK_BLOCK WorkBlock;
+
+        WorkBlock.Parameters = Parameters;
+        WorkBlock.Input = Input;
+        WorkBlock.Filter = Filter;
+        WorkBlock.Bias = Bias;
+        WorkBlock.WorkingBuffer = WorkingBuffer;
+        WorkBlock.Output = Output;
+        WorkBlock.TargetThreadCount = TargetThreadCount;
+
+        MlasExecuteThreaded(MlasDepthwiseThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
 
         return;
     }
