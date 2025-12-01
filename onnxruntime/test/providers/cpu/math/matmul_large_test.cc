@@ -166,7 +166,7 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   test.RunWithConfig();
 }
 
-TEST(MatMul_Large, Float32_Subgroup) {
+TEST(MatMul_Large, Float32) {
   RunTestTyped<float, 13>({512, 1024}, {1024, 1024});
   RunTestTyped<float, 13>({511, 1024}, {1024, 1024});
   RunTestTyped<float, 13>({511, 1024}, {1024, 1023});
@@ -176,7 +176,7 @@ TEST(MatMul_Large, Float32_Subgroup) {
   RunTestTyped<float, 13>({2, 2, 512, 1024}, {2, 1024, 1024});
 }
 
-TEST(MatMul_Large, Float16_Subgroup) {
+TEST(MatMul_Large, Float16) {
   RunTestTyped<MLFloat16, 13>({512, 1024}, {1024, 1024});
   RunTestTyped<MLFloat16, 13>({511, 1024}, {1024, 1024});
   RunTestTyped<MLFloat16, 13>({511, 1024}, {1024, 1023});
