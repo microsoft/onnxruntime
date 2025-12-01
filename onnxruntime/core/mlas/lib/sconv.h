@@ -31,18 +31,11 @@ Abstract:
 //
 static inline float32x4_t
 LoadInputVectorWithBounds(
-    const float* input_base,
-    size_t offset,
-    const float* InputBase,
-    size_t kh,
-    size_t DilatedInputWidthElements,
-    size_t InputWidthElements
+    const float* ptr,
+    const float* row_start,
+    const float* row_end
 )
 {
-    const float* ptr = input_base + offset;
-    const float* row_start = InputBase + kh * DilatedInputWidthElements;
-    const float* row_end = row_start + InputWidthElements;
-
     if (ptr >= row_start && ptr < row_end) {
         return MlasLoadFloat32x4(ptr);
     }
