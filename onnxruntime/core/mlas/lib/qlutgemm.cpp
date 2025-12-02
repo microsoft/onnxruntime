@@ -337,14 +337,23 @@ void MlasLUTPackScalesAndZeroPoints(
 
 
 bool MLASCALL MlasIsLUTGemmAvailable(
-    size_t /*BlkBitWidth*/,
-    size_t /*BlkLen*/
+    size_t BlkBitWidth,
+    size_t BlkLen
 ) // TODO(Vraspar): fix the below to use smthg besides the gen kernel, add ComputeGemm
 {
-    const auto* Dispatch = GetMlasPlatform().LUTGenKernel;
-    return Dispatch != nullptr;
-    // return Dispatch != nullptr && BlkLen == 4; // only support group sizes of 4 for now
-    // add check for M, N sizes
+    if (GetMlasPlatform().LUTGenKernel == nullptr) {
+        return false;
+    }
+    
+    if (BlkBitWidth != 2) {
+        return false;
+    }
+
+    if (BlkLen % 32 != 0) {
+        return false;
+    }
+
+    return true;
 }
 
 
