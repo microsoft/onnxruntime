@@ -117,6 +117,20 @@ void HandleMatMulWithSplitK(
   }
 }
 
+// Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
+// `ProgramBase.SetDispatchGroupSize()` may be normalized in
+// `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
+// `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
+void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
+  shader.MainFunctionBody()
+      << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
+      << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
+      << "  const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n"
+      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
+}
+
 }  // namespace
 
 void MatMulReadFnSource(ShaderHelper& shader,
@@ -274,20 +288,22 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "const innerElementSize = " << inner_elements_size << ";\n"
       << "const tileInner = " << tile_inner << ";\n";
 
+  InitializeLogicalWorkgroupIDAndGlobalID(shader);
+
   shader.MainFunctionBody()
       << "  let localRow = i32(local_id.y);\n"
       << "  let tileRow = localRow * rowPerThread;\n"
       << "  let tileCol = i32(local_id.x);\n"
-      << "  let globalRow = i32(global_id.y) * rowPerThread;\n"
-      << "  let globalCol = i32(global_id.x);\n"
-      << "  let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
-      << "  let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
+      << "  let globalRow = i32(logical_global_id.y) * rowPerThread;\n"
+      << "  let globalCol = i32(logical_global_id.x);\n"
+      << "  let globalRowStart = i32(logical_workgroup_id.y) * " << tile_a_outer << ";\n"
+      << "  let globalColStart = i32(logical_workgroup_id.x) * " << tile_b_outer << ";\n"
       << "  var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
 
   if (split_k) {
     // With Split-K, the original "workgroup" (with dispatch_z == 1 in API side) is split into
     // multiple ones, and in the current workgroup we only compute `kSplitK` elements starting from
-    // `kSplitK * i32(global_id.z)`.
+    // `kSplitK * i32(logical_global_id.z)`.
     //
     //  For example: considering computing Y = (X * W + B) in one workgroup.
     //  Let kSplitK = 2, B = [d1, d2]
@@ -305,15 +321,15 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     //     Workgroup1: compute (A1 * A2)  Workgroup2: compute (B1 * B2)
     //     Workgroup3: compute (C1 * C2)
     //     In each workgroup:
-    //     - `num_tiles` is computed with `kSplitK`, and `kStart` is computed with `global_id.z`
+    //     - `num_tiles` is computed with `kSplitK`, and `kStart` is computed with `logical_global_id.z`
     //     - When the computation in each workgroup is completed, add the result to Y with several
     //       atomic built-in functions in `HandleMatMulWithSplitK()`.
     shader.MainFunctionBody()
         << "const kSplitK = " << split_dim_inner << ";\n"
         << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n"
-        << "  var kStart = kSplitK * i32(global_id.z);\n"
+        << "  var kStart = kSplitK * i32(logical_global_id.z);\n"
 
-        // When Split-K is used, `batch` should always be 0 and `global_id.z` is used to indicate
+        // When Split-K is used, `batch` should always be 0 and `logical_global_id.z` is used to indicate
         // the index of split-k instead of batch.
         << "  let batch = 0;\n"
         << "  let batchIndices = 0u;\n";
@@ -321,7 +337,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     shader.MainFunctionBody()
         << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
         << "  var kStart = 0;\n"
-        << "  let batch = i32(global_id.z);\n"
+        << "  let batch = i32(logical_global_id.z);\n"
         << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "");
   }
 
@@ -498,7 +514,9 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
       << "const colPerThread = " << elements_per_thread_x << ";\n"
       << "const tileInner = " << tile_inner << ";\n";
 
-  shader.MainFunctionBody() << " let batch = i32(global_id.z);\n"
+  InitializeLogicalWorkgroupIDAndGlobalID(shader);
+
+  shader.MainFunctionBody() << " let batch = i32(logical_global_id.z);\n"
                             << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
                             << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
                             << " var kStart = 0;\n"
@@ -507,10 +525,10 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
   shader.MainFunctionBody()
       << "let tileRow = i32(local_id.y) * rowPerThread;\n"
       << "let tileCol = i32(local_id.x) * colPerThread;\n"
-      << "let globalRow = i32(global_id.y) * rowPerThread;\n"
-      << "let globalCol = i32(global_id.x) * colPerThread;\n"
-      << "let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
-      << "let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
+      << "let globalRow = i32(logical_global_id.y) * rowPerThread;\n"
+      << "let globalCol = i32(logical_global_id.x) * colPerThread;\n"
+      << "let globalRowStart = i32(logical_workgroup_id.y) * " << tile_a_outer << ";\n"
+      << "let globalColStart = i32(logical_workgroup_id.x) * " << tile_b_outer << ";\n"
       << "let tileRowA = i32(local_id.y) * " << row_per_thread_a << ";\n"
       << "let tileColA = i32(local_id.x) * " << col_per_thread_a << ";\n"
       << "let tileRowB = i32(local_id.y) * " << row_per_thread_b << ";\n";
