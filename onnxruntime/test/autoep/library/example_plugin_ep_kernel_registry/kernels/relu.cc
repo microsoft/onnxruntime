@@ -9,10 +9,10 @@
 
 #include "utils.h"
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     Relu,
     kOnnxDomain,
-    14, 24,
+    14,
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddInputOutputMutableAlias(0, 0)),
@@ -23,17 +23,7 @@ Relu::Relu(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(
 /*static*/
 OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) {
   Ort::ConstKernelInfo kernel_info(info);
-
-  try {
-    kernel = std::make_unique<Relu>(info, state, PrivateTag{});
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
-  }
-
+  kernel = std::make_unique<Relu>(info, state, PrivateTag{});
   return nullptr;
 }
 
@@ -42,23 +32,15 @@ OrtStatus* Relu::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
   static_cast<void>(this->state_);  // NOTE: Unused in this example.
   static_cast<void>(this->info_);   // NOTE: Unused in this example.
 
-  try {
-    gsl::span<const float> input0;
-    std::vector<int64_t> shape0;
-    RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 0, input0, shape0));
+  gsl::span<const float> input0;
+  std::vector<int64_t> shape0;
+  RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 0, input0, shape0));
 
-    Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
-    float* output_data = output.GetTensorMutableData<float>();
+  Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
+  float* output_data = output.GetTensorMutableData<float>();
 
-    for (size_t i = 0; i < input0.size(); ++i) {
-      output_data[i] = std::max(0.0f, input0[i]);
-    }
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
+  for (size_t i = 0; i < input0.size(); ++i) {
+    output_data[i] = std::max(0.0f, input0[i]);
   }
 
   return nullptr;

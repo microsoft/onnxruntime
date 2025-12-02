@@ -355,15 +355,15 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder*
 }
 
 ORT_API_STATUS_IMPL(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                    _In_ const char* arg_name, _In_reads_(num_types) const OrtMLDataType* const* types,
+                    _In_ const char* arg_name, _In_reads_(num_types) const OrtDataType* const* types,
                     _In_ size_t num_types) {
   API_IMPL_BEGIN
   if (num_types == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one OrtMLDataType instance");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one OrtDataType instance");
   }
 
   if (types == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of OrtMLDataType instances");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of OrtDataType instances");
   }
 
   if (arg_name == nullptr) {
@@ -541,11 +541,11 @@ ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
-                    _Outptr_ const OrtMLDataType** out) {
+ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
+                    _Outptr_ const OrtDataType** out) {
   API_IMPL_BEGIN
   const DataTypeImpl* ml_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type);
-  *out = reinterpret_cast<const OrtMLDataType*>(ml_type);
+  *out = reinterpret_cast<const OrtDataType*>(ml_type);
   return nullptr;
   API_IMPL_END
 }
@@ -656,7 +656,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDef_GetExecutionProvider,
     &OrtExecutionProviderApi::KernelDef_GetInputMemType,
     &OrtExecutionProviderApi::KernelDef_GetOutputMemType,
-    &OrtExecutionProviderApi::GetTensorMLDataType,
+    &OrtExecutionProviderApi::GetTensorDataType,
     &OrtExecutionProviderApi::KernelInfo_CopyTensors,
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
 };

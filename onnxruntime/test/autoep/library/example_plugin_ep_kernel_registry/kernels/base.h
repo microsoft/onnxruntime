@@ -5,14 +5,23 @@
 
 #include "../../plugin_ep_utils.h"
 
-struct BaseKernelImpl : public OrtKernelImpl {
+// Base class for kernel implementations.
+//
+// Note: BaseKernelImpl has a virtual functions so care should be taken when casting BaseKernelImpl to a OrtKernelImpl,
+// which is a C API struct type. Specifically, a static_cast or implicit cast should be used. A reinterpret_cast
+// will result in an invalid object due to the presence of the vtable.
+class BaseKernelImpl : public OrtKernelImpl {
+ public:
   BaseKernelImpl(const OrtKernelInfo* info, void* state);
   virtual ~BaseKernelImpl() = default;
 
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
 
-  // derived classes implement DoCompute.
+ private:
+  // Derived classes implement DoCompute.
+  // DoCompute is called by BaseKernelImpl::ComputeImpl, which also catches exceptions thrown by DoCompute
+  // implementations and converts them into OrtStatus*.
   virtual OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) noexcept = 0;
 
  protected:

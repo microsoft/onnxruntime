@@ -6,7 +6,7 @@
 #include "base.h"
 #include "../../plugin_ep_utils.h"
 
-struct Squeeze : public BaseKernelImpl {
+class Squeeze : public BaseKernelImpl {
  private:
   struct PrivateTag {};
 
@@ -14,5 +14,6 @@ struct Squeeze : public BaseKernelImpl {
   static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel);
   Squeeze(const OrtKernelInfo* info, void* state, PrivateTag);
 
+ private:
   OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) noexcept override;
 };

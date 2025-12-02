@@ -26,10 +26,9 @@ ORT_RUNTIME_CLASS(SyncStreamImpl);
 
 // Opaque types for kernel-based EPs
 ORT_RUNTIME_CLASS(KernelRegistry);
-ORT_RUNTIME_CLASS(KernelCreateContext);  // stand-in for FuncManager. may not be needed.
 ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
-ORT_RUNTIME_CLASS(MLDataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
+ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
 
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
@@ -686,16 +685,16 @@ struct OrtEpApi {
    *
    * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
    * \param[in] arg_name A null-terminated string representing the argument to constrain (e.g., "T").
-   * \param[in] types Array of OrtMLDataType instances representing allowed types for the argument.
+   * \param[in] types Array of OrtDataType instances representing allowed types for the argument.
    *                  Must contain `num_types` elements.
-   * \param[in] num_types The number of OrtMLDataType elements in the `types` array.
+   * \param[in] num_types The number of OrtDataType elements in the `types` array.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
   ORT_API2_STATUS(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                  _In_ const char* arg_name, _In_reads_(num_types) const OrtMLDataType* const* types,
+                  _In_ const char* arg_name, _In_reads_(num_types) const OrtDataType* const* types,
                   _In_ size_t num_types);
 
   /** \brief Adds aliases for the given input and output pairs.
@@ -817,17 +816,17 @@ struct OrtEpApi {
   ORT_API2_STATUS(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_def,
                   _In_ size_t output_index, _Out_ OrtMemType* mem_type);
 
-  /** \brief Gets the OrtMLDataType that represents the data type for a tensor of the given element type.
+  /** \brief Gets the OrtDataType that represents the data type for a tensor of the given element type.
    *
    * \param[in] elem_type The tensor's element type.
-   * \param[out] out Output parameter set to the OrtMLDataType. Owned by ORT and must not be released.
+   * \param[out] out Output parameter set to the OrtDataType. Owned by ORT and must not be released.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
-                  _Outptr_ const OrtMLDataType** out);
+  ORT_API2_STATUS(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
+                  _Outptr_ const OrtDataType** out);
 
   /** \brief Copy OrtValue instances containing Tensors between devices.
    *

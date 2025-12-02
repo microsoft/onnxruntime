@@ -11,8 +11,16 @@ BaseKernelImpl::BaseKernelImpl(const OrtKernelInfo* info, void* state) : info_{i
 
 /*static*/
 OrtStatus* ORT_API_CALL BaseKernelImpl::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
-  BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
-  return base_kernel->DoCompute(kernel_ctx);
+  try {
+    BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
+    return base_kernel->DoCompute(kernel_ctx);
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
+  }
 }
 
 /*static*/

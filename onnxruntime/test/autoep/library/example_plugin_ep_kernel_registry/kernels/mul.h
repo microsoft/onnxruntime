@@ -6,7 +6,7 @@
 #include "base.h"
 #include "../../plugin_ep_utils.h"
 
-struct Mul : public BaseKernelImpl {
+class Mul : public BaseKernelImpl {
  private:
   struct PrivateTag {};
 
@@ -14,5 +14,6 @@ struct Mul : public BaseKernelImpl {
   static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Mul>& kernel);
   Mul(const OrtKernelInfo* info, void* state, PrivateTag);
 
+ private:
   OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) noexcept override;
 };

@@ -71,7 +71,7 @@ ORT_API_STATUS_IMPL(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* 
 ORT_API_STATUS_IMPL(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_ size_t output_index, _In_ OrtMemType mem_type);
 ORT_API_STATUS_IMPL(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder* kernel_def_builder,
-                    _In_ const char* arg_name, _In_reads_(num_types) const OrtMLDataType* const* types,
+                    _In_ const char* arg_name, _In_reads_(num_types) const OrtDataType* const* types,
                     _In_ size_t num_types);
 ORT_API_STATUS_IMPL(KernelDefBuilder_AddInputOutputAliases, _In_ OrtKernelDefBuilder* kernel_def_builder,
                     _In_reads_(num_io_indices) int const* input_indices,
@@ -96,8 +96,8 @@ ORT_API_STATUS_IMPL(KernelDef_GetInputMemType, _In_ const OrtKernelDef* kernel_d
 ORT_API_STATUS_IMPL(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_def,
                     _In_ size_t output_index, _Out_ OrtMemType* mem_type);
 
-ORT_API_STATUS_IMPL(GetTensorMLDataType, _In_ ONNXTensorElementDataType elem_type,
-                    _Outptr_ const OrtMLDataType** out);
+ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
+                    _Outptr_ const OrtDataType** out);
 ORT_API_STATUS_IMPL(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,
                     _In_reads_(num_tensors) const OrtValue* const* src_tensors,
                     _In_reads_(num_tensors) OrtValue* const* dst_tensors,

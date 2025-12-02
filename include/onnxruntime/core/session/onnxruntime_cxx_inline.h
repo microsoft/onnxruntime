@@ -12,6 +12,7 @@
 #include <iterator>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 // Convert OrtStatus to Ort::Status and return
@@ -3640,13 +3641,13 @@ inline KernelDefBuilder& KernelDefBuilder::SetOutputMemType(size_t output_index,
 }
 
 inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
-                                                             const OrtMLDataType* data_type) {
+                                                             const OrtDataType* data_type) {
   ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, &data_type, 1));
   return *this;
 }
 
 inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
-                                                             const std::vector<const OrtMLDataType*>& data_types) {
+                                                             const std::vector<const OrtDataType*>& data_types) {
   ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, data_types.data(), data_types.size()));
   return *this;
 }

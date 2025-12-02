@@ -6,15 +6,15 @@
 #include "../../plugin_ep_utils.h"
 
 /// <summary>
-/// Gets an OrtMLDataType for a tensor type. Throws on error.
+/// Gets an OrtDataType for a tensor type. Throws on error.
 /// </summary>
 /// <param name="elem_type"></param>
 /// <returns></returns>
-inline const OrtMLDataType* GetTensorType(ONNXTensorElementDataType elem_type) {
+inline const OrtDataType* GetTensorType(ONNXTensorElementDataType elem_type) {
   const OrtEpApi& ep_api = Ort::GetEpApi();
-  const OrtMLDataType* result = nullptr;
+  const OrtDataType* result = nullptr;
 
-  Ort::ThrowOnError(ep_api.GetTensorMLDataType(elem_type, &result));
+  Ort::ThrowOnError(ep_api.GetTensorDataType(elem_type, &result));
   return result;
 }
 
@@ -47,10 +47,15 @@ inline OrtStatus* BuildKernelCreateInfo<void>(const char* /*ep_name*/, void* /*c
 
 static constexpr const char* kOnnxDomain = "";
 
-// Naming convention for operator kernel classes
+// Naming convention for operator kernel classes with a start and end version range.
 #define ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, endver, name) \
   example_ep_##name##_##domain##_ver##startver##_##endver
 
+// Naming convention for operator kernel classes for a single version
+#define ONNX_OPERATOR_KERNEL_CLASS_NAME(domain, startver, name) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, startver, name)
+
+// Defines a function of type BuildKernelCreateInfoFn for a kernel implementation with a start and end version range.
 #define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, builder, kernel_class)    \
   class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, endver, name);                  \
   template <>                                                                                       \
@@ -86,3 +91,7 @@ static constexpr const char* kOnnxDomain = "";
     }                                                                                               \
     return nullptr;                                                                                 \
   }
+
+// Defines a function of type BuildKernelCreateInfoFn for a kernel implementation with a start version.
+#define ONNX_OPERATOR_KERNEL_EX(name, domain, startver, builder, kernel_class) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, startver, builder, kernel_class)
