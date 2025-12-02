@@ -199,6 +199,7 @@ struct NvTrtRtxOrtAllocator : OrtAllocator {
   NvTrtRtxOrtAllocator(const OrtMemoryInfo* mem_info, const OrtApi& api) : memory_info_{mem_info} {
     version = ORT_API_VERSION;
     Alloc = AllocImpl;
+    AllocOnStream = nullptr;  // AllocOnStreamImpl
     Free = FreeImpl;
     Info = InfoImpl;
     Reserve = AllocImpl;  // no special behavior for Reserve so use AllocImpl
@@ -222,6 +223,13 @@ struct NvTrtRtxOrtAllocator : OrtAllocator {
     auto& impl = *static_cast<NvTrtRtxOrtAllocator*>(this_);
     return impl.allocator_->Alloc(size);
   }
+
+  // TODO missing a bridge for this
+  // static void* ORT_API_CALL AllocOnStreamImpl(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
+  //   auto& impl = *static_cast<NvTrtRtxOrtAllocator*>(this_);
+  //   Stream *internal_stream = static_cast<Stream*>(stream);
+  //   return impl.allocator_->AllocOnStream(size, stream);
+  // }
 
   static void ORT_API_CALL FreeImpl(struct OrtAllocator* this_, void* p) {
     auto& impl = *static_cast<NvTrtRtxOrtAllocator*>(this_);
