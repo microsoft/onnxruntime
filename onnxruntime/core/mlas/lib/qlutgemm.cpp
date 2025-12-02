@@ -512,6 +512,7 @@ void MLASCALL MlasLUTGemm(
 
     // Cast to appropriate types
     const auto* packed_weights = reinterpret_cast<const uint8_t*>(QuantBData);
+    float* act_output = reinterpret_cast<float*>(C);
 
     // Parallelize over the 2D chunk grid
     MlasTrySimpleParallel(
@@ -553,7 +554,7 @@ void MLASCALL MlasLUTGemm(
                         qlut + qlut_offset,                             // LUT for this batch row
                         lut_scales + lut_scales_offset,                 // LUT scales
                         lut_biases + lut_scales_offset,                 // LUT biases
-                        reinterpret_cast<float*>(C) + dst_offset,     // Output location
+                        act_output + dst_offset,     // Output location
                         static_cast<int>(K),                            // K dimension
                         static_cast<int>(N),                            // K dimension
                         static_cast<int>(1),

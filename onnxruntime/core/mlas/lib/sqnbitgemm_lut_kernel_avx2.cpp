@@ -474,7 +474,7 @@ void TMACComputeGemm_avx2(
             const int8_t* LUT,          // Pre-computed quantized lookup table
             const float* LUT_Scales,   // LUT scales from activation quantization
             const float* LUT_Biases,   // LUT biases from activation quantization
-            void* C,            // Output buffer
+            float* C,            // Output buffer
             int K,
             int M,
             int N,
@@ -614,7 +614,7 @@ void TMACComputeGemm_avx2(
     // Gather bit-plane results into final output
     // Only support 2-bit in this implementation
     // TODO(vraspar): extend to other bit-widths
-    tbl_g4_int8_float_gather_bit2_impl(m, C_global, CBits, reinterpret_cast<float*>(C));
+    tbl_g4_int8_float_gather_bit2_impl(m, C_global, CBits, C);
 
     // ==================== CLEANUP ====================
     delete[] C_global;

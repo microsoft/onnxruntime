@@ -54,7 +54,7 @@ void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
     const int8_t* LUT,
 	const float* LUT_Scales,
 	const float* LUT_Biases,
-	void* C,
+	float* C,
 	int K,
 	int M,                // batch size (number of rows in activation)
 	int N,
