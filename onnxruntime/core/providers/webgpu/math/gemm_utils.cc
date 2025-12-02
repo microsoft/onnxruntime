@@ -31,7 +31,7 @@ void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
       shader.AdditionalImplementation() << "output_value_t("
                                         << c->GetByOffset(c->BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
     } else if (c_is_scalar) {
-      shader.AdditionalImplementation() << "output_value_t("<< c->GetByOffset("0") <<");\n";
+      shader.AdditionalImplementation() << "output_value_t(" << c->GetByOffset("0") << ");\n";
     } else {
       shader.AdditionalImplementation() << "output_value_t(" << c->GetByOffset("row") << ");\n";
     }
