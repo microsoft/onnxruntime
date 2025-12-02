@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 import onnx
 from autoep_helper import AutoEpTestCase
-from helper import get_name
+from helper import get_name, get_shared_library_filename_for_platform
 
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
@@ -51,6 +51,52 @@ class TestCompileApi(AutoEpTestCase):
         )
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
+        self.unregister_execution_provider_library(ep_name)
+
+    def test_compile_shared_resources_plugin_ep(self):
+        """
+        Test compiling two example models using weight sharing (via example plugin EP)
+        """
+        ep_lib_path = get_shared_library_filename_for_platform("example_plugin_ep")
+        try:
+            ep_lib_path = get_name(ep_lib_path)
+        except FileNotFoundError:
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        ep_name = "example_ep"
+        self.register_execution_provider_library(ep_name, os.path.realpath(ep_lib_path))
+
+        ep_device = next((d for d in onnxrt.get_ep_devices() if d.ep_name == ep_name), None)
+        self.assertIsNotNone(ep_device)
+
+        input_models = [get_name("add_mul_add.onnx"), get_name("mul_1.onnx")]
+        output_models = [
+            os.path.join(self._tmp_dir_path, "output_model_0_ctx.onnx"),
+            os.path.join(self._tmp_dir_path, "output_model_1_ctx.onnx"),
+        ]
+
+        num_models = len(input_models)
+        session_options = onnxrt.SessionOptions()
+
+        # Set option that tells EP to share resources (e.g., weights) across sessions. The example plugin EP
+        # doesn't actually do anything special, but we do this to test the API
+        session_options.add_session_config_entry("ep.share_ep_contexts", "1")
+        session_options.add_provider_for_devices([ep_device], {})
+
+        # Compile individual models
+        for i in range(num_models):
+            if i == num_models - 1:
+                # Tell EP that this is the last session that will be sharing resources.
+                session_options.add_session_config_entry("ep.stop_share_ep_contexts", "1")
+
+            model_compiler = onnxrt.ModelCompiler(
+                session_options,
+                input_models[i],
+                embed_compiled_data_into_model=False,
+            )
+            model_compiler.compile_to_file(output_models[i])
+            self.assertTrue(os.path.exists(output_models[i]))
+
         self.unregister_execution_provider_library(ep_name)
 
     def test_compile_with_ep_selection_delegate(self):
