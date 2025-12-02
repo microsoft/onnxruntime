@@ -1347,6 +1347,7 @@ struct ProviderHostImpl : ProviderHost {
   const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
   IOnnxRuntimeOpSchemaCollectionPtr Graph__GetSchemaRegistry(const Graph* p) const override { return p->GetSchemaRegistry(); }
   bool Graph__SetOpSchemaFromRegistryForNode(Graph* p, Node& node) override { return p->SetOpSchemaFromRegistryForNode(node); }
+  Status Graph__LoadExternalInitializerAsOrtValue(const Graph* p, const std::string& name, OrtValue& value) const override { return p->LoadExternalInitializerAsOrtValue(name, value); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }

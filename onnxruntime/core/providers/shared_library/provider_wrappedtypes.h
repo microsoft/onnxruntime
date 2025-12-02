@@ -1107,6 +1107,7 @@ struct Graph final {
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->Graph__GetSchemaRegistry(this); }
   bool SetOpSchemaFromRegistryForNode(Node& node) { return g_host->Graph__SetOpSchemaFromRegistryForNode(this, node); }
+  Status LoadExternalInitializerAsOrtValue(const std::string& name, OrtValue& value) const { return g_host->Graph__LoadExternalInitializerAsOrtValue(this, name, value); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
