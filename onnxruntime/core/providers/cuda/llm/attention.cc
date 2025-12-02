@@ -121,23 +121,39 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   contribop_parameters.is_packed_qkv = false;
   contribop_parameters.do_rotary = false;
 
-  // Determine mask type from attn_mask input
-  if (attn_mask == nullptr) {
-    contribop_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_NONE;
-  } else {
-    const auto& mask_dims = attn_mask->Shape().GetDims();
-    if (mask_dims.size() == 2 && mask_dims[0] == parameters.batch_size &&
-        mask_dims[1] == parameters.total_sequence_length) {
-      contribop_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_2D_KEY_PADDING;
-    } else {
-      contribop_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_UNKNOWN;
-    }
-  }
+  // The new Attention op uses attn_mask as attention_bias (additive bias), not as key_padding_mask
+  // So mask_type should always be MASK_NONE since we don't have a separate padding mask input
+  contribop_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_NONE;
 
   // Determine broadcast flags for attention_bias (if it exists)
-  // Note: The new Attention op uses attn_mask, not attention_bias
-  contribop_parameters.broadcast_attn_bias_dim_0 = false;
-  contribop_parameters.broadcast_attn_bias_dim_1 = false;
+  // Note: The new Attention op uses attn_mask as attention_bias
+  // The attention_bias should be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length)
+  // attn_mask can be 2D, 3D, or 4D. Broadcasting aligns from the right (trailing dimensions).
+  if (attn_mask != nullptr) {
+    size_t attn_mask_dims_size = attn_mask->Shape().NumDimensions();
+    auto attn_mask_dims = attn_mask->Shape().GetDims();
+
+    // For 2D mask (q_seq_len, total_seq_len): both batch and heads dimensions need broadcasting
+    // For 3D mask (X, q_seq_len, total_seq_len): batch needs broadcasting if X==1, heads always needs broadcasting
+    // For 4D mask (B, H, q_seq_len, total_seq_len): check if B==1 and H==1
+
+    if (attn_mask_dims_size == 2) {
+      // 2D mask: both dimensions need broadcasting
+      contribop_parameters.broadcast_attn_bias_dim_0 = true;
+      contribop_parameters.broadcast_attn_bias_dim_1 = true;
+    } else if (attn_mask_dims_size == 3) {
+      // 3D mask: dim 0 broadcasts if it's 1, dim 1 (heads) always broadcasts
+      contribop_parameters.broadcast_attn_bias_dim_0 = attn_mask_dims[0] == 1;
+      contribop_parameters.broadcast_attn_bias_dim_1 = true;
+    } else {
+      // 4D mask: check both dim 0 and dim 1 explicitly
+      contribop_parameters.broadcast_attn_bias_dim_0 = attn_mask_dims[0] == 1;
+      contribop_parameters.broadcast_attn_bias_dim_1 = attn_mask_dims[1] == 1;
+    }
+  } else {
+    contribop_parameters.broadcast_attn_bias_dim_0 = false;
+    contribop_parameters.broadcast_attn_bias_dim_1 = false;
+  }
 
   contribop_parameters.mask_filter_value = -10000.0f;
   contribop_parameters.scale = parameters.scale;
@@ -145,14 +161,19 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // QKV format: Determine based on input dimensions
   // 3D inputs (B, S, D): Q_K_V_BSNH - will be transposed by PrepareQkv to BNSH
-  // 4D inputs (B, N, S, H): Q_K_V_BNSH - already in correct format, no transpose needed
+  // TODO(titaiwang, xadupre): 4D inputs (B, N, S, H): not supported yet
   bool is_4d_input = Q->Shape().NumDimensions() == 4;
   if (is_4d_input) {
     // 4D inputs are currently not supported
-    ORT_ENFORCE(false, "4D input is currently not supported yet in Attention op.");
+    ORT_ENFORCE(false, "4D input is currently not supported yet in Attention op (CUDA).");
   } else {
     // 3D inputs in BSNH format (will be transposed)
     contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH;
+  }
+
+  // TODO(titaiwang, xadupre): Group query attention is not supported yet
+  if (parameters.kv_num_heads != parameters.q_num_heads) {
+    ORT_ENFORCE(false, "Group query attention is not supported yet in Attention op (CUDA).");
   }
 
   // TODO(titaiwang): Continue on these parameters
@@ -164,8 +185,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.query = reinterpret_cast<const CudaT*>(Q->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(K->Data<T>());
   data.value = reinterpret_cast<const CudaT*>(V->Data<T>());
-  data.mask_index = (attn_mask == nullptr) ? nullptr : attn_mask->Data<int>();
-  data.mask_index_dims = (attn_mask == nullptr) ? gsl::span<const int64_t>() : attn_mask->Shape().GetDims();
+  data.mask_index = nullptr;  // New Attention op doesn't have key_padding_mask
+  data.mask_index_dims = gsl::span<const int64_t>();
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
 
@@ -178,8 +199,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   // Set additional fields
-  data.bias = nullptr;            // New Attention op doesn't have bias
-  data.attention_bias = nullptr;  // New Attention op uses attn_mask, not attention_bias
+  data.bias = nullptr;  // New Attention op doesn't have bias
+  if (nullptr != attn_mask) {
+    data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
+  } else {
+    data.attention_bias = nullptr;
+  }
   data.qkv_format = contribop_parameters.qkv_format;
 
   // TODO: Determine which kernel to use (Flash Attention, Memory Efficient Attention, etc.)
