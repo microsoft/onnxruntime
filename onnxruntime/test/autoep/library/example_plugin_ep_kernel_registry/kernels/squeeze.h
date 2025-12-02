@@ -15,5 +15,5 @@ class Squeeze : public BaseKernelImpl {
   Squeeze(const OrtKernelInfo* info, void* state, PrivateTag);
 
  private:
-  OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) noexcept override;
+  OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) override;
 };

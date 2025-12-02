@@ -23,7 +23,7 @@ OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
   return nullptr;
 }
 
-OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
+OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) {
   Ort::KernelContext kernel_context(kernel_ctx);
   static_cast<void>(this->state_);  // NOTE: Unused in this example.
   static_cast<void>(this->info_);   // NOTE: Unused in this example.

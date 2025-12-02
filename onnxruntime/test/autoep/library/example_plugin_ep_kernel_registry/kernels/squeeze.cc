@@ -56,7 +56,7 @@ static std::vector<int64_t> ComputeOutputShape(gsl::span<const int64_t> input_sh
   return output_shape;
 }
 
-OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) noexcept {
+OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
   const OrtEpApi& ep_api = Ort::GetEpApi();
   Ort::KernelContext kernel_context(kernel_ctx);
   static_cast<void>(this->state_);  // NOTE: Unused in this example.
