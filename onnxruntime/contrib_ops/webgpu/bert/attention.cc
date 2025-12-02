@@ -165,7 +165,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  let query_pos = m + local_id.y + past_sequence_length;\n"
                               << "  let key_pos = n + local_id.x;\n"
                               << "  if (key_pos > query_pos) {\n"
-                              << "    sum = -3.40282e+38; // Set to very negative value for masking\n"
+                              << "    sum = -3.4028234663852886e+38; // Set to very negative value for masking\n"
                               << "  }\n";
   }
 
@@ -272,7 +272,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let effective_seq_length = seq_causal_length;\n";
   }
   shader.MainFunctionBody()
-      << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
+      << "var thread_max_vector = f32_val_t(-3.4028234663852886e+38f);\n"
       << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
       << "  let actual_pos = local_offset + i + start_offset;\n"
       << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
@@ -289,7 +289,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else if (use_smooth_softmax_) {
     shader.MainFunctionBody() << "var max_value: f32 = 0.0;\n";
   } else {
-    shader.MainFunctionBody() << "var max_value = f32(-3.402823e+38f);\n";
+    shader.MainFunctionBody() << "var max_value = f32(-3.4028234663852886e+38f);\n";
   }
 
   shader.MainFunctionBody() << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"

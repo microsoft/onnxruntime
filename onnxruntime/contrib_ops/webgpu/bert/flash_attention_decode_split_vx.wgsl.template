@@ -54,7 +54,7 @@ $MAIN {
   // Calculate the global max and sum in qk.
   if (head_idx < uniforms.num_heads)
   {
-    var g_max = f32(-3.402823e+38f);
+    var g_max = f32(-3.4028234663852886e+38f);
     var g_sum = f32(0);
     for (var i = 0u; i < num_total_seq_length_tile; i++)
     {
