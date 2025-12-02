@@ -883,7 +883,7 @@ Return Value:
         float* WorkingBuffer = WorkBlock->WorkingBuffer;
 
         MlasConvDepthwiseFloat_CHW(Parameters, input, filter, output, WorkingBuffer);
-        //MlasActivation(Parameters->Activation, output, bias, FilterCount, OutputSize, OutputSize);
+        MlasActivation(Parameters->Activation, output, bias, FilterCount, OutputSize, OutputSize);
     }
 }
 
