@@ -50,6 +50,25 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
           .AddAssignmentToReference(nv::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
           .AddAssignmentToReference(nv::provider_option_names::kUseExternalDataInitializer, info.use_external_data_initializer)
+          .AddAssignmentToReference(nv::provider_option_names::kWeightStrippedEngineEnable, info.weight_stripped_engine_enable)
+          .AddValueParser(
+              nv::provider_option_names::kOnnxBytestream,
+              [&onnx_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                onnx_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(nv::provider_option_names::kOnnxBytestreamSize, info.onnx_bytestream_size)
+          .AddValueParser(
+              nv::provider_option_names::kExternalDataBytestream,
+              [&external_data_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                external_data_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(nv::provider_option_names::kExternalDataBytestreamSize, info.external_data_bytestream_size)
           .AddAssignmentToReference(nv::provider_option_names::kMultiProfileEnable, info.multi_profile_enable)
           .AddAssignmentToReference(nv::provider_option_names::kRuntimeCacheFile, info.runtime_cache_path)
           .Parse(options));  // add new provider option here.
@@ -69,7 +88,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
   } else if (ep_context_enable == "1") {
     info.dump_ep_context_model = true;
     // We want to reenable weightless engines as soon constant initializers are supported as inputs
-    info.weight_stripped_engine_enable = false;
+    // info.weight_stripped_engine_enable = false;
   } else {
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEnable, " must 0 or 1");
   }

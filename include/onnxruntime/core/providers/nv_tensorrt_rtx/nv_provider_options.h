@@ -34,6 +34,11 @@ constexpr const char* kProfilesOptShapes = "nv_profile_opt_shapes";
 constexpr const char* kCudaGraphEnable = "enable_cuda_graph";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
 constexpr const char* kUseExternalDataInitializer = "nv_use_external_data_initializer";
+constexpr const char* kWeightStrippedEngineEnable = "nv_weight_stripped_engine_enable";
+constexpr const char* kOnnxBytestream = "nv_onnx_bytestream";
+constexpr const char* kOnnxBytestreamSize = "nv_onnx_bytestream_size";
+constexpr const char* kExternalDataBytestream = "nv_external_data_bytestream";
+constexpr const char* kExternalDataBytestreamSize = "nv_external_data_bytestream_size";
 constexpr const char* kRuntimeCacheFile = "nv_runtime_cache_path";
 
 }  // namespace provider_option_names

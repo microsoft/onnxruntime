@@ -184,9 +184,37 @@ TEST_P(CompileApiTest, WeightStrippedEngineWithLargeModel) {
   }
 
   Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> option_map{
-      {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer,
-       std::to_string(test_param.bytestream_io || test_param.external_initialzier_for_parser)}};
+  std::unordered_map<std::string, std::string> option_map;
+
+  // Read onnx model/external data bytestream
+  std::vector<char> input_onnx, input_data;
+  std::vector<PathString> file_names;
+  std::vector<char*> file_buffers;
+  std::vector<size_t> lengths;
+
+  input_data = readBinaryFile(external_data_name);
+  if (test_param.bytestream_io) {
+    input_onnx = readBinaryFile(model_name);
+    auto input_onnx_str = std::to_string(reinterpret_cast<uintptr_t>(input_onnx.data()));
+    option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kOnnxBytestream, input_onnx_str));
+    option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kOnnxBytestreamSize, std::to_string(input_onnx.size())));
+  }
+
+  // We don't need follow code as ORT or EP will load external data in memory.
+  // file_names = {external_data_name};
+  // file_buffers = {input_data.data()};
+  // lengths = {input_data.size()};
+  // session_options.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
+
+  option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kUseExternalDataInitializer,
+                                    std::to_string(test_param.bytestream_io || test_param.external_initialzier_for_parser)));
+  option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kWeightStrippedEngineEnable, "1"));
+
+  // EP options, external_data_bytestream and external_data_bytestream_size
+  auto input_data_str = std::to_string(reinterpret_cast<uintptr_t>(input_data.data()));
+  option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kExternalDataBytestream, input_data_str));
+  option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kExternalDataBytestreamSize, std::to_string(input_data.size())));
+
   // auto ep = AppendTrtEtxEP(session_options, option_map);
   session_options.AppendExecutionProvider("NvTensorRTRTXExecutionProvider", option_map);
 
@@ -195,21 +223,10 @@ TEST_P(CompileApiTest, WeightStrippedEngineWithLargeModel) {
 
   void* output_context = nullptr;
   size_t output_context_size = 0;
-  std::vector<char> input_onnx, input_data;
-  std::vector<PathString> file_names;
-  std::vector<char*> file_buffers;
-  std::vector<size_t> lengths;
-  if (test_param.bytestream_io) {
-    input_onnx = readBinaryFile(model_name);
-    input_data = readBinaryFile(external_data_name);
-    file_names = {external_data_name};
-    file_buffers = {input_data.data()};
-    lengths = {input_data.size()};
-    session_options.AddExternalInitializersFromFilesInMemory(file_names, file_buffers, lengths);
 
+  if (test_param.bytestream_io) {
     model_compile_options.SetInputModelFromBuffer(input_onnx.data(), input_onnx.size());
-    //model_compile_options.SetOutputModelBuffer(Ort::AllocatorWithDefaultOptions(), &output_context, &output_context_size);
-    model_compile_options.SetOutputModelPath(model_name_ctx.c_str());
+    model_compile_options.SetOutputModelBuffer(Ort::AllocatorWithDefaultOptions(), &output_context, &output_context_size);
   } else {
     model_compile_options.SetInputModelPath(model_name.c_str());
     model_compile_options.SetOutputModelPath(model_name_ctx.c_str());
@@ -227,8 +244,12 @@ TEST_P(CompileApiTest, WeightStrippedEngineWithLargeModel) {
   // JIT time
   std::unique_ptr<Ort::Session> session;
   if (test_param.bytestream_io) {
-    //session = std::make_unique<Ort::Session>(*ort_env, output_context, output_context_size, session_options);
-    session = std::make_unique<Ort::Session>(*ort_env, model_name_ctx.c_str(), session_options);
+    Ort::SessionOptions new_session_options;
+    auto output_context_str = std::to_string(reinterpret_cast<uintptr_t>(output_context));
+    option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kOnnxBytestream, output_context_str));
+    option_map.emplace(std::make_pair(onnxruntime::nv::provider_option_names::kOnnxBytestreamSize, std::to_string(output_context_size)));
+    new_session_options.AppendExecutionProvider("NvTensorRTRTXExecutionProvider", option_map);
+    session = std::make_unique<Ort::Session>(*ort_env, output_context, output_context_size, new_session_options);
   } else {
     session = std::make_unique<Ort::Session>(*ort_env, model_name_ctx.c_str(), session_options);
   }
@@ -260,7 +281,8 @@ TEST_P(CompileApiTest, LargeModel) {
   std::unordered_map<std::string, std::string> option_map{
       {onnxruntime::nv::provider_option_names::kUseExternalDataInitializer,
        std::to_string(test_param.bytestream_io || test_param.external_initialzier_for_parser)}};
-  auto ep = AppendTrtEtxEP(session_options, option_map);
+  //auto ep = AppendTrtEtxEP(session_options, option_map);
+  session_options.AppendExecutionProvider("NvTensorRTRTXExecutionProvider", option_map);
 
   Ort::ModelCompilationOptions model_compile_options(*ort_env, session_options);
   model_compile_options.SetEpContextEmbedMode(test_param.embed_mode);
@@ -306,13 +328,13 @@ TEST_P(CompileApiTest, LargeModel) {
 INSTANTIATE_TEST_SUITE_P(
     NvExecutionProviderTest, CompileApiTest,
     ::testing::Values(
-        //CompileParam{true, false},
-        //CompileParam{false, false},
-        //CompileParam{true, true},
-        CompileParam{false, true}
+        CompileParam{true, false},
+        CompileParam{false, false},
+        CompileParam{true, true},
+        CompileParam{false, true},
         // test with external initializers for parser
-        //CompileParam{true, true, true},
-        //CompileParam{true, false, true}
+        CompileParam{true, true, true},
+        CompileParam{true, false, true}
         ),
     [](const testing::TestParamInfo<CompileApiTest::ParamType>& info) {
       return info.param.to_string();

@@ -386,6 +386,10 @@ class NvExecutionProvider : public IExecutionProvider {
   int nv_profile_index_ = 0;
   std::unique_ptr<onnxruntime::Model> ep_context_model_;
 
+  // This map caches the OrtValues returning from EP's call to graph.LoadExternalInitializerAsOrtValue()
+  // for external initializers that haven't been converted to OrtValues by ORT yet.
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
+
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
   int32_t cuda_version_;
