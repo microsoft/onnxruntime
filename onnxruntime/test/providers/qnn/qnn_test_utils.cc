@@ -154,6 +154,9 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
     provider_options["dump_json_qnn_graph"] = "1";
     provider_options["json_qnn_graph_dir"] = output_dir.string();
   }
+  if (QNNTestEnvironment::GetInstance().skip_qnn_version_check()) {
+    provider_options["skip_qnn_version_check"] = "1";
+  }
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params,
@@ -212,6 +215,9 @@ void RunQnnModelTestHTPNoVerify(const GetTestModelFn& build_test_case, ProviderO
   if (QNNTestEnvironment::GetInstance().dump_json()) {
     provider_options["dump_json_qnn_graph"] = "1";
     provider_options["json_qnn_graph_dir"] = output_dir.string();
+  }
+  if (QNNTestEnvironment::GetInstance().skip_qnn_version_check()) {
+    provider_options["skip_qnn_version_check"] = "1";
   }
 
   SessionOptions so;
@@ -408,7 +414,7 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", "htp"}, {"offload_graph_io_quantization", "0"}});
+      {{"backend_type", "htp"}, {"offload_graph_io_quantization", "0"}, {"skip_qnn_version_check", "1"}});
   GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
 
   qnn_ep->SetLogger(&logger);
@@ -466,7 +472,7 @@ static BackendSupport GetGPUSupport(const onnxruntime::logging::Logger& logger) 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", "gpu"}, {"offload_graph_io_quantization", "0"}});
+      {{"backend_type", "gpu"}, {"offload_graph_io_quantization", "0"}, {"skip_qnn_version_check", "1"}});
   GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
 
   qnn_ep->SetLogger(&logger);
@@ -542,7 +548,7 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger, 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", backend_type}, {"offload_graph_io_quantization", "0"}});
+      {{"backend_type", backend_type}, {"offload_graph_io_quantization", "0"}, {"skip_qnn_version_check", "1"}});
   GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
 
   qnn_ep->SetLogger(&logger);
