@@ -1460,8 +1460,8 @@ Return Value:
         if (Dimensions == 2
                 && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
                 && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
-                && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
-                && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
+                && Parameters->Padding[0] <= 0 && Parameters->Padding[1] <= 0
+                && Parameters->Padding[2] <= 0 && Parameters->Padding[3] <= 0
                 && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
 
             *WorkingBufferSize = Parameters->InputShape[1] + 2;
