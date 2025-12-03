@@ -20,7 +20,7 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu-build-x64-RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
     strategy:
@@ -159,7 +159,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu-external-dawn-build-x64-RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        "JobId=webgpu_external_dawn_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
     steps:
@@ -209,7 +209,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-        "JobId=webgpu-minimal-build-edge-build-x64-RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        "JobId=webgpu_minimal_build_edge_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 300
     env:

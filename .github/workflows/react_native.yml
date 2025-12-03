@@ -17,7 +17,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "JobId=react-build-android-packages-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        "JobId=react_build_android_packages-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
     outputs:
@@ -75,7 +75,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "JobId=react-native-ci-android-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        "JobId=react_native_ci_android-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 90
     steps:

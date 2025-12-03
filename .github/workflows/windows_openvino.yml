@@ -21,7 +21,7 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=windows-openvino-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "JobId=BUILD_OPENVINO_EP-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 240
     env:

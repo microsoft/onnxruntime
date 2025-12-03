@@ -22,7 +22,7 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-WEBGPU-A10",
-      "JobId=windows-onnxruntime-web-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "JobId=build_onnxruntime_web-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
 
     env:
