@@ -1543,11 +1543,11 @@ Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id
 
     auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
     ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
-      "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
+                  "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
     QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
 
     std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr =
-      ObtainNullTermPtrVector(rpc_power_configs);
+        ObtainNullTermPtrVector(rpc_power_configs);
     status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());
     ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for RPC control latency.");
   }
@@ -1585,13 +1585,12 @@ Status QnnBackendManager::AddPerThreadHtpPowerConfigMapping(const std::thread::i
 
   auto res = per_thread_power_configs_.find(thread_id);
   ORT_RETURN_IF(res != per_thread_power_configs_.end(), "Trying to set HtpPowerConfigs for thread id ", thread_id,
-    " but one already exists!");
+                " but one already exists!");
 
   per_thread_power_configs_.emplace(thread_id, std::move(htp_power_configs));
 
   return Status::OK();
 }
-
 
 bool QnnBackendManager::GetPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
                                                           PerThreadHtpPowerConfigs_t& htp_power_configs) {

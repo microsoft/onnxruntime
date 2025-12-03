@@ -1391,7 +1391,6 @@ qnn::PerThreadHtpPowerConfigs_t QNNExecutionProvider::GetPerThreadHtpPowerConfig
     ParseHtpPerformanceMode(htp_perf_mode, post_run_htp_performance_mode);
   }
 
-
   std::string rpc_latency = "";
   uint32_t rpc_control_latency = 0;
   if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnRpcControlLatency, rpc_latency)) {
@@ -1428,7 +1427,6 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
   if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
     return Status::OK();
   }
-
 
   const ConfigOptions& config_options = RunOptions__GetConfigOptions(run_options);
 
