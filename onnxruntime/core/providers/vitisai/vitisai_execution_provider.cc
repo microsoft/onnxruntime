@@ -151,8 +151,7 @@ std::string VitisAIExecutionProvider::GetCompiledModelCompatibilityInfo(
   if (!execution_providers_) {
     return {};
   }
-  auto result = get_compiled_model_compatibility_info(**execution_providers_);
-  return result.value_or(std::string{});
+  return get_compiled_model_compatibility_info(**execution_providers_, graph_viewer);
 }
 
 common::Status VitisAIExecutionProvider::ValidateCompiledModelCompatibilityInfo(
@@ -162,13 +161,7 @@ common::Status VitisAIExecutionProvider::ValidateCompiledModelCompatibilityInfo(
     model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
     return Status::OK();
   }
-  auto result = validate_compiled_model_compatibility_info(**execution_providers_, compatibility_info);
-  if (result.has_value()) {
-    model_compatibility = result.value();
-    return Status::OK();
-  }
-  model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
-  return Status::OK();
+  return validate_compiled_model_compatibility_info(**execution_providers_, compatibility_info, model_compatibility);
 }
 
 std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() {
