@@ -32,7 +32,10 @@ class GemmProgram final : public Program<GemmProgram> {
       {"beta", ProgramUniformVariableDataType::Float32},
       {"dim_a_outer", ProgramUniformVariableDataType::Uint32},
       {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-      {"dim_inner", ProgramUniformVariableDataType::Uint32});
+      {"dim_inner", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
 
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
