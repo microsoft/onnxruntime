@@ -1462,6 +1462,9 @@ Return Value:
                 && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
                 && Parameters->Padding[0] <= 0 && Parameters->Padding[1] <= 0
                 && Parameters->Padding[2] <= 0 && Parameters->Padding[3] <= 0
+#if defined(MLAS_TARGET_ARM64)
+                && Parameters->StrideShape[0] == 1 && Parameters->StrideShape[1] == 1
+#endif
                 && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
 
             *WorkingBufferSize = Parameters->InputShape[1] + 2;
