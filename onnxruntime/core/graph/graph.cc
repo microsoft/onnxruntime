@@ -674,6 +674,7 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
       auto find_hit = attr_to_subgraph_map_.find(name);
       // Force ToGraphProto() const to be called so
       // that any in-memory TensorProto initializers go back to being inlined
+      find_hit->second->SetGraphProtoSyncNeeded();
       const Graph& subgraph = *find_hit->second;
       attr->clear_g();
       *attr->mutable_g() = subgraph.ToGraphProto();
@@ -3234,7 +3235,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
             node.SetOriginalNodeProto(nullptr);
           } else {
             NodeProto node_proto;
-            node.ToProto(node_proto);
+            // Update subgraphs also inlines in-memory weights so they are palatable to the checker
+            node.ToProto(node_proto, /* update_subgraphs */ true);
             checker::check_node(node_proto, ctx, lsc);
           }
         }

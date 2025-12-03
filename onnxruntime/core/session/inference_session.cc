@@ -2515,6 +2515,12 @@ common::Status InferenceSession::Initialize() {
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     });
   }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ex.Category(), ex.Code(), MakeString("Exception during initialization: ", ex.what()));
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    });
+  }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
