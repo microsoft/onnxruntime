@@ -2332,24 +2332,24 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
         // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
         // the model proto that has different node ordering compared to original onnx model.
-        // Save Initializer Data.
+
         auto graph_proto = ONNX_NAMESPACE::GraphProto::Create();
         graph_viewer->ToProto(*graph_proto, true, true, 1 /*priority-based topological sort*/, !load_user_initializer_ /*include_initializer_data*/);
 
+        // Save Initializer Data.
         std::vector<TensorrtUserWeights> userWeights;
-        // Inline all in-memory references back into the TensorProto
-        // so neither ONNX nor TRT library is confused.
-        for (auto& init : *graph_proto->mutable_initializer()) {
-          if (utils::HasExternalDataInMemory(init)) {
-            std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-            ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(init, full_init));
-            init = std::move(*full_init);
-          }
-          if (load_user_initializer_ && utils::HasRawData(init)) {
-            // Keep inits in memory instead of writing to ModelProto.
-            // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
-            userWeights.emplace_back(
-                TensorrtUserWeights(init.name(), init.raw_data()));
+        if (load_user_initializer_) {
+          for (const auto& init : *graph_proto->mutable_initializer()) {
+            // We do not expect any user initializer to contain in memory references at this point
+            // as they were all converted above using graph_utils::MakeInitializerCopyIfNotExist()
+            // subgraph initializers were converted using Node::ToProto() above
+            ORT_ENFORCE(!utils::HasExternalDataInMemory(init));
+            if (utils::HasRawData(init)) {
+              // Keep inits in memory instead of writing to ModelProto.
+              // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
+              userWeights.emplace_back(
+                  TensorrtUserWeights(init.name(), init.raw_data()));
+            }
           }
         }
 

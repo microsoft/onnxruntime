@@ -242,7 +242,9 @@ struct NodeProto final {
 struct TensorProto final {
   static std::unique_ptr<TensorProto> Create() { return g_host->TensorProto__construct(); }
   static void operator delete(void* p) { g_host->TensorProto__operator_delete(reinterpret_cast<TensorProto*>(p)); }
-  TensorProto& operator=(const TensorProto& v) { g_host->TensorProto__operator_assign(this, v); }
+  TensorProto& operator=(const TensorProto& v) {
+    return g_host->TensorProto__operator_assign(this, v);
+  }
   TensorProto& operator=(TensorProto&& v) noexcept { return g_host->TensorProto__operator_move_assign(this, std::move(v)); }
 
   bool has_name() const { return g_host->TensorProto__has_name(this); }

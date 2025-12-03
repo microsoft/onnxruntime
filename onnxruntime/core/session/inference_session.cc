@@ -1320,6 +1320,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                                   *session_logger_));
   }
 
+  // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
+  // take advantage of the initializers being in OrtValue format and not to deal with protobuf.
+  //
+  // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
+  // with a TensorProto that has the same data type, shape and name. However, its external data
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
+  // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it. For this reason,
+  // we do not convert them at the graph constructor because Node::ToProto() reconstructs Graph instances for subgraphs
+  // and we do not want to have initializers converted at shape inference time, as Resolve() is called from EPs when
+  // op_types are not assigned yet.
+  //
+  // If any transformations are applied later, they would not introduce any in-memory initializers,
+  // type and shape inference would run only on any newly added nodes and any new initializers
+  // will be converted at session finalization time.
+  //
+  // The conversion is performed using the following steps (within ConvertInitializersIntoOrtValues())
+  //   constexpr const bool use_tensor_buffer_true = true;
+  //   auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
+  //                                                        use_tensor_buffer_true);
+  //   ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto_to_add, ort_value));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues());
+
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
                                    Graph& graph, bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
     bool modified = false;
