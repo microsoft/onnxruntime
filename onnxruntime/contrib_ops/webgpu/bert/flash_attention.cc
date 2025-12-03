@@ -134,10 +134,10 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // Determine if we need to prepare indirect dispatch
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
-
-  CopyKVCacheProgram program{"CopyKVCache", has_past, parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH,
+  bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
+  CopyKVCacheProgram program{"CopyKVCache", has_past, kv_BNSH,
                              prepare_indirect_dispatch, use_seqlen_k};
-  if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH) {
+  if (kv_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
   } else {
