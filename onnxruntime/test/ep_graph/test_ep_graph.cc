@@ -34,6 +34,7 @@ namespace test {
 // forward-declaration for utility that uses public C APIs to check that an OrtGraph is equivalent
 // to a graph represented by the internal ORT GraphViewer class.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
+static void Check_Graph_GetSubgraph(const OrtGraph& api_graph);
 static void Check_Graph_GetSubgraph_for_specific_model(const OrtGraph& api_graph);
 
 //
@@ -835,6 +836,39 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<Ort::
 }
 
 // Checks the Graph_GetGraphView C API
+static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
+  Ort::ConstGraph ort_graph{&api_graph};
+  // Get all the nodes
+  std::vector<Ort::ConstNode> nodes = ort_graph.GetNodes();
+
+  // Select a half of nodes to create a OrtGraph
+  size_t num_selected_nodes = std::max((nodes.size() >> 1), (size_t)1);
+  std::vector<Ort::ConstNode> selected_nodes(num_selected_nodes);
+
+  for (size_t i = 0; i < num_selected_nodes; i++) {
+    selected_nodes[i] = nodes[i];
+  }
+
+  Ort::Graph sub_graph = ort_graph.GetGraphView(selected_nodes);
+
+  // Convert OrtGraph/GraphViewer to ModelProto and dump it to disk.
+  // If the GraphViewer associated with the OrtGraph somehow is incorrect, GraphViewerToProto() will throw.
+  const GraphViewer& sub_graph_viewer = EpGraph::ToInternal(sub_graph)->GetGraphViewer();
+  std::unique_ptr<Model> model = std::make_unique<Model>(sub_graph_viewer.Name(), true, sub_graph_viewer.GetGraph().GetLogger());
+  auto model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
+  GraphViewerToProto(sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  auto graph_name = ort_graph.GetName();
+  std::string name = graph_name;
+  name += "_half.onnx";
+
+  // Dump the graph for debugging
+  // std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
+  // model_proto->SerializeToOstream(&dump);
+}
+
+// Checks the Graph_GetGraphView C API
 static void Check_Graph_GetSubgraph_for_specific_model(const OrtGraph& api_graph) {
   /*
    * topk_and_multiple_graph_outputs.onnx:
@@ -1132,6 +1166,9 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       }
     }
   }
+
+  // Check creating an OrtGraph from a subset of nodes in an OrtGraph
+  Check_Graph_GetSubgraph(api_graph);
 }
 
 }  // namespace test
