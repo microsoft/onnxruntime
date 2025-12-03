@@ -840,7 +840,7 @@ void RawAttentionEmptyPastState(bool past_present_share_buffer) {
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data,
-                     AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, sequence_length, true, false, true, disable_dml, true,
+                     AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, sequence_length, true, false, disable_dml, true,
                      {}, {}, 0, true);
   }
 }
