@@ -107,8 +107,8 @@ Ort::Status GetOutputNodes(const OrtNode* node, std::vector<Ort::ConstNode>& res
 // Kahn's topological sort.
 // Adapted from onnxruntime/core/graph/graph.cc to use public C API graph types.
 Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
-                                        const std::function<void(const OrtNode*)>& enter,
-                                        const std::function<bool(const OrtNode*, const OrtNode*)>& comp);
+                                 const std::function<void(const OrtNode*)>& enter,
+                                 const std::function<bool(const OrtNode*, const OrtNode*)>& comp);
 
 // Node comparison functor copied from onnxruntime/core/graph/graph.cc
 struct PriorityNodeCompare {
