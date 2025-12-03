@@ -24,7 +24,11 @@ permissions:
 
 jobs:
   AndroidBinarySizeCheckJob_MinimalBaseline:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=AndroidBinarySizeCheckJob_MinimalBaseline-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
@@ -66,7 +70,7 @@ jobs:
         set_var("BuildConfigOs", config["os"])
       shell: python
       working-directory: ${{ github.workspace }}
-  
+
     - name: 1a. Build onnxruntime
       run: |
         set -e -x
@@ -110,7 +114,11 @@ jobs:
       shell: bash
 
   android_nnapi_ep:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=android_nnapi_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     steps:
       - uses: actions/checkout@v6
 
@@ -185,7 +193,12 @@ jobs:
 
   android_cpu_ep:
     name: Android CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=android_cpu_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
+
     steps:
       - uses: actions/checkout@v6
 
