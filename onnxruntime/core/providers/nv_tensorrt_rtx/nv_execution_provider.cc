@@ -111,25 +111,24 @@ static bool IsSupportedInputOutputDataType(ONNXTensorElementDataType data_type) 
   }
 }
 
-Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, struct FenceInteropParams* fenceInteropParams, void** extSemFence)
+Status NvExecutionProvider::GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, const struct FenceInteropParams* fenceInteropParams, void** extSemFence)
 {
-  if (!info_.has_user_compute_stream) 
+  if (!info_.has_user_compute_stream)
   {
     (void)GetPerThreadContext();
   }
   cudaExternalSemaphore_t cSemFence;
   cudaExternalSemaphoreHandleDesc semHandleDesc = {};
 
-  assert(graphicsInteropParams->extSyncPrimitive == fenceInteropParams->extSyncPrimitive && 
+  assert(graphicsInteropParams->extSyncPrimitive == fenceInteropParams->extSyncPrimitive &&
     "ExternalSyncPrimitive mismatch between graphicsInteropParams and fenceInteropParams");
   (void)graphicsInteropParams;
-  
+
   ExternalSyncPrimitive extSyncPrimitive = fenceInteropParams->extSyncPrimitive;
 
   if(extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence)
   {
 #if DX_FOR_INTEROP && _WIN32
-      fenceInteropParams->FencePtr.pFence = reinterpret_cast<ID3D12Fence*>(fenceInteropParams->FencePtr.pFence);
       HANDLE sharedFenceHandle = nullptr;
       if(reinterpret_cast<ID3D12Device*>(graphicsInteropParams->DevicePtr.DXDeviceParams.pDevice)->CreateSharedHandle(reinterpret_cast<ID3D12Fence*>(fenceInteropParams->FencePtr.pFence), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle) != S_OK) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create shared handle for D3D12 fence");

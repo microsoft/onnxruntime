@@ -6631,15 +6631,14 @@ struct OrtApi {
 
   /** \brief Setup Graphics Interopcontext for an execution provider device.
    *
-   * This function enables D3D12/Vulkan interoperability by creating a CUDA context
+   * This function enables D3D12/Vulkan interoperability by creating a Graphics context
    * associated with a graphics API command queue/device. Once setup, any OrtSyncStream
    * created for this ep_device via CreateSyncStreamForEpDevice will be created on the
-   * CIG context, enabling efficient GPU-side synchronization between graphics APIs and CUDA.
+   * Graphics context, enabling efficient GPU-side synchronization.
    *
-   * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device if you want
-   * streams to be created on the CIG context.
+   * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device.
    *
-   * \param[in] ep_device The OrtEpDevice to setup CIG context for.
+   * \param[in] ep_device The OrtEpDevice to setup Graphics context for.
    * \param[in] graphicsInteropParams Pointer to struct containing D3D12 command queue or Vulkan device info.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -6650,19 +6649,24 @@ struct OrtApi {
                   _In_ const struct GraphicsInteropParams* graphicsInteropParams);
 
   /**
-   * \brief Get an external GPU fence/semaphore suitable for graphics interop.
+   * \brief Create an OrtFence wrapper for an external GPU fence/semaphore to enable graphics interop.
    *
-   * This function enables interoperability between ONNX Runtime and graphics APIs by obtaining a GPU external synchronization
-   * primitive (such as a semaphore or fence handle) that may be shared with external systems like D3D12 or Vulkan.
+   * This function creates an OrtFence object that wraps an external synchronization primitive (D3D12 fence or Vulkan timeline semaphore)
+   * provided by the caller. The resulting OrtFence can be used with InteropEpWait and InteropEpSignal to synchronize ONNX Runtime
+   * computation with external graphics APIs like D3D12 or Vulkan.
    *
-   * This allows integration between ONNX Runtime GPU computation and external graphics or compute pipelines for scenarios such
-   * as synchronizing operations between ONNX Runtime's inference execution and mechanisms external to ONNX Runtime.
+   * This enables integration between ONNX Runtime GPU computation and external graphics or compute pipelines, allowing efficient
+   * GPU-side synchronization between ONNX Runtime inference and external graphics workloads.
    *
-   * The exact semantics and type of the synchronization primitive returned depend on the executing provider and the parameters provided.
+   * Prerequisites:
+   * - SetupGraphicsInteropContextForEpDevice must be called first for the relevant ep_device.
+   * - The external fence/semaphore provided must be compatible with the graphics API specified in graphicsInteropParams.
    *
-   * \param[in] session An OrtSession instance whose compute graph and providers participate in the graphics interop.
-   * \param[in] graphicsInteropParams Pointer to a struct defining which graphics API interop is desired, providing descriptor handles, device pointers, etc.
-   * \param[out] extSemFence Pointer to a variable that will receive the external semaphore/fence handle. The handle is suitable for passing to external graphics APIs.
+   * \param[in] session An OrtSession instance whose execution providers participate in the graphics interop.
+   * \param[in] graphicsInteropParams Pointer to a struct specifying the graphics API type (D3D12 or Vulkan) and device information.
+   * \param[in] fenceInteropParams Pointer to a struct containing the external fence/semaphore handle to be wrapped.
+   * \param[out] ortFence Pointer to receive the created OrtFence object. This OrtFence wraps the external synchronization primitive
+   *                      and can be used with InteropEpWait and InteropEpSignal APIs.
    *
    * \retval ORT_OK On success.
    * \retval ORT_NOT_IMPLEMENTED If none of the active providers support graphics-fence interop.
@@ -6670,7 +6674,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
+  ORT_API2_STATUS(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ const struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
 
   /**
    * \brief Wait on a graphics interop external fence/semaphore using an ONNX Runtime execution provider.

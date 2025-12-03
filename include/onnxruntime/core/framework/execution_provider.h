@@ -100,7 +100,7 @@ class IExecutionProvider {
  public:
   virtual ~IExecutionProvider() = default;
 
-  virtual Status GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, struct FenceInteropParams* fenceInteropParams, void** extSemFence) {
+  virtual Status GetExtSemaphore(const struct GraphicsInteropParams* graphicsInteropParams, const struct FenceInteropParams* fenceInteropParams, void** extSemFence) {
     auto interop_params_sptr = std::make_shared<FenceInteropParams>(*fenceInteropParams);
     *extSemFence = new std::shared_ptr<FenceInteropParams>(interop_params_sptr);
     ORT_UNUSED_PARAMETER(graphicsInteropParams);

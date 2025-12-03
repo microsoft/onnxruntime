@@ -531,7 +531,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     CreateDataTransfer = CreateDataTransferImpl;
 
     IsStreamAware = IsStreamAwareImpl;
-    SetupCigContext = SetupCigContextImpl;
+    SetupGraphicsContext = SetupCigContextImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
@@ -728,7 +728,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     // Create CIG context based on graphics API type
     CUcontext cig_context = nullptr;
-    
+
     if (graphicsInteropParams->extSyncPrimitive == ExternalSyncPrimitive_D3D12Fence) {
 #if DX_FOR_INTEROP && _WIN32
       // Get LUID of memory device and D3D12 device and compare it to that of memory device
@@ -742,7 +742,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
       // Create CIG context bound to D3D12 command queue
       CUctxCigParam ctxCigParams = { CIG_DATA_TYPE_D3D12_COMMAND_QUEUE, reinterpret_cast<ID3D12CommandQueue*>(graphicsInteropParams->DevicePtr.DXDeviceParams.pCommandQueue) };
       CUctxCreateParams ctxParams = { nullptr, 0, &ctxCigParams };
-      
+
       result = cuCtxCreate_v4(&cig_context, &ctxParams, 0, device_id);
       if (result != CUDA_SUCCESS) {
         return factory.ort_api.CreateStatus(ORT_FAIL, "Failed to create CIG context for D3D12");
@@ -771,7 +771,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
     cudaStream_t stream = nullptr;
-    
+
     // Check if we have a CIG context for this device
     auto cig_it = factory.cig_contexts_.find(device_id);
     if (cig_it != factory.cig_contexts_.end()) {
@@ -780,7 +780,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
       if (result != CUDA_SUCCESS) {
         return factory.ort_api.CreateStatus(ORT_FAIL, "Failed to set CIG context current");
       }
-      
+
       // Create stream on the CIG context
       CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     } else {

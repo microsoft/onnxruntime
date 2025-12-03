@@ -3388,13 +3388,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetupGraphicsInteropContextForEpDevice, _In_ const 
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support streams.");
   }
 
-  // Check if the factory supports CIG context setup
-  if (factory->SetupCigContext == nullptr) {
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support CIG context setup.");
+  // Check if the factory supports Graphics context setup
+  if (factory->SetupGraphicsContext == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support Graphics context setup.");
   }
 
-  // Call the EP factory to setup CIG context
-  ORT_API_RETURN_IF_ERROR(factory->SetupCigContext(ep_device->GetMutableFactory(),
+  // Call the EP factory to setup Graphics context
+  ORT_API_RETURN_IF_ERROR(factory->SetupGraphicsContext(ep_device->GetMutableFactory(),
                                                    static_cast<const OrtMemoryDevice*>(device),  // alias
                                                    graphicsInteropParams));
 
@@ -3448,7 +3448,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ const struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence) {
   API_IMPL_BEGIN
   auto* inference_session = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   if (!inference_session) {
@@ -3756,7 +3756,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence) {
+ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ const struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtFenceForGraphicsInterop is not supported in a minimal build.");
   API_IMPL_END
@@ -4409,7 +4409,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
     // End of Version 23 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::TensorTypeAndShape_HasShape,
-    
+
     &OrtApis::SetupGraphicsInteropContextForEpDevice,
     &OrtApis::GetOrtFenceForGraphicsInterop,
     &OrtApis::InteropEpWait,

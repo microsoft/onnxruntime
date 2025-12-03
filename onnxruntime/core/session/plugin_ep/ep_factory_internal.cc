@@ -31,7 +31,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::ReleaseAllocator = Forward::ReleaseAllocator;
   OrtEpFactory::CreateDataTransfer = Forward::CreateDataTransfer;
   OrtEpFactory::IsStreamAware = Forward::IsStreamAware;
-  OrtEpFactory::SetupCigContext = Forward::SetupCigContext;
+  OrtEpFactory::SetupGraphicsContext = Forward::SetupGraphicsContext;
   OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
   OrtEpFactory::SetEnvironmentOptions = Forward::SetEnvironmentOptions;
 }

@@ -752,10 +752,10 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
 
-ORT_API_STATUS_IMPL(SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device, 
+ORT_API_STATUS_IMPL(SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _In_ const struct GraphicsInteropParams* graphicsInteropParams);
 
-ORT_API_STATUS_IMPL(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
+ORT_API_STATUS_IMPL(GetOrtFenceForGraphicsInterop, _In_ OrtSession* session, _In_ const struct GraphicsInteropParams* graphicsInteropParams, _In_ const struct FenceInteropParams* fenceInteropParams, _Outptr_ OrtFence** ortFence);
 ORT_API_STATUS_IMPL(InteropEpWait, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 ORT_API_STATUS_IMPL(InteropEpSignal, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 }  // namespace OrtApis
