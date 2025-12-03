@@ -2871,6 +2871,12 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   int input_order = 0;
   int output_order = 0;
 
+#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // node arg to its consumer nodes
+  // It's only used in ORT_MINIMAL_BUILD, otherwise we use GetConsumerNodes() instead.
+  std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes;
+#endif
+
   std::vector<std::string> initializers;
 
   // Add nodes
@@ -2926,7 +2932,26 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
         subgraph_inputs.erase(it);
         erased.insert(output);
       } else if (erased.find(output) == erased.end()) {
-        if (graph.GetConsumerNodes(output->Name()).size() > 0) {
+        auto has_consumer_nodes = [&](const std::string& node_arg_str) -> bool {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          return graph.GetConsumerNodes(node_arg_str).size() > 0;
+#else
+          // Same implementation as Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes()
+          if (node_arg_to_consumer_nodes.empty()) {
+            for (const auto& node : graph.Nodes()) {
+              node.ForEachDef([&](const NodeArg& node_arg, bool is_input) {
+                if (is_input) {
+                  node_arg_to_consumer_nodes[node_arg.Name()].insert(node.Index());
+                }
+              });
+            }
+          }
+
+          return node_arg_to_consumer_nodes.find(node_arg_str) != node_arg_to_consumer_nodes.end();
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+        };
+
+        if (has_consumer_nodes(output->Name())) {
           // Only when output is neither in input list nor erased list,
           // and the output is consumed by another node, add the output to output list
           subgraph_outputs.insert({output, output_order++});
