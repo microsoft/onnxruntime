@@ -285,7 +285,7 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   const int64_t kernel_width = dims[3];
 
   // Get input shape to check same_size condition
-  const auto& input_defs = context.Node().InputDefs();
+  const auto& input_defs = context.GetNode().InputDefs();
   const auto* input_arg = input_defs[0];
   int64_t input_height = -1;
   int64_t input_width = -1;

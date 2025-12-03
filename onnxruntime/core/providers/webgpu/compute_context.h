@@ -57,7 +57,7 @@ class ComputeContextBase {
     return op_kernel_.Node().Name();
   }
 
-  inline const Node& Node() const {
+  inline const onnxruntime::Node& GetNode() const {
     return op_kernel_.Node();
   }
 
