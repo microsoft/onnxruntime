@@ -552,7 +552,6 @@ void StatefulOVInferRequest::RewindKVCache(size_t index) {
 }
 
 OVTensorPtr StatefulOVInferRequest::GetTensor(const std::string& input_name) {
-
   auto tobj = OVInferRequest::GetTensor(input_name);
 
   if (_npu_logits_slice_required) {
@@ -583,7 +582,7 @@ OVTensorPtr StatefulOVInferRequest::GetTensor(const std::string& input_name) {
             return blob;
           }
         },
-        "Could not create sliced logits tensor");
+                                          "Could not create sliced logits tensor");
       }
     }
   }

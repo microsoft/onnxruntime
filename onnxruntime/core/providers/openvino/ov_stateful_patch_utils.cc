@@ -178,7 +178,6 @@ std::pair<std::vector<std::string>, std::unordered_set<std::string>> ExtractKVPa
 //   not_kv_inputs = ["input_ids", "attention_mask"]
 std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTensors(
     const std::shared_ptr<ov::Model>& model, const std::unordered_set<std::string>& kv_patterns) {
-
   std::vector<std::string> key_value_input_names;
   std::vector<std::string> not_kv_inputs;
 
@@ -258,11 +257,11 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
   }
 
   if (key_value_input_names.size() != key_value_output_names.size()) {
-    ORT_THROW("Found different sizes between key_value_input_names (", 
-    key_value_input_names.size(), 
-    ") and key_value_output_names (", 
-    key_value_output_names.size(), 
-    "). They couldn't be paired.");
+    ORT_THROW("Found different sizes between key_value_input_names (",
+              key_value_input_names.size(),
+              ") and key_value_output_names (",
+              key_value_output_names.size(),
+              "). They couldn't be paired.");
   }
 
   // By default, batch is the 0 - th but chatglm uses 1 - st dimension as batch
