@@ -77,7 +77,8 @@ endif()
     )"""
         )
 
-    if not use_full_protobuf:
+    # Uses ONNX_USE_LITE_PROTO=ON for WebAssembly build.
+    if not use_full_protobuf or is_emscripten:
         f.write(
             r"""
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
