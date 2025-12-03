@@ -9,7 +9,9 @@ from pathlib import Path
 
 
 # This is a way to add customizations to the official VCPKG ports.
-def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool) -> None:
+def add_port_configs(
+    f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool, use_full_protobuf: bool = False
+) -> None:
     """
     Add port-specific configurations to the triplet file.
 
@@ -18,6 +20,7 @@ def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal
         has_exception (bool): Flag indicating if exceptions are enabled.
         is_emscripten (bool): Flag indicating if the target is Emscripten.
         enable_minimal_build (bool): Flag indicating if ONNX minimal build is enabled.
+        use_full_protobuf (bool): Flag indicating if full protobuf should be used (vs lite).
     """
     f.write(
         r"""if(PORT MATCHES "benchmark")
@@ -74,8 +77,7 @@ endif()
     )"""
         )
 
-    if is_emscripten:
-        # Uses ONNX_USE_LITE_PROTO=ON for WebAssembly build.
+    if not use_full_protobuf:
         f.write(
             r"""
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
