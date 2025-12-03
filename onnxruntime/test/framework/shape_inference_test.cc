@@ -86,11 +86,9 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
 
     Ort::SessionOptions session_options{};
     session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-
-    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "batch", 1) == nullptr);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "width", 64) == nullptr);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "height", 64) == nullptr);
+    session_options.AddFreeDimensionOverrideByName("batch", 1);
+    session_options.AddFreeDimensionOverrideByName("width", 64);
+    session_options.AddFreeDimensionOverrideByName("height", 64);
 
     // Even though all graph optimizations are disabled, the free dimension override is still enabled by default.
     // The shape of graph's output should be correctly inferred by shape inference and data propagation.
@@ -116,11 +114,9 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
 
     Ort::SessionOptions session_options{};
     session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-
-    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "batch", 1) == nullptr);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "width", 64) == nullptr);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "height", 64) == nullptr);
+    session_options.AddFreeDimensionOverrideByName("batch", 1);
+    session_options.AddFreeDimensionOverrideByName("width", 64);
+    session_options.AddFreeDimensionOverrideByName("height", 64);
 
     // Even though all graph optimizations are disabled, the free dimension override is still enabled by default.
     // The shape of graph's output should be correctly inferred by shape inference and data propagation.
@@ -145,11 +141,9 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
 
     Ort::SessionOptions session_options{};
     session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-
-    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "batch", 1) == nullptr);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "width", 64) == nullptr);
-    ORT_ENFORCE(g_ort->AddFreeDimensionOverrideByName(session_options, "height", 64) == nullptr);
+    session_options.AddFreeDimensionOverrideByName("batch", 1);
+    session_options.AddFreeDimensionOverrideByName("width", 64);
+    session_options.AddFreeDimensionOverrideByName("height", 64);
 
     // Even though all graph optimizations are disabled, the free dimension override is still enabled by default.
     // The shape of graph's output should be correctly inferred by shape inference and data propagation.
