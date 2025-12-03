@@ -105,6 +105,10 @@ void
     const size_t InputWidthElements = InputWidth / sizeof(float);
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
+    
+    const size_t MaxKernelPositions = KernelHeight * KernelWidth;
+    float tmpInput[MaxKernelPositions * BlockSize];
+    size_t validPositions[MaxKernelPositions];
 
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
         float* output_ptr = &Output[output_idx * BlockSize];
@@ -114,7 +118,6 @@ void
         float32x4_t OldOutput2 = MlasLoadFloat32x4(output_ptr + 8);
         float32x4_t OldOutput3 = MlasLoadFloat32x4(output_ptr + 12);
 
-        size_t validPositions[KernelHeight * KernelWidth];
         size_t validCount = 0;
         for (size_t kernel_pos = 0; kernel_pos < KernelHeight * KernelWidth; kernel_pos++) {
             size_t kh = kernel_pos / KernelWidth;
@@ -127,7 +130,6 @@ void
             }
         }
 
-        float tmpInput[validCount * BlockSize];
         for (size_t i = 0; i < validCount; i++) {
             size_t kernel_pos = validPositions[i];
             size_t kh = kernel_pos / KernelWidth;
