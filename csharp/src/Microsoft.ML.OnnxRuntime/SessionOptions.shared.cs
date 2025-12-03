@@ -161,50 +161,6 @@ namespace Microsoft.ML.OnnxRuntime
                 throw;
             }
         }
-
-        /// <summary>
-        /// A helper method to construct a SessionOptions object for ROCM execution.
-        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="deviceId">Device Id</param>
-        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
-        public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
-        {
-            CheckRocmExecutionProviderDLLs();
-            SessionOptions options = new SessionOptions();
-            try
-            {
-                options.AppendExecutionProvider_ROCm(deviceId);
-                return options;
-            }
-            catch (Exception)
-            {
-                options.Dispose();
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// A helper method to construct a SessionOptions object for ROCm execution provider.
-        /// Use only if ROCm is installed and you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="rocmProviderOptions">ROCm EP provider options</param>
-        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
-        public static SessionOptions MakeSessionOptionWithRocmProvider(OrtROCMProviderOptions rocmProviderOptions)
-        {
-            CheckRocmExecutionProviderDLLs();
-            SessionOptions options = new SessionOptions();
-            try
-            {
-                options.AppendExecutionProvider_ROCm(rocmProviderOptions);
-                return options;
-            }
-            catch (Exception)
-            {
-                options.Dispose();
-                throw;
-            }
-        }
         #endregion
 
         #region ExecutionProviderAppends
@@ -315,34 +271,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="deviceId">Device Id</param>
-        public void AppendExecutionProvider_ROCm(int deviceId = 0)
-        {
-#if __MOBILE__
-            throw new NotSupportedException("The ROCM Execution Provider is not supported in this build");
-#else
-            NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
-#endif
-        }
-
-        /// <summary>
-        /// Append a ROCm EP instance (based on specified configuration) to the SessionOptions instance.
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="rocmProviderOptions">ROCm EP provider options</param>
-        public void AppendExecutionProvider_ROCm(OrtROCMProviderOptions rocmProviderOptions)
-        {
-#if __MOBILE__
-            throw new NotSupportedException("The ROCm Execution Provider is not supported in this build");
-#else
-            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_ROCM(handle, rocmProviderOptions.Handle));
-#endif
-        }
-
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
         /// <param name="deviceId">device identification</param>
         public void AppendExecutionProvider_MIGraphX(int deviceId = 0)
         {
@@ -426,20 +354,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Select execution providers from the list of available execution providers and devices returned by 
+        /// Select execution providers from the list of available execution providers and devices returned by
         /// GetEpDevices.
-        /// 
-        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same 
+        ///
+        /// One or more OrtEpDevice instances may be provided in epDevices, but must all be for the same
         /// execution provider.
-        /// 
+        ///
         /// Make multiple calls to AppendExecutionProvider if you wish to use multiple execution providers.
-        /// 
-        /// e.g. 
+        ///
+        /// e.g.
         ///   - if execution provider 'A' has an OrtEpDevice for NPU and one for GPU and you wish to use it for
         ///     both devices, pass the two OrtEpDevice instances in the epDevices list in one call.
-        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU, 
+        ///   - if you wish to use execution provider 'B' for GPU and execution provider 'C' for CPU,
         ///     make two calls to AppendExecutionProvider, with one OrtEpDevice in the epDevices list in each call.
-        ///     
+        ///
         /// The priority of the execution providers is set by the order in which they are appended.
         /// Highest priority is first.
         /// </summary>
@@ -449,7 +377,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="epOptions">Optional options to configure the execution provider. May be null.</param>
         /// <exception cref="ArgumentException">epDevices was empty.</exception>
         /// <see cref="OrtEnv.GetEpDevices" />
-        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices, 
+        public void AppendExecutionProvider(OrtEnv env, IReadOnlyList<OrtEpDevice> epDevices,
                                             IReadOnlyDictionary<string, string> epOptions)
         {
             if (epDevices == null || epDevices.Count == 0)
@@ -481,7 +409,7 @@ namespace Microsoft.ML.OnnxRuntime
                         env.Handle,
                         epDevicePtrs,
                         (UIntPtr)epDevices.Count,
-                        epOptionsKeys,  
+                        epOptionsKeys,
                         epOptionsValues,
                         epOptionsCount));
             }
@@ -659,7 +587,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsSetEpSelectionPolicyDelegate(
-                    handle, 
+                    handle,
                     funcPtr,
                     GCHandle.ToIntPtr(_epSelectionPolicyConnectorHandle)));
         }
@@ -1116,15 +1044,6 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
 
-        private static bool CheckRocmExecutionProviderDLLs()
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                throw new NotSupportedException("ROCm Execution Provider is not currently supported on Windows.");
-            }
-            return true;
-        }
-
         #endregion
 
         #region SafeHandle
@@ -1161,7 +1080,7 @@ namespace Microsoft.ML.OnnxRuntime
         EpSelectionPolicyConnector _epSelectionPolicyConnector = null;
 
         /// <summary>
-        /// Handle to the EP selection policy connector that is passed to the C API as state for the 
+        /// Handle to the EP selection policy connector that is passed to the C API as state for the
         /// EP selection policy delegate.
         /// </summary>
         GCHandle _epSelectionPolicyConnectorHandle = default;

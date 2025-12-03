@@ -26,7 +26,6 @@ logger = logging.getLogger("")
 PROVIDERS = {
     "cpu": "CPUExecutionProvider",
     "cuda": "CUDAExecutionProvider",
-    "rocm": "ROCMExecutionProvider",
 }
 
 

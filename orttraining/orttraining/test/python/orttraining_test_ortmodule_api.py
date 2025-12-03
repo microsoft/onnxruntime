@@ -6173,11 +6173,7 @@ def test_e2e_padding_elimination():
         for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters(), strict=False):
             _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
-        if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
-            # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
-            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=2e-3, rtol=2e-4)
-        else:
-            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "FlattenAndUnpad" in [node.op_type for node in training_model.graph.node]
@@ -6332,9 +6328,6 @@ def test_leakyrelu_gradient():
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
 
 
-@pytest.mark.skipif(
-    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
-)
 @pytest.mark.parametrize("use_fp16", [False, True])
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
 def test_conv_transpose_gradient(use_fp16, conv_algo_search):
@@ -6404,9 +6397,6 @@ def test_conv_transpose_gradient(use_fp16, conv_algo_search):
         del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
 
 
-@pytest.mark.skipif(
-    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
-)
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
 def test_conv_transpose_gradient_with_groups(conv_algo_search):
     class TransposedConv3DWithGroups(nn.Module):
@@ -6450,9 +6440,6 @@ def test_conv_transpose_gradient_with_groups(conv_algo_search):
         del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
 
 
-@pytest.mark.skipif(
-    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
-)
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
 def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_search):
     class ConvTransposeComplexModel(nn.Module):
@@ -6920,11 +6907,7 @@ def test_layerwise_recompute_pythonop_deterministic():
     for ort_param1, ort_param2 in zip(ort_model1.parameters(), ort_model2.parameters(), strict=False):
         _test_helpers.assert_values_are_close(ort_param1.grad, ort_param2.grad, atol=1e-4, rtol=1e-5)
 
-    if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
-        # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
-        _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=2e-3, rtol=2e-4)
-    else:
-        _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=1e-3, rtol=1e-4)
+    _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=1e-3, rtol=1e-4)
 
     execution_mgr = ort_model2._torch_module._execution_manager._training_manager
     from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name  # noqa: PLC0415

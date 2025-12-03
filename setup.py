@@ -322,7 +322,7 @@ class InstallCommand(InstallCommandBase):
         return ret
 
 
-providers_cuda_or_rocm = "onnxruntime_providers_cuda"
+providers_cuda = "onnxruntime_providers_cuda"
 providers_tensorrt_or_migraphx = "onnxruntime_providers_" + ("migraphx" if is_migraphx else "tensorrt")
 providers_nv_tensorrt_rtx = "onnxruntime_providers_nv_tensorrt_rtx"
 providers_openvino = "onnxruntime_providers_openvino"
@@ -330,14 +330,14 @@ providers_cann = "onnxruntime_providers_cann"
 providers_qnn = "onnxruntime_providers_qnn"
 
 if platform.system() == "Linux":
-    providers_cuda_or_rocm = "lib" + providers_cuda_or_rocm + ".so"
+    providers_cuda = "lib" + providers_cuda + ".so"
     providers_tensorrt_or_migraphx = "lib" + providers_tensorrt_or_migraphx + ".so"
     providers_nv_tensorrt_rtx = "lib" + providers_nv_tensorrt_rtx + ".so"
     providers_openvino = "lib" + providers_openvino + ".so"
     providers_cann = "lib" + providers_cann + ".so"
     providers_qnn = "lib" + providers_qnn + ".so"
 elif platform.system() == "Windows":
-    providers_cuda_or_rocm = providers_cuda_or_rocm + ".dll"
+    providers_cuda = providers_cuda + ".dll"
     providers_tensorrt_or_migraphx = providers_tensorrt_or_migraphx + ".dll"
     providers_nv_tensorrt_rtx = providers_nv_tensorrt_rtx + ".dll"
     providers_openvino = providers_openvino + ".dll"
@@ -359,7 +359,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libonnxruntime.so*",
     ]
     dl_libs = ["libonnxruntime_providers_shared.so"]
-    dl_libs.append(providers_cuda_or_rocm)
+    dl_libs.append(providers_cuda)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
     dl_libs.append(providers_qnn)
@@ -369,7 +369,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
     libs.extend(["libonnxruntime_providers_vitisai.so"])
-    libs.append(providers_cuda_or_rocm)
+    libs.append(providers_cuda)
     libs.append(providers_nv_tensorrt_rtx)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
@@ -410,7 +410,7 @@ else:
         "dnnl.dll",
         "mklml.dll",
         "libiomp5md.dll",
-        providers_cuda_or_rocm,
+        providers_cuda,
         providers_tensorrt_or_migraphx,
         providers_nv_tensorrt_rtx,
         providers_cann,
@@ -680,9 +680,6 @@ if enable_training or enable_training_apis:
                 if cuda_version:
                     # removing '.' to make Cuda version number in the same form as Pytorch.
                     local_version = "+cu" + cuda_version.replace(".", "")
-                elif rocm_version:
-                    # removing '.' to make Rocm version number in the same form as Pytorch.
-                    local_version = "+rocm" + rocm_version.replace(".", "")
                 else:
                     # cpu version for documentation
                     local_version = "+cpu"
@@ -690,10 +687,6 @@ if enable_training or enable_training_apis:
             if not (cuda_version or rocm_version):
                 # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
-
-            if rocm_version:
-                # Training ROCM package for ADO feeds is called onnxruntime-training-rocm
-                package_name = "onnxruntime-training-rocm"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]

@@ -1088,31 +1088,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Add ROCM as an execution backend, using device 0.
-     *
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addROCM() throws OrtException {
-      addROCM(0);
-    }
-
-    /**
-     * Add ROCM as an execution backend, using the specified ROCM device id.
-     *
-     * @param deviceNum The ROCM device id.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addROCM(int deviceNum) throws OrtException {
-      checkClosed();
-      if (OnnxRuntime.extractROCM()) {
-        addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
-      } else {
-        throw new OrtException(
-            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find ROCM shared provider");
-      }
-    }
-
-    /**
      * Adds the CPU as an execution backend, using the arena allocator if desired.
      *
      * <p>By default this backend is used, but if other backends are requested, it should be
@@ -1471,9 +1446,6 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addCUDAV2(long apiHandle, long nativeHandle, long cudaOptsHandle)
-        throws OrtException;
-
-    private native void addROCM(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
     private native void addDnnl(long apiHandle, long nativeHandle, int useArena)

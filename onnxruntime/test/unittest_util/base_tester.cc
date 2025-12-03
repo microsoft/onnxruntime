@@ -666,7 +666,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kArmNNExecutionProvider,
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
-          kRocmExecutionProvider,
           kCoreMLExecutionProvider,
           kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
@@ -732,8 +731,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kArmNNExecutionProvider)
           execution_provider = DefaultArmNNExecutionProvider();
-        else if (provider_type == onnxruntime::kRocmExecutionProvider)
-          execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == kCoreMLExecutionProviderMLProgram)
@@ -775,9 +772,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
         if (ctx_.run_options != nullptr &&
             ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp) == "true") {
           std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-          if (provider_type == onnxruntime::kRocmExecutionProvider) {
-            execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-          }
 
           if (!execution_providers.empty()) {
             ExecuteModelForEps(

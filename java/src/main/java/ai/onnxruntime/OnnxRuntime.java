@@ -66,9 +66,6 @@ final class OnnxRuntime {
   /** The short name of the ONNX runtime CUDA provider library */
   static final String ONNXRUNTIME_LIBRARY_CUDA_NAME = "onnxruntime_providers_cuda";
 
-  /** The short name of the ONNX runtime ROCM provider library */
-  static final String ONNXRUNTIME_LIBRARY_ROCM_NAME = "onnxruntime_providers_rocm";
-
   /** The short name of the ONNX runtime DNNL provider library */
   static final String ONNXRUNTIME_LIBRARY_DNNL_NAME = "onnxruntime_providers_dnnl";
 
@@ -237,16 +234,6 @@ final class OnnxRuntime {
    */
   static boolean extractCUDA() {
     return extractProviderLibrary(ONNXRUNTIME_LIBRARY_CUDA_NAME);
-  }
-
-  /**
-   * Extracts the ROCM provider library from the classpath resources if present, or checks to see if
-   * the ROCM provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
-   *
-   * @return True if the ROCM provider library is ready for loading, false otherwise.
-   */
-  static boolean extractROCM() {
-    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_ROCM_NAME);
   }
 
   /**

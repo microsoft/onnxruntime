@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace test {
 namespace gemmfastgelu {
 
-#if defined(USE_ROCM)
+#if 0
 namespace {
 
 const onnxruntime::RunOptions run_options = []() {

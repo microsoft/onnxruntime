@@ -479,7 +479,7 @@ def parse_args():
         "--device",
         type=str,
         default="cuda" if torch.cuda.is_available() else "cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
     )
     parser.add_argument("-id", "--device-id", type=int, default=0)
     parser.add_argument("-w", "--warmup-runs", type=int, default=5)
@@ -531,7 +531,7 @@ def parse_args():
         "--tune",
         default=False,
         action="store_true",
-        help="Only used by ROCm EP, enable TunableOp tuning to select fastest kernel",
+        help="Enable TunableOp tuning to select fastest kernel",
     )
 
     args = parser.parse_args()
@@ -546,16 +546,6 @@ def parse_args():
         args.execution_provider = f"{args.device.upper()}ExecutionProvider"
         if args.execution_provider == "CUDAExecutionProvider":
             args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
-        elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (
-                args.execution_provider,
-                {
-                    "device_id": args.device_id,
-                    "tunable_op_enable": 1,
-                    "tunable_op_tuning_enable": 1 if args.tune else 0,
-                },
-            )
-            args.device = "cuda"
 
     # Check that model paths have been specified for any benchmarking with ORT
     if args.benchmark_type == "hf-ort":

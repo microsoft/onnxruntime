@@ -8,8 +8,6 @@ namespace test {
 
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_ROCM
-constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
 static void TestReduceSum(const std::vector<int64_t>& X_dims,

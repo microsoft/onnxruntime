@@ -194,7 +194,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         provider_options = None
         if self._device.type == "cuda":
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = ["ROCMExecutionProvider"] if self.is_rocm_pytorch else ["CUDAExecutionProvider"]
+            providers = ["CUDAExecutionProvider"]
             providers.append("CPUExecutionProvider")
             provider_option_map = {"device_id": str(self._device.index)}
             if not self.is_rocm_pytorch:

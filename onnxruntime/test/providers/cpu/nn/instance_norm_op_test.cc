@@ -130,8 +130,8 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// Only CUDA and ROCm kernels have float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_WEBGPU)
+// Only a few EPs have float 16 support
+#if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_WEBGPU)
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
   OpTester test("InstanceNormalization");

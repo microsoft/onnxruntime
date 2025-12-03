@@ -124,12 +124,6 @@ public abstract class OrtProviderOptions implements AutoCloseable {
               OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find OpenVINO shared provider");
         }
         break;
-      case ROCM:
-        if (!OnnxRuntime.extractROCM()) {
-          throw new OrtException(
-              OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find ROCm shared provider");
-        }
-        break;
       case TENSOR_RT:
         if (!OnnxRuntime.extractTensorRT()) {
           throw new OrtException(
