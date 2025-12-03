@@ -11,6 +11,7 @@
 
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
+#include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "core/providers/qnn/rpcmem_library.h"
@@ -100,6 +101,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool IsHtpPowerConfigIdValid();
 
   uint32_t GetHtpPowerConfigId();
+
+  qnn::PerThreadHtpPowerConfigs_t GetPerThreadHtpPowerConfigs(const ConfigOptions& config_options);
 
   mutable std::shared_ptr<ManagedHtpPowerConfigId> managed_htp_power_config_id_ = nullptr;
   mutable std::mutex htp_power_config_id_mutex_;
