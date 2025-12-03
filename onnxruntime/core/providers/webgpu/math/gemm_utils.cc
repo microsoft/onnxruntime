@@ -71,32 +71,14 @@ void HandleMatMulWithSplitK(
   //    equal to `old_output_i32` (it is updated in another invocation). If the assignment fails
   //    we have to go to step 1 and repeat all the above steps.
   const std::string get_output_by_offset = output.GetByOffset("offset");
-  std::ostringstream atomic_load_from_output;
-  atomic_load_from_output << "let old_output_i32 = atomicLoad(&" << get_output_by_offset << ");\n";
-  std::ostringstream output_compare_exchange;
-  output_compare_exchange << "let output_compare_exchange = atomicCompareExchangeWeak(&"
-                          << get_output_by_offset << ", old_output_i32, new_output_i32);\n";
-
   switch (output_variable_type) {
     case ProgramVariableDataType::Float32x4: {
       shader.AdditionalImplementation() << R"(
     let offset0 = i2o_output(coords) * 4u;
     for (var i = 0u; i < 4u; i++) {
         let offset = offset0 + i;
-        while (true) {
 )";
-      shader.AdditionalImplementation() << atomic_load_from_output.str();
-      shader.AdditionalImplementation() << R"(
-            let old_output_f32 = bitcast<f32>(old_output_i32);
-            let new_output_f32 = old_output_f32 + value[i];
-            let new_output_i32 = bitcast<i32>(new_output_f32);
-)";
-      shader.AdditionalImplementation() << output_compare_exchange.str();
-      shader.AdditionalImplementation() << R"(
-            if (output_compare_exchange.old_value == old_output_i32) {
-                break;
-            }
-        }
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(get_output_by_offset, "f32", "value[i]") << R"(
     }
 )";
       break;
@@ -109,20 +91,8 @@ void HandleMatMulWithSplitK(
     vec2h_values[1] = value.zw;
     for (var i = 0u; i < 2u; i++) {
         let offset = offset0 + i;
-        while (true) {
 )";
-      shader.AdditionalImplementation() << atomic_load_from_output.str();
-      shader.AdditionalImplementation() << R"(
-            let old_output_vec2h = bitcast<vec2h>(old_output_i32);
-            let new_output_vec2h = old_output_vec2h + vec2h_values[i];
-            let new_output_i32 = bitcast<i32>(new_output_vec2h);
-)";
-      shader.AdditionalImplementation() << output_compare_exchange.str();
-      shader.AdditionalImplementation() << R"(
-            if (output_compare_exchange.old_value == old_output_i32) {
-                break;
-            }
-        }
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(get_output_by_offset, "vec2h", "vec2h_values[i]") << R"(
     }
 )";
       break;

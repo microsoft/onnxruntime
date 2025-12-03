@@ -113,5 +113,8 @@ class SplitKConfig {
   float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.0f;
 };
 
+
+std::string GenerateAtomicAddNonIntegerCode(const std::string& output_atomic_value, const std::string& output_type, const std::string& add_value);
+
 }  // namespace webgpu
 }  // namespace onnxruntime
