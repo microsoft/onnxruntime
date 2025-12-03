@@ -13,6 +13,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
+class ShaderVariableHelper;
+
 /**
  * Returns the maximum number of components `N` to be used as `vecN` for the given size.
  */
@@ -113,20 +115,7 @@ class SplitKConfig {
   float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.0f;
 };
 
-/**
- * Generates WGSL (WebGPU Shading Language) code for performing an atomic add operation
- * on a non-integer (floating-point) value in a shader.
- *
- * WGSL only supports atomic operations on integer types natively. To perform atomic
- * addition on floating-point types, this function generates code that emulates the
- * atomic add using a compare-and-swap loop.
- *
- * @param output_atomic_value The name of the atomic variable to be updated (e.g., buffer reference).
- * @param output_type         The WGSL type of the value being added (e.g., "f32").
- * @param add_value           The expression or variable representing the value to add.
- * @return                    A string containing WGSL code that performs the atomic add.
- */
-std::string GenerateAtomicAddNonIntegerCode(const std::string& output_atomic_value, const std::string& output_type, const std::string& add_value);
+std::string GenerateAtomicAddNonIntegerCode(const ShaderVariableHelper& output, const std::string& offset, const std::string& output_type, const std::string& add_value);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

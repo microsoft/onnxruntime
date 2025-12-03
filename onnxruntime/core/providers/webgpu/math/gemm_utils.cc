@@ -70,7 +70,6 @@ void HandleMatMulWithSplitK(
   //    and `old_output_i32`. The assignment will fail if at this time `output[offset]` is not
   //    equal to `old_output_i32` (it is updated in another invocation). If the assignment fails
   //    we have to go to step 1 and repeat all the above steps.
-  const std::string get_output_by_offset = output.GetByOffset("offset");
   switch (output_variable_type) {
     case ProgramVariableDataType::Float32x4: {
       shader.AdditionalImplementation() << R"(
@@ -78,7 +77,7 @@ void HandleMatMulWithSplitK(
     for (var i = 0u; i < 4u; i++) {
         let offset = offset0 + i;
 )";
-      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(get_output_by_offset, "f32", "value[i]") << R"(
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "f32", "value[i]") << R"(
     }
 )";
       break;
@@ -92,7 +91,7 @@ void HandleMatMulWithSplitK(
     for (var i = 0u; i < 2u; i++) {
         let offset = offset0 + i;
 )";
-      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(get_output_by_offset, "vec2h", "vec2h_values[i]") << R"(
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "vec2h", "vec2h_values[i]") << R"(
     }
 )";
       break;
