@@ -720,6 +720,7 @@ struct OrtEpApi {
   /** \brief Adds mutable aliases for the given input and output pairs.
    *
    * \note Allows ORT to reuse and *modify* an input buffer (in-place) for the output buffer.
+   *       This is also known as "MayInplace" within the ORT codebase.
    *
    * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
    * \param[in] input_indices Array of input indices. Array must contain `num_io_indices` elements.
@@ -827,31 +828,6 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
                   _Outptr_ const OrtDataType** out);
-
-  /** \brief Copy OrtValue instances containing Tensors between devices.
-   *
-   * The overall copy must be between a single source device and a single destination device. i.e.
-   *   - all src_tensors must have matching OrtMemoryInfo,
-   *   - all dst_tensors must have matching OrtMemoryInfo.
-   *
-   * OrtValue instances should be obtained from the OrtKernelContext instanced provided to a kernel's compute function.
-   * Refer to OrtKernelImpl::Compute().
-   *
-   * \param[in] info The OrtKernelInfo instance, which contains references to available data transfer implementations.
-   * \param[in] src_tensors Array of OrtValue instances containing the source tensors to copy.
-   * \param[in] dst_tensors Array of OrtValue instances to copy the source tensors to.
-   * \param[in] stream Optional OrtSyncStream that can be used to perform the copy asynchronously. May be nullptr.
-   * \param[in] num_tensors The number of tensors to copy. The size of `src_tensors` and `dst_tensors` must match.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.24
-   */
-  ORT_API2_STATUS(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,
-                  _In_reads_(num_tensors) const OrtValue* const* src_tensors,
-                  _In_reads_(num_tensors) OrtValue* const* dst_tensors,
-                  _In_opt_ OrtSyncStream* stream,
-                  _In_ size_t num_tensors);
 
   /** \brief Gets the kernel definition for a given node, if any exists for the calling execution provider.
    *

@@ -5,7 +5,6 @@
 
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
@@ -21,8 +20,6 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/framework/data_transfer.h"
-#include "core/framework/plugin_ep_stream.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
@@ -510,63 +507,6 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
     }
   }
 
-  return Status::OK();
-}
-
-Status CopyTensors(const DataTransferManager& data_transfer_manager,
-                   gsl::span<const OrtValue* const> src_tensors,
-                   gsl::span<OrtValue* const> dst_tensors,
-                   OrtSyncStream* stream) {
-  if (src_tensors.size() != dst_tensors.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Expected the same number of source and destination tensors. ",
-                           "Have ", src_tensors.size(), " source tensors and ", dst_tensors.size(),
-                           " destination tensors.");
-  }
-
-  const OrtMemoryInfo* src_memory_info = nullptr;
-  const OrtMemoryInfo* dst_memory_info = nullptr;
-
-  const auto validate_and_get_mem_info =
-      [](gsl::span<const OrtValue* const> values, const OrtMemoryInfo*& mem_info) -> Status {
-    for (size_t i = 0; i < values.size(); ++i) {
-      const OrtValue* value = values[i];
-      if (value == nullptr || !value->IsTensor() || !value->IsAllocated()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "OrtValue must contain Tensor with data.");
-      }
-
-      if (i == 0) {
-        mem_info = &value->Get<Tensor>().Location();
-      } else if (*mem_info != value->Get<Tensor>().Location()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "All OrtValue instances must have the same OrtMemoryInfo");
-      }
-    }
-
-    return Status::OK();
-  };
-
-  ORT_RETURN_IF_ERROR(validate_and_get_mem_info(src_tensors, src_memory_info));
-  ORT_RETURN_IF_ERROR(validate_and_get_mem_info(dst_tensors, dst_memory_info));
-
-  const auto* data_transfer = data_transfer_manager.GetDataTransfer(src_memory_info->device, dst_memory_info->device);
-
-  if (data_transfer == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Data transfer implementation between source and destination device was not found.");
-  }
-
-  std::vector<IDataTransfer::SrcDstPair> pairs;
-  pairs.reserve(src_tensors.size());
-  for (size_t i = 0; i < src_tensors.size(); ++i) {
-    pairs.push_back({
-        src_tensors[i]->Get<Tensor>(),
-        *dst_tensors[i]->GetMutable<Tensor>(),
-        stream,
-    });
-  }
-
-  ORT_RETURN_IF_ERROR(data_transfer->CopyTensors(pairs));
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)

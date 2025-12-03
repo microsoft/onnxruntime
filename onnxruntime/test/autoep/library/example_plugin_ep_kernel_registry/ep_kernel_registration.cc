@@ -8,9 +8,16 @@
 
 // Table of BuildKernelCreateInfo functions for each operator
 static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
+    // Mul version 14
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 14, Mul)>,
+
+    // Relu version 14
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 14, Relu)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 21, 24, Squeeze)>,
+
+    // Support Squeeze 21, 23, and 24. Note that then end versions are inclusive.
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 21, 22, Squeeze)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOnnxDomain, 23, 23, Squeeze)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 24, Squeeze)>,
 };
 
 size_t GetNumKernels() {

@@ -8,10 +8,39 @@
 
 #include "utils.h"
 
+// Support ONNX Squeeze versions 21, 23, and 24.
+// Kernel creation functions are typically defined separately for new operator versions to account for things like new
+// data types. One could technically support all three versions with a single call to
+// ONNX_OPERATOR_VERSIONED_KERNEL_EX(Squeeze, kOnnxDomain, 21, 24, ...), but this example shows the more common usage.
+
+// ONNX Squeeze version 21
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    21, 24,
+    /*start_version*/ 21, /*end_version (inclusive)*/ 22,
+    (Ort::KernelDefBuilder()
+         .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
+         .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .AddInputOutputAlias(0, 0)),
+    Squeeze)
+
+// ONNX Squeeze version 23
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    /*start_version*/ 23, /*end_version (inclusive)*/ 23,
+    (Ort::KernelDefBuilder()
+         .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
+         .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .AddInputOutputAlias(0, 0)),
+    Squeeze)
+
+// ONNX Squeeze version 24. As an example, this only specifies the start version (24).
+// The end version is implicitly set to 24.
+ONNX_OPERATOR_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    /*version*/ 24,  // Equivalent start_version: 24, end_version: 24
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
@@ -57,7 +86,6 @@ static std::vector<int64_t> ComputeOutputShape(gsl::span<const int64_t> input_sh
 }
 
 OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
-  const OrtEpApi& ep_api = Ort::GetEpApi();
   Ort::KernelContext kernel_context(kernel_ctx);
   static_cast<void>(this->state_);  // NOTE: Unused in this example.
 
@@ -81,16 +109,13 @@ OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
   std::vector<int64_t> output_shape = ComputeOutputShape(shape0, axes);
   Ort::UnownedValue output = kernel_context.GetOutput(0, output_shape);
   float* output_data = output.GetTensorMutableData<float>();
+  size_t num_bytes = output.GetTensorSizeInBytes();
 
-  if (input0.data() != output_data) {
-    std::array<const OrtValue*, 1> src_tensors = {kernel_context.GetInput(0)};
-    std::array<OrtValue*, 1> dst_tensors = {output};
-
-    RETURN_IF_ERROR(ep_api.KernelInfo_CopyTensors(info_,
-                                                  src_tensors.data(),
-                                                  dst_tensors.data(),
-                                                  /*stream*/ nullptr,
-                                                  src_tensors.size()));
+  if (input0.data() != output_data) {  // Don't copy if src == dst
+    // This uses a memcpy because the input and output are both located in the EP's device memory (i.e., cpu memory).
+    // Normally, an EP would use a OrtDataTransferImpl to generically handle copies where the source and destination
+    // could be on different devices.
+    memcpy(output_data, input0.data(), num_bytes);
   }
 
   return nullptr;

@@ -52,8 +52,8 @@ static constexpr const char* kOnnxDomain = "";
   example_ep_##name##_##domain##_ver##startver##_##endver
 
 // Naming convention for operator kernel classes for a single version
-#define ONNX_OPERATOR_KERNEL_CLASS_NAME(domain, startver, name) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, startver, name)
+#define ONNX_OPERATOR_KERNEL_CLASS_NAME(domain, version, name) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, version, version, name)
 
 // Defines a function of type BuildKernelCreateInfoFn for a kernel implementation with a start and end version range.
 #define ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, builder, kernel_class)    \
@@ -93,5 +93,5 @@ static constexpr const char* kOnnxDomain = "";
   }
 
 // Defines a function of type BuildKernelCreateInfoFn for a kernel implementation with a start version.
-#define ONNX_OPERATOR_KERNEL_EX(name, domain, startver, builder, kernel_class) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, startver, builder, kernel_class)
+#define ONNX_OPERATOR_KERNEL_EX(name, domain, version, builder, kernel_class) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, version, version, builder, kernel_class)

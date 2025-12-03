@@ -550,28 +550,6 @@ ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(KernelInfo_CopyTensors, _In_ const OrtKernelInfo* info,
-                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
-                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
-                    _In_opt_ OrtSyncStream* stream,
-                    _In_ size_t num_tensors) {
-  API_IMPL_BEGIN
-  if (info == nullptr || src_tensors == nullptr || dst_tensors == nullptr || num_tensors == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments provided to KernelInfo_CopyTensors.");
-  }
-
-  auto* op_kernel_info = reinterpret_cast<const OpKernelInfo*>(info);
-  auto& data_transfer_mgr = op_kernel_info->GetDataTransferManager();
-
-  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyTensors(data_transfer_mgr,
-                                              gsl::span<const OrtValue* const>(src_tensors, num_tensors),
-                                              gsl::span<OrtValue* const>(dst_tensors, num_tensors),
-                                              stream));
-
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
                     _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def) {
   API_IMPL_BEGIN
@@ -657,7 +635,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDef_GetInputMemType,
     &OrtExecutionProviderApi::KernelDef_GetOutputMemType,
     &OrtExecutionProviderApi::GetTensorDataType,
-    &OrtExecutionProviderApi::KernelInfo_CopyTensors,
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
 };
 

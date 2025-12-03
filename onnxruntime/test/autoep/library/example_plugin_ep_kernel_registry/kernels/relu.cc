@@ -9,10 +9,11 @@
 
 #include "utils.h"
 
+// Defines a kernel creation function for version 14 of Relu.
 ONNX_OPERATOR_KERNEL_EX(
     Relu,
     kOnnxDomain,
-    14,
+    /*version*/ 14,  // Equivalent to start_version: 14, end_version: 14 (inclusive)
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddInputOutputMutableAlias(0, 0)),
