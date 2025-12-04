@@ -1753,6 +1753,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                     std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types,
                                                     const Graph::ResolveOptions& options);
 
+  // If ONNX operator's PartialDataPropagationFunction() infers concrete shape values in the output
+  // save them to the output NodeArg as a TensorShapeProto or a scalar value so that downstream (consumer) nodes
+  // can use them later for their TypeAndShapeInferenceFunction() and PartialDataPropagationFunction().
+  common::Status SaveShapeValuesFromDataPropagation(const Node& node, NodeArg& output_def,
+                                                    const ONNX_NAMESPACE::TypeProto& propagated_value_as_type_proto) const;
+
+  // Remove intermediate inferred shape values stored in all NodeArgs to reduce memory usage.
+  common::Status CleanUpShapeValuesFromDataPropagation();
+
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();
 

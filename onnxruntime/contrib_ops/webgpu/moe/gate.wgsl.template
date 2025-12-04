@@ -18,7 +18,7 @@ const K: u32 = k;
 #if is_fp16
 const MAX_FLOAT: f16 = 65504.0;
 #else
-const MAX_FLOAT: f32 = 3.402823466e+38;
+const MAX_FLOAT: f32 = 3.4028234663852886e+38;
 #endif
 
 var<workgroup> shared_vals: array<hidden_state_element_t, workgroup_size_x>;
