@@ -13,8 +13,6 @@
 namespace onnxruntime {
 namespace test {
 
-constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-
 // followed example of fastgelu_op_test.cc
 // in retrospect would have been better to compare BiasSoftmax to Add + Softmax graph
 
