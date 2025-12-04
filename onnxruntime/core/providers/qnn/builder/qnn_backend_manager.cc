@@ -1572,7 +1572,7 @@ Status QnnBackendManager::SetPerThreadHtpPowerConfigs(const std::thread::id& thr
                                              htp_power_configs.rpc_control_latency,
                                              htp_power_configs.rpc_polling_time));
     }
-  } else if (!pre_run && htp_power_configs.post_run_perf_mode_set) {
+  } else if (htp_power_configs.post_run_perf_mode_set) {
     ORT_RETURN_IF_ERROR(SetHtpPowerConfig(htp_power_config_id, htp_power_configs.post_run_perf_mode));
   }
 
