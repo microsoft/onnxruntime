@@ -174,14 +174,14 @@ struct TensorProto_ConstIterator_Impl : TensorProto_ConstIterator {
   bool operator!=(const TensorProto_ConstIterator& p) const override { return v_ != static_cast<const TensorProto_ConstIterator_Impl*>(&p)->v_; }
 
   void operator++() override { v_.operator++(); }
-  const ONNX_NAMESPACE::TensorProto& operator*() const override { return const_cast<ONNX_NAMESPACE::TensorProto&>(*v_); }
+  const ONNX_NAMESPACE::TensorProto& operator*() const override { return *v_; }
 
   google::protobuf::internal::RepeatedPtrIterator<const ONNX_NAMESPACE::TensorProto> v_;
 };
 
 struct TensorProto_Iterator_Impl : TensorProto_Iterator {
   explicit TensorProto_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<ONNX_NAMESPACE::TensorProto>&& v) : v_{std::move(v)} {}
-  bool operator!=(const TensorProto_Iterator& p) const override { return v_ != static_cast<const TensorProto_Iterator_Impl*>(&p)->v_; }
+  bool operator!=(const TensorProto_Iterator& p) const override { return v_ != reinterpret_cast<const TensorProto_Iterator_Impl*>(&p)->v_; }
   void operator++() override { v_.operator++(); }
   ONNX_NAMESPACE::TensorProto& operator*() const override { return *v_; }
   google::protobuf::internal::RepeatedPtrIterator<ONNX_NAMESPACE::TensorProto> v_;
