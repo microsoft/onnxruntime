@@ -25,7 +25,11 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "JobId=windows-dml-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     steps:
       - uses: actions/checkout@v6
         with:
