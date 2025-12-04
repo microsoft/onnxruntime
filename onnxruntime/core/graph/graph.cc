@@ -672,6 +672,8 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
     *attr = attribute;  // copy
     if (update_subgraphs && utils::HasGraph(*attr)) {
       auto find_hit = attr_to_subgraph_map_.find(name);
+      // Force ToGraphProto() const to be called so
+      // that any in-memory TensorProto initializers go back to being inlined
       const Graph& subgraph = *find_hit->second;
       attr->clear_g();
       *attr->mutable_g() = subgraph.ToGraphProto();

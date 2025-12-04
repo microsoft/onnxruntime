@@ -2347,8 +2347,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             if (utils::HasRawData(init)) {
               // Keep inits in memory instead of writing to ModelProto.
               // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
-              userWeights.emplace_back(
-                  TensorrtUserWeights(init.name(), init.raw_data()));
+              userWeights.emplace_back(init.name(), init.raw_data());
             }
           }
         }
@@ -3118,8 +3117,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     }
     if (load_user_initializer_ && utils::HasRawData(init)) {
       // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
-      userWeights->emplace_back(
-          TensorrtUserWeights(init.name(), init.raw_data()));
+      userWeights->emplace_back(init.name(), init.raw_data());
     }
   }
 

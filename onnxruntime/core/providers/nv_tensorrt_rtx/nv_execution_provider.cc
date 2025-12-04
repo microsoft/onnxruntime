@@ -1724,8 +1724,7 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
             if (utils::HasRawData(init)) {
               // Keep inits in memory instead of writing to ModelProto.
               // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
-              userWeights.emplace_back(
-                  TensorrtUserWeights(init.name(), init.raw_data()));
+              userWeights.emplace_back(init.name(), init.raw_data());
             }
           }
         }
@@ -2566,19 +2565,21 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   std::vector<TensorrtUserWeights> userWeights;
   if (use_external_data_initializer_) {
     for (auto& init : *graph_proto->mutable_initializer()) {
-      if (utils::HasRawData(*tp)) {
-        userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
+      if (utils::HasRawData(init)) {
+        userWeights.emplace_back(init.name(), init.raw_data());
       } else if (utils::HasExternalDataInMemory(init)) {
         // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
         if (OrtValue v; graph_body_viewer.GetOrtValueInitializer(init.name(), v)) {
           Ort::ConstValue initializer_value{&v};
           const size_t size = initializer_value.GetTensorSizeInBytes();
           const void* ptr = initializer_value.GetTensorRawData();
-          userWeights.emplace_back(tp->name(), ptr, size);
+          userWeights.emplace_back(init.name(), ptr, size);
         } else {
           std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
           ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(init, full_init));
           init = std::move(*full_init);
+          // we know the above generates raw_data
+          userWeights.emplace_back(init.name(), init.raw_data());
         }
       }
     }
