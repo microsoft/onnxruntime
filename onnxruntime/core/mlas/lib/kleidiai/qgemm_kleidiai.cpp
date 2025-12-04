@@ -104,13 +104,25 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     size_t n_step = UseSME2 ? kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa()
                             : kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa();
 
-
-    if (Shape.M == 0 || Shape.N == 0 || Shape.K == 0) {
+    if (BatchSize == 0 || Shape.M == 0 || Shape.N == 0 ) {
         return;
     }
-    if ((Shape.M < m_step || Shape.N < n_step) && !DataParams->PackedB) {
-        // Fallback to MLAS
-        ORT_ENFORCE(false, "ArmKleidiAI::MlasDynamicQGemmBatch(): unsupported small-shape case (M < m_step or N < n_step)");
+
+    //We are required to enforce errors when we reach this stage as we will not be able
+    //to reverse the packing decision that was made for RHS.
+
+    ORT_ENFORCE(DataParams != nullptr, "Dynamic QGEMM requires valid DataParams.");
+    ORT_ENFORCE(Shape.K > 0, "Dynamic QGEMM requires Shape.K to be non-zero.");
+
+    for (size_t batch_idx = 0; batch_idx < BatchSize; ++batch_idx) {
+        const auto& params = DataParams[batch_idx];
+        ORT_ENFORCE(params.A != nullptr, "Dynamic QGEMM requires non-null A pointer for batch ", batch_idx);
+        ORT_ENFORCE(params.C != nullptr, "Dynamic QGEMM requires non-null C pointer for batch ", batch_idx);
+        ORT_ENFORCE(params.PackedB != nullptr, "Dynamic QGEMM requires non-null PackedB pointer for batch ", batch_idx);
+        const size_t lda = params.lda != 0 ? params.lda : Shape.K;
+        const size_t ldc = params.ldc != 0 ? params.ldc : Shape.N;
+        ORT_ENFORCE(lda >= Shape.K, "lda (", lda, ") must be >= Shape.K (", Shape.K, ") for batch ", batch_idx);
+        ORT_ENFORCE(ldc >= Shape.N, "ldc (", ldc, ") must be >= Shape.N (", Shape.N, ") for batch ", batch_idx);
     }
 
     //Dynamic Quantize A - lhs

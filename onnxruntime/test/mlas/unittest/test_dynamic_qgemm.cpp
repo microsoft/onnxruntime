@@ -23,8 +23,7 @@ class MlasDynamicQgemmTestBase {
 
  protected:
   void Run(size_t M, size_t N, size_t K, size_t BatchSize,
-          MLAS_THREADPOOL* threadpool, bool require_threadpool, const char* run_tag) {
-
+           MLAS_THREADPOOL* threadpool, bool require_threadpool, const char* run_tag) {
     if (require_threadpool && threadpool == nullptr)
       GTEST_SKIP() << "Dynamic QGEMM threading path requested but no MLAS thread pool is available.";
 
@@ -46,8 +45,7 @@ class MlasDynamicQgemmTestBase {
     // Quantize Bf → Bq and compute per-column scale and bias per batch
     std::vector<std::vector<float>> b_scale_batches(BatchSize, std::vector<float>(N));
     std::vector<std::vector<float>> b_bias_batches(BatchSize, std::vector<float>(N, 0.0f));
-    std::vector<std::vector<int8_t>> a_quant_batches(
-        BatchSize, std::vector<int8_t>(M * K));
+    std::vector<std::vector<int8_t>> a_quant_batches(BatchSize, std::vector<int8_t>(M * K));
     std::vector<std::vector<float>> a_scale_batches(BatchSize, std::vector<float>(M));
     std::vector<std::vector<int32_t>> a_zero_point_batches(BatchSize, std::vector<int32_t>(M));
 
@@ -128,7 +126,6 @@ class MlasDynamicQgemmTestBase {
       params[b].PackedB = packed_b;
     }
 
-
     // Compute reference result
     for (size_t b = 0; b < BatchSize; ++b) {
       for (size_t m = 0; m < M; ++m) {
@@ -161,38 +158,36 @@ class MlasDynamicQgemmTestBase {
         float allowed = std::max(rel_tol, abs_tol);
         float diff = std::abs(C[i] - CRef[i]);
         ASSERT_LE(diff, allowed);
-       }
+      }
     };
 
     validate(run_tag);
   }
 };
 
-  class MlasDynamicQgemmSingleThreadTest : public MlasDynamicQgemmTestBase {
-    public:
-    void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
-
+class MlasDynamicQgemmSingleThreadTest : public MlasDynamicQgemmTestBase {
+ public:
+  void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2())
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME2 but it was not detected. Skipping test.";
-      Run(M, N, K, BatchSize, /*threadpool*/ nullptr, /*require_threadpool*/ false, "SingleThread");
-    }
-    static const char* GetTestSuiteName() { return "DynamicQgemmSingleThread"; }
-  };
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME())
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
+    Run(M, N, K, BatchSize, /*threadpool*/ nullptr, /*require_threadpool*/ false, "SingleThread");
+  }
+  static const char* GetTestSuiteName() { return "DynamicQgemmSingleThread"; }
+};
 
-  class MlasDynamicQgemmThreadPoolTest : public MlasDynamicQgemmTestBase {
-    public:
-    void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
-
+class MlasDynamicQgemmThreadPoolTest : public MlasDynamicQgemmTestBase {
+ public:
+  void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2())
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME2 but it was not detected. Skipping test.";
-      MLAS_THREADPOOL* tp = GetMlasThreadPool();
-      if (!tp) GTEST_SKIP() << "Mlas thread pool not available";
-      Run(M, N, K, BatchSize, tp, /*require_threadpool*/ true, "ThreadPool");
-    }
-    static const char* GetTestSuiteName() { return "DynamicQgemmThreaded"; }
-  };
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME())
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
+    MLAS_THREADPOOL* tp = GetMlasThreadPool();
+    if (!tp) GTEST_SKIP() << "Mlas thread pool not available";
+    Run(M, N, K, BatchSize, tp, /*require_threadpool*/ true, "ThreadPool");
+  }
+  static const char* GetTestSuiteName() { return "DynamicQgemmThreaded"; }
+};
 
 template <typename TMlasTester>
 class DynamicQgemmExecuteTest : public MlasTestFixture<TMlasTester> {
