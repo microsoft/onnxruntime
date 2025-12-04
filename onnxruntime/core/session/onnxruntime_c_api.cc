@@ -3403,7 +3403,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
 
   // create the wrapper class that uses the EP implementation
   auto stream = std::make_unique<plugin_ep::Stream>(ep_device->device_memory_info->device,
-                                                    *stream_impl, LoggingManager::DefaultLogger());
+                                                    *stream_impl, *LoggingManager::DefaultLogger().ToExternal());
 
   // cast to base type, and to API alias type
   *ort_stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(stream.release()));
