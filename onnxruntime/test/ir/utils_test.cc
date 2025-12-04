@@ -7,6 +7,7 @@
 #include "core/graph/model.h"
 
 #include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 
 using ONNX_NAMESPACE::Utils::DataTypeUtils;
 using namespace ONNX_NAMESPACE;

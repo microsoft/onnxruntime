@@ -2339,19 +2339,17 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Save Initializer Data.
         std::vector<TensorrtUserWeights> userWeights;
         if (load_user_initializer_) {
-          for (const auto& init : *graph_proto->mutable_initializer()) {
-            // We do not expect any user initializer to contain in memory references at this point
-            // as they were all converted above using graph_utils::MakeInitializerCopyIfNotExist()
-            // subgraph initializers were converted using Node::ToProto() above
-            ORT_ENFORCE(!utils::HasExternalDataInMemory(init));
-            if (utils::HasRawData(init)) {
-              // Keep inits in memory instead of writing to ModelProto.
-              // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
-              userWeights.emplace_back(init.name(), init.raw_data());
+          const auto& allInitializers = graph_viewer->GetAllInitializedTensors();
+          for (const auto& [name, tp] : allInitializers) {
+            if (tp->has_raw_data()) {
+              userWeights.emplace_back(name, tp->raw_data());
+            } else if (utils::HasExternalDataInMemory(*tp)) {
+              std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+              ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+              userWeights.emplace_back(name, full_init->raw_data());
             }
           }
         }
-
         *model_proto->mutable_graph() = std::move(*graph_proto);
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
@@ -3098,30 +3096,26 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
 
+  // Note, wrapping std::vector into a smart ptr is redundant as the vector is a smart ptr in a sense.
+  auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
+  if (load_user_initializer_) {
+    const auto& allInitializers = graph_body_viewer.GetAllInitializedTensors();
+    for (const auto& [name, tp] : allInitializers) {
+      if (tp->has_raw_data()) {
+        userWeights->emplace_back(name, tp->raw_data());
+      } else if (utils::HasExternalDataInMemory(*tp)) {
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+        userWeights->emplace_back(name, full_init->raw_data());
+      }
+    }
+  }
+
   // ORT's default topological sort is using reversed DFS.
   // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
   // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
   // the model proto that has different node ordering compared to original onnx model.
-  auto graph_proto = ONNX_NAMESPACE::GraphProto::Create();
-  graph_body_viewer.ToProto(*graph_proto, true, true, 1 /*priority-based topological sort*/, !load_user_initializer_ /*include_initializer_data*/);
-
-  auto userWeights = std::make_unique<std::vector<TensorrtUserWeights>>();
-
-  // Inline all in-memory references back into the TensorProto
-  // so neither ONNX nor TRT library is confused.
-  for (auto& init : *graph_proto->mutable_initializer()) {
-    if (utils::HasExternalDataInMemory(init)) {
-      std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-      ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(init, full_init));
-      init = std::move(*full_init);
-    }
-    if (load_user_initializer_ && utils::HasRawData(init)) {
-      // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
-      userWeights->emplace_back(init.name(), init.raw_data());
-    }
-  }
-
-  *model_proto->mutable_graph() = std::move(*graph_proto);
+  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !load_user_initializer_ /*include_initializer_data*/);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string string_buf;
   model_proto->SerializeToString(string_buf);
