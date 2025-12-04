@@ -330,7 +330,6 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
   b->Args({2, 1, 256, 1, 1, 378, 378, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});  // External customer model
   b->Args({2, 1, 24, 1, 1, 378, 378, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});   // External customer model
   b->Args({2, 1, 24, 1, 1, 378, 378, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});   // External customer model
-
 }
 
 BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
