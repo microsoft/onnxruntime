@@ -264,6 +264,24 @@ class TaskLibrary:
                 )
             )
 
+    if (is_host_linux() and is_host_x86_64()) or is_host_mac():
+
+        @task
+        @depends(["build_ort_linux_aarch64_oe_gcc11_2"])
+        def archive_ort_linux_aarch64_oe_gcc11_2(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpLinuxTask(
+                    "Archiving ONNX Runtime for Linux",
+                    self.__venv_path,
+                    "linux",
+                    "aarch64_oe_gcc11_2",
+                    self.__config,
+                    None,  # target-py_version
+                    self.__qairt_sdk_root,
+                    "archive",
+                )
+            )
+
     if is_host_linux() and is_host_x86_64():
 
         @task
@@ -397,7 +415,7 @@ class TaskLibrary:
             ),
         )
 
-    if is_host_linux():
+    if (is_host_linux() and is_host_x86_64()) or is_host_mac():
 
         @task
         @depends(["create_venv"])
@@ -407,7 +425,7 @@ class TaskLibrary:
                     "Building ONNX Runtime for Linux on AArch64 OE GCC 11.2",
                     self.__venv_path,
                     "linux",
-                    "aarch64_oe_gcc11.2",
+                    "aarch64_oe_gcc11_2",
                     self.__config,
                     None,  # target-py-version
                     self.__qairt_sdk_root,

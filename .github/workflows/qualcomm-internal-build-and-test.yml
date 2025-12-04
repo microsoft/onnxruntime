@@ -53,7 +53,7 @@ jobs:
       target_os: linux
       target_arch: aarch64_oe_gcc11_2
       target_py_vsn: None
-      upload_test_archive: false
+      upload_test_archive: true
       upload_wheel: false
       run_tests: false
 

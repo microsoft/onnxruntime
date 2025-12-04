@@ -163,7 +163,7 @@ case "${target_platform}" in
         if [ -n "${build_is_dirty}" ]; then
           action_args+=("--update")
         fi
-        if [ "${target_arch}" == "aarch64_oe_gcc11.2" ]; then
+        if [ "${target_arch}" == "aarch64_oe_gcc11_2" ]; then
           toolchain_root="$(get_linux_oe_gcc112_toolchain_root)"
           toolchain_cmake="${REPO_ROOT}/qcom/scripts/linux/linux-aarch64-gcc11.toolchain.cmake"
 

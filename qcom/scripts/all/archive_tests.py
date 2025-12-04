@@ -158,6 +158,7 @@ if __name__ == "__main__":
             "android-aarch64",
             "linux-x86_64",
             "linux-aarch64_manylinux_2_34",
+            "linux-aarch64_oe_gcc11_2",
             "windows-arm64",
             "windows-arm64ec",
             "windows-arm64x",

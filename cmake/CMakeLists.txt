@@ -897,6 +897,13 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
                                                "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so"
                                                "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libqnnhtpv81.cat")
         list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
+      elseif(${QNN_ARCH_ABI} STREQUAL "aarch64-oe-linux-gcc11.2")
+        file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
+                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v69/unsigned/libQnnHtpV69Skel.so"
+                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
+                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v75/unsigned/libQnnHtpV75Skel.so"
+                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v79/unsigned/libQnnHtpV79Skel.so")
+        list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
       elseif(${QNN_ARCH_ABI} STREQUAL "aarch64-ubuntu-gcc9.4")
         file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so")
         list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
