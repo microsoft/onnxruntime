@@ -139,7 +139,8 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   TensorShape a_shape = TensorShape(a_dims);
   TensorShape b_shape = TensorShape(b_dims);
   TensorShape output_shape{};
-  ComputeMatMulOutputShape(a_shape, b_shape, output_shape, M, K, N);
+  auto status = ComputeMatMulOutputShape(a_shape, b_shape, output_shape, M, K, N);
+  ASSERT_TRUE(status.IsOK());
 
   RandomValueGenerator random{1234};
   std::vector<float> a_vals(random.Gaussian<float>(AsSpan(a_dims), 0.0f, 0.25f));
