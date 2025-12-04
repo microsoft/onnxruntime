@@ -51,8 +51,20 @@
 
 namespace ArmKleidiAI {
 
-// By default we should try for SME2 first before falling back to SME.
-inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+struct SMEInfo {
+    static const bool CanUseSME2;
+    static const bool CanUseSME;
+    static const bool IsSMEAvailable;
+};
+// Boolean condition to determine if we can use SME2
+inline const bool SMEInfo::CanUseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+// Boolean condition to determine if we can use SME
+inline const bool SMEInfo::CanUseSME  = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+// Boolean condition to tell us if SME is Available on this system
+inline const bool SMEInfo::IsSMEAvailable = SMEInfo::CanUseSME2 || SMEInfo::CanUseSME;
+// Back-compat helpers used by existing kernels.
+inline const bool UseSME2 = SMEInfo::CanUseSME2;
+inline const bool UseSME = SMEInfo::CanUseSME;
 
 // Buffer packing routines.
 //
@@ -79,6 +91,18 @@ MlasGemmPackB(
 
 bool
 MLASCALL
+MlasFp32Gemv(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize
+    );
+
+bool
+MLASCALL
 MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -92,14 +116,14 @@ MlasGemmBatch(
 
 size_t
 MLASCALL
-MlasDynamicQgemmPackBSize(
+MlasDynamicQGemmPackBSize(
     size_t N,
     size_t K
 );
 
 void
 MLASCALL
-MlasDynamicQgemmPackB(
+MlasDynamicQGemmPackB(
     size_t N,
     size_t K,
     const int8_t* B,
@@ -149,6 +173,25 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 }
+
+bool DepthwiseConvKleidiAI(const size_t batches,
+    const size_t in_height,
+    const size_t in_width,
+    const size_t channels,
+    const size_t filter_height,
+    const size_t filter_width,
+    const size_t pad_top,
+    const size_t pad_left,
+    const size_t pad_bottom,
+    const size_t pad_right,
+    const float* feature_map,
+    const float* weights,
+    const float* bias,
+    float* out,
+    float clamp_min,
+    float clamp_max);
+
+bool DepthwiseConvKleidiAISupported(const MLAS_CONV_PARAMETERS* Parameters);
 
 /*++
 
