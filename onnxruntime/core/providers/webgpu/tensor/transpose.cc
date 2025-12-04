@@ -131,16 +131,14 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
     new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
-  uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(input_shape.Size());
   TransposeProgram program{permutations, use_shared};
 
   program
       .CacheHint(absl::StrJoin(permutations, "-"))
       .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
       .AddOutputs({{&output, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
-      .AddUniformVariables({
-          {static_cast<uint32_t>(output_size)},
-      });
+      .AddUniformVariables({{output_size}});
 
   if (use_shared) {
     program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
