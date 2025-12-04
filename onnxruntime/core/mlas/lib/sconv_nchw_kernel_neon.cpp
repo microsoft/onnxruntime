@@ -353,8 +353,7 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
-    float* Output,
-    const float* Zeros
+    float* Output
 )
 {
     const size_t H = Parameters->InputShape[0];
