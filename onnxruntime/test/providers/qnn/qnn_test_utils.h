@@ -1354,7 +1354,7 @@ class QnnHTPBackendTests : public ::testing::Test {
   };
 
  protected:
-  // run one per testcase
+  // Runs before each test
   void SetUp() override;
 
   // Some tests need the Ir backend, which is not always available.
@@ -1386,6 +1386,15 @@ class QnnHTPBackendTests : public ::testing::Test {
   // Returns true if the test should be skipped because HTP FP16 is not supported on this platform.
   static bool ShouldSkipIfHtpFp16Unsupported() {
 #if defined(_WIN32)  // On Windows ARM64, FP16 is not supported if the HTP architecture is v68.
+    return ShouldSkipIfHtpArchIsLessThanOrEqualTo(QNN_HTP_DEVICE_ARCH_V68);
+#else
+    return false;
+#endif
+  }
+
+  // Returns true if the test should be skipped because AutoEP is not supported on this platform.
+  static bool ShouldSkipIfAutoEpNpuUnsupported() {
+#if defined(_WIN32)  // V68 device (Makena) on win-arm64 doesn't support NPU device discovery with dxcore.dll.
     return ShouldSkipIfHtpArchIsLessThanOrEqualTo(QNN_HTP_DEVICE_ARCH_V68);
 #else
     return false;
@@ -1440,6 +1449,13 @@ bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version);
   do {                                                                           \
     if (QnnHTPBackendTests::ShouldSkipIfHtpFp16Unsupported()) {                  \
       GTEST_SKIP() << "Test requires HTP FP16 support, which is not available."; \
+    }                                                                            \
+  } while (0)
+
+#define QNN_SKIP_TEST_IF_AUTOEP_NPU_UNSUPPORTED()                                  \
+  do {                                                                           \
+    if (QnnHTPBackendTests::ShouldSkipIfAutoEpNpuUnsupported()) {                  \
+      GTEST_SKIP() << "This platform lacks dxcore.dll NPU discovery capability required by auto-EP feature"; \
     }                                                                            \
   } while (0)
 

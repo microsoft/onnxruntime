@@ -445,7 +445,7 @@ void QnnHTPBackendTests::SetUp() {
     if (!query_status.IsOK()) {
       LOGS(logger, WARNING) << "QueryQnnPlatformAttributesDirectly failed: " << query_status.ErrorMessage();
     } else {
-      LOGS(logger, WARNING) << "QNN platform attributes: "
+      LOGS(logger, INFO) << "QNN platform attributes: "
                             << "HTP arch: " << attrs.htp_arch
                             << ", DLBC supported: " << attrs.dlbc_supported
                             << ", VTCM size MB: " << attrs.vtcm_size_mb
@@ -634,7 +634,27 @@ BackendSupport QnnGPUBackendTests::cached_gpu_support_ = BackendSupport::SUPPORT
 
 std::optional<QnnHTPBackendTests::QnnPlatformAttributes> QnnHTPBackendTests::cached_platform_attrs_ = std::nullopt;
 
-// Query QNN platform attributes by directly calling QNN APIs
+/**
+ * @brief Queries QNN platform attributes by directly calling QNN APIs.
+ *
+ * This function loads the QNN HTP backend library, and retrieves platform attributes
+ * such as version, platform ID, and platform name.
+ *
+ * @param[out] out
+ *   Reference to a QnnPlatformAttributes struct that will be populated with the queried attributes
+ *   if the function succeeds.
+ * @param[in] logger
+ *   Logger instance for logging warnings and errors.
+ *
+ * @return Status
+ *   Returns Status::OK() on success. On failure, returns a Status object with an appropriate error code and message.
+ *
+ * @error
+ *   - If the QNN backend library cannot be loaded, returns an error status.
+ *   - If required QNN API symbols cannot be resolved, returns an error status.
+ *   - If QNN context initialization or attribute querying fails, returns an error status.
+ *   - In all error cases, the output parameter 'out' is not modified.
+ */
 Status QnnHTPBackendTests::QueryQnnPlatformAttributesDirectly(QnnHTPBackendTests::QnnPlatformAttributes& out, const onnxruntime::logging::Logger& logger) {
   void* qnn_lib_handle = nullptr;
 
@@ -673,6 +693,10 @@ Status QnnHTPBackendTests::QueryQnnPlatformAttributesDirectly(QnnHTPBackendTests
 
   // Use the first provider
   const QnnInterface_t* qnn_interface = interface_providers[0];
+  if (!qnn_interface){
+    ORT_IGNORE_RETURN_VALUE(Env::Default().UnloadDynamicLibrary(qnn_lib_handle));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QnnInterface_getProviders failed");
+  }
 
   // Extract function pointers from the versioned interface
   auto logCreateFn = qnn_interface->QNN_INTERFACE_VER_NAME.logCreate;
@@ -710,6 +734,7 @@ Status QnnHTPBackendTests::QueryQnnPlatformAttributesDirectly(QnnHTPBackendTests
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "deviceGetPlatformInfo failed with error: ", qnn_status);
   }
 
+  auto ret = Status::OK();
   // Extract platform attributes
   if (platform_info_ptr->version == QNN_DEVICE_PLATFORM_INFO_VERSION_1) {
     const QnnDevice_PlatformInfoV1_t& p = platform_info_ptr->v1;
@@ -742,6 +767,8 @@ Status QnnHTPBackendTests::QueryQnnPlatformAttributesDirectly(QnnHTPBackendTests
         break;
       }
     }
+  } else {
+    ret = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported QNN device platform info version: ", platform_info_ptr->version);
   }
 
   // Free platform info
@@ -757,7 +784,7 @@ Status QnnHTPBackendTests::QueryQnnPlatformAttributesDirectly(QnnHTPBackendTests
   // Unload library
   ORT_IGNORE_RETURN_VALUE(Env::Default().UnloadDynamicLibrary(qnn_lib_handle));
 
-  return Status::OK();
+  return ret;
 }
 
 bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version) {
