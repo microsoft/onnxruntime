@@ -357,8 +357,6 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
     const float* Zeros
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(Zeros);
-
     const size_t H = Parameters->InputShape[0];
     const size_t W = Parameters->InputShape[1];
     const size_t out_rows = Parameters->OutputShape[0];
@@ -525,8 +523,7 @@ MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
-    float* Output,
-    const float* Zeros
+    float* Output
     )
 /*++
 
@@ -544,11 +541,9 @@ Arguments:
 
     Output - whole output are of N x F x OH x OW. This pointer point to single OH x OW output image data.
 
-    Zeroes - Point to working buffer where all 0.0f are filled.
-
 --*/
 {
-        DepthwiseConv3x3Stride1PadLe1Neon(Parameters, Input, Filter, Output, Zeros);
+        DepthwiseConv3x3Stride1PadLe1Neon(Parameters, Input, Filter, Output);
 }
 
 void MlasConvDepthwiseFloat_CHW(
@@ -579,10 +574,11 @@ Arguments:
 Note:
     No checking here as it is inner loop. Logic in generating Parameters controls the check.
 
-    Currently only support 2d kernel 3x3.
+    Currently only support 2d kernel 3x3 with strides=1, dilations=1, pads<=1.
     Will add general case and more special case if needed later.
 
 --*/
 {
-    MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(Parameters, Input, Filter, Output, Zeros);
+    MLAS_UNREFERENCED_PARAMETER(Zeros);
+    MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(Parameters, Input, Filter, Output);
 }
