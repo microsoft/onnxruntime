@@ -129,8 +129,8 @@ Status GetExpectedResult(const std::vector<float>& a_vals, const std::vector<flo
 
 template <typename T1, int version>
 void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
-  ASSERT_TRUE(a_dims.size() < 5 && b_dims.size() < 5, "max supported tensor dim is 4-D.");
-  ASSERT_TRUE(a_dims.size() > 1 && b_dims.size() > 1, "cannot support 1-D tensor.");
+  ASSERT_TRUE(a_dims.size() < 5 && b_dims.size() < 5);
+  ASSERT_TRUE(a_dims.size() > 1 && b_dims.size() > 1);
   static_assert(std::is_same_v<T1, float> || std::is_same_v<T1, MLFloat16>, "unexpected type for T1");
 
   int64_t M = 0;
@@ -139,15 +139,14 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   TensorShape a_shape = TensorShape(a_dims);
   TensorShape b_shape = TensorShape(b_dims);
   TensorShape output_shape{};
-  auto status = ComputeMatMulOutputShape(a_shape, b_shape, output_shape, M, K, N);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(ComputeMatMulOutputShape(a_shape, b_shape, output_shape, M, K, N));
 
   RandomValueGenerator random{1234};
   std::vector<float> a_vals(random.Gaussian<float>(AsSpan(a_dims), 0.0f, 0.25f));
   std::vector<float> b_vals(random.Gaussian<float>(AsSpan(b_dims), 0.0f, 0.25f));
 
   std::vector<float> expected_vals(output_shape.Size());
-  GetExpectedResult(a_vals, b_vals, expected_vals, a_shape, b_shape, output_shape);
+  ASSERT_STATUS_OK(GetExpectedResult(a_vals, b_vals, expected_vals, a_shape, b_shape, output_shape));
 
   std::vector<int64_t> output_dims(output_shape.NumDimensions());
   output_shape.CopyDims(output_dims.data(), output_shape.NumDimensions());

@@ -132,8 +132,7 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, int64_t a_trans, std::i
   TensorShape a_shape = TensorShape(a_dims);
   TensorShape b_shape = TensorShape(b_dims);
   TensorShape c_shape = TensorShape(c_dims);
-  auto status = ComputeGemmOutputShape(a_shape, a_trans, b_shape, b_trans, c_shape, M, K, N);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(ComputeGemmOutputShape(a_shape, a_trans, b_shape, b_trans, c_shape, M, K, N));
 
   RandomValueGenerator random{1234};
   std::vector<float> a_vals(random.Gaussian<float>(AsSpan(a_dims), 0.0f, 0.25f));
@@ -143,7 +142,7 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, int64_t a_trans, std::i
     c_vals = std::vector<float>(random.Gaussian<float>(AsSpan(c_dims), 0.0f, 0.25f));
   }
   std::vector<float> expected_vals(M * N);
-  GetExpectedResult(M, K, N, a_vals, b_vals, c_vals, expected_vals, a_shape, a_trans, b_shape, b_trans, c_shape, alpha, beta);
+  ASSERT_STATUS_OK(GetExpectedResult(M, K, N, a_vals, b_vals, c_vals, expected_vals, a_shape, a_trans, b_shape, b_trans, c_shape, alpha, beta));
 
   OpTester test("Gemm", version);
   test.AddAttribute("transA", a_trans);
