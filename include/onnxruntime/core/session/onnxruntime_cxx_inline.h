@@ -1503,6 +1503,18 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsUsingFunct
   return *this;
 }
 
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddFreeDimensionOverride(const char* dim_denotation, int64_t dim_value) {
+  ThrowOnError(GetApi().AddFreeDimensionOverrideByName(this->p_, dim_denotation, dim_value));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddFreeDimensionOverrideByName(const char* dim_name, int64_t dim_value) {
+  ThrowOnError(GetApi().AddFreeDimensionOverrideByName(this->p_, dim_name, dim_value));
+  return *this;
+}
+
 /// Session
 template <typename T>
 inline size_t ConstSessionImpl<T>::GetInputCount() const {
