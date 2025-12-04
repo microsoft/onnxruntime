@@ -1654,11 +1654,8 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           SetAllGraphInputs(graph_build);
         }
 
-        auto status = graph_build.Resolve();
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX graph resolve failed: " + status.ErrorMessage()));
-        }
+        ORT_THROW_IF_ERROR(graph_build.Resolve());
+
         // Add parent graph output to the subgraph
         int i = 0;
         std::vector<const NodeArg*> subgraph_outputs;
@@ -1709,37 +1706,31 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
         // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
         // the model proto that has different node ordering compared to original onnx model.
+        auto graph_proto = ONNX_NAMESPACE::GraphProto::Create();
+        graph_viewer->ToProto(*graph_proto, true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
 
+        // XXX: dmitrism: not sure I understand the general purpose of the below code.
+        //      it is clear that we ignore data on disk though.
         // save user provided external data in memory instead of writing to ModelProto
         // needed for models > 2GB
         std::vector<TensorrtUserWeights> userWeights;
         if (use_external_data_initializer_) {
-          auto c_api = Ort::GetApi();
-          const InitializedTensorSet& allInitializers = graph_viewer->GetAllInitializedTensors();
-          userWeights.reserve(allInitializers.size());
-          for (auto& entry : allInitializers) {
-            OrtValue initializer_value;
-            auto* tp = entry.second;
-            if (utils::HasRawData(*tp)) {
-              userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
-            } else if (graph_viewer->GetOrtValueInitializer(tp->name(), initializer_value)) {
-              // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-              size_t size = 0;
-              const void* ptr = nullptr;
-              Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
-              Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
-              userWeights.emplace_back(tp->name(), ptr, size);
-            } else if (utils::HasExternalDataInMemory(*tp)) {
-              // only copy and take ownership of the data if none of the above conditions are met
-              std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-              ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-              userWeights.emplace_back(std::move(full_init->name()), std::move(full_init->raw_data()));
+          for (const auto& init : *graph_proto->mutable_initializer()) {
+            // We do not expect any user initializer to contain in memory references at this point
+            // as they were all converted above using graph_utils::MakeInitializerCopyIfNotExist()
+            // subgraph initializers were converted using Node::ToProto() above. Otherwise, Graph::Resolve()
+            // would not work.
+            ORT_ENFORCE(!utils::HasExternalDataInMemory(init));
+            if (utils::HasRawData(init)) {
+              // Keep inits in memory instead of writing to ModelProto.
+              // dmitrism: This probably means do not touch external data on disk and data that does not have raw_data.
+              userWeights.emplace_back(
+                  TensorrtUserWeights(init.name(), init.raw_data()));
             }
           }
         }
 
-        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
-
+        *model_proto->mutable_graph() = std::move(*graph_proto);
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         std::string string_buf;
@@ -2564,38 +2555,36 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
 
-  // exclude weights if external
-  std::vector<TensorrtUserWeights> userWeights;
-  if (use_external_data_initializer_) {
-    auto c_api = Ort::GetApi();
-    const InitializedTensorSet& allInitializers = graph_body_viewer.GetAllInitializedTensors();
-    userWeights.reserve(allInitializers.size());
-    for (auto& entry : allInitializers) {
-      OrtValue initializer_value;
-      auto* tp = entry.second;
-      if (utils::HasRawData(*tp)) {
-        userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
-      } else if (graph_body_viewer.GetOrtValueInitializer(tp->name(), initializer_value)) {
-        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-        size_t size = 0;
-        const void* ptr = nullptr;
-        Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
-        Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
-        userWeights.emplace_back(tp->name(), ptr, size);
-      } else if (utils::HasExternalDataInMemory(*tp)) {
-        // only copy and take ownership of the data if none of the above conditions are met
-        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-        userWeights.emplace_back(TensorrtUserWeights(std::move(full_init->name()), std::move(full_init->raw_data())));
-      }
-    }
-  }
-
   // ORT's default topological sort is using reversed DFS.
   // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
   // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
   // the model proto that has different node ordering compared to original onnx model.
-  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
+  auto graph_proto = ONNX_NAMESPACE::GraphProto::Create();
+  graph_body_viewer.ToProto(*graph_proto, true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
+
+  // exclude weights if external
+  std::vector<TensorrtUserWeights> userWeights;
+  if (use_external_data_initializer_) {
+    for (auto& init : *graph_proto->mutable_initializer()) {
+      if (utils::HasRawData(*tp)) {
+        userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
+      } else if (utils::HasExternalDataInMemory(init)) {
+        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+        if (OrtValue v; graph_body_viewer.GetOrtValueInitializer(init.name(), v)) {
+          Ort::ConstValue initializer_value{&v};
+          const size_t size = initializer_value.GetTensorSizeInBytes();
+          const void* ptr = initializer_value.GetTensorRawData();
+          userWeights.emplace_back(tp->name(), ptr, size);
+        } else {
+          std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+          ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(init, full_init));
+          init = std::move(*full_init);
+        }
+      }
+    }
+  }
+
+  *model_proto->mutable_graph() = std::move(*graph_proto);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string string_buf;
   model_proto->SerializeToString(string_buf);
