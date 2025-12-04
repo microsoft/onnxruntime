@@ -363,7 +363,7 @@ TEST(AttentionTest, Attention3DDefault) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -390,7 +390,7 @@ TEST(AttentionTest, Attention3DDefaultFloat16) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -1080,7 +1080,7 @@ TEST(AttentionTest, Attention3DWithPastAndPresentQkMatmul) {
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, qk_matmul,
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
