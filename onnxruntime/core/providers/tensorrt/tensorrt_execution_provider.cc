@@ -3101,7 +3101,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   if (load_user_initializer_) {
     const auto& allInitializers = graph_body_viewer.GetAllInitializedTensors();
     for (const auto& [name, tp] : allInitializers) {
-      if (tp->has_raw_data()) {
+      if (utils::HasRawData(*tp)) {
         userWeights->emplace_back(name, tp->raw_data());
       } else if (utils::HasExternalDataInMemory(*tp)) {
         std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
