@@ -1515,7 +1515,7 @@ TEST_P(GemmOptimizePackedTest, TestVariants) {
 std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
   std::vector<GemmOptimizePackedParams> params;
 
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}};
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}, {512, 1024, 1024}, {127, 1024, 1024}, {127, 1023, 1023}, {511, 1024, 1023}, {16, 1024, 191}, {15, 1024, 191}, {16, 1024, 192}, {6, 1024, 192}, {16, 1024, 600}, {49, 1024, 600}, {16, 1024, 192} };
 
   std::vector<BiasType>
       bias_types = {BiasType::noBias, BiasType::MBias, BiasType::ScalarBias, BiasType::MNBias, BiasType::NBias};
