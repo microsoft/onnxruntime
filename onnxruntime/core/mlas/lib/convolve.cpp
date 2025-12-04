@@ -1454,17 +1454,25 @@ Return Value:
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
         // Scalar (WASM_SCALAR) / vectorized (ARM64) direct conv for depthwise convolution.
-        // Currently only support 3x3 kernel with padding <=1 and dilations = 1.
+        // Currently only support 3x3 kernel with padding <=1 and dilations = 1
+        // and on ARM64, it is further restricted to strides = 1.
         // TODO: support more general depthwise convolution.
+
+        bool depthwise_conv_stride_support_check = [&]() {
+        // On ARM64, only support stride = 1 for depthwise conv.
+    #if defined(MLAS_TARGET_ARM64)
+        return Parameters->StrideShape[0] == 1 && Parameters->StrideShape[1] == 1;
+    #else
+        return true;
+    #endif
+        }();
 
         if (Dimensions == 2
                 && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
                 && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
                 && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
                 && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
-#if defined(MLAS_TARGET_ARM64)
-                && Parameters->StrideShape[0] == 1 && Parameters->StrideShape[1] == 1
-#endif
+                && depthwise_conv_stride_support_check
                 && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
 
             *WorkingBufferSize = Parameters->InputShape[1] + 2;
