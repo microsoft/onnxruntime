@@ -43,9 +43,9 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
-  CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH,
+  CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool past_present_share_buffer,
                      bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
-      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -59,6 +59,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  private:
   bool has_past_;
   bool kv_BNSH_;
+  bool past_present_share_buffer_;
   bool prepare_indirect_dispatch_;
   bool use_seqlen_k_;
 };
