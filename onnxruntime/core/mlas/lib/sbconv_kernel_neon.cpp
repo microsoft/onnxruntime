@@ -124,10 +124,13 @@ void
             size_t kw = kernel_pos % KernelWidth;
             const float* input_base = Input + output_idx * StrideWidthElements +
                                       kh * DilatedInputWidthElements + kw * DilationWidthElements;
+            const float* row_start = InputBase + kh * DilatedInputWidthElements;
+            const float* row_end = row_start + InputWidthElements;
 
-            if (input_base >= InputBase + kh * DilatedInputWidthElements && input_base + 15 < InputBase + kh * DilatedInputWidthElements + InputWidthElements) {
-                validPositions[validCount++] = kernel_pos;
-            }
+            // Branchless: valid = 1 if in bounds, 0 otherwise
+            size_t valid = (input_base >= row_start) & (input_base + 15 < row_end);
+            validPositions[validCount] = kernel_pos;
+            validCount += valid;
         }
 
         for (size_t i = 0; i < validCount; i++) {
