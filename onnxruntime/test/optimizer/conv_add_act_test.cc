@@ -19,7 +19,7 @@ void TestConvPath(const std::vector<int64_t>& input_shape, const std::vector<int
     auto* input_arg = builder.MakeInput<float>(input_shape, -31, 31);
     auto* output_arg = builder.MakeOutput();
     auto* bias_arg = builder.MakeInitializer<float>({weights_shape[0]}, -20.f, 20.f);
-    auto* add_arg = builder.MakeInput<float>(output_shape, 0.f, 0.f);
+    auto* add_arg = builder.MakeInput<float>(output_shape, -20.f, 20.f);
     auto* weight_arg = builder.MakeInitializer<float>(weights_shape, -2.f, 2.f);
     auto* conv_out_arg = builder.MakeIntermediate();
 
