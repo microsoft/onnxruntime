@@ -114,6 +114,18 @@ std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
   return std::nullopt;
 }
 
+Status GetPciBusId(const std::filesystem::path& sysfs_path, std::string& pci_bus_id) {
+  std::error_code error_code;
+  auto pci_bus_id_path = std::filesystem::read_symlink(sysfs_path / "device", error_code);  // e.g. 0000:65:00.0
+  auto status = ErrorCodeToStatus(error_code);
+  if (error_code) {
+    LOGS_DEFAULT(WARNING) << "Failed to get PCI BUS ID for \"" << sysfs_path << "\": " << status.ErrorMessage();
+  } else {
+    pci_bus_id = pci_bus_id_path.filename().string();
+  }
+  return status;
+}
+
 Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevice& gpu_device_out) {
   OrtHardwareDevice gpu_device{};
   const auto& sysfs_path = path_info.path;
@@ -138,6 +150,11 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   if (const auto is_gpu_discrete = IsGpuDiscrete(vendor_id, device_id);
       is_gpu_discrete.has_value()) {
     gpu_device.metadata.Add("Discrete", (*is_gpu_discrete ? "1" : "0"));
+  }
+
+  std::string pci_bus_id;
+  if (GetPciBusId(sysfs_path, pci_bus_id).IsOK()) {
+    gpu_device.metadata.Add("pci_bus_id", pci_bus_id);
   }
 
   gpu_device.type = OrtHardwareDeviceType_GPU;
