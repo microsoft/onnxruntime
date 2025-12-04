@@ -384,9 +384,9 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
     for (size_t oh = 0; oh < out_rows; ++oh) {
         const ptrdiff_t ih = static_cast<ptrdiff_t>(oh) - static_cast<ptrdiff_t>(pad_top);
 
-        const ptrdiff_t row0_index = ih - 1;
-        const ptrdiff_t row1_index = ih;
-        const ptrdiff_t row2_index = ih + 1;
+        const ptrdiff_t row0_index = ih;
+        const ptrdiff_t row1_index = ih + 1;
+        const ptrdiff_t row2_index = ih + 2;
 
         const float* row0 = nullptr;
         const float* row1 = nullptr;
