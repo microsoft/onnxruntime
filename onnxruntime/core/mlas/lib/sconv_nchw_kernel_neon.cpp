@@ -282,7 +282,7 @@ Arguments:
 
     Output - whole output are of N x F x OH x OW. This pointer point to single OH x OW output image data.
 
-    Zeroes - Point to working buffer where all 0.0f are filled.
+    Zeros - Point to working buffer where all 0.0f are filled.
 
 Note:
     No checking here as it is inner loop. Logic in generating Parameters controls the check.
