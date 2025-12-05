@@ -33,6 +33,8 @@ public enum OrtProvider {
   ACL("ACLExecutionProvider"),
   /** The ARM NN execution provider. */
   ARM_NN("ArmNNExecutionProvider"),
+  /** The AMD ROCm execution provider. */
+  ROCM("ROCMExecutionProvider"),
   /** The Apple CoreML execution provider. */
   CORE_ML("CoreMLExecutionProvider"),
   /** The XNNPACK execution provider. */
