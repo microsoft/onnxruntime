@@ -24,7 +24,7 @@ Abstract:
 
 constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
 
-void MLASCALL
+inline void MLASCALL
 MlasRowDot(const float* Arow, const float* Brow, float* out, int index, size_t len)
 {
     float32x4_t acc4 = MlasBroadcastFloat32x4(0.f);
@@ -53,7 +53,7 @@ MlasRowDot(const float* Arow, const float* Brow, float* out, int index, size_t l
     out[index] = sum;
 }
 
-void MLASCALL
+inline void MLASCALL
 MlasSBDotRowWise(const float* A, const float* B, size_t len, float* out)
 {
     float tmpA[len];
