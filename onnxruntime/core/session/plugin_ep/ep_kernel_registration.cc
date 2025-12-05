@@ -33,7 +33,7 @@ class PluginEpOpKernel final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    ORT_RETURN_IF(kernel_impl_ == nullptr, "Unexpected NULL OrtKernelImpl for plugin EP");
+    assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
     return ToStatusAndRelease(kernel_impl_->Compute(kernel_impl_, reinterpret_cast<OrtKernelContext*>(ctx)));
   }
 
@@ -49,11 +49,11 @@ Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo&
   // Therefore, must create the OpKernel instance immediately so that we can pass the actual OpKernelInfo
   // to the plugin EP's kernel creation function.
   op_kernel = std::make_unique<PluginEpOpKernel>(info, PrivateTag{});
-
   const OrtKernelInfo* kernel_info = reinterpret_cast<const OrtKernelInfo*>(&op_kernel->Info());
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(
       kernel_create_func(kernel_create_func_state, kernel_info, &op_kernel->kernel_impl_)));
+  ORT_RETURN_IF(op_kernel->kernel_impl_ == nullptr, "OrtKernelCreateFunc returned a NULL OrtKernelImpl");
 
   return Status::OK();
 }

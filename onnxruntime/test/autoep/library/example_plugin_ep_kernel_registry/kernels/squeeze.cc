@@ -25,18 +25,17 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Squeeze)
 
 // ONNX Squeeze version 23
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    /*start_version*/ 23, /*end_version (inclusive)*/ 23,
+    /*version*/ 23,  // Equivalent to start_version: 23, end_version: 23
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
-// ONNX Squeeze version 24. As an example, this only specifies the start version (24).
-// The end version is implicitly set to 24.
+// ONNX Squeeze version 24.
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
