@@ -1596,20 +1596,18 @@ bool QnnBackendManager::GetPerThreadHtpPowerConfigMapping(const std::thread::id&
                                                           PerThreadHtpPowerConfigs_t& htp_power_configs) {
   std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
 
-  if (per_thread_power_configs_.find(thread_id) == per_thread_power_configs_.end()) {
+  auto it = per_thread_power_configs_.find(thread_id);
+  if (it == per_thread_power_configs_.end()) {
     return false;
   }
 
-  htp_power_configs = per_thread_power_configs_.at(thread_id);
+  htp_power_configs = it->second;
   return true;
 }
 
-void QnnBackendManager::RemovePerThreadHtpPowerConfigs(const std::thread::id& thread_id) {
+void QnnBackendManager::RemovePerThreadHtpPowerConfigMapping(const std::thread::id& thread_id) {
   std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
-  auto res = per_thread_power_configs_.find(thread_id);
-  if (res != per_thread_power_configs_.end()) {
-    per_thread_power_configs_.erase(thread_id);
-  }
+  per_thread_power_configs_.erase(thread_id);
 }
 
 Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) {

@@ -173,12 +173,12 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                             uint32_t rpc_control_latency,
                             uint32_t rpc_polling_time);
 
-  Status SetPerThreadHtpPowerConfigs(const std::thread::id& theard_id, bool post_run);
+  Status SetPerThreadHtpPowerConfigs(const std::thread::id& thread_id, bool pre_run);
 
   Status AddPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
                                            const PerThreadHtpPowerConfigs_t& htp_power_configs);
 
-  void RemovePerThreadHtpPowerConfigs(const std::thread::id& thread_id);
+  void RemovePerThreadHtpPowerConfigMapping(const std::thread::id& thread_id);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 

@@ -653,7 +653,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 QNNExecutionProvider::~QNNExecutionProvider() {
   if (qnn_backend_manager_) {
     auto thread_id = std::this_thread::get_id();
-    qnn_backend_manager_->RemovePerThreadHtpPowerConfigs(thread_id);
+    qnn_backend_manager_->RemovePerThreadHtpPowerConfigMapping(thread_id);
   }
 
   // Unregister the ETW callback
@@ -1455,7 +1455,7 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
 
   if (managed_htp_power_config_id_->IsValid()) {
     auto thread_id = std::this_thread::get_id();
-    qnn_backend_manager_->RemovePerThreadHtpPowerConfigs(thread_id);
+    qnn_backend_manager_->RemovePerThreadHtpPowerConfigMapping(thread_id);
   }
 
   return Status::OK();
@@ -1541,7 +1541,9 @@ QNNExecutionProvider::ManagedHtpPowerConfigId::ManagedHtpPowerConfigId(std::shar
 }
 
 QNNExecutionProvider::ManagedHtpPowerConfigId::~ManagedHtpPowerConfigId() {
-  ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
+  if (qnn_backend_manager_) {
+    ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
+  }
 }
 
 void QNNExecutionProvider::ManagedHtpPowerConfigId::CreateHtpPowerConfigId(uint32_t device_id,
