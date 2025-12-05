@@ -1,5 +1,4 @@
 /*++
-
 Copyright 2025 FUJITSU LIMITED
 
 Module Name:
@@ -14,8 +13,9 @@ Abstract:
 
 #pragma once
 
-#include "../mlasi.h"
 #include <arm_sve.h>  // SVE intrinsic header
+
+#include "../mlasi.h"
 
 #ifndef __clang__
 #pragma GCC push_options
@@ -28,93 +28,72 @@ Abstract:
 #define MLAS_SVE_TARGET
 #endif
 
+#define PACKED_B_BLOCK_WIDTH 16
 typedef svfloat32_t MLAS_SVFLOAT32;
 typedef svint32_t MLAS_SVINT32;
 typedef svuint32_t MLAS_SVUINT32;
 typedef svbool_t MLAS_SVBOOL;
 
 // function decarations
-MLAS_FORCEINLINE
-MLAS_SVFLOAT32
-MlasSveComputeExpVector(
-    MLAS_SVBOOL Pred,
-    MLAS_SVFLOAT32 Vector
-);
+MLAS_FORCEINLINE MLAS_SVFLOAT32
+MlasSveComputeExpVector(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector);
 
-void
-MLASCALL
-MlasSveComputeExpF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N
-);
+void MLASCALL
+MlasSveComputeExpF32Kernel(const float* Input, float* Output, size_t N);
 
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
-MlasSveComputeSumExpVector(
-    MLAS_SVBOOL Pred,
-    MLAS_SVFLOAT32 Vector,
-    MLAS_SVFLOAT32 NegativeMaximumVector
-);
-
-float
-MLASCALL
-MlasSveComputeSumExpF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N,
-    const float* NegativeMaximum
-);
+MlasSveComputeSumExpVector(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector, MLAS_SVFLOAT32 NegativeMaximumVector);
 
 float MLASCALL
-MlasSveReduceMaximumF32Kernel(
-    const float* Input,
-    size_t N
-);
+MlasSveComputeSumExpF32Kernel(const float* Input, float* Output, size_t N, const float* NegativeMaximum);
 
-void
-MLASCALL
-MlasSveReduceMinimumMaximumF32Kernel(
-    const float* Input,
-    float* Min,
-    float* Max,
-    size_t N
-);
+float MLASCALL
+MlasSveReduceMaximumF32Kernel(const float* Input, size_t N);
 
-void
-MLASCALL
-MlasSveComputeSoftmaxOutputF32Kernel(
-    float* Output,
-    size_t N,
-    const float* Parameters
-);
+void MLASCALL
+MlasSveReduceMinimumMaximumF32Kernel(const float* Input, float* Min, float* Max, size_t N);
 
-void
-MLASCALL
-MlasSveComputeLogSoftmaxOutputF32Kernel(
-    const float* Input,
-    float* Output,
-    size_t N,
-    const float* Parameters
-);
+void MLASCALL
+MlasSveComputeSoftmaxOutputF32Kernel(float* Output, size_t N, const float* Parameters);
 
-void
-MLASCALL
-MlasSveErfKernel(
-    const float* Input,
-    float* Output,
-    size_t N
-);
+void MLASCALL
+MlasSveComputeLogSoftmaxOutputF32Kernel(const float* Input, float* Output, size_t N, const float* Parameters);
 
-void 
-MLASCALL
-MlasSveLogisticKernel(
-    const float* Input,
-    float* Output,
-    size_t N
-);
+void MLASCALL
+MlasSveErfKernel(const float* Input, float* Output, size_t N);
 
-//MLAS API for SVE intrinsics
+void MLASCALL
+MlasSveLogisticKernel(const float* Input, float* Output, size_t N);
+
+// MLAS API for SVE intrinsics
+size_t MLASCALL
+MlasSgemmKernelAdd_sve(const float* A, const float* B, float* C, size_t CountK, size_t CountM, size_t CountN, size_t lda, size_t ldc, float alpha);
+
+size_t MLASCALL
+MlasSgemmKernelZero_sve(const float* A, const float* B, float* C, size_t CountK, size_t CountM, size_t CountN, size_t lda, size_t ldc, float alpha);
+
+void MLAS_SVE_TARGET MLASCALL
+SVE_ZERO_INITIALIZE(float* d);
+
+void MLAS_SVE_TARGET MLASCALL
+SVE_LOAD_STORE(float* D, const float* b);
+
+void MLAS_SVE_TARGET MLASCALL
+SCATTER_STORE(float* d, const float* b);
+
+void MLAS_SVE_TARGET MLASCALL
+SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x);
+
+MLAS_SVE_TARGET
+inline int
+VL()
+{
+    static int fp32Lanes = svcntw();  // evaluated only once, the first time it's called
+    return fp32Lanes;
+}
+
+// MLAS API for SVE intrinsics
 
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
@@ -185,8 +164,8 @@ MLAS_SVE_TARGET
 MLAS_FORCEINLINE
 MLAS_SVINT32
 MlasSveAddInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector1, MLAS_SVINT32 Vector2)
-{   
-    return svadd_s32_m(Pred, Vector1, Vector2);  
+{
+    return svadd_s32_m(Pred, Vector1, Vector2);
 }
 
 MLAS_SVE_TARGET
@@ -243,26 +222,26 @@ MLAS_SVINT32
 MlasSveBlendInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector1, MLAS_SVINT32 Vector2, MLAS_SVINT32 Selection)
 {
     return MlasSveOrInt32(
-        Pred, 
-        MlasSveAndInt32(Pred, Vector2, Selection), 
+        Pred,
+        MlasSveAndInt32(Pred, Vector2, Selection),
         MlasSveAndNotInt32(Pred, Selection, Vector1)
     );
 }
 
-template<unsigned ShiftCount>
+template <unsigned ShiftCount>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-MLAS_SVUINT32
-MlasSveShiftLeftUInt32(MLAS_SVBOOL Pred, MLAS_SVUINT32 Vector)
+    MLAS_FORCEINLINE
+        MLAS_SVUINT32
+        MlasSveShiftLeftUInt32(MLAS_SVBOOL Pred, MLAS_SVUINT32 Vector)
 {
     return svlsl_n_u32_z(Pred, Vector, ShiftCount);
 }
 
-template<unsigned ShiftCount>
+template <unsigned ShiftCount>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-MLAS_SVINT32
-MlasSveShiftLeftInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector)
+    MLAS_FORCEINLINE
+        MLAS_SVINT32
+        MlasSveShiftLeftInt32(MLAS_SVBOOL Pred, MLAS_SVINT32 Vector)
 {
     return svlsl_n_s32_z(Pred, Vector, ShiftCount);
 }
@@ -347,11 +326,10 @@ MlasSveStoreFloat32(MLAS_SVBOOL Pred, float* Buffer, MLAS_SVFLOAT32 Vector)
     svst1_f32(Pred, Buffer, Vector);
 }
 
-template<unsigned Lane>
+template <unsigned Lane>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-void
-MlasSveStoreLaneFloat32(float* Buffer, MLAS_SVFLOAT32 Vector)
+    MLAS_FORCEINLINE void
+    MlasSveStoreLaneFloat32(float* Buffer, MLAS_SVFLOAT32 Vector)
 {
     svbool_t Pred = svwhilelt_b32(Lane, Lane + 1);
     svst1_f32(Pred, Buffer, Vector);
@@ -366,11 +344,10 @@ MlasSveStoreLowHalfFloat32(float* Buffer, MLAS_SVFLOAT32 Vector)
     svst1_f32(Pred, Buffer, Vector);
 }
 
-template<unsigned Lane>
+template <unsigned Lane>
 MLAS_SVE_TARGET
-MLAS_FORCEINLINE
-float
-MlasSveExtractLaneFloat32(MLAS_SVFLOAT32 Vector)
+    MLAS_FORCEINLINE float
+    MlasSveExtractLaneFloat32(MLAS_SVFLOAT32 Vector)
 {
     float TmpBuffer[1];
     svbool_t Pred = svwhilelt_b32(Lane, Lane + 1);
@@ -415,7 +392,7 @@ MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveMultiplyFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2)
 {
-    return svmul_f32_m(Pred, Vector1, Vector2);  
+    return svmul_f32_m(Pred, Vector1, Vector2);
 }
 
 MLAS_SVE_TARGET
@@ -429,7 +406,7 @@ MlasSveExpFloat32(MLAS_SVUINT32 Vector)
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
-MlasSveScaleFloat32(MLAS_SVBOOL Pred,  MLAS_SVFLOAT32 Vector1, MLAS_SVINT32 Vector2)
+MlasSveScaleFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVINT32 Vector2)
 {
     return svscale_f32_m(Pred, Vector1, Vector2);
 }
@@ -439,7 +416,7 @@ MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveRoundINTFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector)
 {
-   return svrintm_f32_z(Pred, Vector);
+    return svrintm_f32_z(Pred, Vector);
 }
 
 MLAS_SVE_TARGET
@@ -482,10 +459,10 @@ MlasSveGreaterThanFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT
     // Compare Vector1 and Vector2, return a predicate vector
     svbool_t cmp_mask = svcmpgt_f32(Pred, Vector1, Vector2);
 
-    //Convert predicate to uint32_t mask
+    // Convert predicate to uint32_t mask
     svuint32_t mask_bits = svdup_u32_z(cmp_mask, 0xFFFFFFFF);
 
-    //Reinterpret to float32
+    // Reinterpret to float32
     return svreinterpret_f32_u32(mask_bits);
 }
 
@@ -496,7 +473,7 @@ MlasSveAndFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vecto
 {
     return MlasSveReinterpretAsFloat32(
         MlasSveAndInt32(
-            Pred, 
+            Pred,
             MlasSveReinterpretAsInt32(Vector1),
             MlasSveReinterpretAsInt32(Vector2)
         )
@@ -551,7 +528,7 @@ MLAS_SVFLOAT32
 MlasSveBlendFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2, MLAS_SVFLOAT32 Selection)
 {
     return MlasSveOrFloat32(
-        Pred, 
+        Pred,
         MlasSveAndFloat32(Pred, Vector2, Selection),
         MlasSveAndFloat32(Pred, Vector1, Selection)
     );
@@ -613,8 +590,8 @@ MLAS_SVFLOAT32
 MlasSvePowerOf2Float32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector)
 {
     MLAS_SVINT32 emm0 = MlasSveAddInt32(
-        Pred, 
-        MlasSveCastToInt32(Pred, Vector), 
+        Pred,
+        MlasSveCastToInt32(Pred, Vector),
         MlasSveBroadcastInt32(127)
     );
     return MlasSveReinterpretAsFloat32(MlasSveShiftLeftInt32<23>(Pred, emm0));
@@ -630,10 +607,45 @@ MlasSveSelect(svbool_t Pred, MLAS_SVFLOAT32 TrueValue, MLAS_SVFLOAT32 FalseValue
 
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
+MLAS_SVFLOAT32
+MlasSvedupFloat32(float Vector)
+{
+    return svdup_f32(Vector);
+}
+
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
 MLAS_SVBOOL
 MlasSveCompareLessThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
 {
     return svcmplt_f32(Pred, A, B);
+}
+
+MLASCALL
+inline void
+Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
+{
+    const static int VL = svcntw();
+    MLAS_SVBOOL p = svwhilelt_b32(0, VL / 4);
+    MLAS_SVBOOL p3 = svwhilelt_b32(0, VL / 2);
+    MLAS_SVBOOL p1 = svnot_b_z(svwhilelt_b32(0, VL), p);
+    p1 = svand_b_z(p3, p3, p1);
+    p3 = svrev_b32(p1);
+    MLAS_SVBOOL p4 = svrev_b32(p);
+
+    MLAS_SVFLOAT32 t0 = MlasSveLoadFloat32(p, &B[ldb * 0]);
+    MLAS_SVFLOAT32 t1 = MlasSveLoadFloat32(p, &B[ldb * 1]);
+    MLAS_SVFLOAT32 t2 = MlasSveLoadFloat32(p, &B[ldb * 2]);
+    MLAS_SVFLOAT32 t3 = MlasSveLoadFloat32(p, &B[ldb * 3]);
+
+    MLAS_SVFLOAT32 t02 = MlasSveInterleaveLowFloat32(t0, t2);
+    MLAS_SVFLOAT32 t13 = MlasSveInterleaveLowFloat32(t1, t3);
+    MLAS_SVFLOAT32 t0123 = MlasSveInterleaveLowFloat32(t02, t13);  // This zips the first half together
+
+    MlasSveStoreFloat32(p, D, t0123);
+    MlasSveStoreFloat32(p1, &D[12], t0123);
+    MlasSveStoreFloat32(p3, &D[24], t0123);
+    MlasSveStoreFloat32(p4, &D[36], t0123);
 }
 
 MLAS_SVE_TARGET
@@ -644,10 +656,330 @@ MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
     return svcmpgt_f32(Pred, A, B);
 }
 
+MLASCALL
+inline void
+Transpose_SVE256_4x4(float* D, const float* B, size_t ldb)
+{
+    const static int VL = svcntw();
+    MLAS_SVBOOL p = svwhilelt_b32(0, VL / 2);
+
+    MLAS_SVFLOAT32 t0 = MlasSveLoadFloat32(p, &B[ldb * 0]);
+    MLAS_SVFLOAT32 t1 = MlasSveLoadFloat32(p, &B[ldb * 1]);
+    MLAS_SVFLOAT32 t2 = MlasSveLoadFloat32(p, &B[ldb * 2]);
+    MLAS_SVFLOAT32 t3 = MlasSveLoadFloat32(p, &B[ldb * 3]);
+
+    MLAS_SVBOOL p1 = svnot_b_z(svwhilelt_b32((int)0, VL), p);
+    MLAS_SVFLOAT32 t02 = MlasSveInterleaveLowFloat32(t0, t2);
+    MLAS_SVFLOAT32 t13 = MlasSveInterleaveLowFloat32(t1, t3);
+    MLAS_SVFLOAT32 first_t0123 = MlasSveInterleaveLowFloat32(t02, t13);    // This zips the first half together
+    MLAS_SVFLOAT32 second_t0123 = MlasSveInterleaveHighFloat32(t02, t13);  // This zips the second half together
+
+    MlasSveStoreFloat32(p, D, first_t0123);
+    MlasSveStoreFloat32(p1, &D[12], first_t0123);
+    MlasSveStoreFloat32(p, &D[32], second_t0123);
+    MlasSveStoreFloat32(p1, &D[44], second_t0123);
+}
+
+MLASCALL
+inline void
+Transpose_SVE128_4x4(float* D, const float* B, size_t ldb)
+{
+    const static int VL = svcntw();
+    MLAS_SVBOOL p = svwhilelt_b32((int)0, VL);
+
+    MLAS_SVFLOAT32 v1 = MlasSveLoadFloat32(p, &B[ldb * 0]);
+    MLAS_SVFLOAT32 v2 = MlasSveLoadFloat32(p, &B[ldb * 1]);
+    MLAS_SVFLOAT32 v4 = MlasSveLoadFloat32(p, &B[ldb * 2]);
+    MLAS_SVFLOAT32 v5 = MlasSveLoadFloat32(p, &B[ldb * 3]);
+
+    MLAS_SVFLOAT32 v3 = MlasSveInterleaveLowFloat32(v1, v4);
+    v1 = MlasSveInterleaveHighFloat32(v1, v4);
+
+    v4 = MlasSveInterleaveLowFloat32(v2, v5);
+    v2 = MlasSveInterleaveHighFloat32(v2, v5);
+
+    v5 = MlasSveInterleaveLowFloat32(v3, v4);
+    v3 = MlasSveInterleaveHighFloat32(v3, v4);
+
+    v4 = MlasSveInterleaveLowFloat32(v1, v2);
+    v1 = MlasSveInterleaveHighFloat32(v1, v2);
+
+    MlasSveStoreFloat32(p, &D[0], v5);
+    MlasSveStoreFloat32(p, &D[16], v3);
+    MlasSveStoreFloat32(p, &D[32], v4);
+    MlasSveStoreFloat32(p, &D[48], v1);
+}
+
+MLASCALL
+MLAS_FORCEINLINE
+void
+Transpose_SVE256_8x8(float* D, const float* B, size_t ldb)
+{
+    const static int VL = svcntw();
+
+    MLAS_SVBOOL p = svwhilelt_b32((int)0, VL);
+
+    MLAS_SVFLOAT32 v1 = MlasSveLoadFloat32(p, &B[ldb * 0]);
+    MLAS_SVFLOAT32 v2 = MlasSveLoadFloat32(p, &B[ldb * 1]);
+    MLAS_SVFLOAT32 v4 = MlasSveLoadFloat32(p, &B[ldb * 2]);
+    MLAS_SVFLOAT32 v5 = MlasSveLoadFloat32(p, &B[ldb * 3]);
+
+    MLAS_SVFLOAT32 v6 = MlasSveLoadFloat32(p, &B[ldb * 4]);
+    MLAS_SVFLOAT32 v7 = MlasSveLoadFloat32(p, &B[ldb * 5]);
+    MLAS_SVFLOAT32 v8 = MlasSveLoadFloat32(p, &B[ldb * 6]);
+    MLAS_SVFLOAT32 v9 = MlasSveLoadFloat32(p, &B[ldb * 7]);
+
+    // First mix
+    MLAS_SVFLOAT32 v3 = MlasSveInterleaveLowFloat32(v1, v6);
+    v1 = MlasSveInterleaveHighFloat32(v1, v6);
+
+    v6 = MlasSveInterleaveLowFloat32(v2, v7);
+    v2 = MlasSveInterleaveHighFloat32(v2, v7);
+
+    v7 = MlasSveInterleaveLowFloat32(v4, v8);
+    v4 = MlasSveInterleaveHighFloat32(v4, v8);
+
+    v8 = MlasSveInterleaveLowFloat32(v5, v9);
+
+    v5 = MlasSveInterleaveHighFloat32(v5, v9);
+
+    // Second mix
+
+    v9 = MlasSveInterleaveLowFloat32(v3, v7);
+    v3 = MlasSveInterleaveHighFloat32(v3, v7);
+
+    v7 = MlasSveInterleaveLowFloat32(v6, v8);
+    v6 = MlasSveInterleaveHighFloat32(v6, v8);
+
+    v8 = MlasSveInterleaveLowFloat32(v1, v4);
+    v1 = MlasSveInterleaveHighFloat32(v1, v4);
+
+    v4 = MlasSveInterleaveLowFloat32(v2, v5);
+    v2 = MlasSveInterleaveHighFloat32(v2, v5);
+
+    // Third mix
+    v5 = MlasSveInterleaveLowFloat32(v9, v7);
+    v9 = MlasSveInterleaveHighFloat32(v9, v7);
+
+    v7 = MlasSveInterleaveLowFloat32(v8, v4);
+    v8 = MlasSveInterleaveHighFloat32(v8, v4);
+
+    v4 = MlasSveInterleaveLowFloat32(v3, v6);
+    v3 = MlasSveInterleaveHighFloat32(v3, v6);
+
+    v6 = MlasSveInterleaveLowFloat32(v1, v2);
+    v1 = MlasSveInterleaveHighFloat32(v1, v2);
+
+    // Store the results
+
+    MlasSveStoreFloat32(p, &D[0], v5);
+    MlasSveStoreFloat32(p, &D[16], v9);
+    MlasSveStoreFloat32(p, &D[32], v4);
+    MlasSveStoreFloat32(p, &D[48], v3);
+    MlasSveStoreFloat32(p, &D[64], v7);
+    MlasSveStoreFloat32(p, &D[80], v8);
+    MlasSveStoreFloat32(p, &D[96], v6);
+    MlasSveStoreFloat32(p, &D[112], v1);
+}
+
+MLASCALL
+inline void
+Transpose_SVE512_16x16(float* D, const float* B, size_t ldb)
+{
+    const static int VL = svcntw();
+    MLAS_SVBOOL p = svwhilelt_b32((int)0, VL);
+
+    MLAS_SVFLOAT32 v1 = MlasSveLoadFloat32(p, &B[ldb * 0]);
+    MLAS_SVFLOAT32 v2 = MlasSveLoadFloat32(p, &B[ldb * 1]);
+    MLAS_SVFLOAT32 v3 = MlasSveLoadFloat32(p, &B[ldb * 2]);
+    MLAS_SVFLOAT32 v4 = MlasSveLoadFloat32(p, &B[ldb * 3]);
+
+    MLAS_SVFLOAT32 v5 = MlasSveLoadFloat32(p, &B[ldb * 4]);
+    MLAS_SVFLOAT32 v6 = MlasSveLoadFloat32(p, &B[ldb * 5]);
+    MLAS_SVFLOAT32 v7 = MlasSveLoadFloat32(p, &B[ldb * 6]);
+    MLAS_SVFLOAT32 v8 = MlasSveLoadFloat32(p, &B[ldb * 7]);
+
+    MLAS_SVFLOAT32 v9 = MlasSveLoadFloat32(p, &B[ldb * 8]);
+    MLAS_SVFLOAT32 v10 = MlasSveLoadFloat32(p, &B[ldb * 9]);
+    MLAS_SVFLOAT32 v11 = MlasSveLoadFloat32(p, &B[ldb * 10]);
+    MLAS_SVFLOAT32 v12 = MlasSveLoadFloat32(p, &B[ldb * 11]);
+
+    MLAS_SVFLOAT32 v13 = MlasSveLoadFloat32(p, &B[ldb * 12]);
+    MLAS_SVFLOAT32 v14 = MlasSveLoadFloat32(p, &B[ldb * 13]);
+    MLAS_SVFLOAT32 v15 = MlasSveLoadFloat32(p, &B[ldb * 14]);
+    MLAS_SVFLOAT32 v16 = MlasSveLoadFloat32(p, &B[ldb * 15]);
+
+    /*========= FIRST MIX ==============*/
+
+    MLAS_SVFLOAT32 v17 = MlasSveInterleaveLowFloat32(v1, v9);
+    MLAS_SVFLOAT32 v18 = MlasSveInterleaveHighFloat32(v1, v9);
+
+    MLAS_SVFLOAT32 v19 = MlasSveInterleaveLowFloat32(v2, v10);
+    MLAS_SVFLOAT32 v20 = MlasSveInterleaveHighFloat32(v2, v10);
+
+    MLAS_SVFLOAT32 v21 = MlasSveInterleaveLowFloat32(v3, v11);
+    MLAS_SVFLOAT32 v22 = MlasSveInterleaveHighFloat32(v3, v11);
+
+    MLAS_SVFLOAT32 v23 = MlasSveInterleaveLowFloat32(v4, v12);
+    MLAS_SVFLOAT32 v24 = MlasSveInterleaveHighFloat32(v4, v12);
+
+    //
+
+    MLAS_SVFLOAT32 v25 = MlasSveInterleaveLowFloat32(v5, v13);
+    MLAS_SVFLOAT32 v26 = MlasSveInterleaveHighFloat32(v5, v13);
+
+    MLAS_SVFLOAT32 v27 = MlasSveInterleaveLowFloat32(v6, v14);
+    MLAS_SVFLOAT32 v28 = MlasSveInterleaveHighFloat32(v6, v14);
+
+    MLAS_SVFLOAT32 v29 = MlasSveInterleaveLowFloat32(v7, v15);
+    MLAS_SVFLOAT32 v30 = MlasSveInterleaveHighFloat32(v7, v15);
+
+    MLAS_SVFLOAT32 v31 = MlasSveInterleaveLowFloat32(v8, v16);
+    MLAS_SVFLOAT32 v32 = MlasSveInterleaveHighFloat32(v8, v16);
+
+    /*========= SECOND MIX ==============*/
+
+    v1 = MlasSveInterleaveLowFloat32(v17, v25);
+    v9 = MlasSveInterleaveHighFloat32(v17, v25);
+
+    v2 = MlasSveInterleaveLowFloat32(v18, v26);
+    v10 = MlasSveInterleaveHighFloat32(v18, v26);
+
+    v3 = MlasSveInterleaveLowFloat32(v19, v27);
+    v11 = MlasSveInterleaveHighFloat32(v19, v27);
+
+    v4 = MlasSveInterleaveLowFloat32(v20, v28);
+    v12 = MlasSveInterleaveHighFloat32(v20, v28);
+
+    //
+    v5 = MlasSveInterleaveLowFloat32(v21, v29);
+    v13 = MlasSveInterleaveHighFloat32(v21, v29);
+
+    v6 = MlasSveInterleaveLowFloat32(v22, v30);
+    v14 = MlasSveInterleaveHighFloat32(v22, v30);
+
+    v7 = MlasSveInterleaveLowFloat32(v23, v31);
+    v15 = MlasSveInterleaveHighFloat32(v23, v31);
+
+    v8 = MlasSveInterleaveLowFloat32(v24, v32);
+    v16 = MlasSveInterleaveHighFloat32(v24, v32);
+
+    /*======= Third Mix =================*/
+
+    v17 = MlasSveInterleaveLowFloat32(v1, v5);
+    v25 = MlasSveInterleaveHighFloat32(v1, v5);
+
+    v18 = MlasSveInterleaveLowFloat32(v9, v13);
+    v26 = MlasSveInterleaveHighFloat32(v9, v13);
+
+    v19 = MlasSveInterleaveLowFloat32(v2, v6);
+    v27 = MlasSveInterleaveHighFloat32(v2, v6);
+
+    v20 = MlasSveInterleaveLowFloat32(v10, v14);
+    v28 = MlasSveInterleaveHighFloat32(v10, v14);
+
+    v21 = MlasSveInterleaveLowFloat32(v3, v7);
+    v29 = MlasSveInterleaveHighFloat32(v3, v7);
+
+    v22 = MlasSveInterleaveLowFloat32(v11, v15);
+    v30 = MlasSveInterleaveHighFloat32(v11, v15);
+
+    v23 = MlasSveInterleaveLowFloat32(v4, v8);
+    v31 = MlasSveInterleaveHighFloat32(v4, v8);
+
+    v24 = MlasSveInterleaveLowFloat32(v12, v16);
+    v32 = MlasSveInterleaveHighFloat32(v12, v16);
+
+    /*======== Final Mix ================*/
+
+    v1 = MlasSveInterleaveLowFloat32(v17, v21);
+    v9 = MlasSveInterleaveHighFloat32(v17, v21);
+
+    v2 = MlasSveInterleaveLowFloat32(v25, v29);
+    v10 = MlasSveInterleaveHighFloat32(v25, v29);
+
+    v3 = MlasSveInterleaveLowFloat32(v18, v22);
+    v11 = MlasSveInterleaveHighFloat32(v18, v22);
+
+    v4 = MlasSveInterleaveLowFloat32(v26, v30);
+    v12 = MlasSveInterleaveHighFloat32(v26, v30);
+
+    v5 = MlasSveInterleaveLowFloat32(v19, v23);
+    v13 = MlasSveInterleaveHighFloat32(v19, v23);
+
+    v6 = MlasSveInterleaveLowFloat32(v27, v31);
+    v14 = MlasSveInterleaveHighFloat32(v27, v31);
+
+    v7 = MlasSveInterleaveLowFloat32(v20, v24);
+    v15 = MlasSveInterleaveHighFloat32(v20, v24);
+
+    v8 = MlasSveInterleaveLowFloat32(v28, v32);
+    v16 = MlasSveInterleaveHighFloat32(v28, v32);
+
+    // store the result.
+
+    MlasSveStoreFloat32(p, &D[0], v1);
+    MlasSveStoreFloat32(p, &D[16], v9);
+    MlasSveStoreFloat32(p, &D[32], v2);
+    MlasSveStoreFloat32(p, &D[48], v10);
+    //
+    MlasSveStoreFloat32(p, &D[64], v3);
+    MlasSveStoreFloat32(p, &D[80], v11);
+    MlasSveStoreFloat32(p, &D[96], v4);
+    MlasSveStoreFloat32(p, &D[112], v12);
+    //
+    MlasSveStoreFloat32(p, &D[128], v5);
+    MlasSveStoreFloat32(p, &D[144], v13);
+    MlasSveStoreFloat32(p, &D[160], v6);
+    MlasSveStoreFloat32(p, &D[176], v14);
+    //
+    MlasSveStoreFloat32(p, &D[192], v7);
+    MlasSveStoreFloat32(p, &D[208], v15);
+    MlasSveStoreFloat32(p, &D[224], v8);
+    MlasSveStoreFloat32(p, &D[240], v16);
+}
+
+template <unsigned N>
+inline void
+TransposePackBNx8(
+    float* D,
+    const float* B,
+    size_t ldb
+)
+{
+    for (unsigned n = 0; n < N / 8; n++) {
+        Transpose_SVE256_8x8(D, B, ldb);
+        D += 8;
+        B += ldb * 8;
+    }
+}
+
+MLAS_SVE_TARGET
+template <unsigned N>
+void
+MlasSveTransposePackBNx4(
+    float* D,
+    const float* B,
+    size_t ldb
+)
+{
+    for (unsigned n = 0; n < N / 4; n++) {
+        if (VL() == 16) {
+            Transpose_SVE512_4x4(&D[0], &B[0], ldb);
+        } else if (VL() == 8) {
+            Transpose_SVE256_4x4(&D[0], &B[0], ldb);
+        } else if (VL() == 4) {
+            Transpose_SVE128_4x4(&D[0], &B[0], ldb);
+        }
+
+        D += 4;
+        B += ldb * 4;
+    }
+}
+
 // GCC: Pop options after SVE-specific functions
 #ifndef __clang__
 #pragma GCC pop_options
 #endif
 
 #endif
-
