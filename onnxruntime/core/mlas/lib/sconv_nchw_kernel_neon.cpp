@@ -278,7 +278,7 @@ Arguments:
 
     Input - input channel data start. Input is NCHW, so this pointer point to single H x W image data.
 
-    Filter - Whole filters are of F x CpG x FH x FW, this filter point to single FH x FW filter data.
+    Filter - Whole filters are of F x CpG x FH x FW, this filter points to single FH x FW filter data.
 
     Output - whole output are of N x F x OH x OW. This pointer point to single OH x OW output image data.
 
