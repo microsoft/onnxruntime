@@ -351,7 +351,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                          "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "op_packages",
                          "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
                          "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
-                         "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
+                         "enable_htp_spill_fill_buffer", "enable_ssr_handling", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
                          "json_qnn_graph_dir"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
@@ -415,6 +415,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "enable_htp_fp16_precision" ||
                  key == "offload_graph_io_quantization" ||
                  key == "enable_htp_spill_fill_buffer" ||
+                 key == "enable_ssr_handling" ||
                  key == "enable_htp_shared_memory_allocator" ||
                  key == "dump_json_qnn_graph") {
         std::set<std::string> supported_options = {"0", "1"};
