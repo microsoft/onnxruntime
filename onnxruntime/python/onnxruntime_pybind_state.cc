@@ -2722,8 +2722,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         py::gil_scoped_release release;
         OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
       })
-      .def("start_profiling", [](const PyInferenceSession* sess) -> void {
-        sess->GetSessionHandle()->StartProfiling("onnxruntime_profile_");
+      .def("start_profiling", [](const PyInferenceSession* sess, const std::string& file_prefix) -> void {
+        sess->GetSessionHandle()->StartProfiling(file_prefix);
       })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();

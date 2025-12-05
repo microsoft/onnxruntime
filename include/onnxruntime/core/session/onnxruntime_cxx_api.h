@@ -1723,7 +1723,7 @@ struct SessionImpl : ConstSessionImpl<T> {
    *
    * Wraps OrtApi::SessionStartProfiling
    */
-  void StartProfiling();  ///< Wraps OrtApi::SessionStartProfiling
+  void StartProfiling(const std::string& file_prefix);  ///< Wraps OrtApi::SessionStartProfiling
 };
 
 }  // namespace detail
