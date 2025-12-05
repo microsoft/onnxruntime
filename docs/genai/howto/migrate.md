@@ -70,7 +70,6 @@ Note: chat mode and system prompt caching are only supported for batch size 1. F
    auto sequences = OgaSequences::Create();
    tokenizer->Encode(system_prompt.c_str(), *sequences);
    generator->AppendTokenSequences(*sequences);
-   generator.append_tokens(system_tokens)
    ```
 
 ### Add chat mode to your C++ application
