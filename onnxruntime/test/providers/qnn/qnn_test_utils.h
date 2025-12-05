@@ -17,6 +17,7 @@
 #include "test/unittest_util/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_debug_manager.h"
 
 #include "gtest/gtest.h"
 
@@ -721,6 +722,14 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
     ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
     ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);
 
+    if (UnitTestDebugManager::GetInstance().ShouldDumpArtifacts()) {
+      // Dump outputs data for 3 cases:
+      // 1. CPU EP with F32 model
+      // 2. CPU EP with QDQ model
+      // 3. QNN EP with QDQ model
+      UnitTestDebugManager::GetInstance().DumpArtifacts(qdq_helper.feeds_, qdq_helper.output_names_, {{"CPU_EP_F32", cpu_f32_outputs}, {"CPU_EP_QDQ", cpu_qdq_outputs}, {"QNN_EP_QDQ", qnn_qdq_outputs}});
+    }
+
     // limit the error message count in case test with large data failed
     size_t max_error_count = 10;
     size_t error_count = 0;
@@ -954,6 +963,14 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
                    f16_helper.feeds_, cpu_f16_outputs);
     ASSERT_EQ(cpu_f16_outputs.size(), num_outputs);
     ASSERT_EQ(qnn_f16_outputs.size(), num_outputs);
+
+    if (UnitTestDebugManager::GetInstance().ShouldDumpArtifacts()) {
+      // Dump outputs data for 3 cases:
+      // 1. CPU EP with F32 model
+      // 2. CPU EP with F16 model
+      // 3. QNN EP with F16 model
+      UnitTestDebugManager::GetInstance().DumpArtifacts(f16_helper.feeds_, f16_helper.output_names_, {{"CPU_EP_F32", cpu_f32_outputs}, {"CPU_F16_QDQ", cpu_f16_outputs}, {"QNN_F16_QDQ", qnn_f16_outputs}});
+    }
 
     // limit the error message count in case test with large data failed
     size_t max_error_count = 10;

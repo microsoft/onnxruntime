@@ -13,6 +13,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test_debug_manager.h"
 
 #include "gmock/gmock.h"
 
@@ -194,6 +195,9 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
+  if (UnitTestDebugManager::GetInstance().ShouldDumpArtifacts()) {
+    UnitTestDebugManager::GetInstance().DumpArtifacts(feeds, output_names, {{"CPU_EP", expected_fetches}, {provider_type, fetches}});
+  }
   if (verify_outputs) {
     VerifyOutputs(output_names, expected_fetches, fetches, params);
   }
