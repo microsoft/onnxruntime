@@ -6,6 +6,7 @@
 
 #include "mlas.h"
 #include "test_util.h"
+#include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
 
 #include <cmath>
 #include <limits>

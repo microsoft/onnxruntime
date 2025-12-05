@@ -154,7 +154,8 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         } else {
             lhs = &(LhsPackedData[LhsPackedStride * batch_idx]);
         }
-
+        KLEIDIAI_KERNEL_LOG("kai_run_lhs_quant_pack_qai8dxp_f32"
+                            << " M="<< Shape.M << " K=" << Shape.K << " mr=" << mr << " kr=" << kr << " sr=" << sr << " m_idx_start=0");
         kai_run_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr, 0, DataParams[batch_idx].A, DataParams[batch_idx].lda*sizeof(float), lhs);
         tls_lhs_base[batch_idx] = lhs;
     });
