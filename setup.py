@@ -243,7 +243,7 @@ try:
                     "libnvrtc-builtins.so.13",
                 ]
 
-                rocm_dependencies = [
+                migraphx_dependencies = [
                     "libamd_comgr.so.2",
                     "libamdhip64.so.5",
                     "libamdhip64.so.6",
@@ -299,7 +299,7 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies:
+                for i in cuda_dependencies + migraphx_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
