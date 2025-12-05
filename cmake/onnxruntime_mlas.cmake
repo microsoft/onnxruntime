@@ -564,6 +564,8 @@ else()
               #include <sys/systemcfg.h>
               #if !defined(POWER_10)
               #define POWER_10       0x40000
+              #endif
+              #if !defined(POWER_10_ANDUP)
               #define POWER_10_ANDUP (POWER_10)
               #endif
               #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
