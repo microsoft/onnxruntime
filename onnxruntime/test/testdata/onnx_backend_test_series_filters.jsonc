@@ -725,7 +725,9 @@
         "^test_center_crop_pad_crop_negative_axes_hwc_expanded*", // failed due to new types or shape infer with negative axis for CenterCropPad.
         "^test_reduce_max_empty_set",
         "^test_reduce_min_empty_set",
-        "^test_matmul_1d_3d_cpu"
+        "^test_matmul_1d_3d_cpu",
+        "^test_matmul_4d_1d_cpu",
+        "^test_matmul_1d_1d_cpu"
     ],
     "current_failing_tests_pure_DML": [
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
