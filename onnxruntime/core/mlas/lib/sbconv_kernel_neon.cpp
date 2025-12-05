@@ -54,7 +54,7 @@ MlasRowDot(const float* Arow, const float* Brow, float* out, int index, size_t l
 }
 
 void MLASCALL
-MlasSBDotRowWise(const float* A, const float* B, const size_t* active_cols, size_t len, float* out)
+MlasSBDotRowWise(const float* A, const float* B, size_t len, float* out)
 {
     float tmpA[len];
     float tmpB[len];
@@ -64,7 +64,7 @@ MlasSBDotRowWise(const float* A, const float* B, const size_t* active_cols, size
             tmpA[j] = A[j * 16 + r];
 
         for (size_t j = 0; j < len; j++)
-            tmpB[j] = B[active_cols[j] * 16 + r];
+            tmpB[j] = B[j * 16 + r];
 
         MlasRowDot(tmpA, tmpB, out, r, len);
     }
@@ -108,7 +108,6 @@ void
     
     const size_t MaxKernelPositions = KernelHeight * KernelWidth;
     float tmpInput[MaxKernelPositions * BlockSize];
-    size_t validPositions[MaxKernelPositions];
 
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
         float* output_ptr = &Output[output_idx * BlockSize];
@@ -117,9 +116,8 @@ void
         float32x4_t OldOutput1 = MlasLoadFloat32x4(output_ptr + 4);
         float32x4_t OldOutput2 = MlasLoadFloat32x4(output_ptr + 8);
         float32x4_t OldOutput3 = MlasLoadFloat32x4(output_ptr + 12);
-
-        size_t validCount = 0;
-        for (size_t kernel_pos = 0; kernel_pos < KernelHeight * KernelWidth; kernel_pos++) {
+        
+        for (size_t kernel_pos = 0; kernel_pos < MaxKernelPositions; kernel_pos++) {
             size_t kh = kernel_pos / KernelWidth;
             size_t kw = kernel_pos % KernelWidth;
             const float* input_base = Input + output_idx * StrideWidthElements +
@@ -127,25 +125,30 @@ void
             const float* row_start = InputBase + kh * DilatedInputWidthElements;
             const float* row_end = row_start + InputWidthElements;
 
-            // Branchless: valid = 1 if in bounds, 0 otherwise
-            size_t valid = (input_base >= row_start) & (input_base + 15 < row_end);
-            validPositions[validCount] = kernel_pos;
-            validCount += valid;
+            bool valid = (input_base >= row_start) && (input_base + 15 < row_end);
+            const float* safe_ptr = input_base;
+            safe_ptr = (input_base < row_start) ? row_start : safe_ptr;
+            safe_ptr = (input_base + 15 >= row_end) ? row_start : safe_ptr;
+            
+            float32x4_t validMask = vreinterpretq_f32_s32(MlasBroadcastInt32x4(valid ? -1 : 0));
+            
+            float32x4_t loaded0 = MlasLoadFloat32x4(safe_ptr);
+            float32x4_t loaded1 = MlasLoadFloat32x4(safe_ptr + 4);
+            float32x4_t loaded2 = MlasLoadFloat32x4(safe_ptr + 8);
+            float32x4_t loaded3 = MlasLoadFloat32x4(safe_ptr + 12);
+            
+            float32x4_t data0 = MlasBlendFloat32x4(ZeroVector, loaded0, validMask);
+            float32x4_t data1 = MlasBlendFloat32x4(ZeroVector, loaded1, validMask);
+            float32x4_t data2 = MlasBlendFloat32x4(ZeroVector, loaded2, validMask);
+            float32x4_t data3 = MlasBlendFloat32x4(ZeroVector, loaded3, validMask);
+            
+            MlasStoreFloat32x4(&tmpInput[kernel_pos * BlockSize], data0);
+            MlasStoreFloat32x4(&tmpInput[kernel_pos * BlockSize + 4], data1);
+            MlasStoreFloat32x4(&tmpInput[kernel_pos * BlockSize + 8], data2);
+            MlasStoreFloat32x4(&tmpInput[kernel_pos * BlockSize + 12], data3);
         }
 
-        for (size_t i = 0; i < validCount; i++) {
-            size_t kernel_pos = validPositions[i];
-            size_t kh = kernel_pos / KernelWidth;
-            size_t kw = kernel_pos % KernelWidth;
-            const float* input_base = Input + output_idx * StrideWidthElements +
-                                      kh * DilatedInputWidthElements + kw * DilationWidthElements;
-            MlasStoreFloat32x4(&tmpInput[i * BlockSize], MlasLoadFloat32x4(input_base));
-            MlasStoreFloat32x4(&tmpInput[i * BlockSize + 4], MlasLoadFloat32x4(input_base + 4));
-            MlasStoreFloat32x4(&tmpInput[i * BlockSize + 8], MlasLoadFloat32x4(input_base + 8));
-            MlasStoreFloat32x4(&tmpInput[i * BlockSize + 12], MlasLoadFloat32x4(input_base + 12));
-        }
-
-        MlasSBDotRowWise(tmpInput, Filter, validPositions, validCount, output_ptr);
+        MlasSBDotRowWise(tmpInput, Filter, MaxKernelPositions, output_ptr);
 
         float32x4_t Accumulator0 = MlasLoadFloat32x4(output_ptr);
         float32x4_t Accumulator1 = MlasLoadFloat32x4(output_ptr + 4);
