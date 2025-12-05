@@ -652,10 +652,8 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 ### Prerequisites
 {: .no_toc }
 
-* Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.3.1/)
-  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCm6.3.1
+* Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/index.html)
 * Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
-  * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
 
 ### Build Instructions
 {: .no_toc }
@@ -671,35 +669,6 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 #### Build Phython Wheel
 
 `./build.sh --config Release --build_wheel --parallel --use_migraphx --migraphx_home /opt/rocm`
-
-Then the python wheels(*.whl) could be found at ```./build/Linux/Release/dist```.
-
----
-
-## AMD ROCm
-
-See more information on the ROCm Execution Provider [here](../execution-providers/ROCm-ExecutionProvider.md).
-
-### Prerequisites
-{: .no_toc }
-
-* Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.3.1/)
-  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm6.3.1
-
-### Build Instructions
-{: .no_toc }
-
-#### Linux
-
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --parallel --use_rocm --rocm_home <path to ROCm home>
-```
-
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
-
-#### Build Phython Wheel
-
-`./build.sh --config Release --build_wheel --parallel --use_rocm --rocm_home /opt/rocm`
 
 Then the python wheels(*.whl) could be found at ```./build/Linux/Release/dist```.
 

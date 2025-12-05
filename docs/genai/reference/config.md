@@ -468,7 +468,6 @@ Options passed to ONNX Runtime for model execution.
   - NvTensorRtRtx
   - OpenVINO
   - QNN
-  - rocm
   - WebGPU
   - VitisAI
 
