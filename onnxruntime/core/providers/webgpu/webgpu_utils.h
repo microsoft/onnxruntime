@@ -12,8 +12,8 @@
 
 namespace onnxruntime {
 namespace webgpu {
-template <typename T>
 
+template <typename T>
 inline T CeilDiv(T numerator, T denominator) {
   return (numerator + denominator - 1) / denominator;
 }
