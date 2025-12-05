@@ -491,7 +491,7 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
                                              compute_state));
       const bool success = status.IsOK();
       if (!success) {
-        LOGS(logger, ERROR) << "OrtNodeComputeInfo::CreateComputeState() failed with error: "
+        LOGS(logger, ERROR) << "OrtNodeComputeInfo::CreateState() failed with error: "
                             << status.ErrorMessage();
       }
 
