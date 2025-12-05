@@ -7421,11 +7421,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  *
  * \param device_id HIP device id, starts from zero.
  */
-#if defined(_MSC_VER)
-__declspec(deprecated("ROCm support was removed in 1.23. To use ROCm, you must downgrade to version 1.22."))
-#elif defined(__GNUC__) || defined(__clang__)
-__attribute__((deprecated("ROCm support was removed in 1.23. To use ROCm, you must downgrade to version 1.22.")))
-#endif
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id);
 
 /*
