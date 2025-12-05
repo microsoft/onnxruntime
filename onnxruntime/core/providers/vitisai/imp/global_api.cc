@@ -611,3 +611,53 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     return &the_global_api;
   }
 }
+
+struct ExternalEpLibaray {
+  ExternalEpLibaray(const std::string& libray_name) : libray_name_{libray_name} {
+    Ensure();
+  }
+  onnxruntime::Provider* (*get_provider_api)();
+  void (*create_ep_factories)(void*, const OrtApiBase*, void*, OrtEpFactory**, size_t, size_t*);
+  void (*set_session_option)(OrtSessionOptions*);
+
+  void Ensure() {
+    if (handle_)
+      return;
+    auto& env = Provider_GetHost()->Env__Default();
+    auto library_filename = PathString(LIBRARY_PREFIX) + PathString(libray_name_.begin(), libray_name_.end()) + LIBRARY_EXTENSION;
+    auto full_path = env.GetRuntimePath() + library_filename;
+    ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "GetProvider", (void**)&get_provider_api));
+  }
+
+  void Clear() {
+    if (handle_) {
+      auto& env = Provider_GetHost()->Env__Default();
+      auto status = env.UnloadDynamicLibrary(handle_);
+      vai_assert(status.IsOK(), status.ErrorMessage());
+      handle_ = nullptr;
+    }
+  }
+
+ private:
+  std::string libray_name_;
+  void* handle_{};
+};
+static std::unordered_map<std::string, std::unique_ptr<ExternalEpLibaray>> g_external_ep_libaries;
+
+std::unique_ptr<onnxruntime::IExecutionProvider>
+CreateExecutionProviderFromAnotherEp(const std::string& lib, const OrtSessionOptions& session_options,
+                                     std::unordered_map<std::string, std::string>& provider_options) {
+  auto it = g_external_ep_libaries.find(lib);
+  if (it == g_external_ep_libaries.end()) {
+    it = g_external_ep_libaries.emplace(lib, std::make_unique<ExternalEpLibaray>(lib)).first;
+  }
+  auto ep_lib = it->second.get();
+  auto get_provider_func = ep_lib->get_provider_api;
+  auto provider = get_provider_func();
+  std::unique_ptr<onnxruntime::IExecutionProvider> ret;
+  provider->Initialize();
+  std::ignore = provider->CreateIExecutionProvider(nullptr, nullptr, 0, const_cast<onnxruntime::ProviderOptions&>(provider_options), session_options, *((OrtLogger*)nullptr), ret);
+
+  return ret;
+}
