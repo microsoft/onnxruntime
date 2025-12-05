@@ -768,24 +768,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
 
-        // Run Models with subscribed run_options->config_options
-        if (ctx_.run_options != nullptr &&
-            ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp) == "true") {
-          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-
-          if (!execution_providers.empty()) {
-            ExecuteModelForEps(
-                std::move(execution_providers), model, ctx_.session_options,
-                ctx_.expect_result, ctx_.expected_failure_string,
-                ctx_.run_options, feeds, output_names,
-                &custom_session_registries_,
-                /*assign_ep_for_nodes=*/true,
-                allow_released_onnx_opset_only,
-                number_of_pre_packed_weights_counter,
-                number_of_shared_pre_packed_weights_counter);
-          }
-        }
-
         has_run = true;
         cur_provider = "not set";
       }
