@@ -52,7 +52,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
               })
           .AddAssignmentToReference(nv::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(nv::provider_option_names::kMaxSharedMemSize, info.max_shared_mem_size)
-          .AddAssignmentToReference(nv::provider_option_names::kMaxAuxiliaryStreams, info.auxiliary_streams)
+          .AddAssignmentToReference(nv::provider_option_names::kLengthAuxStreamArray, info.auxiliary_streams)
           .AddAssignmentToReference(nv::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(nv::provider_option_names::kDetailedBuildLog, info.detailed_build_log)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMinShapes, info.profile_min_shapes)
@@ -112,7 +112,7 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kUserAuxStreamArray, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_aux_stream_array))},
       {nv::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {nv::provider_option_names::kMaxSharedMemSize, MakeStringWithClassicLocale(info.max_shared_mem_size)},
-      {nv::provider_option_names::kMaxAuxiliaryStreams, MakeStringWithClassicLocale(info.auxiliary_streams)},
+      {nv::provider_option_names::kLengthAuxStreamArray, MakeStringWithClassicLocale(info.auxiliary_streams)},
       {nv::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {nv::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.detailed_build_log)},
       {nv::provider_option_names::kProfilesMinShapes, MakeStringWithClassicLocale(info.profile_min_shapes)},
