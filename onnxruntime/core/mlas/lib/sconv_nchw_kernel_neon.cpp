@@ -248,11 +248,11 @@ Arguments:
 
     Parameters - conv parameters calculated based on conv parameters like padding, strides, dilations, etc.
 
-    Input - input channel data start. Input is NCHW, so this pointer point to single H x W image data.
+    Input - input channel data start. Input is NCHW, so this pointer points to single H x W image data.
 
-    Filter - Whole filters are of F x CpG x FH x FW, this filter point to single FH x FW filter data.
+    Filter - Whole filters are of F x CpG x FH x FW, this filter points to single FH x FW filter data.
 
-    Output - whole output are of N x F x OH x OW. This pointer point to single OH x OW output image data.
+    Output - whole output are of N x F x OH x OW. This pointer points to single OH x OW output image data.
 
 --*/
 {
