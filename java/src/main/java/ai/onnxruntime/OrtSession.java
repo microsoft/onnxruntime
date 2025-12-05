@@ -1091,7 +1091,9 @@ public class OrtSession implements AutoCloseable {
      * Add ROCM as an execution backend, using device 0.
      *
      * @throws OrtException If there was an error in native code.
+     * @deprecated since version 1.23. To use ROCm, you must downgrade to version 1.22.
      */
+    @Deprecated
     public void addROCM() throws OrtException {
       addROCM(0);
     }
@@ -1101,7 +1103,9 @@ public class OrtSession implements AutoCloseable {
      *
      * @param deviceNum The ROCM device id.
      * @throws OrtException If there was an error in native code.
+     * @deprecated since version 1.23. To use ROCm, you must downgrade to version 1.22.
      */
+    @Deprecated
     public void addROCM(int deviceNum) throws OrtException {
       checkClosed();
       if (OnnxRuntime.extractROCM()) {
