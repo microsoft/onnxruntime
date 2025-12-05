@@ -4,11 +4,8 @@
 // SPDX-License-Identifier: MIT
 //
 
-// Currently this test only applies to KleidiAI Guard against it running in any other situation
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-
+#include "mlas.h"
 #include "test_util.h"
-#include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
 
 #include <cmath>
 #include <limits>
@@ -241,4 +238,3 @@ static UNUSED_VARIABLE bool added_single = AddTestRegister([](bool is_short_exec
 static UNUSED_VARIABLE bool added_threaded = AddTestRegister([](bool is_short_execute) {
   return DynamicQgemmExecuteTest<MlasDynamicQgemmThreadPoolTest>::RegisterAll(is_short_execute);
 });
-#endif
