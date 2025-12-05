@@ -68,6 +68,19 @@ index 4a7df7d71..8462e3293 100644
  add_library(onnx_proto)
  target_link_libraries(onnx_proto PUBLIC $<BUILD_INTERFACE:onnx_proto_object>)
  if(ONNX_ML)
+diff --git a/cmake/ONNXConfig.cmake.in b/cmake/ONNXConfig.cmake.in
+index aa1ef47d9..18ab278a4 100644
+--- a/cmake/ONNXConfig.cmake.in
++++ b/cmake/ONNXConfig.cmake.in
+@@ -4,7 +4,7 @@
+ # library version information
+ set(ONNX_VERSION "@ONNX_VERSION@")
+ 
+-if(NOT @ONNX_USE_PROTOBUF_SHARED_LIBS@)
++if((NOT @ONNX_USE_PROTOBUF_SHARED_LIBS@) AND @Build_Protobuf@)
+   find_package(Protobuf REQUIRED CONFIG)
+ endif()
+ 
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
 index 887151217..ac2e8c463 100644
 --- a/onnx/defs/nn/old.cc
