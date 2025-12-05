@@ -29,12 +29,20 @@ public:
         std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0/*A OnnxIndex*/);
         std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(3/*B OnnxIndex*/);
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
+        std::vector<DimensionType> inputShape0Broadcasted;
+        std::vector<DimensionType> inputShape1Broadcasted;
 
-        OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape);
+        OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape, inputShape0Broadcasted, inputShape1Broadcasted);
 
-        // Initialize the input descriptions with broadcasting
-        m_inputTensorDescs[IN_A] = CreateTensorDescFromInput(kernelInfo, 0/*A OnnxIndex*/, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
-        m_inputTensorDescs[IN_B] = CreateTensorDescFromInput(kernelInfo, 3/*B OnnxIndex*/, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
+        // Initialize the input descriptions without broadcasting
+        m_inputTensorDescs[IN_A] = CreateTensorDescFromInput(kernelInfo, 0/*A OnnxIndex*/);
+        m_inputTensorDescs[IN_B] = CreateTensorDescFromInput(kernelInfo, 3/*B OnnxIndex*/);
+
+        // Broadcast the inputs to their broadcasted shapes.
+        m_inputTensorDescs[IN_A].SetBroadcastedShape(inputShape0Broadcasted, inputShape0, outputShape.size());
+        m_inputTensorDescs[IN_B].SetBroadcastedShape(inputShape1Broadcasted, inputShape1, outputShape.size());
+        m_inputTensorDescs[IN_A].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
+        m_inputTensorDescs[IN_B].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
 
         uint32_t dmlDimSize = m_inputTensorDescs[0].GetDimensionCount();
         // Resize the A Scale to be the same dimension as the input tensor.
@@ -89,6 +97,7 @@ public:
         
         // Initialize the output description while overriding the shape
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);
+        m_outputTensorDescs[0].SetDimensionCount(4, TensorAxis::RightAligned, /*foldEndDimensions*/ true);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

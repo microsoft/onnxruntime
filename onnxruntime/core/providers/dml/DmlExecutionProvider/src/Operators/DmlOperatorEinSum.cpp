@@ -368,7 +368,7 @@ public:
             }
         }
         tensorDesc.SetDimensionsAndStrides(newSizes, newStrides);
-        tensorDesc.EnsureDimensionCount(1, TensorAxis::RightAligned);
+        tensorDesc.EnsureMinimumDimensionCount(1, TensorAxis::RightAligned);
     }
 
     // Reproject a tensor to the given axis arrangement.

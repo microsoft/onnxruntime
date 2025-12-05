@@ -540,10 +540,15 @@ namespace OperatorHelper
         }
     }
 
+    // inputShape0 and inputShape1 are normalized for 1D cases up to 2D.
+    // outputShape is normalized to at least 2D.
+    // inputShape0Broadcasted and inputShape1Broadcasted hold the output shape's batch dimensions.
     void MatMulShapeMapping(
-        std::vector<DimensionType>& inputShape0,
-        std::vector<DimensionType>& inputShape1,
-        std::vector<DimensionType>& outputShape)
+        /*inout*/ std::vector<DimensionType>& inputShape0,
+        /*inout*/ std::vector<DimensionType>& inputShape1,
+        /*inout*/ std::vector<DimensionType>& outputShape,
+        /*inout*/ std::vector<DimensionType>& inputShape0Broadcasted,
+        /*inout*/ std::vector<DimensionType>& inputShape1Broadcasted)
     {
         // Get the padded input shapes and undo the effect of padding removal from the output shape
         if (inputShape1.size() == 1)
@@ -558,13 +563,15 @@ namespace OperatorHelper
             outputShape.insert(outputShape.end() - 1, 1);
         }
 
+        inputShape0Broadcasted = inputShape0;
+        inputShape1Broadcasted = inputShape1;
+
         // Remove the batch dimensions from each input, then re-add the broadcasted batch dimensions
         // based on the output shape
-        inputShape0.erase(inputShape0.begin(), inputShape0.end() - 2);
-        inputShape1.erase(inputShape1.begin(), inputShape1.end() - 2);
-
-        inputShape0.insert(inputShape0.begin(), outputShape.begin(), outputShape.end() - 2);
-        inputShape1.insert(inputShape1.begin(), outputShape.begin(), outputShape.end() - 2);
+        inputShape0Broadcasted.erase(inputShape0Broadcasted.begin(), inputShape0Broadcasted.end() - 2);
+        inputShape1Broadcasted.erase(inputShape1Broadcasted.begin(), inputShape1Broadcasted.end() - 2);
+        inputShape0Broadcasted.insert(inputShape0Broadcasted.begin(), outputShape.begin(), outputShape.end() - 2);
+        inputShape1Broadcasted.insert(inputShape1Broadcasted.begin(), outputShape.begin(), outputShape.end() - 2);
     }
 
     void FusedMatMulShapeMapping(
