@@ -47,12 +47,12 @@ jobs:
         with:
           architecture: x64
 
-      - name: Download OpenVINO Toolkit v2025.2.0
+      - name: Download OpenVINO Toolkit v2025.4.0
         env:
-          OpenVINOVersion: 2025.2.0
+          OpenVINOVersion: 2025.4.0
         shell: pwsh
         run: |
-          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.2/windows/openvino_toolkit_windows_2025.2.0.19140.c01cd93e24d_x86_64.zip"
+          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4/windows/openvino_toolkit_windows_2025.4.0.20398.8fdad55727d_x86_64.zip"
           $OutputPath = "$env:RUNNER_TEMP\openvino.zip"
           $ExtractPath = "$env:RUNNER_TEMP\openvino-v$env:OpenVINOVersion"
           $TempExtractPath = "$env:RUNNER_TEMP\openvino_temp"
