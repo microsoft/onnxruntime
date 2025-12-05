@@ -831,7 +831,6 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_se
         ort_model._is_training()
     )._execution_agent._inference_session._provider_options
 
-    # cudnn_conv_algo_search is for CUDA only, so setting the system env will not affect the compute on ROCm.
     if "CUDAExecutionProvider" in provider_options:
         expected_conv_algo_search = "HEURISTIC" if conv_algo_search is None else conv_algo_search
         actual_conv_algo_search = provider_options["CUDAExecutionProvider"]["cudnn_conv_algo_search"]
@@ -6631,8 +6630,6 @@ def test_overridden_softmax_export(softmax_compute_type):
     assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
 
 
-# TODO: fix the issue in rocm training, then enable the test.
-@pytest.mark.skip(reason="This test is disabled due to its breaking rocm training cis.")
 def test_aten_conv_bf16():
     class NeuralNetConv(torch.nn.Module):
         def __init__(self):

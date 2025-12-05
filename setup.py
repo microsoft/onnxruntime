@@ -55,7 +55,6 @@ wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
 cuda_major_version = None
-rocm_version = None
 is_migraphx = False
 is_openvino = False
 is_qnn = False
@@ -684,7 +683,7 @@ if enable_training or enable_training_apis:
                     # cpu version for documentation
                     local_version = "+cpu"
         else:
-            if not (cuda_version or rocm_version):
+            if not cuda_version:
                 # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
 
@@ -789,7 +788,7 @@ if package_name == "onnxruntime-trt-rtx":
     install_requires.append(f"nvidia-cuda-runtime-cu{major}~={major}.0")
 
 
-def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
+def save_build_and_package_info(package_name, version_number, cuda_version, qnn_version):
     sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
     from onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
 
@@ -816,13 +815,11 @@ def save_build_and_package_info(package_name, version_number, cuda_version, rocm
                             else "found multiple cudart libraries"
                         ),
                     )
-        elif rocm_version:
-            f.write(f"rocm_version = '{rocm_version}'\n")
         elif qnn_version:
             f.write(f"qnn_version = '{qnn_version}'\n")
 
 
-save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version)
+save_build_and_package_info(package_name, version_number, cuda_version, qnn_version)
 
 extras_require = {}
 if package_name == "onnxruntime-gpu" and cuda_major_version:
