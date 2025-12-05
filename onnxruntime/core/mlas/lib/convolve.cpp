@@ -1457,14 +1457,12 @@ Return Value:
         // and on ARM64, it is further restricted to strides = 1.
         // TODO: support more general depthwise convolution.
 
-        bool depthwise_conv_stride_support_check = [&]() {
         // On ARM64, only support stride = 1 for depthwise conv.
     #if defined(MLAS_TARGET_ARM64)
-        return Parameters->StrideShape[0] == 1 && Parameters->StrideShape[1] == 1;
+        bool depthwise_conv_stride_support_check = Parameters->StrideShape[0] == 1 && Parameters->StrideShape[1] == 1;
     #else
-        return true;
+        bool depthwise_conv_stride_support_check = true;
     #endif
-        }();
 
         if (Dimensions == 2
                 && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
