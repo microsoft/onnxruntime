@@ -209,12 +209,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
         int8_use_native_migraphx_calibration_table_env.empty() ? info.int8_use_native_calibration_table : std::stoi(int8_use_native_migraphx_calibration_table_env) != 0;
   }
 
-  if (int8_enable_ || fp8_enable_) {
-    int8_calibration_cache_available_ = !info.int8_calibration_table_name.empty();
-  }
+  int8_calibration_cache_available_ =
+    (int8_enable_ || fp8_enable_) && !int8_calibration_table_name_.empty();
+
 
   // Load INT8 calibration table
-  if ((int8_enable_ || fp8_enable_) && int8_calibration_cache_available_) {
+  if (int8_calibration_cache_available_) {
     std::unordered_map<std::string, float> dynamic_range_map;
     auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_table_name_);
     if (!ReadDynamicRange(calibration_cache_path, int8_use_native_calibration_table_, dynamic_range_map)) {
