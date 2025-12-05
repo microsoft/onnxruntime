@@ -989,7 +989,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams"));
     }
     external_aux_streams_ = true;
-    aux_streams_ = static_cast<cudaStream_t>(info.user_aux_stream_array);
+    aux_streams_ = reinterpret_cast<cudaStream_t*>(info.user_aux_stream_array);
   } else {
     external_aux_streams_ = false;
     aux_streams_ = nullptr;
@@ -3046,10 +3046,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
     // Set auxiliary stream if provided by user
     if (external_aux_streams_ && aux_streams_ != nullptr) {
-      if(auxiliary_streams_ <= 0){
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams");
-      }
-      trt_context->setAuxStreams(&aux_streams_, (int32_t)auxiliary_streams_);
+      trt_context->setAuxStreams(aux_streams_, (int32_t)auxiliary_streams_);
     }
 
     // Check before using trt_engine
@@ -3465,10 +3462,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
 
     // Set auxiliary stream if provided by user
     if (external_aux_streams_ && aux_streams_ != nullptr) {
-      if(auxiliary_streams_ <= 0){
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams");
-      }
-      trt_context->setAuxStreams(&aux_streams_, (int32_t)auxiliary_streams_);
+      trt_context->setAuxStreams(aux_streams_, (int32_t)auxiliary_streams_);
     }
 
     // Start CUDA graph capture with the correct stream

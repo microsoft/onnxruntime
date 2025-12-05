@@ -350,7 +350,7 @@ class NvExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   bool external_aux_streams_ = false;
-  cudaStream_t aux_streams_ = nullptr;
+  cudaStream_t* aux_streams_ = nullptr;
   int max_partition_iterations_ = 1000;
   size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 0;
