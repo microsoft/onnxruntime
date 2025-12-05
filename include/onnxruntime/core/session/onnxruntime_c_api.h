@@ -6608,6 +6608,16 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Start profiling for this session
+   *
+   * \param[in] session
+   * \param[in] file_prefix
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(SessionStartProfiling, _In_ OrtSession* session, _In_ const char* file_prefix);
 };
 
 /*

@@ -1892,7 +1892,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::class_<OrtSyncStream> py_sync_stream(m, "OrtSyncStream",
                                            R"pbdoc(Represents a synchronization stream for model inference.)pbdoc");
-  py_sync_stream.def("get_handle", [](OrtSyncStream* stream) -> uintptr_t { 
+  py_sync_stream.def("get_handle", [](OrtSyncStream* stream) -> uintptr_t {
       Ort::UnownedSyncStream ort_stream(stream);
       return reinterpret_cast<uintptr_t>(ort_stream.GetHandle()); }, R"pbdoc(SyncStream handle that can be converted to a string and added to SessionOptions)pbdoc");
 
@@ -2006,7 +2006,7 @@ for model inference.)pbdoc");
       .def_property_readonly("allocator_type", [](const OrtMemoryInfo* mem_info) -> OrtAllocatorType { return mem_info->alloc_type; }, R"pbdoc(Allocator type)pbdoc")
       .def_property_readonly("device_mem_type", [](const OrtMemoryInfo* mem_info) -> OrtDeviceMemoryType {
               auto mem_type = mem_info->device.MemType();
-              return (mem_type == OrtDevice::MemType::DEFAULT) ? 
+              return (mem_type == OrtDevice::MemType::DEFAULT) ?
                   OrtDeviceMemoryType_DEFAULT: OrtDeviceMemoryType_HOST_ACCESSIBLE ; }, R"pbdoc(Device memory type (Device or Host accessible).)pbdoc")
       .def_property_readonly("device_vendor_id", [](const OrtMemoryInfo* mem_info) -> uint32_t { return mem_info->device.Vendor(); });
 
@@ -2107,7 +2107,9 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
           [](PySessionOptions* options, bool enable_profiling) -> void {
             options->value.enable_profiling = enable_profiling;
           },
-          R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
+          R"pbdoc(Enable profiling for this session. Default is false.
+If this is enabled, profiling will always start at the beginning of the session.
+Otherwise, use start_profiling() and end_profiling() to profile a specific time span.)pbdoc")
       .def_property(
           "profile_file_prefix",
           [](const PySessionOptions* options) -> std::basic_string<ORTCHAR_T> {
@@ -2720,6 +2722,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         py::gil_scoped_release release;
         OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
       })
+      .def("start_profiling", [](const PyInferenceSession* sess, const std::string& file_prefix) -> void {
+        sess->GetSessionHandle()->StartProfiling(file_prefix);
+      })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
@@ -2748,7 +2753,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             auto res = sess->GetSessionHandle()->GetModelMetadata();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list {
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto inputs_mem_info = session.GetMemoryInfoForInputs();
           py::list result;
@@ -2757,7 +2762,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             result.append(py::cast(p_info, py::return_value_policy::reference));
           }
           return result; })
-      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list {
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto outputs_mem_info = session.GetMemoryInfoForOutputs();
           py::list result;

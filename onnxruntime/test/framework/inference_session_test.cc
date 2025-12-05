@@ -641,6 +641,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 #ifdef USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
+#ifdef USE_WEBGPU
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -792,7 +795,6 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   SessionOptions so;
 
   so.session_logid = "CheckRunProfiler";
-  so.enable_profiling = true;
   so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
 
   InferenceSession session_object(so, GetEnvironment());
@@ -807,6 +809,33 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                   std::chrono::high_resolution_clock::now().time_since_epoch())
                                   .count();
+
+  // the profiler's start time needs to be between before_time and after_time
+  ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
+}
+
+// Verifies that when both SessionOptions::enable_profiling and StartProfiling() are used,
+// the profiling start time is set during session is created (due to the session option),
+// not overridden by the subsequent StartProfiling() call.
+TEST(InferenceSessionTests, CheckRunProfilerStartTime_PrefersSessionOptionOverStartProfiling) {
+  SessionOptions so;
+
+  so.enable_profiling = true;
+  so.session_logid = "CheckRunProfiler";
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
+
+  uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                   std::chrono::high_resolution_clock::now().time_since_epoch())
+                                   .count();  // get current time
+  InferenceSession session_object(so, GetEnvironment());
+  uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::high_resolution_clock::now().time_since_epoch())
+                                  .count();
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  session_object.StartProfiling("onnxruntime_profile_start");
+  uint64_t profiling_start_time = session_object.GetProfiling().GetStartTimeNs();
 
   // the profiler's start time needs to be between before_time and after_time
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);

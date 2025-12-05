@@ -366,12 +366,21 @@ class Session:
                 return invoke(self._sess, output_names, input_dict_ort_values, run_options)
             raise
 
+    def start_profiling(self, file_prefix="onnxruntime_profile_"):
+        """
+        Start profiling.
+
+        Note that if the option :meth:`onnxruntime.SessionOptions.enable_profiling` is true,
+        profiling will always start at the beginning of this session.
+        """
+        self._sess.start_profiling(file_prefix)
+
     def end_profiling(self):
         """
         End profiling and return results in a file.
 
         The results are stored in a filename if the option
-        :meth:`onnxruntime.SessionOptions.enable_profiling`.
+        :meth:`onnxruntime.SessionOptions.enable_profiling` is true or if `start_profiling` was called.
         """
         return self._sess.end_profiling()
 

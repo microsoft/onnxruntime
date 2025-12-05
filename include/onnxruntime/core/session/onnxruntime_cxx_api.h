@@ -1724,6 +1724,12 @@ struct SessionImpl : ConstSessionImpl<T> {
 
   void FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
                                   OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
+
+  /** \brief Start profiling on this session
+   *
+   * Wraps OrtApi::SessionStartProfiling
+   */
+  void StartProfiling(const std::string& file_prefix);  ///< Wraps OrtApi::SessionStartProfiling
 };
 
 }  // namespace detail
