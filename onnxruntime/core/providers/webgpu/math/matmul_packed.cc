@@ -63,13 +63,13 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
   // Handle bias with `MatMulWriteFnSource()`.
   // Here `use_split_k` is false because we just initialize `output` with bias.
   // `use_split_k` is true only when we do the actual MatMul with Split-K.
-  // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
+  const uint32_t bias_components = output_components_;
   MatMulWriteFnSource(
-      shader, output, bias, /*is_gemm*/ false, /*c_components*/ 4, /*output_components*/ 4, /*c_is_scalar*/ false,
+      shader, output, bias, is_gemm_, bias_components, output_components_, bias_is_scalar_,
       /*activation_snippet*/ "", /*is_channels_last*/ true, /*use_split_k*/ false);
 
+  shader.MainFunctionBody() << "  let output_components = " << output_components_ << ";\n";
   shader.MainFunctionBody() << R"(
-  let output_components = 4;
   let output_id = i32(global_idx);
 
   let dim_a_outer = i32(uniforms.dim_a_outer);
