@@ -6,6 +6,10 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/framework/int4.h"
+#include "test/util/include/asserts.h"
+#include "core/session/inference_session.h"
+#include "test/util/include/test_environment.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime {
 namespace test {
@@ -3390,6 +3394,16 @@ TEST(QuantizeLinearOp21BlockedTest, Float8_NoZeroPoint_LastAxis) {
   }
 }
 #endif
+
+TEST(QuantizeLinearOpTest, Opset23_FloatScale_PerTensor_Int8) {
+  OpTester t("QuantizeLinear", 23);
+  t.AddInput<float>("x", {4}, {-1.f, 0.f, 3.f, 10.f});
+  t.AddInput<float>("y_scale", {}, {2.f});
+  t.AddInput<int8_t>("y_zero_point", {}, {0});
+  t.AddOutput<int8_t>("y", {4}, {0, 0, 2, 5});
+  t.Run(OpTester::ExpectResult::kExpectSuccess, {kCpuExecutionProvider});
+}
+
 }  // namespace blocked_quantization
 }  // namespace test
 }  // namespace onnxruntime
