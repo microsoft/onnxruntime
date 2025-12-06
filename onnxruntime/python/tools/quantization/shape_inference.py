@@ -74,33 +74,28 @@ def quant_pre_process(
 
     with tempfile.TemporaryDirectory(prefix="pre.quant.") as quant_tmp_dir:
         temp_path = Path(quant_tmp_dir)
-        model = None
+        model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
+
+        # Since Upsample is deprecated after opset v10, and the model's opset will
+        # be upgraded to at least v11 during quantization, we need to replace Upsample
+        # with Resize first to avoid generating an invalid model.
+        ai_onnx_domain = [opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+        if len(ai_onnx_domain) == 1:
+            opset_version = ai_onnx_domain[0].version
+            if opset_version <= 10:
+                ReplaceUpsampleWithResize(ONNXModel(model), opset_version).apply()
+                model = onnx.version_converter.convert_version(model, 11)
+                model = save_and_reload_model_with_shape_infer(model)
 
         if not skip_symbolic_shape:
             logger.info("Performing symbolic shape inference...")
-            loaded_model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
             model = SymbolicShapeInference.infer_shapes(
-                loaded_model,
+                model,
                 int_max,
                 auto_merge,
                 guess_output_rank,
                 verbose,
             )
-
-        # Since Upsample is deprecated after opset v10, and the model's opset will
-        # be upgraded to at least v11 during quantization, we need to replace Upsample
-        # with Resize first to avoid generating an invalid model.
-        if model:
-            ai_onnx_domain = [opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
-            if len(ai_onnx_domain) == 1:
-                opset_version = ai_onnx_domain[0].version
-                if opset_version < 10:
-                    ReplaceUpsampleWithResize(ONNXModel(model), opset_version).apply()
-                    model.opset_import.remove(ai_onnx_domain[0])
-                    opset_version = 11
-                    model.opset_import.extend([onnx.helper.make_opsetid("", opset_version)])
-                    model = onnx.version_converter.convert_version(model, opset_version)
-                    model = save_and_reload_model_with_shape_infer(model)
 
         if not skip_optimization:
             # Use ORT optimizers (native code) to optimize model
