@@ -7,10 +7,8 @@
 
 FROM rocm/pytorch:rocm7.1_ubuntu24.04_py3.12_pytorch_release_2.9.1
 
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
-
-ENV PATH=/opt/venv/bin:${PATH}
 
 WORKDIR /code
 
