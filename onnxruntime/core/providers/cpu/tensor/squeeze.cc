@@ -56,10 +56,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .Alias(0, 0),
     Squeeze);
 
-// Opset 24
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze,
     24,
+    24,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .Alias(0, 0),
+    Squeeze);
+
+// Opset 25
+ONNX_CPU_OPERATOR_KERNEL(
+    Squeeze,
+    25,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .Alias(0, 0),
