@@ -14,7 +14,8 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderIndicesHelper* batch_dims,
                         bool transA,
                         bool transB,
-                        bool is_vec4);
+                        bool is_vec4,
+                        bool use_subgroup = false);
 
 void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper& output,
