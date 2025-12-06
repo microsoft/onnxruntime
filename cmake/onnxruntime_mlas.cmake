@@ -561,9 +561,13 @@ else()
           if(COMPILES_P10)
             check_cxx_source_compiles("
               #ifdef _AIX
-              #define POWER_10       0x40000
-              #define POWER_10_ANDUP (POWER_10)
               #include <sys/systemcfg.h>
+              #if !defined(POWER_10)
+              #define POWER_10       0x40000
+              #endif
+              #if !defined(POWER_10_ANDUP)
+              #define POWER_10_ANDUP (POWER_10)
+              #endif
               #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
               int main() {
                 bool HasP10 = (__power_10_andup() && __power_mma_version() == MMA_V31);
