@@ -83,31 +83,14 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
  private:
-  class ManagedHtpPowerConfigId {
-   public:
-    ManagedHtpPowerConfigId(std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager);
-
-    ~ManagedHtpPowerConfigId();
-
-    void CreateHtpPowerConfigId(uint32_t device_id,
-                                qnn::HtpPerformanceMode default_htp_performance_mode,
-                                uint32_t default_rpc_control_latency,
-                                uint32_t default_rpc_polling_time);
-
-    bool IsValid();
-    uint32_t GetHtpPowerConfigId();
-
-   private:
-    bool is_valid_ = false;
-    std::mutex config_id_mutex_;
-
-    uint32_t htp_power_config_id_;
-    std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
-  };
-
   qnn::PerThreadHtpPowerConfigs_t GetPerThreadHtpPowerConfigs(const ConfigOptions& config_options);
 
-  mutable std::shared_ptr<ManagedHtpPowerConfigId> managed_htp_power_config_id_ = nullptr;
+  void CreateHtpPowerConfigId() const;
+  // Will return false if htp_power_config_id_ has no value
+  bool GetHtpPowerConfigId(uint32_t& htp_power_config_id);
+
+  mutable std::optional<uint32_t> htp_power_config_id_;
+  mutable std::mutex config_id_mutex_;
 
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   // Note: Using shared_ptr<QnnBackendManager> so that we can refer to it with a weak_ptr from a

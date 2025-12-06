@@ -71,15 +71,15 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpExtremePowerSaver,
 };
 
-typedef struct PerThreadHtpPowerConfigs {
-  HtpPerformanceMode pre_run_perf_mode = HtpPerformanceMode::kHtpDefault;
-  HtpPerformanceMode post_run_perf_mode = HtpPerformanceMode::kHtpDefault;
+typedef struct RpcPowerConfigs {
   uint32_t rpc_control_latency = 0;
   uint32_t rpc_polling_time = 0;
+} RpcPowerConfigs_t;
 
-  bool pre_run_perf_mode_set = false;
-  bool post_run_perf_mode_set = false;
-  bool rpc_configs_set = false;
+typedef struct PerThreadHtpPowerConfigs {
+  std::optional<HtpPerformanceMode> pre_run_perf_mode;
+  std::optional<HtpPerformanceMode> post_run_perf_mode;
+  std::optional<RpcPowerConfigs_t> rpc_configs;
 
   uint32_t power_config_id = 0;
 } PerThreadHtpPowerConfigs_t;
