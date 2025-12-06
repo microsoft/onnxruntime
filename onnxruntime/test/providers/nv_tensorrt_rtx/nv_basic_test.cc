@@ -503,7 +503,7 @@ TEST(NvExecutionProviderTest, FP8CustomOpModel) {
   ASSERT_EQ(output_shape[1], 64);
 
   // Verify output is FLOAT16
-  ASSERT_EQ(output_tensor.DataType(), DataTypeImpl::GetType<MLFloat16>());
+  ASSERT_TRUE(output_tensor.IsDataType<MLFloat16>());
 
   LOGS_DEFAULT(INFO) << "[NvExecutionProviderTest] TRT FP8 custom ops model run completed successfully";
 }
@@ -570,7 +570,7 @@ TEST(NvExecutionProviderTest, FP4CustomOpModel) {
   ASSERT_EQ(output_shape[1], 64);
 
   // Verify output is FLOAT16
-  ASSERT_EQ(output_tensor.DataType(), DataTypeImpl::GetType<MLFloat16>());
+  ASSERT_TRUE(output_tensor.IsDataType<MLFloat16>());
 
   LOGS_DEFAULT(INFO) << "[NvExecutionProviderTest] TRT FP4 dynamic quantize model run completed successfully";
 }

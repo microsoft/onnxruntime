@@ -158,7 +158,7 @@ Ort::IoBinding generate_io_binding(
  *                (FLOAT16)
  */
 void CreateFP8CustomOpModel(const PathString& model_name,
-    std::string graph_name);
+                            const std::string& graph_name);
 #endif  // !defined(DISABLE_FLOAT8_TYPES)
 
 #if !defined(DISABLE_FLOAT4_TYPES) && !defined(DISABLE_FLOAT8_TYPES)
@@ -207,7 +207,7 @@ void CreateFP8CustomOpModel(const PathString& model_name,
  *                 (FLOAT16)
  */
 void CreateFP4CustomOpModel(const PathString& model_name,
-    std::string graph_name);
+                            const std::string& graph_name);
 #endif  // !defined(DISABLE_FLOAT4_TYPES) && !defined(DISABLE_FLOAT8_TYPES)
 
 }  // namespace test

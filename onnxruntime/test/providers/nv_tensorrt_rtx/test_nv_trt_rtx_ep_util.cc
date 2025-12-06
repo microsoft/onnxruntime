@@ -475,60 +475,60 @@ static std::vector<ONNX_NAMESPACE::OpSchema> CreateTRTFP8Schemas() {
   schemas.emplace_back();
   ONNX_NAMESPACE::OpSchema& fp8_quant_schema = schemas.back();
   fp8_quant_schema
-    .SetName("TRT_FP8QuantizeLinear")
-    .SetDomain("trt")
-    .SinceVersion(1)
-    .SetDoc("TensorRT FP8 Quantization - quantizes FP16 input to FP8")
-    .Input(0, "X", "Input tensor in FP16", "T1")
-    .Input(1, "scale", "Scale for quantization in FP16", "T1")
-    .Output(0, "Y", "Quantized output tensor in FP8", "T2")
-    .TypeConstraint("T1", {"tensor(float16)"}, "Input and scale must be float16")
-    .TypeConstraint("T2", {"tensor(float8e4m3fn)"}, "Output must be float8e4m3fn")
-    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-      // Output has same shape as input but FP8 type
-      auto input_type = ctx.getInputType(0);
-      if (input_type != nullptr && input_type->has_tensor_type()) {
-        auto output_type = ctx.getOutputType(0);
-        output_type->mutable_tensor_type()->set_elem_type(
-            ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
-        if (input_type->tensor_type().has_shape()) {
-          *output_type->mutable_tensor_type()->mutable_shape() =
-              input_type->tensor_type().shape();
+      .SetName("TRT_FP8QuantizeLinear")
+      .SetDomain("trt")
+      .SinceVersion(1)
+      .SetDoc("TensorRT FP8 Quantization - quantizes FP16 input to FP8")
+      .Input(0, "X", "Input tensor in FP16", "T1")
+      .Input(1, "scale", "Scale for quantization in FP16", "T1")
+      .Output(0, "Y", "Quantized output tensor in FP8", "T2")
+      .TypeConstraint("T1", {"tensor(float16)"}, "Input and scale must be float16")
+      .TypeConstraint("T2", {"tensor(float8e4m3fn)"}, "Output must be float8e4m3fn")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Output has same shape as input but FP8 type
+        auto input_type = ctx.getInputType(0);
+        if (input_type != nullptr && input_type->has_tensor_type()) {
+          auto output_type = ctx.getOutputType(0);
+          output_type->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
+          if (input_type->tensor_type().has_shape()) {
+            *output_type->mutable_tensor_type()->mutable_shape() =
+                input_type->tensor_type().shape();
+          }
         }
-      }
-    });
+      });
 
   // TRT_FP8DequantizeLinear schema
   schemas.emplace_back();
   ONNX_NAMESPACE::OpSchema& fp8_dequant_schema = schemas.back();
   fp8_dequant_schema
-    .SetName("TRT_FP8DequantizeLinear")
-    .SetDomain("trt")
-    .SinceVersion(1)
-    .SetDoc("TensorRT FP8 Dequantization - dequantizes FP8 input to FP16")
-    .Input(0, "X", "Quantized input tensor in FP8", "T1")
-    .Input(1, "scale", "Scale for dequantization in FP16", "T2")
-    .Output(0, "Y", "Dequantized output tensor in FP16", "T2")
-    .TypeConstraint("T1", {"tensor(float8e4m3fn)"}, "Input must be float8e4m3fn")
-    .TypeConstraint("T2", {"tensor(float16)"}, "Scale and output must be float16")
-    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-      // Output has same shape as input but FP16 type
-      auto input_type = ctx.getInputType(0);
-      if (input_type != nullptr && input_type->has_tensor_type()) {
-        auto output_type = ctx.getOutputType(0);
-        output_type->mutable_tensor_type()->set_elem_type(
-            ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-        if (input_type->tensor_type().has_shape()) {
-          *output_type->mutable_tensor_type()->mutable_shape() =
-              input_type->tensor_type().shape();
+      .SetName("TRT_FP8DequantizeLinear")
+      .SetDomain("trt")
+      .SinceVersion(1)
+      .SetDoc("TensorRT FP8 Dequantization - dequantizes FP8 input to FP16")
+      .Input(0, "X", "Quantized input tensor in FP8", "T1")
+      .Input(1, "scale", "Scale for dequantization in FP16", "T2")
+      .Output(0, "Y", "Dequantized output tensor in FP16", "T2")
+      .TypeConstraint("T1", {"tensor(float8e4m3fn)"}, "Input must be float8e4m3fn")
+      .TypeConstraint("T2", {"tensor(float16)"}, "Scale and output must be float16")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Output has same shape as input but FP16 type
+        auto input_type = ctx.getInputType(0);
+        if (input_type != nullptr && input_type->has_tensor_type()) {
+          auto output_type = ctx.getOutputType(0);
+          output_type->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+          if (input_type->tensor_type().has_shape()) {
+            *output_type->mutable_tensor_type()->mutable_shape() =
+                input_type->tensor_type().shape();
+          }
         }
-      }
-    });
+      });
 
   return schemas;
 }
 
-void CreateFP8CustomOpModel(const PathString& model_name, std::string graph_name) {
+void CreateFP8CustomOpModel(const PathString& model_name, const std::string& graph_name) {
   // Create custom schema registry for TRT operators
   auto custom_schema_registry = std::make_shared<onnxruntime::OnnxRuntimeOpSchemaRegistry>();
 
@@ -609,11 +609,8 @@ void CreateFP8CustomOpModel(const PathString& model_name, std::string graph_name
   graph.SetInputs({&input_arg});
   graph.SetOutputs({&output_arg});
 
-  status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << "Graph Resolve failed: " << status.ErrorMessage();
-
-  status = Model::Save(model, model_name);
-  ASSERT_TRUE(status.IsOK()) << "Model Save failed: " << status.ErrorMessage();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(Model::Save(model, model_name));
 }
 #endif  // !defined(DISABLE_FLOAT8_TYPES)
 
@@ -626,44 +623,44 @@ static std::vector<ONNX_NAMESPACE::OpSchema> CreateTRTFP4Schemas() {
   schemas.emplace_back();
   ONNX_NAMESPACE::OpSchema& fp4_quant_schema = schemas.back();
   fp4_quant_schema
-    .SetName("TRT_FP4DynamicQuantize")
-    .SetDomain("trt")
-    .SinceVersion(1)
-    .SetDoc("TensorRT FP4 Dynamic Quantization - quantizes FP16 input to FP4 with block-wise quantization")
-    .Attr("axis", "Axis along which to quantize", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(-1))
-    .Attr("block_size", "Block size for quantization", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(16))
-    .Attr("scale_type", "Scale data type", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(17))
-    .Input(0, "X", "Input tensor in FP16", "T1")
-    .Input(1, "scale", "Scale for quantization in FP16", "T1")
-    .Output(0, "Y_quantized", "Quantized output tensor in FP4", "T2")
-    .Output(1, "Y_scale", "Computed scales in FP8", "T3")
-    .TypeConstraint("T1", {"tensor(float16)"}, "Input and scale must be float16")
-    .TypeConstraint("T2", {"tensor(float4e2m1)"}, "Quantized output must be float4e2m1")
-    .TypeConstraint("T3", {"tensor(float8e4m3fn)"}, "Scale output must be float8e4m3fn")
-    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-      // Output 0 (Y_quantized) has same shape as input but FP4 type
-      auto input_type = ctx.getInputType(0);
-      if (input_type != nullptr && input_type->has_tensor_type()) {
-        auto output_type_0 = ctx.getOutputType(0);
-        output_type_0->mutable_tensor_type()->set_elem_type(
-            ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1);
-        if (input_type->tensor_type().has_shape()) {
-          *output_type_0->mutable_tensor_type()->mutable_shape() =
-              input_type->tensor_type().shape();
-        }
+      .SetName("TRT_FP4DynamicQuantize")
+      .SetDomain("trt")
+      .SinceVersion(1)
+      .SetDoc("TensorRT FP4 Dynamic Quantization - quantizes FP16 input to FP4 with block-wise quantization")
+      .Attr("axis", "Axis along which to quantize", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("block_size", "Block size for quantization", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(16))
+      .Attr("scale_type", "Scale data type", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(17))
+      .Input(0, "X", "Input tensor in FP16", "T1")
+      .Input(1, "scale", "Scale for quantization in FP16", "T1")
+      .Output(0, "Y_quantized", "Quantized output tensor in FP4", "T2")
+      .Output(1, "Y_scale", "Computed scales in FP8", "T3")
+      .TypeConstraint("T1", {"tensor(float16)"}, "Input and scale must be float16")
+      .TypeConstraint("T2", {"tensor(float4e2m1)"}, "Quantized output must be float4e2m1")
+      .TypeConstraint("T3", {"tensor(float8e4m3fn)"}, "Scale output must be float8e4m3fn")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Output 0 (Y_quantized) has same shape as input but FP4 type
+        auto input_type = ctx.getInputType(0);
+        if (input_type != nullptr && input_type->has_tensor_type()) {
+          auto output_type_0 = ctx.getOutputType(0);
+          output_type_0->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1);
+          if (input_type->tensor_type().has_shape()) {
+            *output_type_0->mutable_tensor_type()->mutable_shape() =
+                input_type->tensor_type().shape();
+          }
 
-        // Output 1 (Y_scale) shape depends on block_size and axis
-        // For simplicity, we'll just set the type and let runtime handle shape
-        auto output_type_1 = ctx.getOutputType(1);
-        output_type_1->mutable_tensor_type()->set_elem_type(
-            ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
-      }
-    });
+          // Output 1 (Y_scale) shape depends on block_size and axis
+          // For simplicity, we'll just set the type and let runtime handle shape
+          auto output_type_1 = ctx.getOutputType(1);
+          output_type_1->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
+        }
+      });
 
   return schemas;
 }
 
-void CreateFP4CustomOpModel(const PathString& model_name, std::string graph_name) {
+void CreateFP4CustomOpModel(const PathString& model_name, const std::string& graph_name) {
   // Create custom schema registry for TRT operators
   auto custom_schema_registry = std::make_shared<onnxruntime::OnnxRuntimeOpSchemaRegistry>();
 
@@ -819,11 +816,8 @@ void CreateFP4CustomOpModel(const PathString& model_name, std::string graph_name
   graph.SetInputs({&input_arg});
   graph.SetOutputs({&output_final});
 
-  status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << "Graph Resolve failed: " << status.ErrorMessage();
-
-  status = Model::Save(model, model_name);
-  ASSERT_TRUE(status.IsOK()) << "Model Save failed: " << status.ErrorMessage();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(Model::Save(model, model_name));
 }
 #endif  // !defined(DISABLE_FLOAT4_TYPES) && !defined(DISABLE_FLOAT8_TYPES)
 
