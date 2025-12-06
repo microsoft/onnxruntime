@@ -21,7 +21,7 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-// Some feature (like broadcast support) are implemented in CPU and CUDA/ROCM provider only. A helper to run tests.
+// Some feature (like broadcast support) are implemented in CPU and CUDA provider only. A helper to run tests.
 void RunTestOnCpuAndCuda(OpTester& test, const std::string& expected_failure_msg = "") {
   auto expected_result = expected_failure_msg.empty()
                              ? OpTester::ExpectResult::kExpectSuccess
@@ -33,13 +33,11 @@ void RunTestOnCpuAndCuda(OpTester& test, const std::string& expected_failure_msg
 
   constexpr int min_cuda_architecture = 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-  if (enable_cuda || enable_rocm) {
+
+  if (enable_cuda) {
     std::vector<std::unique_ptr<IExecutionProvider>> gpu_execution_provider;
     if (enable_cuda) {
       gpu_execution_provider.push_back(DefaultCudaExecutionProvider());
-    } else if (enable_rocm) {
-      gpu_execution_provider.push_back(DefaultRocmExecutionProvider());
     }
 
     if (gpu_execution_provider.size() > 0) {

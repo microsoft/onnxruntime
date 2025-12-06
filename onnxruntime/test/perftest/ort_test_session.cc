@@ -662,16 +662,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kRocmExecutionProvider) {
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
-    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    // TODO: Support arena configuration for users of perf test
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
-#else
-    ORT_THROW("ROCM is not supported in this build\n");
-#endif
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));

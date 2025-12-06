@@ -730,20 +730,17 @@ TEST(GroupNormTest, GroupNorm_128) {
   // Test float16, without activation
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
 
   std::array<int, 3> channels_last_values = {-1, 0, 1};
 
   for (const int channels_last : channels_last_values) {
-    if (enable_cuda || enable_rocm || enable_dml) {
+    if (enable_cuda || enable_dml) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       if (enable_cuda && channels_last != 0) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
       }
-      if (enable_rocm && channels_last != 0) {
-        execution_providers.push_back(DefaultRocmExecutionProvider());
-      }
+
       if (enable_dml) {
         execution_providers.push_back(DefaultDmlExecutionProvider());
       }
@@ -784,14 +781,12 @@ TEST(GroupNormTest, GroupNorm_128) {
 
     // Test float32, with activation
     enable_cuda = HasCudaEnvironment(0);
-    if (enable_cuda || enable_rocm || enable_dml) {
+    if (enable_cuda || enable_dml) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       if (enable_cuda && channels_last != 0) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
       }
-      if (enable_rocm && channels_last != 0) {
-        execution_providers.push_back(DefaultRocmExecutionProvider());
-      }
+
       if (enable_dml) {
         execution_providers.push_back(DefaultDmlExecutionProvider());
       }

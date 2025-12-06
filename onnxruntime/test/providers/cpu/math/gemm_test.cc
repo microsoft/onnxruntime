@@ -95,7 +95,7 @@ auto get_bias_value = [](const std::vector<float>& bias_data, BiasType bias_type
 
 }  // namespace
 
-// Only CUDA, ROCM, CoreML and XNNPack kernels have float 16 support
+// Only CUDA, CoreML and XNNPack kernels have float 16 support
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -195,7 +195,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   }
 }
 
-// Only CUDA, ROCM and CoreML kernels have float 16 support
+// Only CUDA and CoreML kernels have float 16 support
 TEST(GemmOpTest, GemmTransB_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -242,7 +242,7 @@ TEST(GemmOpTest, GemmTransB_f16) {
   }
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(GemmOpTest, GemmNoTrans_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -270,13 +270,6 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   test.Config(run_with_tunable_op);
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-  test.ConfigEps(std::move(execution_providers))
-      .RunWithConfig();
-
-  execution_providers.clear();
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
 #elif USE_DNNL
   execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif

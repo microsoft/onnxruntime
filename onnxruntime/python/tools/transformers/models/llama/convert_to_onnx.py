@@ -631,7 +631,7 @@ def get_args():
         "--execution_provider",
         required=False,
         default="cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
         help="Execution provider to verify parity with",
     )
 

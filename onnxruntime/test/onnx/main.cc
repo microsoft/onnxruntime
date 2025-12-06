@@ -56,7 +56,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -228,7 +228,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
-  bool enable_rocm = false;
   bool enable_migraphx = false;
   bool enable_webgpu = false;
   bool enable_xnnpack = false;
@@ -319,8 +318,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_acl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
             enable_armnn = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
-            enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
           } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
@@ -745,17 +742,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "ArmNN is not supported in this build\n");
-      return -1;
-#endif
-    }
-    if (enable_rocm) {
-#ifdef USE_ROCM
-      OrtROCMProviderOptions rocm_options;
-      rocm_options.do_copy_in_default_stream = true;
-      // TODO: Support arena configuration for users of test runner
-      sf.AppendExecutionProvider_ROCM(rocm_options);
-#else
-      fprintf(stderr, "ROCM is not supported in this build");
       return -1;
 #endif
     }
