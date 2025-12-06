@@ -162,8 +162,9 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
                            "last dimension of indices must not be larger than rank of input tensor");
   }
 
-  ORT_RETURN_IF_ERROR(CheckBatchDimensionsMatch(
-      static_cast<size_t>(batch_dims_), {input_shape, indices_shape}));
+  // Removed batch dimension validation to match CPU implementation behavior
+  // The CheckBatchDimensionsMatch validation was too restrictive compared to CPU implementation
+  // See issue #25053: CPU allows more flexible input shapes for GatherND operation
 
   // Output shape
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
