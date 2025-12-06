@@ -128,7 +128,7 @@ class BaseOpBuilder : public IOpBuilder {
                                                   Qnn_DataType_t qnn_data_type,
                                                   QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT;
 
-  static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
+  static const std::optional<std::reference_wrapper<std::string>> GetOptionalQnnOpType(const std::string& onnx_op_type) {
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
         {"Add", QNN_OP_ELEMENT_WISE_ADD},
         {"Mul", QNN_OP_ELEMENT_WISE_MULTIPLY},
@@ -233,8 +233,16 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"Expand", QNN_OP_ELEMENT_WISE_MULTIPLY}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
-    ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
+    if(it == onnx_op_type_to_qnn_op_type.end()){
+      return std::nullopt;
+    }
     return it->second;
+  }
+
+  static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
+    const auto qnn_op_type = GetOptionalQnnOpType(onnx_op_type);
+    ORT_ENFORCE(qnn_op_type.has_value());
+    return qnn_op_type.value();
   }
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]

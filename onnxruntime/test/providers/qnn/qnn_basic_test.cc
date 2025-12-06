@@ -165,6 +165,33 @@ TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
   }
 }
 
+
+// Tests the `session.disable_cpu_ep_fallback` configuration option when the entire model cannot be assigned to QNN EP.
+// When the option is disabled, Session creation should not throw an exception since fallback is enabled.
+TEST(QnnEP, TestEnableCPUFallback_QNNModelNotFullySupported) {
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "0");  // Enable fallback to the CPU EP.
+
+    onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+    options["backend_path"] = "QnnCpu.dll";
+#else
+    options["backend_path"] = "libQnnCpu.so";
+#endif
+    options["offload_graph_io_quantization"] = "0";
+
+    so.AppendExecutionProvider("QNN", options);
+
+    // QNN EP doesn't support MatMulInteger.
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "qnn_ep_partial_support.onnx";
+
+    // Even though the QNN backend does not support the operation, we do not expect an
+    // error to be thrown since the CPU EP fallback is enabled
+    EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
+  }
+}
+
 // The model is supported on QNN CPU backend, but CPU fallback is disabled
 // QNN EP report error for this scenario also
 TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {

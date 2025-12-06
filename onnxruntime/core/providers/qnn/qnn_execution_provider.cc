@@ -35,6 +35,8 @@ static std::string MakeSharedLibraryPath(std::string_view name) {
 
 const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
 const std::string kDefaultGpuBackendPath = MakeSharedLibraryPath("QnnGpu");
+const std::string kDefaultDspBackendPath = MakeSharedLibraryPath("QnnDsp");
+const std::string kDefaultHtaBackendPath = MakeSharedLibraryPath("QnnHta");
 const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
 const std::string kDefaultSaverBackendPath = MakeSharedLibraryPath("QnnSaver");
 const std::string kDefaultIrBackendPath = MakeSharedLibraryPath("QnnIr");
@@ -42,6 +44,8 @@ const std::string kDefaultIrBackendPath = MakeSharedLibraryPath("QnnIr");
 static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
   constexpr std::string_view kCpuBackendTypeName{"cpu"};
   constexpr std::string_view kGpuBackendTypeName{"gpu"};
+  constexpr std::string_view kDspBackendTypeName{"dsp"};
+  constexpr std::string_view kHtaBackendTypeName{"hta"};
   constexpr std::string_view kHtpBackendTypeName{"htp"};
   constexpr std::string_view kSaverBackendTypeName{"saver"};
   constexpr std::string_view kIrBackendTypeName{"ir"};
@@ -49,6 +53,8 @@ static bool ParseBackendTypeName(std::string_view backend_type_name, std::string
   constexpr std::array kAllowedBackendTypeNames{
       kCpuBackendTypeName,
       kGpuBackendTypeName,
+      kDspBackendTypeName,
+      kHtaBackendTypeName,
       kHtpBackendTypeName,
       kSaverBackendTypeName,
       kIrBackendTypeName,
@@ -59,6 +65,10 @@ static bool ParseBackendTypeName(std::string_view backend_type_name, std::string
     associated_backend_path = kDefaultCpuBackendPath;
   } else if (backend_type_name == kGpuBackendTypeName) {
     associated_backend_path = kDefaultGpuBackendPath;
+  } else if (backend_type_name == kDspBackendTypeName) {
+    associated_backend_path = kDefaultDspBackendPath;
+  } else if (backend_type_name == kHtaBackendTypeName) {
+    associated_backend_path = kDefaultHtaBackendPath;
   } else if (backend_type_name == kHtpBackendTypeName) {
     associated_backend_path = kDefaultHtpBackendPath;
   } else if (backend_type_name == kSaverBackendTypeName) {
@@ -972,7 +982,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsQpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
-    LOGS(logger, ERROR) << "Qnn context cache only works for HTP/DSP/GPU backend.";
+    LOGS(logger, ERROR) << "Qnn context cache only works for HTP/DSP/HTA/GPU backend.";
     return result;
   }
 
@@ -1461,7 +1471,7 @@ static bool TryGetConfigEntry(const ConfigOptions& config_options, const std::st
 
 Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   auto backend_type = qnn_backend_manager_->GetQnnBackendType();
-  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+  if (!qnn::IsNpuBackend(backend_type)) {
     return Status::OK();
   }
 
@@ -1510,7 +1520,7 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 
 Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& run_options) {
   auto backend_type = qnn_backend_manager_->GetQnnBackendType();
-  if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+  if (!qnn::IsNpuBackend(backend_type)) {
     return Status::OK();
   }
 
@@ -1588,7 +1598,7 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       }
     } else if (key == kOrtEpDynamicOptionsQnnHtpPerformanceMode) {
       auto backend_type = qnn_backend_manager_->GetQnnBackendType();
-      if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
+      if (!qnn::IsNpuBackend(backend_type)) {
         return Status::OK();
       }
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;

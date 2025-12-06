@@ -15,6 +15,24 @@
 
 namespace onnxruntime {
 namespace qnn {
+bool QnnModelWrapper::IsOpSupported(const std::string& qnn_op_name) const {
+  // Ignore validation if we failed to load the
+  // list of supported operand names from the backend
+  LOGS(logger_, VERBOSE) << "Checking if node: "
+                            "" << qnn_op_name << " is supported for the given QNN backend";
+
+  if (supported_backend_op_names_.empty()) {
+    LOGS(logger_, VERBOSE) << "Ignoring node validation as the retrieval "
+                              "of supported node names for the given QNN backend failed";
+    return true;
+  }
+  // Otherwise verify that the operation is one of the supported operations for the specified backend
+  const bool is_op_supported = std::find(supported_backend_op_names_.begin(),
+    supported_backend_op_names_.end(), qnn_op_name) != supported_backend_op_names_.end();
+  LOGS(logger_, VERBOSE) << "Node: " << qnn_op_name << " is " <<
+    (is_op_supported ? "supported" : "unsupported") << " for the given QNN backend";
+  return is_op_supported;
+}
 
 bool QnnModelWrapper::CreateQnnGraph(const Qnn_ContextHandle_t& context,
                                      const std::string& graph_name,
@@ -333,7 +351,7 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
 
   for (const auto& dim : shape_proto->dim()) {
     if (!dim.has_dim_value()) {
-      return false;  // Do not support dynamic shapes.
+      return false; // Do not support dynamic shapes.
     }
     shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
   }
@@ -360,7 +378,8 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
 
   switch (onnx_data_type) {
     // QNN use -offset for some reason
-    case ONNX_NAMESPACE::TensorProto_DataType_INT4: {  // INT4 zero-points are unpacked as 8-bit values for QNN
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4: {
+      // INT4 zero-points are unpacked as 8-bit values for QNN
       auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(initializer_bytes));
       std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points),
                      [](int8_t masked_zp) -> int32_t {
@@ -380,7 +399,7 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
                      });
       break;
     }
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:  // UINT4 zero-points are unpacked as 8-bit values for QNN
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4: // UINT4 zero-points are unpacked as 8-bit values for QNN
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(initializer_bytes));
       std::transform(uint8_span.begin(), uint8_span.end(), std::back_inserter(zero_points),
@@ -456,7 +475,7 @@ Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& 
   is_per_channel = !is_scalar_or_1_elem_vector;
 
   if (is_per_channel) {
-    axis = io_def.quant_param->axis.value_or(1);  // 1 is default axis for Q/DQ ops.
+    axis = io_def.quant_param->axis.value_or(1); // 1 is default axis for Q/DQ ops.
     if (axis < 0) {
       // Normalize negative axis by adding rank.
       const auto* tensor_shape_proto = io_def.node_arg.Shape();
@@ -481,7 +500,7 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
   // Fill in QNN data type.
   tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
   ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input.quant_param.has_value(), input.node_arg.TypeAsProto(),
-                                            tensor_info.qnn_data_type));
+    tensor_info.qnn_data_type));
 
   // Fill in shape.
   ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, tensor_info.shape), "Cannot get shape");
@@ -515,7 +534,7 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name, const std:
                     "QNN EP: Failed to add output tensor for inserted Reshape.");
 
   ORT_RETURN_IF_NOT(CreateQnnNode(utils::GetUniqueName(output_name, QNN_OP_RESHAPE), QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_RESHAPE, {input_name},
-                                  {output_name}, {}, do_op_validation),
+                      {output_name}, {}, do_op_validation),
                     "QNN EP: Failed to create manually inserted Qnn Reshape node.");
 
   return Status::OK();
@@ -576,12 +595,12 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                         std::move(output_shape_copy));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   ORT_RETURN_IF_NOT(CreateQnnNode(utils::GetUniqueName(output_name, QNN_OP_TRANSPOSE),
-                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                  QNN_OP_TRANSPOSE,
-                                  {input_name},
-                                  {output_name},
-                                  {param_tensor_name},
-                                  do_op_validation),
+                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                      QNN_OP_TRANSPOSE,
+                      {input_name},
+                      {output_name},
+                      {param_tensor_name},
+                      do_op_validation),
                     "QNN EP: Failed to create manually inserted Qnn Transpose node.");
 
   return Status::OK();
@@ -609,7 +628,7 @@ Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto&
                                               std::vector<uint8_t>& unpacked_tensor) const {
   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(),
-                                                                  unpacked_tensor));
+      unpacked_tensor));
   } else {
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor));
   }
@@ -629,6 +648,5 @@ Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto&
 
   return Status::OK();
 }
-
-}  // namespace qnn
-}  // namespace onnxruntime
+} // namespace qnn
+} // namespace onnxruntime

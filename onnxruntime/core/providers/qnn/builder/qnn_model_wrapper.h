@@ -18,7 +18,6 @@
 
 namespace onnxruntime {
 namespace qnn {
-
 // Stores information about an ONNX input or output tensor.
 // Filled out by QnnModelWrapper::GetTensorInfo()
 struct TensorInfo {
@@ -35,7 +34,7 @@ struct ModelSettings {
 };
 
 class QnnModelWrapper {
- public:
+public:
   QnnModelWrapper(const GraphViewer& graph_viewer,
                   const logging::Logger& logger,
                   const QNN_INTERFACE_VER_TYPE& qnn_interface,
@@ -44,20 +43,37 @@ class QnnModelWrapper {
                   const std::unordered_map<std::string, size_t>& output_index_map,
                   QnnBackendType qnn_backend_type,
                   const ModelSettings& model_settings)
-      : graph_viewer_(graph_viewer),
-        logger_(logger),
-        qnn_interface_(qnn_interface),
-        backend_handle_(backend_handle),
-        input_index_map_(input_index_map),
-        output_index_map_(output_index_map),
-        qnn_backend_type_(qnn_backend_type),
-        model_settings_(model_settings) {
+    : graph_viewer_(graph_viewer),
+      logger_(logger),
+      qnn_interface_(qnn_interface),
+      backend_handle_(backend_handle),
+      input_index_map_(input_index_map),
+      output_index_map_(output_index_map),
+      qnn_backend_type_(qnn_backend_type),
+      model_settings_(model_settings) {
+    uint32_t numOps;
+    const QnnBackend_OperationName_t* opNames = nullptr;
+    const auto status = qnn_interface_.backendGetSupportedOperations(backend_handle_, &numOps, &opNames);
+    if (status != QNN_SUCCESS) {
+      LOGS(logger_, WARNING) << "Failed to retrieve supported "
+                                "operations for QNN backend with status " << status;
+      return;
+    }
+
+    supported_backend_op_names_.resize(numOps);
+    for (size_t i = 0; i < static_cast<size_t>(numOps); ++i) {
+      std::string opName(opNames[i].name);
+      supported_backend_op_names_.emplace_back(opNames[i].name);
+    }
   }
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
   ~QnnModelWrapper() = default;
 
   const ModelSettings& GetModelSettings() const { return model_settings_; }
+
+  bool IsOpSupported(const std::string& qnn_op_name) const;
 
   bool CreateQnnGraph(const Qnn_ContextHandle_t& context,
                       const std::string& graph_name,
@@ -292,7 +308,7 @@ class QnnModelWrapper {
                                /*out*/ bool& is_per_channel,
                                /*out*/ int64_t& axis) const;
 
- private:
+private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
                                    const std::vector<std::string>& names,
                                    std::vector<Qnn_Tensor_t>& tensor_wrappers,
@@ -332,6 +348,8 @@ class QnnModelWrapper {
   // QNN context that holds the QNN graph referenced by `graph_`
   Qnn_ContextHandle_t graph_context_ = nullptr;
 
+  std::vector<std::string> supported_backend_op_names_;
+
   std::vector<std::string> model_input_names_;
   std::vector<std::string> model_output_names_;
   std::vector<QnnTensorWrapper> model_input_tensor_wrappers_;
@@ -349,7 +367,7 @@ class QnnModelWrapper {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
-};  // QnnModelWrapper
+}; // QnnModelWrapper
 
 template <typename T>
 inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
@@ -397,6 +415,5 @@ inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
   qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
   return Status::OK();
 }
-
-}  // namespace qnn
-}  // namespace onnxruntime
+} // namespace qnn
+} // namespace onnxruntime
