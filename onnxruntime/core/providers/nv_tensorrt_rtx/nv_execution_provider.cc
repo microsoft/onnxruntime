@@ -118,6 +118,7 @@ static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:         // kINT64 - 64-bit signed integer
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:  // kFP8 - 8-bit floating point
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:        // kDOUBLE - 64-bit floating point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:    // kFP4 - 4-bit floating point
       return true;
     default:
       return false;
@@ -692,6 +693,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, uint8_t)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -756,6 +758,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, uint8_t)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
