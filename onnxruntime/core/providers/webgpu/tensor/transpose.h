@@ -23,8 +23,8 @@ class Transpose final : public WebGpuKernel, public TransposeBase {
 
 class TransposeProgram final : public Program<TransposeProgram> {
  public:
-  TransposeProgram(const gsl::span<const size_t>& permutations, bool use_shared)
-      : Program{"Transpose"}, perm_(permutations.begin(), permutations.end()), use_shared_(use_shared) {
+  TransposeProgram(const gsl::span<const size_t>& permutations, bool use_shared, bool map_first_channels_first = false)
+      : Program{"Transpose"}, perm_(permutations.begin(), permutations.end()), use_shared_(use_shared), map_first_channels_first_(map_first_channels_first) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -35,6 +35,7 @@ class TransposeProgram final : public Program<TransposeProgram> {
  private:
   InlinedVector<int64_t> perm_;
   const bool use_shared_;
+  const bool map_first_channels_first_;
 };
 
 }  // namespace webgpu
