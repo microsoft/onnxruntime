@@ -162,7 +162,6 @@ static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(const Graph& gra
     // Empty node provider means CPU EP
     if (!node_provider.empty() &&
         !(node_provider == kCudaExecutionProvider ||
-          node_provider == kRocmExecutionProvider ||
           node_provider == kJsExecutionProvider ||
           node_provider == kWebGpuExecutionProvider ||
           node_provider == kDmlExecutionProvider) &&
@@ -2292,7 +2291,7 @@ common::Status InferenceSession::Initialize() {
                                "Session initialization canceled due to user request.");
       }
 
-      // Currently graph capture is only considered by CUDA EP, TRT EP, ROCM EP and JS EP.
+      // Currently graph capture is only considered by CUDA EP, TRT EP and JS EP.
       //
       // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
@@ -2312,16 +2311,9 @@ common::Status InferenceSession::Initialize() {
       // All the "compute" graph nodes have been assigned to the JS EP,
       // Then the JS EP is cached for triggering a ReplayGraph() in Run().
       //
-      // Check for ROCM EP:
-      // If the ROCM EP is part of the providers list for this session AND
-      // The ROCM EP is configured to do a graph capture AND
-      // All the "compute" graph nodes have been assigned to the ROCM EP,
-      // Then the ROCM EP is cached for triggering a ReplayGraph() in Run().
-      //
       std::vector<const char*> graph_support_ep_list = {
           onnxruntime::kTensorrtExecutionProvider,
           onnxruntime::kCudaExecutionProvider,
-          onnxruntime::kRocmExecutionProvider,
           onnxruntime::kJsExecutionProvider,
           onnxruntime::kWebGpuExecutionProvider,
           onnxruntime::kDmlExecutionProvider};
@@ -2344,7 +2336,6 @@ common::Status InferenceSession::Initialize() {
           }
 
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kWebGpuExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kDmlExecutionProvider) == 0) {
@@ -3165,7 +3156,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
   // so that users just need one session run to capture the graph.
   // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP,
-  // N is defined in min_num_runs_before_hip_graph_capture_ for ROCM EP,
   // and the value could be different for other EP.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&

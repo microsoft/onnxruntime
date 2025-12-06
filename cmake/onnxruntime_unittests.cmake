@@ -677,7 +677,7 @@ if(onnxruntime_USE_ARMNN)
 endif()
 
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
+    # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}

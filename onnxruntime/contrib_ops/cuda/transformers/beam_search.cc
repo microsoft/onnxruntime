@@ -70,9 +70,7 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                    GenerationCudaDeviceHelper::InitBeamState<MLFloat16>,
                    GenerationCudaDeviceHelper::CreateBeamScorer);
 
-#ifndef USE_ROCM
   SetDeviceHelpers_Cuda(GenerationCudaDeviceHelper::ReorderPastState, GenerationCudaDeviceHelper::InitCacheIndir);
-#endif
 
   SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
                        GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
@@ -87,12 +85,10 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
 
   SetConsoleDumper(&g_cuda_dumper);
 
-#ifndef USE_ROCM
   cuda_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
 
   cuda_device_arch_ = static_cast<const cudaDeviceProp*>(cuda_device_prop_)->major * 100 +
                       static_cast<const cudaDeviceProp*>(cuda_device_prop_)->minor * 10;
-#endif
 }
 
 Status BeamSearch::ComputeInternal(OpKernelContext* context) const {
@@ -124,9 +120,7 @@ WhisperBeamSearch::WhisperBeamSearch(const OpKernelInfo& info)
                    GenerationCudaDeviceHelper::InitBeamState<MLFloat16>,
                    GenerationCudaDeviceHelper::CreateBeamScorer);
 
-#ifndef USE_ROCM
   SetDeviceHelpers_Cuda(GenerationCudaDeviceHelper::ReorderPastState, GenerationCudaDeviceHelper::InitCacheIndir);
-#endif
 
   SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
                        GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
@@ -141,12 +135,10 @@ WhisperBeamSearch::WhisperBeamSearch(const OpKernelInfo& info)
 
   SetConsoleDumper(&g_cuda_dumper);
 
-#ifndef USE_ROCM
   cuda_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
 
   cuda_device_arch_ = static_cast<const cudaDeviceProp*>(cuda_device_prop_)->major * 100 +
                       static_cast<const cudaDeviceProp*>(cuda_device_prop_)->minor * 10;
-#endif
 }
 
 Status WhisperBeamSearch::ComputeInternal(OpKernelContext* context) const {
