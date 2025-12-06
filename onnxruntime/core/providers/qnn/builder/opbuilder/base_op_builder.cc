@@ -23,6 +23,11 @@ std::string BaseOpBuilder::GetOpBuilderType() const {
 Status BaseOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger) const {
+  const std::string qnn_op_name = GetQnnOpType(node_unit.OpType());
+  const bool isOpSupported = qnn_model_wrapper.IsOpSupported(qnn_op_name);
+
+  ORT_RETURN_IF_NOT(isOpSupported, "Operation " + qnn_op_name + " is unsupported for the current backend");
+
   // General Datatype checks on various QNN backend (HTP, CPU, GPU)
   ORT_RETURN_IF_ERROR(ProcessDataTypes(qnn_model_wrapper, node_unit));
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);

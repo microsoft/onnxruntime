@@ -579,7 +579,7 @@ bool IsIrBackend(QnnBackendType backend_type) {
 }
 
 bool IsNpuBackend(QnnBackendType backend_type) {
-  return backend_type == QnnBackendType::HTP || backend_type == QnnBackendType::DSP;
+  return backend_type == QnnBackendType::HTP || backend_type == QnnBackendType::DSP || backend_type == QnnBackendType::HTA;
 }
 
 bool IsGpuBackend(QnnBackendType backend_type) {

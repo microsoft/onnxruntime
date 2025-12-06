@@ -91,6 +91,7 @@ enum class QnnBackendType : uint8_t {
   CPU = 0,
   GPU,
   DSP,
+  HTA,
   HTP,
   HTP_FP16,
   SERIALIZER,

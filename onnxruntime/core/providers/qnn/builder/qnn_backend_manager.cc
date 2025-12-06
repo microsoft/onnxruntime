@@ -11,6 +11,7 @@
 #include "CPU/QnnCpuCommon.h"
 #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
+#include "HTA/QnnHtaCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
@@ -278,6 +279,9 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
       break;
     case QNN_BACKEND_ID_DSP:
       qnn_backend_type_ = QnnBackendType::DSP;
+      break;
+    case QNN_BACKEND_ID_HTA:
+      qnn_backend_type_ = QnnBackendType::HTA;
       break;
     case QNN_BACKEND_ID_HTP:
       qnn_backend_type_ = QnnBackendType::HTP;
@@ -925,6 +929,7 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   switch (GetQnnBackendType()) {
     case QnnBackendType::HTP:
     case QnnBackendType::DSP:
+    case QnnBackendType::HTA:
       configs = npu_context_configs;
       break;
     case QnnBackendType::GPU:
