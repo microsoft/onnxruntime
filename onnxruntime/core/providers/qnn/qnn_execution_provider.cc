@@ -1541,7 +1541,7 @@ QNNExecutionProvider::ManagedHtpPowerConfigId::ManagedHtpPowerConfigId(std::shar
 }
 
 QNNExecutionProvider::ManagedHtpPowerConfigId::~ManagedHtpPowerConfigId() {
-  if (qnn_backend_manager_) {
+  if (qnn_backend_manager_ && is_valid_) {
     ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
   }
 }
