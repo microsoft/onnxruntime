@@ -37,6 +37,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_2D_empty_input) {
   test.AddOutput<int32_t>("T3", {0, 2}, {});
   test.Run();
 }
+
 TEST(MatmulIntegerOpTest, MatMulInteger) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {1, 1}, {11});
@@ -302,6 +303,68 @@ TEST(MatmulIntegerOpTest, MatMulInteger_PerColumn_ND) {
 
                            -21, -52, 72, -44,
                            134, 130, 62, -39});
+
+  test.Run();
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_2D) {
+  OpTester test("MatMulInteger", 10);
+
+  test.AddInput<int8_t>("T1",
+                        {2, 3},
+                        {-3, 7, 5,
+                         4, -5, 8});
+
+  test.AddInput<uint8_t>("T2",
+                         {3, 2},
+                         {5, 12,
+                          7, 2,
+                          9, 6});
+
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+  test.AddInput<uint8_t>("b_zero_point", {}, {0});
+
+  test.AddOutput<int32_t>("T3",
+                          {2, 2},
+                          {79, 8,
+                           57, 86});
+
+  test.Run();
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_PerColumn_ND) {
+  OpTester test("MatMulInteger", 10);
+
+  test.AddInput<int8_t>("T1",
+                        {2, 2, 2},
+                        {1, -2,
+                         3, 4,
+
+                         -1, 5,
+                         2, -3});
+
+  test.AddInput<uint8_t>("T2",
+                         {2, 2, 3},
+                         {10, 20, 30,
+                          1, 2, 3,
+
+                          4, 5, 6,
+                          7, 8, 9});
+
+  test.AddInput<int8_t>("a_zero_point", {}, {0});
+
+  test.AddInput<uint8_t>("b_zero_point",
+                         {2, 1, 3},
+                         {1, 2, 3,
+                          4, 5, 6});
+
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 3},
+                          {9, 18, 27,
+                           27, 54, 81,
+
+                           15, 15, 15,
+                           -9, -9, -9});
 
   test.Run();
 }
