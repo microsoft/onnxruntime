@@ -6,6 +6,16 @@ import { Tensor as TensorImpl } from './tensor-impl.js';
 import { TypedTensorUtils } from './tensor-utils.js';
 import { TryGetGlobalType } from './type-helper.js';
 
+// Helper type: if globalThis.Float16Array exists and is a constructor, this resolves to its instance type.
+// Otherwise it resolves to `never`, so it won't affect builds that don't know about Float16Array.
+export type GlobalFloat16Array =
+  typeof globalThis extends { Float16Array: infer C }
+    ? C extends { new (...args: any[]): infer R }
+      ? R
+      : never
+    : never;
+
+
 /* eslint-disable @typescript-eslint/no-redeclare */
 
 /**
@@ -241,6 +251,19 @@ export interface TensorConstructor extends TensorFactory {
   ): TypedTensor<T>;
 
   /**
+   * Construct a new float16 tensor object from the given type, data and dims.
+   *
+   * @param type - Specify the element type.
+   * @param data - Specify the CPU tensor data.
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new (
+    type: 'float16',
+    data: Tensor.DataTypeMap['float16'] | GlobalFloat16Array | readonly number[],
+    dims?: readonly number[],
+  ): TypedTensor<'float16'>;
+
+  /**
    * Construct a new numeric tensor object from the given type, data and dims.
    *
    * @param type - Specify the element type.
@@ -263,6 +286,14 @@ export interface TensorConstructor extends TensorFactory {
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new (data: Float32Array, dims?: readonly number[]): TypedTensor<'float32'>;
+
+  /**
+   * Construct a new float16 tensor object from the given data and dims.
+   *
+   * @param data - Specify the CPU tensor data.
+   * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   */
+  new (data: GlobalFloat16Array, dims?: readonly number[]): TypedTensor<'float16'>;
 
   /**
    * Construct a new int8 tensor object from the given data and dims.
