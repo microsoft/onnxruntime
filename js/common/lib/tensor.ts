@@ -6,15 +6,9 @@ import { Tensor as TensorImpl } from './tensor-impl.js';
 import { TypedTensorUtils } from './tensor-utils.js';
 import { TryGetGlobalType } from './type-helper.js';
 
-// Helper type: if globalThis.Float16Array exists and is a constructor, this resolves to its instance type.
-// Otherwise it resolves to `never`, so it won't affect builds that don't know about Float16Array.
-export type GlobalFloat16Array =
-  typeof globalThis extends { Float16Array: infer C }
-    ? C extends { new (...args: any[]): infer R }
-      ? R
-      : never
-    : never;
-
+// Helper type: resolves to the instance type of `Float16Array` if it exists in the global scope,
+// or `never` otherwise. Uses the shared TryGetGlobalType helper.
+export type GlobalFloat16Array = TryGetGlobalType<'Float16Array', never>;
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
