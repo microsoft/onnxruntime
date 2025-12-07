@@ -7,6 +7,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -33,6 +34,11 @@ class GroupQueryAttention final : public CudaKernel {
   float softcap_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
+
+  KVQuantizationType k_quant_type_;
+  KVQuantizationType v_quant_type_;
+  int kv_cache_bit_width_;
+
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
   const AttentionKernelOptions* kernel_options_;
