@@ -866,13 +866,14 @@ namespace Microsoft.ML.OnnxRuntime
         internal class NativeLib
         {
 #if __ANDROID__
-            // define the library name required for android
+            // Define the library name required for Android
             internal const string DllName = "libonnxruntime.so";
 #elif __IOS__
-            // define the library name required for iOS
+            // Define the library name required for iOS
             internal const string DllName = "__Internal";
 #else
-            internal const string DllName = "onnxruntime";
+            // Note: the file name in ONNX Runtime nuget package must be onnxruntime.dll instead of onnxruntime.DLL(Windows filesystem can be case sensitive)
+            internal const string DllName = "onnxruntime.dll";
 #endif
         }
 
@@ -2951,7 +2952,9 @@ namespace Microsoft.ML.OnnxRuntime
 #elif __IOS__
         internal const string ExtensionsDllName = "__Internal";
 #else
-        internal const string ExtensionsDllName = "ortextensions";
+        // For desktop platforms, explicitly specify the DLL name with extension to avoid
+        // issues on case-sensitive filesystems. See NativeLib.DllName for detailed explanation.
+        internal const string ExtensionsDllName = "ortextensions.dll";
 #endif
 
         [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,

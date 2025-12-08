@@ -14,12 +14,16 @@ concurrency:
 
 jobs:
   build_x64:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-vs2022-mms",
+        "JobId=windows-build-x64-asan-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     timeout-minutes: 300
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 

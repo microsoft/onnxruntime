@@ -1,19 +1,15 @@
 #!/bin/bash
 set -e -x
 
-INSTALL_DEPS_TRAINING=false
-INSTALL_DEPS_DISTRIBUTED_SETUP=false
 USE_CONDA=false
 
-while getopts p:d:v:tmuc parameter_Option
+while getopts p:d:c parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
-v) CU_VER=${OPTARG};;
-t) INSTALL_DEPS_TRAINING=true;;
-m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 c) USE_CONDA=true;;
+*) echo "Invalid option: -${OPTARG}" >&2; exit 1 ;;
 esac
 done
 
@@ -37,4 +33,5 @@ fi
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-${PYTHON_EXE} -m pip install -r ${0/%install_python_deps\.sh/requirements\.txt}
+
+${PYTHON_EXE} -m pip install -r "${0/%install_python_deps\.sh/requirements\.txt}"

@@ -13,28 +13,27 @@ namespace webgpu {
 // which are used in the MatMulWriteFnSource function.
 namespace {
 
-void HanldeMaybeHaveBiasForGEMM(ShaderHelper& shader,
+void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
-                                bool has_bias,
+                                const ShaderVariableHelper* c,
                                 int c_components,
                                 int output_components,
                                 bool c_is_scalar) {
   shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));\n";
 
-  if (has_bias) {
-    const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
+  if (c != nullptr) {
     shader.AdditionalImplementation() << "    value += output_element_t(uniforms.beta) * ";
     // We can be allowed to use broadcasting only when both components are equal.
     // There is only one case for c_components_ is not equal output_components.
     // I.g. the former is `1` and the latter is `4`.
-    // That means the shape of C is either {M,1} or {1,1}
+    // That means the shape of `c` is either {M,1} or {1,1}
     if (c_components == output_components) {
       shader.AdditionalImplementation() << "output_value_t("
-                                        << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
+                                        << c->GetByOffset(c->BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
     } else if (c_is_scalar) {
-      shader.AdditionalImplementation() << "output_value_t(C[0]);\n";
+      shader.AdditionalImplementation() << "output_value_t(" << c->GetByOffset("0") << ");\n";
     } else {
-      shader.AdditionalImplementation() << "output_value_t(C[row]);\n";
+      shader.AdditionalImplementation() << "output_value_t(" << c->GetByOffset("row") << ");\n";
     }
   }
   shader.AdditionalImplementation() << output.SetByIndices("coords", "value") << "\n";
@@ -42,15 +41,78 @@ void HanldeMaybeHaveBiasForGEMM(ShaderHelper& shader,
 
 void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                               const ShaderVariableHelper& output,
-                              bool has_bias,
+                              const ShaderVariableHelper* bias,
                               std::string activation_snippet,
                               bool is_channels_last) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
-  if (has_bias) {
-    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? "bias[colIn]" : "bias[row]") << ");\n";
+  if (bias != nullptr) {
+    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? bias->GetByOffset("colIn") : bias->GetByOffset("row")) << ");\n";
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
                                     << output.SetByIndices("coords", "value") << "\n";
+}
+
+void HandleMatMulWithSplitK(
+    ShaderHelper& shader,
+    const ShaderVariableHelper& output,
+    ProgramVariableDataType output_variable_type) {
+  shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
+
+  // With Split-K, the final output will be the sum of the sub-outputs from multiple workgroups,
+  // so we must add them with atomic built-in functions. Because currently WebGPU doesn't support
+  // atomic built-in functions on `f32` or `f16`, we implement the `atomicAdd` on `f32` and `f16`
+  // with `atomicLoad` and `atomicCompareExchangeWeak`:
+  // 1. Get `old_output_i32` from `output[offset]` with `atomicLoad`.
+  // 2. Convert `old_output_i32` into `f32` (`old_output_f32`) or `vec2h` (`old_output_vec2h`).
+  // 3. Add incoming `value` into `old_output_f32` or `old_output_vec2h`.
+  // 4. Convert the result of step 3 into `i32` values.
+  // 5. Try assigning the result of step 4 into `output[offset]` with `atomicCompareExchangeWeak`
+  //    and `old_output_i32`. The assignment will fail if at this time `output[offset]` is not
+  //    equal to `old_output_i32` (it is updated in another invocation). If the assignment fails
+  //    we have to go to step 1 and repeat all the above steps.
+  switch (output_variable_type) {
+    case ProgramVariableDataType::Float32x4: {
+      shader.AdditionalImplementation() << R"(
+    let offset0 = i2o_output(coords) * 4u;
+    for (var i = 0u; i < 4u; i++) {
+        let offset = offset0 + i;
+)";
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "f32", "value[i]") << R"(
+    }
+)";
+      break;
+    }
+    case ProgramVariableDataType::Float16x4: {
+      shader.AdditionalImplementation() << R"(
+    let offset0 = i2o_output(coords) * 2u;
+    var vec2h_values : array<vec2h, 2>;
+    vec2h_values[0] = value.xy;
+    vec2h_values[1] = value.zw;
+    for (var i = 0u; i < 2u; i++) {
+        let offset = offset0 + i;
+)";
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "vec2h", "vec2h_values[i]") << R"(
+    }
+)";
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+// Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
+// `ProgramBase.SetDispatchGroupSize()` may be normalized in
+// `ProgramManager::NormalizeDispatchGroupSize()`. In the shader we should always use
+// `logical_workgroup_id` and `logical_global_id` instead of `workgroup_id` and `global_id`.
+void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
+  shader.MainFunctionBody()
+      << "  let logical_workgroup_id_z = workgroup_idx / (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y);\n"
+      << "  let logical_workgroup_id_y = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) / uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id_x = (workgroup_idx % (uniforms.logical_dispatch_x * uniforms.logical_dispatch_y)) % uniforms.logical_dispatch_x;\n"
+      << "  let logical_workgroup_id = vec3u(logical_workgroup_id_x, logical_workgroup_id_y, logical_workgroup_id_z);\n"
+      << "  const workgroupSize = vec3u(workgroup_size_x, workgroup_size_y, workgroup_size_z);\n"
+      << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
 }
 
 }  // namespace
@@ -119,13 +181,15 @@ void MatMulReadFnSource(ShaderHelper& shader,
 
 void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper& output,
-                         bool has_bias,
+                         const ShaderVariableHelper* bias,
                          bool is_gemm,
                          int c_components,
                          int output_components,
                          bool c_is_scalar,
                          std::string activation_snippet,
-                         bool is_channels_last) {
+                         bool is_channels_last,
+                         bool use_split_k,
+                         ProgramVariableDataType output_variable_type) {
   shader.AdditionalImplementation()
       << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) { \n";
 
@@ -134,10 +198,19 @@ void MatMulWriteFnSource(ShaderHelper& shader,
   shader.AdditionalImplementation() << "if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) { \n"
                                     << "    var value = valueIn; \n";
 
-  if (is_gemm) {
-    HanldeMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);
+  if (use_split_k) {
+    // Set output when MatMul is performed with Split-K.
+    // When Split-K is used in MatMul, the bias will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
+    // instead of here, so `bias` and `is_channels_last` is not used for Split-K. Note that we
+    // still need to handle `bias` (and `is_channels_last` in the future) in
+    // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
+    ORT_ENFORCE(bias == nullptr, "Bias is not supported in MatMulProgram when Split-K is enabled.");
+    ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled.");
+    HandleMatMulWithSplitK(shader, output, output_variable_type);
+  } else if (is_gemm) {
+    HandleMaybeHaveBiasForGEMM(shader, output, bias, c_components, output_components, c_is_scalar);
   } else {
-    HandleMaybeBiasForMatMul(shader, output, has_bias, activation_snippet, is_channels_last);
+    HandleMaybeBiasForMatMul(shader, output, bias, activation_snippet, is_channels_last);
   }
 
   shader.AdditionalImplementation()
@@ -159,9 +232,6 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   uint32_t tile_inner,
                                   bool split_k,
                                   uint32_t split_dim_inner) {
-  ORT_UNUSED_PARAMETER(split_k);
-  ORT_UNUSED_PARAMETER(split_dim_inner);
-
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
   std::string write_data_to_sub_a_vec4_snippet =
@@ -202,19 +272,58 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "const innerElementSize = " << inner_elements_size << ";\n"
       << "const tileInner = " << tile_inner << ";\n";
 
+  InitializeLogicalWorkgroupIDAndGlobalID(shader);
+
   shader.MainFunctionBody()
       << "  let localRow = i32(local_id.y);\n"
       << "  let tileRow = localRow * rowPerThread;\n"
       << "  let tileCol = i32(local_id.x);\n"
-      << "  let globalRow = i32(global_id.y) * rowPerThread;\n"
-      << "  let globalCol = i32(global_id.x);\n"
-      << "  let batch = i32(global_id.z);\n"
-      << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
-      << "  let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
-      << "  let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
-      << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
-      << "  var kStart = 0;\n"
+      << "  let globalRow = i32(logical_global_id.y) * rowPerThread;\n"
+      << "  let globalCol = i32(logical_global_id.x);\n"
+      << "  let globalRowStart = i32(logical_workgroup_id.y) * " << tile_a_outer << ";\n"
+      << "  let globalColStart = i32(logical_workgroup_id.x) * " << tile_b_outer << ";\n"
       << "  var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
+
+  if (split_k) {
+    // With Split-K, the original "workgroup" (with dispatch_z == 1 in API side) is split into
+    // multiple ones, and in the current workgroup we only compute `kSplitK` elements starting from
+    // `kSplitK * i32(logical_global_id.z)`.
+    //
+    //  For example: considering computing Y = (X * W + B) in one workgroup.
+    //  Let kSplitK = 2, B = [d1, d2]
+    //  Let X = [[a1 a1 b1 b1 c1 c1]  = [ A1 B1 C1 ], W = [[a2 a2]  = [ A2
+    //           [a1 a1 b1 b1 c1 c1]]                      [a2 a2]      B2
+    //                                                     [b2 b2]      C2 ]
+    //                                                     [b2 b2]
+    //                                                     [c2 c2]
+    //                                                     [c2 c2]]
+    //
+    //  With Split-K:
+    //  1. Initialize output Y with B in `MatMulFillBiasOrZeroBeforeSplitKProgram`:  Y = [[d1, d2]
+    //                                                                                   [d1, d2]]
+    //  2. Split the original 1 workgroup into 3 workgroups (now `dispatch_z = 3` in API side)
+    //     Workgroup1: compute (A1 * A2)  Workgroup2: compute (B1 * B2)
+    //     Workgroup3: compute (C1 * C2)
+    //     In each workgroup:
+    //     - `num_tiles` is computed with `kSplitK`, and `kStart` is computed with `logical_global_id.z`
+    //     - When the computation in each workgroup is completed, add the result to Y with several
+    //       atomic built-in functions in `HandleMatMulWithSplitK()`.
+    shader.MainFunctionBody()
+        << "const kSplitK = " << split_dim_inner << ";\n"
+        << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n"
+        << "  var kStart = kSplitK * i32(logical_global_id.z);\n"
+
+        // When Split-K is used, `batch` should always be 0 and `logical_global_id.z` is used to indicate
+        // the index of split-k instead of batch.
+        << "  let batch = 0;\n"
+        << "  let batchIndices = 0u;\n";
+  } else {
+    shader.MainFunctionBody()
+        << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
+        << "  var kStart = 0;\n"
+        << "  let batch = i32(logical_global_id.z);\n"
+        << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "");
+  }
 
   // Loop over shared dimension.
   shader.MainFunctionBody() << "  let tileRowB = localRow * " << row_per_thread_b << ";\n";
@@ -389,7 +498,9 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
       << "const colPerThread = " << elements_per_thread_x << ";\n"
       << "const tileInner = " << tile_inner << ";\n";
 
-  shader.MainFunctionBody() << " let batch = i32(global_id.z);\n"
+  InitializeLogicalWorkgroupIDAndGlobalID(shader);
+
+  shader.MainFunctionBody() << " let batch = i32(logical_global_id.z);\n"
                             << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
                             << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
                             << " var kStart = 0;\n"
@@ -398,10 +509,10 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
   shader.MainFunctionBody()
       << "let tileRow = i32(local_id.y) * rowPerThread;\n"
       << "let tileCol = i32(local_id.x) * colPerThread;\n"
-      << "let globalRow = i32(global_id.y) * rowPerThread;\n"
-      << "let globalCol = i32(global_id.x) * colPerThread;\n"
-      << "let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
-      << "let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
+      << "let globalRow = i32(logical_global_id.y) * rowPerThread;\n"
+      << "let globalCol = i32(logical_global_id.x) * colPerThread;\n"
+      << "let globalRowStart = i32(logical_workgroup_id.y) * " << tile_a_outer << ";\n"
+      << "let globalColStart = i32(logical_workgroup_id.x) * " << tile_b_outer << ";\n"
       << "let tileRowA = i32(local_id.y) * " << row_per_thread_a << ";\n"
       << "let tileColA = i32(local_id.x) * " << col_per_thread_a << ";\n"
       << "let tileRowB = i32(local_id.y) * " << row_per_thread_b << ";\n";

@@ -83,11 +83,6 @@ void RunGptBeamSearchFp32() {
   session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
 #endif
 
-#ifdef USE_ROCM
-  OrtROCMProviderOptions rocm_options;
-  session_options.AppendExecutionProvider_ROCM(rocm_options);
-#endif
-
   // The ONNX model is generated like the following:
   // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2
   //        --output tiny_gpt2_beamsearch_fp16.onnx --use_gpu --max_length 20
@@ -177,18 +172,12 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
 
   constexpr int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
     session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#endif
-
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
     // The ONNX model is generated like the following:
@@ -272,18 +261,12 @@ TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
 
   constexpr int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
     session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#endif
-
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
     // The ONNX model is generated like the following:
@@ -366,18 +349,12 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
 
   constexpr int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
     session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#endif
-
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
     // The following model was obtained by padding the vocabulary size in testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx

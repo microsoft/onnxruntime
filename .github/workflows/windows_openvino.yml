@@ -18,7 +18,11 @@ concurrency:
 jobs:
   BUILD_OPENVINO_EP:
     name: Windows OpenVINO CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=BUILD_OPENVINO_EP-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 240
     env:
       AZCOPY_AUTO_LOGIN_TYPE: MSI
@@ -31,7 +35,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: none
@@ -47,12 +51,12 @@ jobs:
         with:
           architecture: x64
 
-      - name: Download OpenVINO Toolkit v2025.2.0
+      - name: Download OpenVINO Toolkit v2025.3.0
         env:
-          OpenVINOVersion: 2025.2.0
+          OpenVINOVersion: 2025.3.0
         shell: pwsh
         run: |
-          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.2/windows/openvino_toolkit_windows_2025.2.0.19140.c01cd93e24d_x86_64.zip"
+          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.3/windows/openvino_toolkit_windows_2025.3.0.19807.44526285f24_x86_64.zip"
           $OutputPath = "$env:RUNNER_TEMP\openvino.zip"
           $ExtractPath = "$env:RUNNER_TEMP\openvino-v$env:OpenVINOVersion"
           $TempExtractPath = "$env:RUNNER_TEMP\openvino_temp"
@@ -95,7 +99,7 @@ jobs:
         shell: pwsh
         # Use $GITHUB_ENV to set the variable for subsequent steps
         run: |
-          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.2.0"
+          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.3.0"
           echo "OpenVINORootDir=$openVinoRootDir" >> $env:GITHUB_ENV
 
       - name: Print OpenVINORootDir after downloading OpenVINO

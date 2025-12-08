@@ -39,6 +39,8 @@ jobs:
         PythonVersion: '3.12'
       Python313_x64:
         PythonVersion: '3.13'
+      Python314_x64:
+        PythonVersion: '3.14'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -51,9 +53,9 @@ jobs:
         parameters:
           host_cpu_arch: 'x64'
           python_version: $(PythonVersion)
-      
+
       - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
-      
+
       - template: set-nightly-build-option-variable-step.yml
 
       - template: jobs/download_win_qnn_sdk.yml

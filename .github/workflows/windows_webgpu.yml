@@ -17,7 +17,11 @@ concurrency:
 
 jobs:
   webgpu_build_x64_RelWithDebInfo:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 300
     strategy:
       matrix:
@@ -34,7 +38,7 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: none
@@ -152,11 +156,15 @@ jobs:
         continue-on-error: true
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "JobId=webgpu_external_dawn_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 300
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: none
@@ -198,7 +206,11 @@ jobs:
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "JobId=webgpu_minimal_build_edge_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     timeout-minutes: 300
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
@@ -209,7 +221,7 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: none

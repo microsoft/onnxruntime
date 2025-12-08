@@ -15,11 +15,37 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram> {
+ public:
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, bool prepare_indirect_dispatch)
+      : Program{"SplitPackedQKVWithRotaryEmbeddingAndCopyKV"},
+        interleaved_(interleaved),
+        prepare_indirect_dispatch_(prepare_indirect_dispatch) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"tile_size", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const bool interleaved_;
+  const bool prepare_indirect_dispatch_;
+};
+
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
   CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH,
-                     bool prepare_indirect_dispatch = false)
-      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), prepare_indirect_dispatch_(prepare_indirect_dispatch) {
+                     bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -34,6 +60,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   bool has_past_;
   bool kv_BNSH_;
   bool prepare_indirect_dispatch_;
+  bool use_seqlen_k_;
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
@@ -45,7 +72,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         int qkv_head_size,
                         int qkv_num_heads,
                         bool is_unidirectional,
-                        bool is_nvidia)
+                        bool is_nvidia,
+                        bool use_seqlen_k = false)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -53,7 +81,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
-        is_nvidia_(is_nvidia) {
+        is_nvidia_(is_nvidia),
+        use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -61,7 +90,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32});
@@ -74,6 +102,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
   bool is_unidirectional_;
   bool is_nvidia_;
+  bool use_seqlen_k_;
 };
 
 class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
@@ -142,10 +171,24 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr);
+                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
+                           const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr);
 
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
+
+// Split packed QKV with Q/K rotary embedding and copy KV cache fusion
+Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::ComputeContext& context,
+                                                     const WebgpuAttentionParameters& params,
+                                                     const Tensor* packedQKV,
+                                                     const Tensor* seqlen_k,
+                                                     const Tensor* cos_cache,
+                                                     const Tensor* sin_cache,
+                                                     Tensor* query,
+                                                     Tensor* present_key,
+                                                     Tensor* present_value,
+                                                     Tensor* indirect_buffer,
+                                                     uint32_t tile_size);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

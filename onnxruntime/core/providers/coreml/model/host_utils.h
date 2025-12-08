@@ -45,9 +45,9 @@
 
 // The previous macros are used in header files to declare the availability of the APIs.
 // The following macros are used in  build time checks to determine if the APIs are available.
-#define CAN_BUILD_COREML8_OR_LATER (__MAC_OS_X_VERSION_MAX_ALLOWED >= 150000 && __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000)
-#define CAN_BUILD_COREML7_OR_LATER (__MAC_OS_X_VERSION_MAX_ALLOWED >= 140000 && __IPHONE_OS_VERSION_MAX_ALLOWED >= 170000)
-#define CAN_BUILD_COREML6_OR_LATER (__MAC_OS_X_VERSION_MAX_ALLOWED >= 130000 && __IPHONE_OS_VERSION_MAX_ALLOWED >= 160000)
+#define CAN_BUILD_COREML8_OR_LATER (__MAC_OS_X_VERSION_MAX_ALLOWED >= 150000 || __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000)
+#define CAN_BUILD_COREML7_OR_LATER (__MAC_OS_X_VERSION_MAX_ALLOWED >= 140000 || __IPHONE_OS_VERSION_MAX_ALLOWED >= 170000)
+#define CAN_BUILD_COREML6_OR_LATER (__MAC_OS_X_VERSION_MAX_ALLOWED >= 130000 || __IPHONE_OS_VERSION_MAX_ALLOWED >= 160000)
 
 // @available is used in implementation code to check the availability of the APIs at runtime.
 // Base required OS to run CoreML Specification Version 4 (Core ML 3)

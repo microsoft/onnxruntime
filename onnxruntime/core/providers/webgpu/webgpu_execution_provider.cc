@@ -780,7 +780,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23>(enable_graph_capture)));
 
 #ifndef DISABLE_CONTRIB_OPS
-  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry);
+  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
   ORT_ENFORCE(status.IsOK(), "Failed to register WebGPU contrib kernels: " + status.ErrorMessage());
 #endif
 
@@ -794,8 +794,7 @@ using namespace webgpu;
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
                                                  WebGpuContext& context,
                                                  WebGpuExecutionProviderConfig&& config)
-    : IExecutionProvider{kWebGpuExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0)},
+    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice},
       context_id_{context_id},
       context_{context},
       preferred_data_layout_{config.data_layout},
@@ -858,6 +857,42 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       LOGS(*GetLogger(), INFO) << "Force CPU execution for node: " << node.Name();
       continue;
     }
+
+    //
+    // The following code checks if the node is really supported by webgpu EP
+    //
+
+#define FALLBACK_TO_CPU_IF_EXIST_INPUT(idx)           \
+  if (inputs.size() > idx && inputs[idx]->Exists()) { \
+    continue;                                         \
+  }
+
+#define FALLBACK_TO_CPU_IF_EXIST_OUTPUT(idx)            \
+  if (outputs.size() > idx && outputs[idx]->Exists()) { \
+    continue;                                           \
+  }
+
+    // Check for Attention
+    if (node.OpType() == "Attention" && node.Domain() == kMSDomain) {
+      const auto& inputs = node.InputDefs();
+      const auto& outputs = node.OutputDefs();
+
+      // Current implementation does not support mask_index(input[3]), past(input[4]) and past_seq_len(input[6])
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(3);
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(4);
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(6);
+
+      // Current implementation does not support present(output[1])
+      FALLBACK_TO_CPU_IF_EXIST_OUTPUT(1);
+
+      // If attribute past_present_share_buffer is set, fallback to CPU
+      const auto& past_present_share_buffer = node.GetAttributes().find("past_present_share_buffer");
+      if (past_present_share_buffer != node.GetAttributes().end() &&
+          past_present_share_buffer->second.i() != 0) {
+        continue;
+      }
+    }
+
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }
@@ -899,13 +934,14 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
                                                                           std::string_view node_op_type,
                                                                           DataLayout target_data_layout) const {
-  if (target_data_layout != DataLayout::NHWC) {
-    return std::nullopt;
-  }
-
   // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
   if (node_domain == kOnnxDomain && node_op_type == "Resize") {
-    return false;
+    return target_data_layout != DataLayout::NHWC;
+  }
+
+  // WebGPU perfer NCHW for InstanceNormalization due to a better performance
+  if (node_domain == kOnnxDomain && node_op_type == "InstanceNormalization") {
+    return target_data_layout != DataLayout::NHWC;
   }
 
   return std::nullopt;
