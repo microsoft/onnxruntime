@@ -46,7 +46,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
 // the output with 0 or bias first to make sure `atomicLoad` won't return garbage data.
 class MatMulFillBiasOrZeroBeforeSplitKProgram final : public Program<MatMulFillBiasOrZeroBeforeSplitKProgram> {
  public:
-  explicit MatMulFillBiasOrZeroBeforeSplitKProgram(bool is_gemm, bool has_bias, uint32_t output_components, bool bias_is_scalar)
+  MatMulFillBiasOrZeroBeforeSplitKProgram(bool is_gemm, bool has_bias, uint32_t output_components, bool bias_is_scalar)
       : Program{"MatMul_Fill_Bias_Or_Zero_Before_Split_K"},
         is_gemm_(is_gemm),
         has_bias_(has_bias),

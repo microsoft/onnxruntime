@@ -300,8 +300,7 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t dim_a_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 2]);
   const uint32_t dim_b_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 1]);
 
-  // Fill one value per invocation. Now we use default workgroup size (64) for
-  // this program.
+  // Fill one value per invocation. Now we use default workgroup size (64) for this program.
   const uint32_t total_outputs = dim_a_outer * dim_b_outer;
   const uint32_t dispatch_x = (total_outputs + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
