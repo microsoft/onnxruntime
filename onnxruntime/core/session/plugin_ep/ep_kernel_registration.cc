@@ -41,6 +41,9 @@ class PluginEpOpKernel final : public OpKernel {
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed, /*out*/ PrePackedWeights* /*prepacked_weights*/) override {
+    // Note: The `prepacked_weights` parameter is not used because sharing of prepacked weights is only
+    // really supported for ORT's CPU EP.
+
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
 
     if (kernel_impl_->PrePackConstantTensor == nullptr) {
