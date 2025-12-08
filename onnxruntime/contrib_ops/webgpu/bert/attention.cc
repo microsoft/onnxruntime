@@ -745,7 +745,7 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   Tensor present_key = context.CreateGPUTensor(input->DataType(), present_kv_shape);
   Tensor present_value = context.CreateGPUTensor(input->DataType(), present_kv_shape);
 
-  if (CanApplyFlashAttention(&present_key, &present_value, parameters, context)) {
+  if (CanApplyFlashAttention(nullptr, &present_key, &present_value, parameters, context)) {
     return ApplyFlashAttention(&Q, &K, &V, attention_bias, output, nullptr, &present_key, nullptr, &present_value,
                                parameters, context, nullptr);
   }

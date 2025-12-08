@@ -287,7 +287,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
-    will_use_flash_attention = CanApplyFlashAttention(present_key, present_value, temp_params, context);
+    will_use_flash_attention = CanApplyFlashAttention(nullptr, present_key, present_value, temp_params, context);
   }
 
   if (parameters.is_packed_qkv_ && do_rotary_) {
