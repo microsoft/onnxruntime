@@ -122,6 +122,15 @@ stages:
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
+        gem install securerandom -v 0.3.2 --user-install --force
+        gem install drb -v 2.0.6 --user-install --force
+        gem install zeitwerk -v 2.6.18 --user-install --force
+        gem install activesupport -v 6.0.6.1 --user-install --force
+        gem install ffi -v 1.15.5 --user-install --force
+        gem install cocoapods -v 1.11.3 --user-install --force
+      displayName: Install CocoaPods
+
+    - script: |
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
