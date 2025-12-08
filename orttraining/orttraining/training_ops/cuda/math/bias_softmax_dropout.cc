@@ -39,11 +39,7 @@ struct DispatchBiasSoftmaxDropoutImpl {
 
 }  // namespace
 
-#ifdef USE_ROCM
-#define BIAS_SOFTMAX_DROPOUT_TYPES float, MLFloat16
-#else
 #define BIAS_SOFTMAX_DROPOUT_TYPES float, MLFloat16, double
-#endif
 
 ONNX_OPERATOR_KERNEL_EX(BiasSoftmaxDropout, kMSDomain, 1, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
