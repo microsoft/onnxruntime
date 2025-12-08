@@ -131,6 +131,8 @@ stages:
       displayName: Install CocoaPods
 
     - script: |
+        export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
+        export LANG=en_US.UTF-8
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
