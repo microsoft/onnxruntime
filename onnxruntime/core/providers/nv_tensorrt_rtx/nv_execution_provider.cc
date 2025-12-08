@@ -985,7 +985,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   }
 
   if (info.user_aux_stream_array != nullptr) {
-    if(info.auxiliary_streams <= 0){
+    if (info.auxiliary_streams <= 0) {
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams"));
     }
     external_aux_streams_ = true;
