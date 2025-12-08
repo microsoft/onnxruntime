@@ -21,13 +21,14 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                                       ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
+  const ShaderVariableHelper* bias = nullptr;
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false, is_vec4_, true);
-  MatMulWriteFnSource(shader, output, has_bias_, /* is_gemm = */ false, 1, is_vec4_ ? 4 : 1,
+  MatMulWriteFnSource(shader, output, bias, /* is_gemm = */ false, 1, is_vec4_ ? 4 : 1,
                       false, apply_activation, /*is_channels_last = */ false);
   // generate the main function
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_));

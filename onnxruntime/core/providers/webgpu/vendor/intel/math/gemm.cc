@@ -25,7 +25,11 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, nullptr, is_vec4_, transA_, transB_,
                                                alpha_, need_handle_matmul_));
-  MatMulWriteFnSource(shader, output, need_handle_bias_, true, c_components_, output_components_, c_is_scalar_);
+  const ShaderVariableHelper* c = nullptr;
+  if (need_handle_bias_) {
+    c = &shader.AddInput("c", ShaderUsage::UseUniform);
+  }
+  MatMulWriteFnSource(shader, output, c, true, c_components_, output_components_, c_is_scalar_);
 
   return Status::OK();
 }
