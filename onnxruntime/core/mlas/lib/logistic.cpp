@@ -219,8 +219,8 @@ Return Value:
 
         MLAS_FLOAT32X4 OrigValue = MlasLoadFloat32x4(Input);
 
-        float Value = MlasMaximumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.LowerRange), OrigValue);
-        Value = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.UpperRange), OrigValue);
+        MLAS_FLOAT32X4 Value = MlasMaximumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.LowerRange), OrigValue);
+        Value = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.UpperRange), Value);
 
         MLAS_FLOAT32X4 ValueSquared = MlasMultiplyFloat32x4(Value, Value);
 
