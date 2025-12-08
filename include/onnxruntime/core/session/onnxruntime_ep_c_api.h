@@ -1413,6 +1413,15 @@ struct OrtEpFactory {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
+
+  /** \brief
+   *
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateCustomOpDomain, _Outptr_result_maybenull_ OrtCustomOpDomain** out, _Out_ size_t* num_domains);
 };
 
 #ifdef __cplusplus

@@ -482,7 +482,8 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
                                     gsl::span<const char* const> ep_option_keys,
                                     gsl::span<const char* const> ep_option_vals,
-                                    SessionOptions& session_options) {
+                                    OrtSessionOptions& ort_session_options) {
+  SessionOptions& session_options = ort_session_options.value;
   const size_t num_ep_options = ep_option_keys.size();
   if (ep_option_vals.size() != num_ep_options) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -504,6 +505,38 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       }
 
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
+    }
+
+    // add custom op domain provided by EP if any
+    OrtEpFactory* ep_factory = ep_device->ep_factory;
+    if (ep_factory) {
+      auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
+        for (auto ptr : domains) {
+          if (domain_name == ptr->domain_) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      if (ep_factory->CreateCustomOpDomain == nullptr) {
+        continue;
+      }
+
+      size_t num_domains = 0;
+      OrtCustomOpDomain** domain_ptrs = nullptr;
+      ep_factory->CreateCustomOpDomain(domain_ptrs, &num_domains);
+
+      const auto custom_op_domains_span = gsl::span<OrtCustomOpDomain*>(domain_ptrs, num_domains);
+      for (auto domain : custom_op_domains_span) {
+        if (!is_already_in_domains(domain->domain_, ort_session_options.custom_op_domains_) &&
+            domain->custom_ops_.size() > 0) {
+          ort_session_options.custom_op_domains_.push_back(domain);
+        } else {
+          LOGS_DEFAULT(WARNING) << "The custom op domain name "
+                                << domain->domain_ << " is already in the session option. Skip it.";
+        }
+      }
     }
   }
 

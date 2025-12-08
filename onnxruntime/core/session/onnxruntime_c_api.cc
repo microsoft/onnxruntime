@@ -3332,7 +3332,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
       ep_devices_span,
       ep_option_keys_span,
       ep_option_vals_span,
-      session_options->value));
+      *session_options));
 
   session_options->provider_factories.push_back(std::move(provider_factory));
 
