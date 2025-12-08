@@ -360,8 +360,6 @@ void RunTest(int64_t max_iterations,
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_CUDA)
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
@@ -1041,8 +1039,8 @@ TEST(Loop, IterationCountAsOutput) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-// test that when part of the subgraph run on CUDA/ROCm it executes successfully
+#if defined(USE_CUDA)
+// test that when part of the subgraph run on CUDA it executes successfully
 TEST(Loop, MixedExecutionProviders) {
   RunOptions options{};
   options.mixed_execution_providers = true;

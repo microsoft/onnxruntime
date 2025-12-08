@@ -29,12 +29,6 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
               return CudaProviderFactoryCreator::Create(&provider_options);
             }(),
 #endif
-#ifdef USE_ROCM
-            []() {
-              OrtROCMProviderOptions provider_options;
-              return onnxruntime::RocmProviderFactoryCreator::Create(&provider_options);
-            }(),
-#endif
 #ifdef USE_DNNL
             onnxruntime::DnnlProviderFactoryCreator::Create(1),
 #endif

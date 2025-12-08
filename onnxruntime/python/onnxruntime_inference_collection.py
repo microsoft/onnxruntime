@@ -537,16 +537,6 @@ class InferenceSession(Session):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
-        # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
-        elif "MIGraphXExecutionProvider" in available_providers:
-            if providers and any(
-                provider == "ROCMExecutionProvider"
-                or (isinstance(provider, tuple) and provider[0] == "ROCMExecutionProvider")
-                for provider in providers
-            ):
-                self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
         else:
             self._fallback_providers = ["CPUExecutionProvider"]
 

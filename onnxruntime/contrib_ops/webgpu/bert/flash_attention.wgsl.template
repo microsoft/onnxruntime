@@ -26,7 +26,7 @@ fn get_total_sequence_length() -> u32 {
 #if is_fp16
 const min_value = q_element_t(-65504.0);
 #else
-const min_value = q_element_t(-3.402823e+38f);
+const min_value = q_element_t(-3.4028234663852886e+38f);
 #endif
 
 // For max performance max_k_step should be the same as sg_size, however we might run out of registers

@@ -203,6 +203,48 @@ TEST_P(TypeTests, IOTypes) {
   }
 }
 
+TEST(NvExecutionProviderTest, TestSessionOutputs) {
+  /*
+   * Model #1:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+  {
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+
+    auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 4);
+  }
+
+  /*
+   * Model #2:
+   *
+   * "X" ---> Dropout ---> MatMul ---> "Y"
+   *          ^     |
+   *          |     |
+   * "W" ------     ----> Can't be graph's output
+   *
+   */
+  {
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+
+    auto model_path = ORT_TSTR("testdata/node_output_not_used.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 1);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(NvExecutionProviderTest, TypeTests,
                          ::testing::Values(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,

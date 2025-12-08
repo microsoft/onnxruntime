@@ -92,14 +92,28 @@ Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+static std::vector<int64_t> getInt64Input(const Tensor* tensor) {
+  if (tensor->IsDataType<int64_t>()) {
+    return std::vector<int64_t>(tensor->DataAsSpan<int64_t>().begin(), tensor->DataAsSpan<int64_t>().end());
+  }
+  ORT_ENFORCE(tensor->IsDataType<int32_t>(), "Expected tensor of type int32 or int64");
+  std::vector<int64_t> result;
+  auto span = tensor->DataAsSpan<int32_t>();
+  result.reserve(span.size());
+  for (auto v : span) {
+    result.push_back(static_cast<int64_t>(v));
+  }
+  return result;
+}
+
 Status Slice::ComputeInternal(ComputeContext& context) const {
   // READ INPUTS
   const Tensor* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
   auto input_rank = input_shape.NumDimensions();
 
-  auto starts_raw = attr_starts_.empty() ? context.Input(1)->DataAsSpan<int64_t>() : gsl::make_span(attr_starts_);
-  auto ends_raw = attr_ends_.empty() ? context.Input(2)->DataAsSpan<int64_t>() : gsl::make_span(attr_ends_);
+  auto starts_raw = attr_starts_.empty() ? getInt64Input(context.Input(1)) : attr_starts_;
+  auto ends_raw = attr_ends_.empty() ? getInt64Input(context.Input(2)) : attr_ends_;
 
   ORT_ENFORCE(starts_raw.size() == ends_raw.size(), "starts and ends must have the same size");
 
@@ -126,7 +140,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
       axes_default.push_back(i);
     }
   }
-  auto axes_raw = attr_axes_.empty() ? (axes_tensor == nullptr ? gsl::make_span(axes_default) : axes_tensor->DataAsSpan<int64_t>()) : gsl::make_span(attr_axes_);
+  auto axes_raw = attr_axes_.empty() ? (axes_tensor == nullptr ? axes_default : getInt64Input(axes_tensor)) : attr_axes_;
 
   std::vector<int64_t> steps_default;
   if (steps_tensor == nullptr) {
@@ -135,7 +149,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
       steps_default.push_back(1);
     }
   }
-  auto steps_raw = steps_tensor == nullptr ? gsl::make_span(steps_default) : steps_tensor->DataAsSpan<int64_t>();
+  auto steps_raw = steps_tensor == nullptr ? steps_default : getInt64Input(steps_tensor);
 
   // get final axes
   std::vector<uint32_t> axes, axes_fixed;

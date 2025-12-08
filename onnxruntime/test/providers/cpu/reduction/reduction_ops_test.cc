@@ -881,7 +881,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_float_no_reduction_keepdims) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(ReductionOpTest, ReduceLogSumExp_half) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -898,7 +898,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_half) {
   test.AddOutput<MLFloat16>("reduced", {1, 2, 1}, FloatsToMLFloat16s({10.33174133f, 12.33174133f}));
   test.Run();
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(ReductionOpTest, ReduceLogSumExp_int32) {
   OpTester test("ReduceLogSumExp");
@@ -1375,7 +1375,7 @@ TEST(ReductionOpTest, ReduceMax_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST(ReductionOpTest, ReduceMax_half) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
@@ -1392,7 +1392,7 @@ TEST(ReductionOpTest, ReduceMax_half) {
   test.AddOutput<MLFloat16>("reduced", {3, 1, 1}, FloatsToMLFloat16s({4.0f, 8.0f, 12.0f}));
   test.Run();
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(ReductionOpTest, ReduceMax_int32) {
   OpTester test("ReduceMax");
@@ -2158,7 +2158,7 @@ TEST(ReductionOpTest, ReduceMin_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST(ReductionOpTest, ReduceMin_half) {
   OpTester test("ReduceMin");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -2175,7 +2175,7 @@ TEST(ReductionOpTest, ReduceMin_half) {
   test.AddOutput<MLFloat16>("reduced", {1, 2, 1}, FloatsToMLFloat16s({1.0f, 3.0f}));
   test.Run();
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(ReductionOpTest, ReduceMin_int32) {
   OpTester test("ReduceMin");
@@ -2356,7 +2356,7 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST(ReductionOpTest, ReduceSumHalfHalf) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -2448,7 +2448,7 @@ TEST(ReductionOpTest, ReduceSum_half_bert) {
 // Add more UTs for half as needed
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceSum_bfloat16) {
 #ifdef USE_DNNL
   if (!DnnlHasBF16Support()) {
@@ -2465,19 +2465,15 @@ TEST(ReductionOpTest, ReduceSum_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif  //  USE_CUDA USE_ROCM USE_DNNL
+#endif  //  USE_CUDA USE_DNNL
 
 // on CUDA - this UT, with axes {0,2}, will go thru cudnn lib only if ATenOp is not initialized
-// on ROCM - miopen call succeeded, but results in data error, thus follow the same logic done in cudnn for now
-//           4.2 doesn't run properly (data error), thus enable the UT only above 4.3
-#if defined(USE_CUDA) || (defined(USE_ROCM) && ROCM_VERSION >= 40300)
+#if defined(USE_CUDA)
 TEST(ReductionOpTest, ReduceSumBFloat16_2) {
   OpTester test("ReduceSum", 14);
   test.AddAttribute("keepdims", (int64_t)0);
@@ -2488,8 +2484,6 @@ TEST(ReductionOpTest, ReduceSumBFloat16_2) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -2595,7 +2589,7 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
   }
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
   test_apex_reduce_sum(4 * 128, 30528);
   test_apex_reduce_sum(4 * 512, 30528);
@@ -3783,7 +3777,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
 // test that PrepareForReduce handles this case. Called by all reduction ops so any op can be used in the test
 TEST(ReductionOpTest, ReduceDimWithZero1) {
   // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{1,0,1}] did not match run output shape [{1,1,1}] for reduced";
   }
 
@@ -3834,7 +3828,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
 
 TEST(ReductionOpTest, ReduceDimWithZero2) {
   // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Can't reduce on dim with value of 0 if 'keepdims' is false. Invalid output shape would be produced. input_shape:{?,0,?}";
   }
 
@@ -6046,7 +6040,6 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
           kMIGraphXExecutionProvider,
           kOpenVINOExecutionProvider,
           kQnnExecutionProvider,
-          kRocmExecutionProvider,
           kTensorrtExecutionProvider,
           kWebGpuExecutionProvider,
       });

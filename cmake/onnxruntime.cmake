@@ -42,7 +42,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory
     # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
-    if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
+    if(NOT f STREQUAL cuda)
       file(GLOB _provider_headers CONFIGURE_DEPENDS
         "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
       )
