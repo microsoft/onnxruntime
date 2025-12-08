@@ -26,8 +26,8 @@ OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
 
 OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) {
   Ort::KernelContext kernel_context(kernel_ctx);
-  static_cast<void>(this->state_);  // NOTE: Unused in this example.
-  static_cast<void>(this->info_);   // NOTE: Unused in this example.
+  static_cast<void>(this->data_transfer_impl_);  // NOTE: Unused in this example.
+  static_cast<void>(this->info_);                // NOTE: Unused in this example.
 
   gsl::span<const float> input0;
   gsl::span<const float> input1;

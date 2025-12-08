@@ -17,6 +17,9 @@ class BaseKernelImpl : public OrtKernelImpl {
 
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL PrePackConstantTensorImpl(OrtKernelImpl* this_ptr, const OrtValue* tensor,
+                                                           int input_index, OrtAllocator* alloc,
+                                                           /*out*/ bool* is_packed) noexcept;
 
  private:
   // Derived classes implement DoCompute.
@@ -24,7 +27,10 @@ class BaseKernelImpl : public OrtKernelImpl {
   // implementations and converts them into OrtStatus*.
   virtual OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) = 0;
 
+  virtual OrtStatus* DoPrePackConstantTensor(const OrtValue* tensor, int input_index, OrtAllocator* alloc,
+                                             /*out*/ bool& is_packed);
+
  protected:
   const OrtKernelInfo* info_;
-  void* state_;  // Custom state passed from OrtEp
+  OrtDataTransferImpl* data_transfer_impl_;  // Custom state passed from OrtEp
 };

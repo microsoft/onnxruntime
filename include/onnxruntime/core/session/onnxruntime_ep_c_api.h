@@ -308,6 +308,30 @@ struct OrtKernelImpl {
    * \since Version 1.24.
    */
   ORT_API_T(void, Release, _In_ OrtKernelImpl* this_ptr);
+
+  /** \brief Optional function to pack an initialized constant tensor to the kernel's preferred data layout.
+   *
+   * For example, a Conv kernel can define this function to pack input W to the channel-last data layout.
+   *
+   * \note The kernel is responsible for storing/owning the packed data and related metadata if it sets `is_packed`
+   *       to true. In this case, ORT may release the original constant tensor, which must not be accessed in
+   *       the OrtKernelImpl::Compute() function.
+   *
+   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] tensor The OrtValue instance representing the constant tensor. Do not cache in the kernel.
+   * \param[in] input_index The input index of the tensor in this kernel.
+   * \param[in] alloc Implementation should use this allocator for allocating the pre-packed data.
+   * \param[out] is_packed Output parameter that the implementation sets to true if the kernel packed the tensor data.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional (set to NULL). If not implemented, ORT assumes the kernel
+   *       does not pre-pack constant tensors.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(PrePackConstantTensor, _In_ OrtKernelImpl* this_ptr, _In_ const OrtValue* tensor,
+                  _In_ int input_index, _Inout_ OrtAllocator* alloc, _Out_ bool* is_packed);
 };
 
 /** \brief Type definition for a function that creates an OrtKernelImpl instance for an operator kernel.

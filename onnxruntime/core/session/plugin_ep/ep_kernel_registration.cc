@@ -8,6 +8,8 @@
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/tensor.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_api.h"
 
 namespace onnxruntime {
@@ -35,6 +37,32 @@ class PluginEpOpKernel final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
     return ToStatusAndRelease(kernel_impl_->Compute(kernel_impl_, reinterpret_cast<OrtKernelContext*>(ctx)));
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* /*prepacked_weights*/) override {
+    assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
+
+    if (kernel_impl_->PrePackConstantTensor == nullptr) {
+      // OrtKernelImpl did not define a PrePack implementation.
+      is_packed = false;
+      return Status::OK();
+    }
+
+    auto empty_tensor_deleter = [](void* /*data*/) -> void {
+      // Do not delete Tensor (as we do not own it).
+    };
+
+    // Create a non-owning OrtValue that wraps the const Tensor& with an empty deleter.
+    // This is passed to PrePackConstantTensor as a const OrtValue*.
+    // The above reasons make the const_cast relatively "safe".
+    const OrtValue ort_value(const_cast<Tensor*>(&tensor), DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
+    OrtAllocatorImplWrappingIAllocator ort_allocator(std::move(alloc));
+
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        kernel_impl_->PrePackConstantTensor(kernel_impl_, &ort_value, input_idx, &ort_allocator, &is_packed)));
+
+    return Status::OK();
   }
 
  private:

@@ -21,6 +21,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .SetInputMemType(1, OrtMemTypeCPU)
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
@@ -32,6 +33,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .SetInputMemType(1, OrtMemTypeCPU)
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
@@ -43,6 +45,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .SetInputMemType(1, OrtMemTypeCPU)
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
@@ -86,10 +89,10 @@ static std::vector<int64_t> ComputeOutputShape(gsl::span<const int64_t> input_sh
 
 OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
   Ort::KernelContext kernel_context(kernel_ctx);
-  static_cast<void>(this->state_);  // NOTE: Unused in this example.
 
   gsl::span<const float> input0;
   std::vector<int64_t> shape0;
+  Ort::ConstValue input = kernel_context.GetInput(0);
   RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 0, input0, shape0));
 
   size_t num_inputs = kernel_context.GetInputCount();
@@ -107,15 +110,20 @@ OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
 
   std::vector<int64_t> output_shape = ComputeOutputShape(shape0, axes);
   Ort::UnownedValue output = kernel_context.GetOutput(0, output_shape);
-  float* output_data = output.GetTensorMutableData<float>();
-  size_t num_bytes = output.GetTensorSizeInBytes();
 
-  if (input0.data() != output_data) {  // Don't copy if src == dst
-    // This uses a memcpy because the input and output are both located in the EP's device memory (i.e., cpu memory).
-    // Normally, an EP would use a OrtDataTransferImpl to generically handle copies where the source and destination
-    // could be on different devices.
-    memcpy(output_data, input0.data(), num_bytes);
-  }
+  // Copy input to the output. Use the OrtDataTransferImpl created by the EP factory to handle copies across devices
+  // more generically (although a memcpy would be enough for this example EP).
+  const OrtMemoryDevice* src_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(input.GetTensorMemoryInfo());
+  const OrtMemoryDevice* dst_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(output.GetTensorMemoryInfo());
+
+  RETURN_IF(!data_transfer_impl_->CanCopy(data_transfer_impl_, src_device, dst_device), Ort::GetApi(),
+            "OrtDataTransferImpl cannot copy Squeeze input to the output.");
+
+  std::array<const OrtValue*, 1> src_tensors = {input};
+  std::array<OrtValue*, 1> dst_tensors = {output};
+
+  RETURN_IF_ERROR(data_transfer_impl_->CopyTensors(data_transfer_impl_, src_tensors.data(), dst_tensors.data(),
+                                                   /*streams*/ nullptr, src_tensors.size()));
 
   return nullptr;
 }
