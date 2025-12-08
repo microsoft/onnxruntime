@@ -15,13 +15,13 @@ namespace onnxruntime {
 // is expected an input with only infinity values.
 // This change assumes that lowest() is sufficiently low enough to not impact the result.
 template <typename T>
-inline T negative_infinity() {
+inline T mask_filter_value() {
   return std::numeric_limits<T>::lowest();
 }
 
 template <>
-inline MLFloat16 negative_infinity() {
-  return MLFloat16(negative_infinity<float>());
+inline MLFloat16 mask_filter_value() {
+  return MLFloat16::MinValue;
 }
 
 template <typename T>
