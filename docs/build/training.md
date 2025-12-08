@@ -128,36 +128,6 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 
 That's it! Once the build is complete, you should be able to use the ONNX Runtime libraries and executables in your projects. Note that these steps are general and may need to be adjusted based on your specific environment and requirements. For more information, you can ask for help on the [ONNX Runtime GitHub community](https://github.com/microsoft/onnxruntime/discussions/new?category=q-a).
 
-## GPU / ROCm
-### Prerequisites
-{: .no_toc }
-
-The default AMD GPU build requires ROCm software toolkit installed on the system:
-
-* [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/) 6.0.0
-
-### Build instructions
-{: .no_toc }
-
-1. Checkout this code repo with
-
-    ```bash
-    git clone https://github.com/microsoft/onnxruntime
-    cd onnxruntime
-    ```
-
-2. Create the ONNX Runtime Python wheel
-
-   ```bash
-   ./build.sh --config Release --enable_training --build_wheel --parallel --skip_tests --use_rocm --rocm_home /opt/rocm
-   ```
-
-3. Install the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
-
-    ```bash
-    python -m pip install build/Linux/RelWithDebInfo/dist/*.whl
-    ```
-
 ## DNNL and MKLML
 
 ### Build Instructions

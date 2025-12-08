@@ -119,14 +119,6 @@ pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-qnn
 ```
 
-### Install ONNX Runtime GPU (ROCm)
-
-For ROCm, please follow instructions to install it at the [AMD ROCm install docs](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.2.0/). The ROCm execution provider for ONNX Runtime is built and tested with ROCm 6.2.0. 
-
-To build from source on Linux, follow the instructions [here](https://onnxruntime.ai/docs/build/eps.html#amd-rocm).
-
-
-
 ## C#/C/C++/WinML Installs
 
 ### Install ONNX Runtime

@@ -11,11 +11,9 @@ redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
 
 The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm-enabled GPUs. 
 
-** NOTE ** As of ROCm 7.1 There will be no more ROCm Execution Provider support provider by Microsoft
+** NOTE ** ROCm Execution Provider has been removed since 1.23 release. Please Migrate your applications to use the [MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html#migraphx-execution-provider)
 
-Please Migrate your applications to use the [MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html#migraphx-execution-provider)
-
-ROCm 7.0 is the last offiicaly AMD supported distribution of this provider and all builds going forward (ROCm 7.1+) Will have ROCm EP removed.
+ROCm 7.0 is the last offiicaly AMD supported distribution of this provider and all builds going forward (ROCm 7.1+) will have ROCm EP removed.
 
 Please refer to this [Pull Request](https://github.com/microsoft/onnxruntime/pull/25181) for background.
 
@@ -30,12 +28,6 @@ Please refer to this [Pull Request](https://github.com/microsoft/onnxruntime/pul
 **NOTE** Please make sure to install the proper version of Pytorch specified here [PyTorch Version](../install/#training-install-table-for-all-languages).
 
 For Nightly PyTorch builds please see [Pytorch home](https://pytorch.org/) and select ROCm as the Compute Platform.
-
-Pre-built binaries of ONNX Runtime with ROCm EP are published for most language bindings. Please reference [Install ORT](../install).
-
-## Build from source
-
-For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm). Prebuild .whl files are provided below in the requirements section and are hosted on [repo.radeon.com](https://repo.radeon.com/rocm/manylinux/). Ubuntu based docker development environments are provided in the Docker Support section. New wheels and dockers are published each ROCm release.
 
 ## Requirements
 
