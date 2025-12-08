@@ -368,7 +368,7 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
   producer_info.output_index = 0;
 
   if (graph_ == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get producer node for OrtValueInfo '", name_,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_FOUND, "Unable to get producer node for OrtValueInfo '", name_,
                            "' that is not owned by a OrtGraph.");
   }
 
@@ -379,7 +379,9 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
 
   const EpNode* ep_node = graph_->GetNode(node->Index());
   if (ep_node == nullptr) {
-    return Status::OK();  // Node is not in this GraphViewer
+    // Node is not in this GraphViewer
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_FOUND, "Unable to get producer node for OrtValueInfo '", name_,
+                           "' that is not owned by an OrtGraph.");
   }
 
   size_t output_index = 0;
@@ -539,10 +541,14 @@ void EpGraph::IndexToEpNodeMap::Resize(NodeIndex min_node_index, NodeIndex max_n
   size_t num_elems = (max_node_index - min_node_index) + 1;
 
   min_node_index_ = min_node_index;
+  max_node_index_ = max_node_index;
   nodes_.resize(num_elems, nullptr);
 }
 
 EpNode* EpGraph::IndexToEpNodeMap::GetEpNode(NodeIndex node_index) const {
+  if (node_index < min_node_index_ || node_index > max_node_index_) {
+    return nullptr;
+  }
   size_t i = node_index - min_node_index_;
   assert(i < nodes_.size());
   return nodes_[i];
