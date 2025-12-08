@@ -193,13 +193,14 @@ void profiler_collect(
 std::string get_compiled_model_compatibility_info(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
     const onnxruntime::GraphViewer& graph_viewer) {
+  std::string result_str;
   if (s_library_vitisaiep.get_compiled_model_compatibility_info) {
     const char* result = s_library_vitisaiep.get_compiled_model_compatibility_info(&eps, &graph_viewer);
     if (result && result[0] != '\0') {
-      return std::string(result);
+      result_str = result;
     }
   }
-  return std::string();
+  return result_str;
 }
 
 Status validate_compiled_model_compatibility_info(
