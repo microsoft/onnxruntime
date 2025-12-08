@@ -128,6 +128,7 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
 
@@ -150,7 +151,7 @@ class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDe
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"batch_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;
@@ -170,7 +171,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"batch_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;

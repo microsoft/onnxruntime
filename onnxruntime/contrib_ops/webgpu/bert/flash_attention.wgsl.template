@@ -44,12 +44,6 @@ var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 // Private memory per lane.
 var<private> q_tile : array<q_value_t, head_size_vec>;
 fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_t) {
-  if (batch_idx >= uniforms.batch_size || head_idx >= num_heads) {
-    for (var idx : u32 = 0; idx < head_size_vec; idx++) {
-      q_tile[idx] = vec4<q_element_t>(0);
-    }
-    return;
-  }
 #if q_BNSH
   // Stored as BNSH - float16[batch_size, num_heads, sequence_length, head_size]
   let offset = batch_idx * num_heads * uniforms.new_sequence_length * head_size_vec +
@@ -67,13 +61,6 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
 }
 
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
-  if (batch_head_idx >= uniforms.batch_size * num_heads) {
-    for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
-    let slot = u32(idx / head_size_vec);
-      k_tile[slot][idx % head_size_vec] = q_value_t(0);
-    }
-    return;
-  }
   // Stored as float16[batch_size,num_heads,present_sequence_length,96]
   let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
                k_start * head_size_vec;
@@ -85,13 +72,6 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
 }
 
 fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
-  if (batch_head_idx >= uniforms.batch_size * num_heads) {
-    for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
-      let slot = u32(idx / head_size_vec);
-      v_tile[slot][idx % head_size_vec] = q_value_t(0);
-    }
-    return;
-  }
   // Stored as float16[batch_size,num_heads,present_sequence_length,96]
   let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
                v_start * head_size_vec;
@@ -113,10 +93,6 @@ var<workgroup> o_tile_r : array<array<q_value_t, half_head_size_vec>, workgroup_
 // Private memory per lane.
 var<private> o_tile : array<q_value_t, half_head_size_vec>;
 fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) {
-  if (batch_idx >= uniforms.batch_size || head_idx >= num_heads || 
-      o_idx_global >= uniforms.new_sequence_length) {
-    return;
-  }
   // Stored as float16[batch_size,sequence_length,3072]
   let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
                o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
@@ -129,10 +105,6 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) 
 // Private memory per lane.
 var<private> o_tile : array<q_value_t, head_size_vec>;
 fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
-  if (batch_idx >= uniforms.batch_size || head_idx >= num_heads || 
-      o_idx_global >= uniforms.new_sequence_length) {
-    return;
-  }
   // Stored as float16[batch_size,sequence_length,3072]
   let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
                o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
@@ -191,6 +163,10 @@ $MAIN {
   let batch_idx = batch_head_idx / num_heads;
   let capped_sg_id = min(sg_id, max_k_step - 1u);
   let capped_sg_size = min(sg_size, max_k_step);
+
+  if (batch_idx >= uniforms.batch_size) {
+    return;
+  }
 
   // Load Q
   let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;

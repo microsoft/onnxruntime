@@ -284,6 +284,7 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {num_present_sequence_length_tile},
                             {static_cast<uint32_t>(parameters.num_heads_)},
+                            {static_cast<uint32_t>(parameters.batch_size_)},
                             {attn_bias_dim0},
                             {attn_bias_dim1}});
 
@@ -329,11 +330,12 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
                      {qk, ProgramTensorMetadataDependency::TypeAndRank},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
   program.AddOutputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
+  const uint32_t batch_heads = static_cast<uint32_t>(parameters.batch_size_ * parameters.num_heads_);
   if (use_indirect_dispatch) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None})
         .SetIndirectDispatchTensor(indirect_buffer);
   } else {
-    program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_total_seq_length_tile);
+    program.SetDispatchGroupSize(batch_heads * num_total_seq_length_tile);
   }
   program.CacheHint(tile_size, head_size_vec, use_indirect_dispatch)
       .SetWorkgroupSize(64)
@@ -342,7 +344,7 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
                             present_sequence_length,
                             {static_cast<uint32_t>(parameters.n_reps)},
                             num_present_sequence_length_tile,
-                            {static_cast<uint32_t>(parameters.num_heads_)}});
+                            {batch_heads}});
 
   return context.RunProgram(program);
 }
@@ -379,14 +381,15 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
   }
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, components}});
   const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_head_size - 1) / tile_head_size);
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_head_size_tile)
+  const uint32_t batch_heads = static_cast<uint32_t>(parameters.batch_size_ * parameters.num_heads_);
+  program.SetDispatchGroupSize(batch_heads * num_head_size_tile)
       .CacheHint(tile_size, seq_tile_size, use_indirect_dispatch)
       .SetWorkgroupSize(tile_size * tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             num_total_seq_length_tile,
                             num_present_sequence_length_tile,
                             {num_head_size_tile},
-                            {static_cast<uint32_t>(parameters.num_heads_)}});
+                            {batch_heads}});
 
   return context.RunProgram(program);
 }
