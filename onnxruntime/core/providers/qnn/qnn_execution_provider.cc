@@ -534,6 +534,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
   enable_spill_fill_buffer_ = ParseBoolOption("enable_htp_spill_fill_buffer", false, provider_options_map);
 
+  // Handling SSR requires QnnSystem lib and it's no supported for Windows x86_64 platform
+  enable_ssr_handling_ = ParseBoolOption("enable_ssr_handling", false, provider_options_map);
+
   model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", true,
                                                                   provider_options_map);
 
@@ -946,11 +949,20 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
   // or generate context cache enable, need to use use QnnSystem lib to parse the binary to get the max spill fill buffer size
-  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model,
-                                               context_cache_enabled_ && enable_spill_fill_buffer_,
-                                               share_ep_contexts_,
-                                               enable_vtcm_backup_buffer_sharing_,
-                                               context_bin_map);
+  Status rt = qnn_backend_manager_->InvokeWithSSRHandle(
+      [&]() {
+        return qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model,
+                                                  enable_ssr_handling_ || (context_cache_enabled_ && enable_spill_fill_buffer_),
+                                                  share_ep_contexts_,
+                                                  enable_vtcm_backup_buffer_sharing_,
+                                                  enable_ssr_handling_,
+                                                  context_bin_map);
+      },
+      [&]() {
+        return Status::OK();  // No SSR recover needed since SetupBackend help clean up on failure"
+      },
+      "SetupBackend",
+      logger);
 
   context_bin_map.clear();
 
@@ -1096,7 +1108,7 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
   NodeComputeInfo compute_info;
   compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
     LOGS(logger, VERBOSE) << "compute_info.create_state_func context->node_name: " << context->node_name;
-    *state = qnn_models_[context->node_name].get();
+    *state = qnn_backend_manager_->GetQnnModels()[context->node_name].get();
     return 0;
   };
 
@@ -1209,7 +1221,7 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
     LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
-    qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
+    qnn_backend_manager_->GetQnnModels().emplace(fused_node.Name(), std::move(qnn_model));
 
     ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
   }
@@ -1245,7 +1257,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
           ORT_RETURN_IF(nullptr == qnn_model_shared, "Graph: " + key + " not found from shared EP contexts.");
           ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
           ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput(logger));
-          qnn_models_.emplace(graph_meta_id, std::move(qnn_model_shared));
+          qnn_backend_manager_->GetQnnModels().emplace(graph_meta_id, std::move(qnn_model_shared));
           ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
         }
         return Status::OK();
@@ -1293,7 +1305,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
       // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
       // the name here must be same with context->node_name in compute_info
-      qnn_models_.emplace(graph_meta_id, std::move(qnn_model));
+      qnn_backend_manager_->GetQnnModels().emplace(graph_meta_id, std::move(qnn_model));
       qnn_models.erase(key);
 
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
@@ -1313,7 +1325,22 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
+  Status compile_res = qnn_backend_manager_->InvokeWithSSRHandle(
+      [&]() {
+        return CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger);
+      },
+      [&]() {
+        // Cleanup after SSR capture
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SSRCleanUp(logger));
+        return Status::OK();
+      },
+      "Compile",
+      logger);
+  ORT_RETURN_IF_ERROR(compile_res);
+
+  if (enable_ssr_handling_) {
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SaveContextToBinary(logger));
+  }
   // Generate QNN context model if it's QDQ model + context_cache_enabled=true + not exist already
   if (!is_qnn_ctx_model && context_cache_enabled_ && !is_ctx_file_exist) {
     // All partitioned graph share single QNN context, included in the same context binary
@@ -1332,7 +1359,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   buffer_size,
                                                   qnn_backend_manager_->GetSdkVersion(),
                                                   fused_nodes_and_graphs,
-                                                  qnn_models_,
+                                                  qnn_backend_manager_->GetQnnModels(),
                                                   context_model_path,
                                                   qnn_context_embed_mode_,
 

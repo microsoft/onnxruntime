@@ -1170,6 +1170,10 @@ std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interfac
   return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
 }
 
+bool IsSSRCapture(Status status) {
+  return status.ErrorMessage().find(std::to_string(QNN_COMMON_ERROR_SYSTEM_COMMUNICATION)) != std::string::npos;
+}
+
 TensorShape GetTensorProtoShape(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
   const auto& onnx_dims = tensor_shape_proto.dim();
   const size_t num_dims = static_cast<size_t>(onnx_dims.size());
