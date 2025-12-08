@@ -766,7 +766,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 
 NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
   // Only set device if user hasn't provided a compute stream
-  if (has_user_compute_stream) {
+  if (!has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
     (void)stream;
   }
