@@ -175,7 +175,8 @@ struct AttributeProto final {
 struct GraphProto final {
   static std::unique_ptr<GraphProto> Create() { return g_host->GraphProto__construct(); }
   static void operator delete(void* p) { g_host->GraphProto__operator_delete(reinterpret_cast<GraphProto*>(p)); }
-  void operator=(const GraphProto& v) { return g_host->GraphProto__operator_assign(this, v); }
+  GraphProto& operator=(const GraphProto& v) { return g_host->GraphProto__operator_assign(this, v); }
+  GraphProto& operator=(GraphProto&& v) noexcept { return g_host->GraphProto__operator_move_assign(this, std::move(v)); }
 
   const ValueInfoProto& input(int index) const { return g_host->GraphProto__input(this, index); }
   ValueInfoProtos* mutable_input() { return g_host->GraphProto__mutable_input(this); }
@@ -241,7 +242,10 @@ struct NodeProto final {
 struct TensorProto final {
   static std::unique_ptr<TensorProto> Create() { return g_host->TensorProto__construct(); }
   static void operator delete(void* p) { g_host->TensorProto__operator_delete(reinterpret_cast<TensorProto*>(p)); }
-  void operator=(const TensorProto& v) { g_host->TensorProto__operator_assign(this, v); }
+  TensorProto& operator=(const TensorProto& v) {
+    return g_host->TensorProto__operator_assign(this, v);
+  }
+  TensorProto& operator=(TensorProto&& v) noexcept { return g_host->TensorProto__operator_move_assign(this, std::move(v)); }
 
   bool has_name() const { return g_host->TensorProto__has_name(this); }
   void set_name(const ::std::string& name) { return g_host->TensorProto__set_name(this, name); }
@@ -283,8 +287,12 @@ struct TensorProto final {
 
 struct TensorProtos final {
   TensorProto* Add() { return g_host->TensorProtos__Add(this); }
-  int size() { return g_host->TensorProtos__size(this); }
+  int size() const { return g_host->TensorProtos__size(this); }
   TensorProto& at(int index) { return g_host->TensorProtos__at(this, index); }
+  IteratorHolder<TensorProto_ConstIterator, const TensorProto> begin() const { return g_host->TensorProtos__begin(this); }
+  IteratorHolder<TensorProto_ConstIterator, const TensorProto> end() const { return g_host->TensorProtos__end(this); }
+  IteratorHolder<TensorProto_Iterator, TensorProto> begin() { return g_host->TensorProtos__begin(this); }
+  IteratorHolder<TensorProto_Iterator, TensorProto> end() { return g_host->TensorProtos__end(this); }
 
   PROVIDER_DISALLOW_ALL(TensorProtos)
 };
@@ -935,9 +943,9 @@ struct NodeAttributes final {
   ONNX_NAMESPACE::AttributeProto& operator[](const std::string& string) { return g_host->NodeAttributes__operator_array(this, string); }
   const ONNX_NAMESPACE::AttributeProto& at(const std::string& string) const { return g_host->NodeAttributes__at(this, string); }
 
-  IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> begin() const { return g_host->NodeAttributes__begin(this); }
-  IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> end() const { return g_host->NodeAttributes__end(this); }
-  IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> find(const std::string& key) const { return g_host->NodeAttributes__find(this, key); }
+  IteratorHolder<NodeAttributes_Iterator, const std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> begin() const { return g_host->NodeAttributes__begin(this); }
+  IteratorHolder<NodeAttributes_Iterator, const std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> end() const { return g_host->NodeAttributes__end(this); }
+  IteratorHolder<NodeAttributes_Iterator, const std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> find(const std::string& key) const { return g_host->NodeAttributes__find(this, key); }
   void insert(const NodeAttributes& v) { return g_host->NodeAttributes__insert(this, v); }
   void emplace(const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) { g_host->NodeAttributes__emplace(this, k, v); }
   void emplace(const std::string& k, ONNX_NAMESPACE::AttributeProto&& v) { g_host->NodeAttributes__emplace(this, k, std::move(v)); }

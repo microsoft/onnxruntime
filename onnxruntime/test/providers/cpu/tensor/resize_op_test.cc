@@ -109,9 +109,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA | WEBGPU: result mismatch due to not implementing NHWC support
   // TensorRT: results mismatch
-  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider, kWebGpuExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
@@ -140,9 +139,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
-  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_int8) {
@@ -198,11 +196,10 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
-  // ROCm: results mismatch
   // DML: results mismatch
   test.Run(
       OpTester::ExpectResult::kExpectSuccess, "",
-      {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
+      {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_int8) {
@@ -283,9 +280,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
 
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA | WEBGPU: result mismatch due to not implementing NHWC support
-  // ROCm: results mismatch
   // TRT: Segmentation fault in A100
-  std::unordered_set<std::string> excluded_providers({kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kWebGpuExecutionProvider});
+  std::unordered_set<std::string> excluded_providers({kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
@@ -309,9 +305,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
-  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
@@ -549,9 +544,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uin
 
     test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
     // CUDA: result mismatch due to not implementing NHWC support
-    // ROCm: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
   };
 
   run_test(false);
@@ -648,10 +642,9 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
 
   test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
-  // ROCm: results mismatch
   // DML: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
@@ -761,9 +754,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
     test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
                             Y, false, .0f, 1.0f);
     // CUDA: result mismatch due to not implementing NHWC support
-    // ROCm: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
   };
 
   run_test(false);
@@ -2237,12 +2229,12 @@ TEST(ResizeOpTest, Antialias_NhwcBilinear) {
                           36.590908f, 76.59091f, 116.59091f};
 
   // Nchw is not supported by CUDA Resize implementation
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 5, 8, 3}, X, {1, 4, 5, 3}, Y, excluded_eps);
 }
 
 TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
   {
     std::vector<uint8_t> X(16);
     std::iota(X.begin(), X.end(), uint8_t(0));
@@ -2389,7 +2381,7 @@ TEST(ResizeOpTest, Antialias_NHWCBicubic_ExcludeOutside) {
       46.606194f, 19.878183f, 43.87818f, 21.358122f, 45.35812f,
       22.907503f, 46.907505f, 24.387442f, 48.387444f};
 
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 4, 6, 2}, X, {1, 8, 4, 2}, Y, excluded_eps);
 }
 
@@ -2485,7 +2477,7 @@ TEST(ResizeOpTest, NoAntialias_AlignCorners_Cubic_Floor_NHWC) {
     23.0000f, 24.0000f,
   };
   // clang-format on
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
   TestAntialiasing(
       {{"antialias", "0"},
        {"coordinate_transformation_mode", "align_corners"},
@@ -2517,7 +2509,7 @@ TEST(ResizeOpTest, Antialias_Linear_AlignCorners) {
       187.08333f, 195.91667f, 198.41667f, 205.91667f, 208.41667f,
       217.25f, 219.75f, 227.25f, 229.75f, 238.58333f,
       241.08333f, 248.58333f, 251.08333f};
-  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider, kRocmExecutionProvider};
+  InlinedVector<std::string_view> excluded_eps = {kCudaExecutionProvider};
   TestAntialiasing(
       {{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "align_corners"}},
       {4, 1, 4, 4, 4}, X, {4, 1, 3, 2, 2}, Y, excluded_eps);

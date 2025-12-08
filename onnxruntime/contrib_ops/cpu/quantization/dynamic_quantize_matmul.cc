@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/cpuid_info.h"  // for CPUIDInfo::GetCPUIDInfo().HasArm_SME2()
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
@@ -213,9 +212,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
         }
       }
 
-      // Currently, MlasDynamicQGemmBatch() and associated functions require SME2 or else they are no-ops.
-      // We check that here too before attempting to use them.
-      if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME2()) {
+      if (!MlasIsDynamicQGemmAvailable()) {
         can_use_dynamic_quant_mlas_ = false;
       }
 
