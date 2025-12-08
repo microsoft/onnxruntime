@@ -82,7 +82,7 @@ export declare namespace Tensor {
     int64: BigInt64Array;
     string: string[];
     bool: Uint8Array;
-    float16: Uint16Array | (TryGetGlobalType<'Float16Array'> extends { prototype: infer P } ? P : never);
+    float16: Uint16Array | TryGetGlobalType<'Float16Array', never>;
     float64: Float64Array;
     uint32: Uint32Array;
     uint64: BigUint64Array;
