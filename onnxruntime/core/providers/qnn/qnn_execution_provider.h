@@ -89,6 +89,9 @@ class QNNExecutionProvider : public IExecutionProvider {
   // Will return false if htp_power_config_id_ has no value
   bool GetHtpPowerConfigId(uint32_t& htp_power_config_id);
 
+  // htp_power_config_id_ must be created during GetCapability() as it is the only
+  // step during setup/initialization in which QNNBackendManager is setup and ready.
+  // GetCapability() is a const function, so these options must be mutable
   mutable std::optional<uint32_t> htp_power_config_id_;
   mutable std::mutex config_id_mutex_;
 

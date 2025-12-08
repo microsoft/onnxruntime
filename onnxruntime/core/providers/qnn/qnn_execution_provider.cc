@@ -655,7 +655,7 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 
     std::lock_guard<std::mutex> lock(config_id_mutex_);
     if (htp_power_config_id_.has_value()) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_.value()));
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(*htp_power_config_id_));
     }
   }
 
@@ -1543,7 +1543,7 @@ bool QNNExecutionProvider::GetHtpPowerConfigId(uint32_t& htp_power_config_id) {
     return false;
   }
 
-  htp_power_config_id = htp_power_config_id_.value();
+  htp_power_config_id = *htp_power_config_id_;
   return true;
 }
 

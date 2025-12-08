@@ -1564,16 +1564,16 @@ Status QnnBackendManager::SetPerThreadHtpPowerConfigs(const std::thread::id& thr
   auto htp_power_config_id = htp_power_configs.power_config_id;
   if (pre_run) {
     if (htp_power_configs.pre_run_perf_mode.has_value()) {
-      ORT_RETURN_IF_ERROR(SetHtpPowerConfig(htp_power_config_id, htp_power_configs.pre_run_perf_mode.value()));
+      ORT_RETURN_IF_ERROR(SetHtpPowerConfig(htp_power_config_id, *htp_power_configs.pre_run_perf_mode));
     }
 
     if (htp_power_configs.rpc_configs.has_value()) {
       ORT_RETURN_IF_ERROR(SetRpcPowerConfigs(htp_power_config_id,
-                                             htp_power_configs.rpc_configs.value().rpc_control_latency,
-                                             htp_power_configs.rpc_configs.value().rpc_polling_time));
+                                             htp_power_configs.rpc_configs->rpc_control_latency,
+                                             htp_power_configs.rpc_configs->rpc_polling_time));
     }
   } else if (htp_power_configs.post_run_perf_mode.has_value()) {
-    ORT_RETURN_IF_ERROR(SetHtpPowerConfig(htp_power_config_id, htp_power_configs.post_run_perf_mode.value()));
+    ORT_RETURN_IF_ERROR(SetHtpPowerConfig(htp_power_config_id, *htp_power_configs.post_run_perf_mode));
   }
 
   return Status::OK();
