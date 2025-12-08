@@ -117,8 +117,7 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
 #if has_attention_bias
 fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
   // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
-  if (batch_idx >= uniforms.batch_size || head_idx >= num_heads || 
-      q_idx_global >= uniforms.new_sequence_length || k_idx_global >= get_total_sequence_length()) {
+  if (k_idx_global >= get_total_sequence_length()) {
     return vec4<q_element_t>(0);
   }
   // Handle broadcasting: if dimension size is 1, use index 0
