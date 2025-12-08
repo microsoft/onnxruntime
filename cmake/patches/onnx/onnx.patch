@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4a7df7d71..8462e3293 100644
+index 4a7df7d71..022cf92aa 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -52,6 +52,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
@@ -41,7 +41,7 @@ index 4a7df7d71..8462e3293 100644
 +        "${ONNX_ROOT}/onnx/backend/test/cpp/*.cc"
 +        "${ONNX_ROOT}/onnx/backend/test/cpp/*.h")
 +    list(REMOVE_ITEM __tmp_srcs "${ONNX_ROOT}/onnx/cpp2py_export.cc")
-+    list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src})
++    list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src} "${ONNX_ROOT}/onnx/test/cmake/main.cc")
 +    list(APPEND ONNX_SRCS ${__tmp_srcs})
 +endif()
  
