@@ -13,7 +13,7 @@ class WebGpuExecutionProvider;
 namespace webgpu {
 
 // -----------------------------------------------------------------------
-// Base class for WebGPU kernels
+// Base class for WebGPU kernel
 // -----------------------------------------------------------------------
 class WebGpuKernel : public OpKernel {
  public:
