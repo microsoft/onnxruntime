@@ -33,6 +33,7 @@ jobs:
       run_tests: false
       upload_build_output: true
       execution_providers: 'webgpu'
+      job_identifier: build-linux-webgpu-x64-release
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 

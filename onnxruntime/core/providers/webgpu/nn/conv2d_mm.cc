@@ -226,7 +226,10 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
                             {static_cast<uint32_t>(dim_inner)},
                             {pads},
                             {strides},
-                            {dilations}});
+                            {dilations},
+                            {dispatch[0]},
+                            {dispatch[1]},
+                            {dispatch[2]}});
 
   return program;
 }

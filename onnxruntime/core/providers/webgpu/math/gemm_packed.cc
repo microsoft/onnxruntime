@@ -30,7 +30,12 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_));
   }
-  MatMulWriteFnSource(shader, output, need_handle_bias_, true, c_components_, output_components_, c_is_scalar_);
+
+  const ShaderVariableHelper* c = nullptr;
+  if (need_handle_bias_) {
+    c = &shader.AddInput("c", ShaderUsage::UseUniform);
+  }
+  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, output_components_, c_is_scalar_);
 
   return Status::OK();
 }
@@ -93,18 +98,21 @@ Status ApplyGemmPacked(const Tensor* a,
   }
 
   const uint32_t TILE_SIZE = 32;
-  const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
-  const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
+  const uint32_t dispatch_x = (N + TILE_SIZE - 1) / TILE_SIZE;
+  const uint32_t dispatch_y = (M + TILE_SIZE - 1) / TILE_SIZE;
 
   program.CacheHint(alpha, transA, transB, c_is_scalar)
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
-      .SetDispatchGroupSize(num_tile_n, num_tile_m, 1)
+      .SetDispatchGroupSize(dispatch_x, dispatch_y, 1u)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddUniformVariables({{alpha},
                             {beta},
-                            {M}, /* dim_a_outer */
-                            {N}, /* dim_b_outer */
-                            {K}} /*dim_inner */
+                            {M},          /* dim_a_outer */
+                            {N},          /* dim_b_outer */
+                            {K},          /*dim_inner */
+                            {dispatch_x}, /* logical_dispatch_x */
+                            {dispatch_y}, /* logical_dispatch_y */
+                            {1u}}         /* logical_dispatch_z */
       );
 
   return context.RunProgram(program);
