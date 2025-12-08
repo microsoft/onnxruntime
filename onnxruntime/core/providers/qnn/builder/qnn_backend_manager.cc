@@ -299,16 +299,16 @@ Status QnnBackendManager::LoadBackend() {
 
   std::call_once(set_adsp_path_once, []() {
     constexpr std::string_view kAdspLibraryPathEnvVar{"ADSP_LIBRARY_PATH"};
-    const char* existingPath = getenv(kAdspLibraryPathEnvVar.data());
-    if (existingPath != nullptr) {
-      LOGS_DEFAULT(WARNING) << "Using existing ADSP_LIBRARY_PATH setting of " << existingPath
+    const char* existing_path = getenv(kAdspLibraryPathEnvVar.data());
+    if (existing_path != nullptr) {
+      LOGS_DEFAULT(WARNING) << "Using existing ADSP_LIBRARY_PATH setting of " << existing_path
                             << ", which may cause the HTP backend to fail.";
       return;
     }
 
-    std::filesystem::path qnnLibPath(GetDefaultEnv().GetRuntimePath());
-    LOGS_DEFAULT(INFO) << "Setting " << kAdspLibraryPathEnvVar << " = " << qnnLibPath;
-    setenv(kAdspLibraryPathEnvVar.data(), qnnLibPath.c_str(), 1);
+    std::filesystem::path qnn_lib_path(GetDefaultEnv().GetRuntimePath());
+    LOGS_DEFAULT(INFO) << "Setting " << kAdspLibraryPathEnvVar << " = " << qnn_lib_path;
+    setenv(kAdspLibraryPathEnvVar.data(), qnn_lib_path.c_str(), 1);
   });
 #endif
 
