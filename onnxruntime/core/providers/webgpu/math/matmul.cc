@@ -305,10 +305,10 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t total_outputs = dim_a_outer * dim_b_outer;
   const uint32_t dispatch_x = (total_outputs + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
-   TensorShape output_shape_temp;
+  TensorShape output_shape_temp;
   if (is_gemm) {
-     // GEMM doesn't have `batch` in its output shape.
-     output_shape_temp = TensorShape({dim_a_outer, dim_b_outer});
+    // GEMM doesn't have `batch` in its output shape.
+    output_shape_temp = TensorShape({dim_a_outer, dim_b_outer});
   } else {
     const uint32_t batch_size = 1;
     output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer});
