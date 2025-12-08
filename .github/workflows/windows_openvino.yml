@@ -95,7 +95,7 @@ jobs:
         shell: pwsh
         # Use $GITHUB_ENV to set the variable for subsequent steps
         run: |
-          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.2.0"
+          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.4.0"
           echo "OpenVINORootDir=$openVinoRootDir" >> $env:GITHUB_ENV
 
       - name: Print OpenVINORootDir after downloading OpenVINO
