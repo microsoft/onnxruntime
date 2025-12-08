@@ -12,7 +12,7 @@ EXIT_CODE=1
 
 uname -a
 
-cd $ARTIFACT_DIR 
+cd $ARTIFACT_DIR
 
 mkdir -p $ARTIFACT_DIR/onnxruntime-linux-x64-tensorrt
 tar zxvf $ARTIFACT_DIR/onnxruntime-linux-x64-tensorrt-*.tgz -C onnxruntime-linux-x64-tensorrt
@@ -25,6 +25,6 @@ VERSION=`ls $ARTIFACT_DIR/onnxruntime-linux-x64-gpu | sed 's/onnxruntime-linux-x
 mv $ARTIFACT_DIR/onnxruntime-linux-x64-gpu/* $ARTIFACT_DIR/onnxruntime-linux-x64-gpu/onnxruntime-linux-x64-gpu-$VERSION
 rm $ARTIFACT_DIR/onnxruntime-linux-x64-cuda-*.tgz
 
-cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime.so* onnxruntime-linux-x64-gpu/*/lib
-cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_tensorrt.so onnxruntime-linux-x64-gpu/*/lib
-cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_shared.so onnxruntime-linux-x64-gpu/*/lib
+cp onnxruntime-linux-x64-tensorrt/*/lib64/libonnxruntime.so* onnxruntime-linux-x64-gpu/*/lib64
+cp onnxruntime-linux-x64-tensorrt/*/lib64/libonnxruntime_providers_tensorrt.so onnxruntime-linux-x64-gpu/*/lib64
+cp onnxruntime-linux-x64-tensorrt/*/lib64/libonnxruntime_providers_shared.so onnxruntime-linux-x64-gpu/*/lib64

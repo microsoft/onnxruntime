@@ -94,7 +94,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                         )
         for cpu_arch in ["x64", "aarch64"]:
             if child.name == get_package_name("linux", cpu_arch, ep, is_training_package):
-                child = child / "lib"  # noqa: PLW2901
+                child = child / "lib64"  # noqa: PLW2901
                 if cpu_arch == "x86_64":
                     cpu_arch = "x64"  # noqa: PLW2901
                 elif cpu_arch == "aarch64":
