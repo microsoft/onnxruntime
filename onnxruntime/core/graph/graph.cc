@@ -3730,6 +3730,10 @@ Status Graph::ConvertInitializersIntoOrtValues() {
     auto& graph_proto = *graph.graph_proto_;
     for (int i = 0, lim = graph_proto.initializer_size(); i < lim; ++i) {
       auto& tensor_proto = *graph_proto.mutable_initializer(i);
+
+      ORT_RETURN_IF(utils::HasExternalDataInMemory(tensor_proto),
+                    "The model contains initializers with in-memory references. It is an invalid model.");
+
       if (utils::HasExternalData(tensor_proto)) {
         continue;  // ignore data on disk, that will be loaded either by EP or at session_state finalize
       }
