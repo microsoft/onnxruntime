@@ -7,6 +7,8 @@
 #include "core/common/status.h"
 #include "core/common/narrow.h"
 #include "core/common/inlined_containers.h"
+#include "core/providers/cpu/nn/layer_norm_macro.h"
+#include <algorithm>
 
 namespace onnxruntime {
 
@@ -46,13 +48,6 @@ struct LayerNormParams {
 //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
 // For all other NumPy-broadcastable shapes we fall back to the generic
 // broadcasting path (use_generic_broadcast = true) and ignore broadcast_param.
-
-// Below is a macro to compute the offset for scale and bias data for a row of X.
-#ifndef LAYER_NORM_SCALE_BIAS_OFFSET
-#define LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, x_row, norm_size) \
-  ((broadcast_param == 0) ? 0                                           \
-                          : norm_size * (broadcast_param > 0 ? x_row / broadcast_param : x_row % (-broadcast_param)))
-#endif
 
 class LayerNormHelper {
  public:
