@@ -131,10 +131,14 @@ stages:
       displayName: Install CocoaPods
 
     - script: |
+        set -e -x
         export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
         export LANG=en_US.UTF-8
-        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
-        pod install
+        echo $(Build.SourcesDirectory)
+        ls $(Build.SourcesDirectory)/
+        echo $(Build.BinariesDirectory)
+        ls $(Build.BinariesDirectory)/ios_pod/onnxruntime-c/
+        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c pod install --verbose
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
