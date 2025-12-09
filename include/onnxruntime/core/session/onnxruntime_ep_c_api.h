@@ -328,7 +328,7 @@ struct OrtKernelImpl {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \note Implementation of this function is optional (set to NULL). If not implemented, ORT assumes the kernel
+   * \note Implementation of this function is optional. If not implemented (set to NULL), ORT assumes the kernel
    *       does not pre-pack constant tensors.
    *
    * \since Version 1.24.
