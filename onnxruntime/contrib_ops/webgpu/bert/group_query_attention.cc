@@ -245,6 +245,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 scale_,
                                                                 softcap_));
   params.use_smooth_softmax = use_smooth_softmax_;
+  params.rotary_interleaved = rotary_interleaved_;
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
