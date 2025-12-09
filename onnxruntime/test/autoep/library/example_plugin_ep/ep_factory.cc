@@ -37,6 +37,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
+  CreateCustomOpDomain = CreateCustomOpDomainImpl;
+
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
   default_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU",
@@ -68,6 +70,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                                      OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                                      /*alignment*/ 0,
                                                      OrtAllocatorType::OrtDeviceAllocator};
+
+  // Custom Op Domain
+  custom_op_domain_ = Ort::CustomOpDomain{"test"};
 }
 
 /*static*/
@@ -305,6 +310,25 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
     auto sync_stream = std::make_unique<StreamImpl>(factory, /*OrtEp**/ nullptr, stream_options);
     *stream = sync_stream.release();
   }
+
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainImpl(OrtEpFactory* this_ptr,
+                                                                   _Outptr_result_maybenull_ OrtCustomOpDomain** out,
+                                                                   _Out_ size_t* num_domains) noexcept {
+  auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+
+  std::vector<std::unique_ptr<PluginEpCustomOp>> created_custom_op_list;
+  created_custom_op_list.push_back(std::make_unique<PluginEpCustomOp>(factory->ep_name_.c_str(), nullptr));
+  created_custom_op_list.back().get()->SetName("VariadicNode");
+  factory->custom_op_domain_.Add(created_custom_op_list.back().get());
+
+  *out = factory->custom_op_domain_;
+  *num_domains = 1;
+
+  factory->created_custom_op_list_ = std::move(created_custom_op_list);
 
   return nullptr;
 }

@@ -507,7 +507,7 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
 
-    // add custom op domain provided by EP if any
+    // add custom op domain provided by EP to the session options if any
     OrtEpFactory* ep_factory = ep_device->ep_factory;
     if (ep_factory) {
       auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
@@ -524,10 +524,10 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       }
 
       size_t num_domains = 0;
-      OrtCustomOpDomain** domain_ptrs = nullptr;
-      ep_factory->CreateCustomOpDomain(domain_ptrs, &num_domains);
+      OrtCustomOpDomain* domain_ptrs = nullptr;
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->CreateCustomOpDomain(ep_factory, &domain_ptrs, &num_domains)));
 
-      const auto custom_op_domains_span = gsl::span<OrtCustomOpDomain*>(domain_ptrs, num_domains);
+      const auto custom_op_domains_span = gsl::span<OrtCustomOpDomain*>(&domain_ptrs, num_domains);
       for (auto domain : custom_op_domains_span) {
         if (!is_already_in_domains(domain->domain_, ort_session_options.custom_op_domains_) &&
             domain->custom_ops_.size() > 0) {

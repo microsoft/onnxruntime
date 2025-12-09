@@ -282,5 +282,30 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(4, 0, 24, 0, 0, 84));
 }
+
+// Creates a session with the example plugin EP and runs a model with a single Mul node.
+// Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
+TEST(OrtEpLibrary, PluginEp_Create_OrtCustomOpDomain) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // Create session with example plugin EP
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  try {
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/custom_op_variadic_io.onnx"), session_options);
+    FAIL();
+  } catch (const Ort::Exception& excpt) {
+    // The session is expected to pass the custom onnx model validation as example plugin EP provides the custom op domain for VariadicNode op"
+    // If the custom op domain is not provided, the error message should be:
+    // "Load model from testdata/custom_op_variadic_io.onnx failed:Fatal error: test:VariadicNode(-1) is not a registered function/op"
+    ASSERT_THAT(excpt.what(), testing::Not(testing::HasSubstr("test:VariadicNode(-1) is not a registered function/op")));
+
+    // But still, session creation is expected to fail as example plugin EP is not able to run VariadicNode op.
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
