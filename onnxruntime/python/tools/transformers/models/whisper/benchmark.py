@@ -130,9 +130,6 @@ def get_model(args: argparse.Namespace):
         if args.verbose:
             sess_options.log_verbosity_level = 1
             sess_options.log_severity_level = 1
-            if args.tune:
-                ort.set_default_logger_severity(0)
-                ort.set_default_logger_verbosity(0)
 
     else:
         raise Exception(f"Cannot recognize {args.benchmark_type}")
@@ -338,9 +335,6 @@ def run_ort_inference(args, inputs, model):
             logger.error(f"The following model inputs are missing: {missing_inputs}")
             raise Exception("There are missing inputs to the model. Please add them and try again.")
 
-        if warmup and args.tune:
-            inputs["min_length"] = inputs["max_length"]
-
         # Remove unnecessary inputs from model inputs
         unnecessary_inputs = user_inputs - model_inputs
         if len(unnecessary_inputs):
@@ -392,9 +386,6 @@ def run_ort_inference(args, inputs, model):
     # ORT evaluation
     logger.info("\nEvaluating ONNX Runtime...")
     ort_evaluate_inputs = ort_inputs
-    if args.tune:
-        ort_warmup_inputs = prepare_ort_inputs(inputs, warmup=True)
-        ort_evaluate_inputs = (ort_warmup_inputs, ort_inputs)
 
     time_fn(args, generate_fn, ort_evaluate_inputs)
     ort_outputs = generate_fn(ort_inputs)
@@ -479,7 +470,7 @@ def parse_args():
         "--device",
         type=str,
         default="cuda" if torch.cuda.is_available() else "cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
     )
     parser.add_argument("-id", "--device-id", type=int, default=0)
     parser.add_argument("-w", "--warmup-runs", type=int, default=5)
@@ -527,12 +518,6 @@ def parse_args():
     parser.add_argument("--pt-num-rows", type=int, default=1000, help="Number of rows for PyTorch profiler to display")
     parser.add_argument("--verbose", default=False, action="store_true")
     parser.add_argument("--log-folder", type=str, default=os.path.join("."), help="Folder to cache log files")
-    parser.add_argument(
-        "--tune",
-        default=False,
-        action="store_true",
-        help="Only used by ROCm EP, enable TunableOp tuning to select fastest kernel",
-    )
 
     args = parser.parse_args()
 
@@ -546,16 +531,6 @@ def parse_args():
         args.execution_provider = f"{args.device.upper()}ExecutionProvider"
         if args.execution_provider == "CUDAExecutionProvider":
             args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
-        elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (
-                args.execution_provider,
-                {
-                    "device_id": args.device_id,
-                    "tunable_op_enable": 1,
-                    "tunable_op_tuning_enable": 1 if args.tune else 0,
-                },
-            )
-            args.device = "cuda"
 
     # Check that model paths have been specified for any benchmarking with ORT
     if args.benchmark_type == "hf-ort":

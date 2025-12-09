@@ -329,9 +329,5 @@ std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool) {
-  return nullptr;
-}
-
 }  // namespace test
 }  // namespace onnxruntime

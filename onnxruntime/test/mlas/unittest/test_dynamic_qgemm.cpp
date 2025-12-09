@@ -4,11 +4,8 @@
 // SPDX-License-Identifier: MIT
 //
 
-// Currently this test only applies to KleidiAI Guard against it running in any other situation
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-
+#include "mlas.h"
 #include "test_util.h"
-#include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
 
 class MlasDynamicQgemmTest {
  private:
@@ -20,11 +17,6 @@ class MlasDynamicQgemmTest {
 
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
-    // Currently, MlasDynamicQGemmBatch() and associated functions require SME2 or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME2 but it was not detected. Skipping test.";
-    }
-
     // Setup buffers for holding various data
 
     float* A = buffer_a.GetBuffer(M * K * BatchSize);
@@ -167,6 +159,10 @@ class DynamicQgemmExecuteTest : public MlasTestFixture<MlasDynamicQgemmTest> {
 };
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
+  // Only register tests if MlasDynamicQGemmBatch() has an implementation available.
+  if (!MlasIsDynamicQGemmAvailable()) {
+    return size_t{0};
+  }
+
   return DynamicQgemmExecuteTest::RegisterAll(is_short_execute);
 });
-#endif
