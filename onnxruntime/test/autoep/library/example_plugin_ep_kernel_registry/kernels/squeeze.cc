@@ -113,17 +113,6 @@ OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
 
   // Copy input to the output. Use the OrtDataTransferImpl created by the EP factory to handle copies across devices
   // more generically (although a memcpy would be enough for this example EP).
-  const OrtMemoryDevice* src_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(input.GetTensorMemoryInfo());
-  const OrtMemoryDevice* dst_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(output.GetTensorMemoryInfo());
-
-  RETURN_IF(!data_transfer_impl_->CanCopy(data_transfer_impl_, src_device, dst_device), Ort::GetApi(),
-            "OrtDataTransferImpl cannot copy Squeeze input to the output.");
-
-  std::array<const OrtValue*, 1> src_tensors = {input};
-  std::array<OrtValue*, 1> dst_tensors = {output};
-
-  RETURN_IF_ERROR(data_transfer_impl_->CopyTensors(data_transfer_impl_, src_tensors.data(), dst_tensors.data(),
-                                                   /*streams*/ nullptr, src_tensors.size()));
-
+  RETURN_IF_ERROR(CopyTensor(input, output));
   return nullptr;
 }

@@ -320,7 +320,9 @@ struct OrtKernelImpl {
    * \param[in] this_ptr The OrtKernelImpl instance.
    * \param[in] tensor The OrtValue instance representing the constant tensor. Do not cache in the kernel.
    * \param[in] input_index The input index of the tensor in this kernel.
-   * \param[in] alloc Implementation should use this allocator for allocating the pre-packed data.
+   * \param[in] alloc Implementation should use this allocator for allocating the packed data. It will either be
+   *                  an allocator provided by the EP (default or read-only) or a shared allocator overridden by
+   *                  the application via OrtApi::CreateSharedAllocator().
    * \param[out] is_packed Output parameter that the implementation sets to true if the kernel packed the tensor data.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value

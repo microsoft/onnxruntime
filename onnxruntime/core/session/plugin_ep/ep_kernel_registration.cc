@@ -4,6 +4,7 @@
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 
 #include <memory>
+#include <unordered_map>
 #include <utility>
 
 #include "core/framework/error_code_helper.h"
@@ -57,19 +58,42 @@ class PluginEpOpKernel final : public OpKernel {
     };
 
     // Create a non-owning OrtValue that wraps the const Tensor& with an empty deleter.
-    // This is passed to PrePackConstantTensor as a const OrtValue*.
+    // This is passed to OrtKernelImpl::PrePackConstantTensor() as a const OrtValue*.
     // The above reasons make the const_cast relatively "safe".
     const OrtValue ort_value(const_cast<Tensor*>(&tensor), DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
-    OrtAllocatorImplWrappingIAllocator ort_allocator(std::move(alloc));
 
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-        kernel_impl_->PrePackConstantTensor(kernel_impl_, &ort_value, input_idx, &ort_allocator, &is_packed)));
+        kernel_impl_->PrePackConstantTensor(kernel_impl_, &ort_value, input_idx,
+                                            GetCachedOrtAllocator(std::move(alloc)), &is_packed)));
 
     return Status::OK();
   }
 
  private:
+  /// <summary>
+  /// Gets the cached OrtAllocator for the given AllocatorPtr.
+  /// </summary>
+  /// <param name="alloc"></param>
+  /// <returns></returns>
+  OrtAllocator* GetCachedOrtAllocator(AllocatorPtr&& alloc) {
+    OrtAllocator* result = nullptr;
+    IAllocator* internal_alloc = alloc.get();
+
+    auto iter = prepack_allocs_.find(internal_alloc);
+    if (iter != prepack_allocs_.end()) {
+      result = iter->second.get();
+    } else {
+      auto ort_allocator = std::make_unique<OrtAllocatorImplWrappingIAllocator>(std::move(alloc));
+      result = ort_allocator.get();
+
+      prepack_allocs_.emplace(internal_alloc, std::move(ort_allocator));
+    }
+
+    return result;
+  }
+
   OrtKernelImpl* kernel_impl_ = nullptr;
+  std::unordered_map<IAllocator*, std::unique_ptr<OrtAllocatorImplWrappingIAllocator>> prepack_allocs_;
 };
 
 /*static*/

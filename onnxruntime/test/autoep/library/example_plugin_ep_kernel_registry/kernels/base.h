@@ -27,10 +27,14 @@ class BaseKernelImpl : public OrtKernelImpl {
   // implementations and converts them into OrtStatus*.
   virtual OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) = 0;
 
+  // Optional. Derived classes may choose to override. Otherwise, the default implementation sets `is_packed` to false.
   virtual OrtStatus* DoPrePackConstantTensor(const OrtValue* tensor, int input_index, OrtAllocator* alloc,
                                              /*out*/ bool& is_packed);
 
  protected:
+  // Copies the source tensor into the destination tensor using the OrtDataTransferImpl defined by EP.
+  OrtStatus* CopyTensor(Ort::ConstValue src_tensor, Ort::UnownedValue dst_tensor) noexcept;
+
   const OrtKernelInfo* info_;
   OrtDataTransferImpl* data_transfer_impl_;  // Custom state passed from OrtEp
 };

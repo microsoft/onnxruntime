@@ -16,4 +16,8 @@ class Mul : public BaseKernelImpl {
 
  private:
   OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) override;
+  OrtStatus* DoPrePackConstantTensor(const OrtValue* tensor, int input_index, OrtAllocator* alloc,
+                                     /*out*/ bool& is_packed) override;
+
+  std::optional<Ort::Value> packed_weight_1_ = std::nullopt;
 };

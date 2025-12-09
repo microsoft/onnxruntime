@@ -4,7 +4,8 @@
 #include "base.h"
 
 BaseKernelImpl::BaseKernelImpl(const OrtKernelInfo* info, void* state)
-    : info_{info},
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+      info_{info},
       data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
   ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
@@ -16,6 +17,22 @@ OrtStatus* BaseKernelImpl::DoPrePackConstantTensor(const OrtValue* /*tensor*/, i
                                                    OrtAllocator* /*alloc*/, /*out*/ bool& is_packed) {
   // Default implementation that does not pack weights
   is_packed = false;
+  return nullptr;
+}
+
+OrtStatus* BaseKernelImpl::CopyTensor(Ort::ConstValue src_tensor, Ort::UnownedValue dst_tensor) noexcept {
+  const OrtMemoryDevice* src_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(src_tensor.GetTensorMemoryInfo());
+  const OrtMemoryDevice* dst_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(dst_tensor.GetTensorMemoryInfo());
+
+  RETURN_IF(!data_transfer_impl_->CanCopy(data_transfer_impl_, src_device, dst_device), Ort::GetApi(),
+            "OrtDataTransferImpl cannot copy src tensor to dst tensor.");
+
+  std::array<const OrtValue*, 1> src_tensors = {src_tensor};
+  std::array<OrtValue*, 1> dst_tensors = {dst_tensor};
+
+  RETURN_IF_ERROR(data_transfer_impl_->CopyTensors(data_transfer_impl_, src_tensors.data(), dst_tensors.data(),
+                                                   /*streams*/ nullptr, src_tensors.size()));
+
   return nullptr;
 }
 
