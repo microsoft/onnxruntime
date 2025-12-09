@@ -129,8 +129,8 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
   utils::SetRawDataInTensorProto(qkv_weight_initializer, merged_qkv_weight.data(), element_count * sizeof(uint8_t));
   utils::SetRawDataInTensorProto(qkv_scale_initializer, merged_qkv_scale.data(), scale_elements_count * sizeof(MLFloat16));
 
-  NodeArg& qkv_weight_arg = graph_utils::AddInitializer(graph, qkv_weight_initializer);
-  NodeArg& qkv_scale_arg = graph_utils::AddInitializer(graph, qkv_scale_initializer);
+  NodeArg& qkv_weight_arg = graph_utils::AddInitializerWithOrtValue(graph, qkv_weight_initializer);
+  NodeArg& qkv_scale_arg = graph_utils::AddInitializerWithOrtValue(graph, qkv_scale_initializer);
 
   std::vector<NodeArg*> result_node_args = {&qkv_weight_arg, &qkv_scale_arg};
 
@@ -160,7 +160,7 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
 
     utils::SetRawDataInTensorProto(qkv_zp_initializer, merged_qkv_zp.data(), zp_elements_count * sizeof(uint8_t));
 
-    NodeArg& qkv_zp_arg = graph_utils::AddInitializer(graph, qkv_zp_initializer);
+    NodeArg& qkv_zp_arg = graph_utils::AddInitializerWithOrtValue(graph, qkv_zp_initializer);
     result_node_args.push_back(&qkv_zp_arg);
   }
 

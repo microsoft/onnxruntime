@@ -10,7 +10,6 @@ from abc import ABC, abstractmethod  # noqa: F401
 
 import onnx
 import torch
-from torch.utils.cpp_extension import ROCM_HOME
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
@@ -90,8 +89,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
         self._export_mode = export_mode
-
-        self.is_rocm_pytorch = bool(torch.version.hip is not None and ROCM_HOME is not None)
 
         # WIP feature to enable caching in Gradient accumulation scenario.
         self._gradient_accumulation_manager = GradientAccumulationManager()
@@ -194,23 +191,22 @@ class GraphExecutionManager(GraphExecutionInterface):
         provider_options = None
         if self._device.type == "cuda":
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = ["ROCMExecutionProvider"] if self.is_rocm_pytorch else ["CUDAExecutionProvider"]
+            providers = ["CUDAExecutionProvider"]
             providers.append("CPUExecutionProvider")
             provider_option_map = {"device_id": str(self._device.index)}
-            if not self.is_rocm_pytorch:
-                # Set Conv algo search mode to HEURISTIC by default, which is the same as PyTorch's default setting.
-                provider_option_map["cudnn_conv_algo_search"] = self._runtime_options.conv_algo_search
-                provider_option_map["cudnn_conv_use_max_workspace"] = "1"
-                provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
-                if self._runtime_options.enable_tuning:
-                    provider_option_map["tunable_op_enable"] = "1"
-                    provider_option_map["tunable_op_tuning_enable"] = "1"
-                    if self._runtime_options.max_tuning_duration_ms:
-                        provider_option_map["tunable_op_max_tuning_duration_ms"] = str(
-                            self._runtime_options.max_tuning_duration_ms
-                        )
-                elif self._runtime_options.tuning_results_path:
-                    provider_option_map["tunable_op_enable"] = "1"
+            # Set Conv algo search mode to HEURISTIC by default, which is the same as PyTorch's default setting.
+            provider_option_map["cudnn_conv_algo_search"] = self._runtime_options.conv_algo_search
+            provider_option_map["cudnn_conv_use_max_workspace"] = "1"
+            provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
+            if self._runtime_options.enable_tuning:
+                provider_option_map["tunable_op_enable"] = "1"
+                provider_option_map["tunable_op_tuning_enable"] = "1"
+                if self._runtime_options.max_tuning_duration_ms:
+                    provider_option_map["tunable_op_max_tuning_duration_ms"] = str(
+                        self._runtime_options.max_tuning_duration_ms
+                    )
+            elif self._runtime_options.tuning_results_path:
+                provider_option_map["tunable_op_enable"] = "1"
             if self._runtime_options.use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)

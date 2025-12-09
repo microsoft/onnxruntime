@@ -628,6 +628,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
   return CreateNotEnabledStatus("VitisAI");
 }
 #endif
+
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
                     _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);

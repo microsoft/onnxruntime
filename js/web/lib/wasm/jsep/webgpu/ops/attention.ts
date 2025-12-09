@@ -360,7 +360,7 @@ const createInPlaceSoftmaxProgramInfo = (
     let local_offset = local_idx * uniforms.elements_per_thread;
     let offset = (global_idx / ${WG}) * uniforms.total_sequence_length + local_offset;
     let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + workgroup_id.y + 1)' : 'total_sequence_length'};
-    var thread_max_vector = ${f32Type}(-3.402823e+38f);
+    var thread_max_vector = ${f32Type}(-3.4028234663852886e+38f);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
     }
@@ -378,7 +378,7 @@ const createInPlaceSoftmaxProgramInfo = (
     })()};
     workgroupBarrier();
 
-    var max_value =  f32(-3.402823e+38f);
+    var max_value =  f32(-3.4028234663852886e+38f);
     for (var i = 0u; i < ${WG}; i++) {
       max_value = max(thread_max[i], max_value);
     }

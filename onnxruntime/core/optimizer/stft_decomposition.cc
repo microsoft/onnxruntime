@@ -46,7 +46,7 @@ NodeArg* AddInitializer(Graph& graph, const char* name, const int64_t (&shape)[T
     proto.add_dims(shape[i]);
   }
   utils::SetRawDataInTensorProto(proto, begin, element_count * sizeof(TDataType));
-  return &graph_utils::AddInitializer(graph, proto);
+  return &graph_utils::AddInitializerWithOrtValue(graph, proto);
 }
 
 template <size_t TDims>
@@ -225,8 +225,8 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       }
 
       const int64_t weight_shape[] = {dft_unique_bins, 1, 1, dft_size};
-      auto real_weights = AddInitializer<float>(graph, "stft_real_conv_weights", weight_shape, real_weights_data.data());
-      auto imaginary_weights = AddInitializer<float>(graph, "stft_imaginary_conv_weights", weight_shape, imag_weights_data.data());
+      auto* real_weights = AddInitializer<float>(graph, "stft_real_conv_weights", weight_shape, real_weights_data.data());
+      auto* imaginary_weights = AddInitializer<float>(graph, "stft_imaginary_conv_weights", weight_shape, imag_weights_data.data());
 
       const int64_t signal_reshaped[] = {batch_size, 1, 1, signal_length};
       auto signal_shape = AddShapeInitializer(graph, "stft_signal_shape", signal_reshaped);

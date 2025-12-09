@@ -57,8 +57,8 @@ static void RunAttentionTest(
     int max_sequence_length = 0,
     const bool disable_cpu = false,
     const bool disable_cuda = false,
-    const bool disable_rocm = false,
     const bool disable_dml = false,
+    const bool disable_webgpu = false,
     std::vector<int32_t> qkv_sizes = {},
     const std::vector<float>& attention_bias_data = {},
     int kv_sequence_length = 0,
@@ -71,21 +71,21 @@ static void RunAttentionTest(
 
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !is_weights_constant && !disable_cuda;
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !is_weights_constant && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
+  bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get()) && !disable_webgpu;
 
   int head_size = hidden_size / number_of_heads;
-  if (enable_cpu || enable_cuda || enable_rocm || enable_dml) {
+  if (enable_cpu || enable_cuda || enable_dml || enable_webgpu) {
     OpTester tester("Attention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
     tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
     tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(past_present_share_buffer ? 1 : 0));
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
-    if (use_scale && !enable_rocm) {
+    if (use_scale) {
       tester.AddAttribute<float>("scale", static_cast<float>(1.f / sqrt(head_size)));
     }
-    if (do_neox_rotary && !enable_rocm) {
+    if (do_neox_rotary) {
       tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(do_neox_rotary ? 1 : 0));
     }
 
@@ -239,18 +239,6 @@ static void RunAttentionTest(
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
-    if (enable_rocm) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultRocmExecutionProvider());
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-    }
-
-    if (enable_rocm) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-    }
-
     if (enable_cpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -263,6 +251,12 @@ static void RunAttentionTest(
       if (use_float16) {
         tester.SetOutputTolerance(0.02f);
       }
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+
+    if (enable_webgpu) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
@@ -289,8 +283,8 @@ static void RunAttentionTest(
     int max_sequence_length = 0,
     const bool disable_cpu = false,
     const bool disable_cuda = false,
-    const bool disable_rocm = false,
     const bool disable_dml = false,
+    const bool disable_webgpu = false,
     const std::vector<int32_t> qkv_sizes = {},
     const std::vector<float>& attention_bias_data = {},
     int kv_sequence_length = 0,
@@ -301,13 +295,13 @@ static void RunAttentionTest(
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
-                   disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias_data,
+                   disable_cpu, disable_cuda, disable_dml, disable_webgpu, qkv_sizes, attention_bias_data,
                    kv_sequence_length, past_present_share_buffer, use_scale, do_neox_rotary);
   RunAttentionTest(input_data, weights_data, true, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, mask_type, input_hidden_size, max_sequence_length,
-                   disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias_data,
+                   disable_cpu, disable_cuda, disable_dml, disable_webgpu, qkv_sizes, attention_bias_data,
                    kv_sequence_length, past_present_share_buffer, use_scale, do_neox_rotary);
 }
 
@@ -374,11 +368,10 @@ TEST(ContribOpAttentionTest, AttentionBatch1WithQKVAttr1) {
       3.1967618465423584f, 0.51903456449508667f, 0.63051539659500122f, 2.9394614696502686f,
       0.65332180261611938f, 1.000949501991272f, 0.74175024032592773f, 2.8231701850891113f};
 
-  constexpr bool disable_rocm = true;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0,
-                   0, false, false, disable_rocm, false, qkv_sizes);
+                   0, false, false, false, false, qkv_sizes);
 }
 
 TEST(ContribOpAttentionTest, AttentionBatch1WithQKVAttr2) {
@@ -412,11 +405,10 @@ TEST(ContribOpAttentionTest, AttentionBatch1WithQKVAttr2) {
   std::vector<float> output_data = {
       0.64932525157928467f, 0.79390722513198853f, 0.64932847023010254f, 0.79375863075256348f};
 
-  constexpr bool disable_rocm = true;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0,
-                   0, false, false, disable_rocm, false, qkv_sizes);
+                   0, false, false, false, false, qkv_sizes);
 }
 
 TEST(ContribOpAttentionTest, AttentionBatch1AttentionBias) {
@@ -452,12 +444,11 @@ TEST(ContribOpAttentionTest, AttentionBatch1AttentionBias) {
 
   constexpr bool disable_cpu = false;
   constexpr bool disable_cuda = false;
-  constexpr bool disable_rocm = false;
   constexpr bool disable_dml = false;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0,
-                   0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias);
+                   0, disable_cpu, disable_cuda, disable_dml, false, qkv_sizes, attention_bias);
 }
 
 TEST(ContribOpAttentionTest, AttentionBatch2AttentionBias) {
@@ -498,12 +489,11 @@ TEST(ContribOpAttentionTest, AttentionBatch2AttentionBias) {
 
   constexpr bool disable_cpu = false;
   constexpr bool disable_cuda = false;
-  constexpr bool disable_rocm = false;
   constexpr bool disable_dml = false;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0,
-                   0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias);
+                   0, disable_cpu, disable_cuda, disable_dml, false, qkv_sizes, attention_bias);
 }
 
 TEST(ContribOpAttentionTest, AttentionBatch1_Float16) {
@@ -850,8 +840,8 @@ void RawAttentionEmptyPastState(bool past_present_share_buffer) {
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data,
-                     AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, sequence_length, true, false, true, disable_dml, {}, {}, 0,
-                     true);
+                     AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, sequence_length, true, false, disable_dml, true,
+                     {}, {}, 0, true);
   }
 }
 
@@ -1033,7 +1023,7 @@ void RawAttentionPastStateBatch1(bool past_present_share_buffer) {
                      batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data,
                      AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, past_sequence_length + sequence_length + 4,
-                     true, false, true, disable_dml, {}, {}, 0, true);
+                     true, false, disable_dml, true, {}, {}, 0, true);
   }
 }
 
@@ -1166,7 +1156,7 @@ void RawAttentionPastStateBatch2(bool past_present_share_buffer) {
                      batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data,
                      AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, past_sequence_length + sequence_length,
-                     true, false, true, disable_dml, {}, {}, 0, true);
+                     true, false, disable_dml, true, {}, {}, 0, true);
   }
 }
 
@@ -1291,7 +1281,7 @@ void RawAttentionPastStateBatch2WithPadding(bool past_present_share_buffer) {
                      use_past_state, past_sequence_length, &past_data, &present_data,
                      AttentionMaskType::MASK_1D_END_START,
                      0, past_sequence_length + sequence_length + 4,
-                     true, false, true, disable_dml, {}, {}, 0, true);
+                     true, false, disable_dml, true, {}, {}, 0, true);
   }
 }
 
@@ -1678,9 +1668,9 @@ TEST(ContribOpAttentionTest, AttentionWithNormFactor) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_2D_KEY_PADDING, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
-                   false /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, false /*disable_dml*/, {} /*qkv_sizes*/,
-                   {} /*attention_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
-                   true /*use_scale*/);
+                   false /*disable_cpu*/, false /*disable_cuda*/, false /*disable_dml*/,
+                   false /*disable_webgpu*/, {} /*qkv_sizes*/, {} /*attention_bias_data*/, 0 /*kv_sequence_length*/,
+                   false /*past_present_share_buffer*/, true /*use_scale*/);
 }
 
 TEST(ContribOpAttentionTest, AttentionWithNeoXRotaryEmbedding) {
@@ -1712,9 +1702,9 @@ TEST(ContribOpAttentionTest, AttentionWithNeoXRotaryEmbedding) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_2D_KEY_PADDING, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
-                   true /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, disable_dml, {} /*qkv_sizes*/,
-                   {} /*attention_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
-                   true /*use_scale*/, true /*use_neox_rotary_embedding*/);
+                   true /*disable_cpu*/, false /*disable_cuda*/, disable_dml,
+                   true /*disable_webgpu*/, {} /*qkv_sizes*/, {} /*attention_bias_data*/, 0 /*kv_sequence_length*/,
+                   false /*past_present_share_buffer*/, true /*use_scale*/, true /*use_neox_rotary_embedding*/);
 }
 
 TEST(ContribOpAttentionTest, AttentionMask1DEndNoWord) {
@@ -1974,7 +1964,7 @@ TEST(ContribOpAttentionTest, Attention4DMask) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length,
                    past_data, present_data, AttentionMaskType::MASK_4D_MEGATRON, input_hidden_size, max_sequence_length,
-                   disable_cpu);
+                   disable_cpu, /* disable_cuda */ false, /* disable_dml */ false, /* disable_webgpu */ true);
 }
 
 TEST(ContribOpAttentionTest, AttentionMaskIndexOutOfRange) {
@@ -2128,10 +2118,9 @@ static void RunModelWithRandomInput(
   float gpu_threshold = is_float16 ? 0.5f : 0.005f;
   constexpr float cpu_threshold = 0.002f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get() && !is_float16);
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
-  if (enable_cuda || enable_rocm || enable_dml) {
+  if (enable_cuda || enable_dml) {
     OpTester test("Attention", 1, onnxruntime::kMSDomain);
     test.AddAttribute<int64_t>("num_heads", num_heads);
     if (is_float16) {
@@ -2153,8 +2142,6 @@ static void RunModelWithRandomInput(
       execution_providers.push_back(DefaultCudaExecutionProvider());
     } else if (enable_dml) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
-    } else {
-      execution_providers.push_back(DefaultRocmExecutionProvider());
     }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }

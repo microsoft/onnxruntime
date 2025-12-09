@@ -262,6 +262,7 @@ struct ToInt4Converter<SrcType, Int4x2,
 // See https://onnx.ai/onnx/operators/onnx__Cast.html#summary for casting from
 // fixed point to fixed point: when OOR, discard higher bits and reinterpret
 // (with respect to two's complement representation for signed types).
+
 template <typename SrcType>
 struct ToInt4Converter<SrcType, UInt4x2,
                        std::enable_if_t<IsStandardIntegerType<SrcType>::value>> {
@@ -390,11 +391,11 @@ struct TensorCaster<MLFloat16, float> {
 // tensor float -> MLFloat16
 template <>
 struct TensorCaster<float, MLFloat16> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    auto in_data = in.Data<float>();
+  void Cast(const OpKernelContext& ctx, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     auto out_data = out.MutableData<MLFloat16>();
+    auto in_data = in.Data<float>();
     const size_t shape_size = narrow<size_t>(shape.Size());
-    MlasConvertFloatToHalfBuffer(in_data, out_data, shape_size);
+    MlasConvertFloatToHalfBufferInParallel(in_data, out_data, shape_size, ctx.GetOperatorThreadPool());
   }
 };
 

@@ -250,7 +250,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitCudaNotificationOnDevice);
   // wait cuda notification on cpu ep
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitCudaNotificationOnHost);
-  if (!use_existing_stream)
+  if (!use_existing_stream) {
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream, ep_info](const OrtDevice& device) {
       CUDA_CALL_THROW(cudaSetDevice(device.Id()));
       cudaStream_t stream = nullptr;
@@ -258,7 +258,8 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
       // CUDA_CALL_THROW(cudaStreamCreate(&stream));
       return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr, ep_info);
     });
-  else
+    stream_handle_registry.RegisterSetDeviceFn(device_type, [](OrtDevice::DeviceId id) { CUDA_CALL_THROW(cudaSetDevice(id)); });
+  } else {
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
                                                                 release_cpu_buffer_on_cuda_stream,
                                                                 external_stream,
@@ -267,7 +268,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                                                 ep_info](const OrtDevice& device) {
       return std::make_unique<CudaStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, false, external_cudnn_handle, external_cublas_handle, ep_info);
     });
-  stream_handle_registry.RegisterSetDeviceFn(device_type, [](OrtDevice::DeviceId id) { CUDA_CALL_THROW(cudaSetDevice(id)); });
+  }
 }
 
 }  // namespace onnxruntime

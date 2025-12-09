@@ -20,7 +20,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9

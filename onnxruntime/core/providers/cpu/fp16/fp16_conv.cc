@@ -10,7 +10,7 @@
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 #include "core/common/safeint.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 

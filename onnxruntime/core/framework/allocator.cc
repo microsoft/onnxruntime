@@ -58,6 +58,18 @@ Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg&
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_mem));
   }
 
+  if (auto it = kvps_entries.find(ConfigKeyNames::UseCudaMemPool); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.use_cuda_mempool));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolReleaseThreshold); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_release_threshold));
+  }
+
+  if (auto it = kvps_entries.find(ConfigKeyNames::CudaMempoolBytesToKeepOnShrink); it != kvps_entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.cuda_mempool_bytes_to_keep_on_shrink));
+  }
+
   if (!cfg.IsValid()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid arena configuration. Please check the values provided.");
@@ -177,6 +189,16 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 
   return alloc.Alloc(size);
 }
+
+IArena* IArena::SafeArenaCast(IAllocator* allocator) {
+#if !defined(ORT_NO_RTTI)
+  auto* result = dynamic_cast<IArena*>(allocator);
+  return result;
+#else
+  return static_cast<IArena*>(allocator);
+#endif
+}
+
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }

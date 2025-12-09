@@ -6,7 +6,8 @@
 
 #pragma once
 
-#include "mlasi.h"
+#include "../mlasi.h"
+#include <iostream>
 
 // Fix to ensure compatibility with MSVC build
 #if defined(_MSC_VER)
@@ -14,14 +15,47 @@
 #else
   #define RESTRICT __restrict__
 #endif
+
+// Logging macros.
+#ifndef onnxruntime_KLEIDIAI_DEBUG_LOGGING
+#define onnxruntime_KLEIDIAI_DEBUG_LOGGING 0
+#endif
+#ifndef onnxruntime_KLEIDIAI_KERNEL_LOGGING
+#define onnxruntime_KLEIDIAI_KERNEL_LOGGING 0
+#endif
+
+#if onnxruntime_KLEIDIAI_DEBUG_LOGGING || onnxruntime_KLEIDIAI_KERNEL_LOGGING
+#define KLEIDIAI_LOG(tag, msg) \
+    do { \
+        std::cout << "[KLEIDIAI " << tag << "]: " << __FILE__ << " : " << __LINE__ << " : " << msg << std::endl; \
+    } while(false)
+#endif
+
+// General logging. "tag" is expected to qualify the type of message.
+#if onnxruntime_KLEIDIAI_DEBUG_LOGGING
+    // General debug messages.
+    #define KLEIDIAI_DEBUG_LOG(msg) KLEIDIAI_LOG("DEBUG", msg)
+#else
+    #define KLEIDIAI_DEBUG_LOG(msg)
+#endif
+
+#if onnxruntime_KLEIDIAI_KERNEL_LOGGING
+    // Messages specifically written before a call to kai_run.
+    // Note: In cases where a kernel is called in multiple threads, for example MlasTrySimpleParallel,
+    // the output order can be inconsistient. The solution is to set the intra-node thread size to 1.
+    // If using onnxruntime_perf_test this is done with "--x 1".
+    #define KLEIDIAI_KERNEL_LOG(kernel_name) KLEIDIAI_LOG("KERNEL", kernel_name)
+#else
+    #define KLEIDIAI_KERNEL_LOG(msg)
+#endif
+
 namespace ArmKleidiAI {
+
 // By default we should try for SME2 first before falling back to SME.
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
 
-//
 // Buffer packing routines.
 //
-
 size_t
 MLASCALL
 MlasGemmPackBSize(
@@ -114,4 +148,38 @@ MlasConv(
     float* Output,
     MLAS_THREADPOOL* ThreadPool
     );
+}
+
+/*++
+
+Routine Description:
+
+    This routine determines if a wraparound will occur when multiplying two size_t variables
+    Uses __builtin_mul_overflow if available on the current system and if not falls back
+    to a default implementation to check this wraparound.
+
+Arguments:
+
+    a - Supplies the first number to be muliplied.
+
+    b - Supplies the second number to be muliplied.
+
+    out - pointer to a size_t which acts as the return value in success cases.
+
+Return Value:
+
+    Returns false if the operation was successful
+    Returns true if wraparound of size_t was detected
+
+--*/
+inline bool mul_overflow_size_t_builtin(size_t a, size_t b, size_t* out) {
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_mul_overflow)
+    return __builtin_mul_overflow(a, b, out);
+#  endif
+#endif
+    // Fallback to manual check if builtin not available
+    if (b != 0 && a > SIZE_MAX / b) return true;
+    if (out) *out = a * b;
+    return false;
 }
