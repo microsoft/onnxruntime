@@ -304,7 +304,11 @@ try:
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
                 for i in (
-                    cuda_dependencies + migraphx_dependencies + tensorrt_dependencies + cann_dependencies + qnn_dependencies
+                    cuda_dependencies
+                    + migraphx_dependencies
+                    + tensorrt_dependencies
+                    + cann_dependencies
+                    + qnn_dependencies
                 ):
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
