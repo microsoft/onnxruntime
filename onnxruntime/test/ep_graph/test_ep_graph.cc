@@ -34,8 +34,8 @@ namespace test {
 // forward-declaration for utility that uses public C APIs to check that an OrtGraph is equivalent
 // to a graph represented by the internal ORT GraphViewer class.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
-static void Check_Graph_GetSubgraph(const OrtGraph& api_graph);
-static void Check_Graph_GetSubgraph_for_specific_model(const OrtGraph& api_graph);
+static void CheckGetSubGraph(const OrtGraph& api_graph);
+static void CheckGetSubGraphForSpecificModel(const OrtGraph& api_graph);
 
 //
 //  Tests
@@ -56,7 +56,7 @@ TEST(EpGraphTest, CheckModelWithSubgraphs) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
-  Check_Graph_GetSubgraph_for_specific_model(test_graph->GetOrtGraph());
+  CheckGetSubGraphForSpecificModel(test_graph->GetOrtGraph());
 }
 
 // Use public C APIs to check that the OrtGraph for bart_tiny.onnx is correct.
@@ -836,7 +836,7 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<Ort::
 }
 
 // Checks the Graph_GetGraphView C API
-static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
+static void CheckGetSubGraph(const OrtGraph& api_graph) {
   Ort::ConstGraph ort_graph{&api_graph};
   // Get all the nodes
   std::vector<Ort::ConstNode> nodes = ort_graph.GetNodes();
@@ -868,8 +868,50 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   // model_proto->SerializeToOstream(&dump);
 }
 
+static void CheckSubGraphTopoSort(const OrtGraph& api_graph) {
+  /*
+   * topk_and_multiple_graph_outputs.onnx:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+
+  Ort::ConstGraph ort_graph{&api_graph};
+  auto nodes = ort_graph.GetNodes();
+
+  // Select three nodes from four nodes to create a OrtGraph
+  size_t num_selected_nodes = 3;
+  std::vector<Ort::ConstNode> selected_nodes(num_selected_nodes);
+
+  // The subgraph contains Less, Div and Mod ops.
+  selected_nodes[0] = nodes[1];
+  selected_nodes[1] = nodes[2];
+  selected_nodes[2] = nodes[3];
+
+  Ort::Graph sub_graph = ort_graph.GetGraphView(selected_nodes);
+
+  // When doing Kahns's Topo sort, it will try to get the producer node outside of the subgraph,
+  // i.e. auto producer_info = input.GetProducerNode().
+  // Here is to check that Topo sort's implementation will return nullptr for the outside node and won't hit assert.
+  std::vector<Ort::ConstNode> nodes_with_priority;
+  Ort::Status status(KahnsTopologicalSort(
+      *sub_graph,
+      [&](const OrtNode* node) {
+        size_t node_id = 0;
+        Ort::Status status(Ort::GetApi().Node_GetId(node, &node_id));
+        ORT_ENFORCE(status.IsOK());
+
+        nodes_with_priority.push_back(Ort::ConstNode(node));
+      },
+      PriorityNodeCompare()));
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+}
+
 // Checks the Graph_GetGraphView C API
-static void Check_Graph_GetSubgraph_for_specific_model(const OrtGraph& api_graph) {
+static void CheckGetSubGraphForSpecificModel(const OrtGraph& api_graph) {
   /*
    * topk_and_multiple_graph_outputs.onnx:
    *
@@ -888,7 +930,7 @@ static void Check_Graph_GetSubgraph_for_specific_model(const OrtGraph& api_graph
   // i.e.
   // onnx GraphProto:     TopK, Less, Div, Mod
   // Graph_GetNumNodes(): TopK, Mode, Div, Less
-  // Kahns Topo sort:     TopK, Less, Div, Mod
+  // priority-based sort: TopK, Less, Div, Mod
   std::vector<Ort::ConstNode> nodes;
   Ort::Status status(KahnsTopologicalSort(
       api_graph,
@@ -985,6 +1027,8 @@ static void Check_Graph_GetSubgraph_for_specific_model(const OrtGraph& api_graph
   // name += "_half.onnx";
   // std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
   // model_proto->SerializeToOstream(&dump);
+
+  CheckSubGraphTopoSort(api_graph);
 }
 
 // Checks that the contents of the original GraphViewer matches the contents of the OrtGraph.
@@ -1168,7 +1212,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   }
 
   // Check creating an OrtGraph from a subset of nodes in an OrtGraph
-  Check_Graph_GetSubgraph(api_graph);
+  CheckGetSubGraph(api_graph);
 }
 
 }  // namespace test

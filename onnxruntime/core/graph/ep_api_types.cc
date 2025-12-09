@@ -379,9 +379,13 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
 
   const EpNode* ep_node = graph_->GetNode(node->Index());
   if (ep_node == nullptr) {
-    // Node is not in this GraphViewer
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_FOUND, "Unable to get producer node for OrtValueInfo '", name_,
-                           "' that is not owned by an OrtGraph.");
+    producer_info.node = nullptr;
+    producer_info.output_index = 0;
+    const auto& logger = graph_->GetGraphViewer().GetGraph().GetLogger();
+    LOGS(logger, WARNING) << "Unable to get producer node for OrtValueInfo '"
+                          << name_
+                          << "' that is not owned by an OrtGraph.";
+    return Status::OK();
   }
 
   size_t output_index = 0;
