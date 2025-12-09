@@ -447,11 +447,17 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
       {DataTypeImpl::GetType<int64_t>(), NPY_LONGLONG},
       {DataTypeImpl::GetType<uint64_t>(), NPY_ULONGLONG},
       {DataTypeImpl::GetType<std::string>(), NPY_OBJECT},
+#if !defined(DISABLE_FLOAT4_TYPES)
+      {DataTypeImpl::GetType<Float4E2M1x2>(), NPY_UINT8},
+#endif
+#if !defined(DISABLE_FLOAT8_TYPES)
+      {DataTypeImpl::GetType<Float8E4M3FN>(), NPY_UINT8},
+#endif
   };
 
   const auto it = type_map.find(tensor_type);
   if (it == type_map.end()) {
-    throw std::runtime_error("No corresponding Numpy type for Tensor Type.");
+    throw std::runtime_error("No corresponding Numpy type for Tensor Type. " + std::string(DataTypeImpl::ToString(tensor_type)));
   } else {
     return it->second;
   }

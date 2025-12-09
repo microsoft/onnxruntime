@@ -13,8 +13,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/api_asserts.h"
 #include "core/graph/basic_types.h"
+#include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/model_saving_options.h"
+#include "core/graph/schema_registry.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -463,6 +465,361 @@ Ort::IoBinding generate_io_binding(
   }
   return binding;
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+// Helper function to create operator schemas for TRT FP8 Q/DQ custom-ops
+static std::vector<ONNX_NAMESPACE::OpSchema> CreateTRTFP8Schemas() {
+  std::vector<ONNX_NAMESPACE::OpSchema> schemas;
+
+  // TRT_FP8QuantizeLinear schema
+  schemas.emplace_back();
+  ONNX_NAMESPACE::OpSchema& fp8_quant_schema = schemas.back();
+  fp8_quant_schema
+      .SetName("TRT_FP8QuantizeLinear")
+      .SetDomain("trt")
+      .SinceVersion(1)
+      .SetDoc("TensorRT FP8 Quantization - quantizes FP16 input to FP8")
+      .Input(0, "X", "Input tensor in FP16", "T1")
+      .Input(1, "scale", "Scale for quantization in FP16", "T1")
+      .Output(0, "Y", "Quantized output tensor in FP8", "T2")
+      .TypeConstraint("T1", {"tensor(float16)"}, "Input and scale must be float16")
+      .TypeConstraint("T2", {"tensor(float8e4m3fn)"}, "Output must be float8e4m3fn")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Output has same shape as input but FP8 type
+        auto input_type = ctx.getInputType(0);
+        if (input_type != nullptr && input_type->has_tensor_type()) {
+          auto output_type = ctx.getOutputType(0);
+          output_type->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
+          if (input_type->tensor_type().has_shape()) {
+            *output_type->mutable_tensor_type()->mutable_shape() =
+                input_type->tensor_type().shape();
+          }
+        }
+      });
+
+  // TRT_FP8DequantizeLinear schema
+  schemas.emplace_back();
+  ONNX_NAMESPACE::OpSchema& fp8_dequant_schema = schemas.back();
+  fp8_dequant_schema
+      .SetName("TRT_FP8DequantizeLinear")
+      .SetDomain("trt")
+      .SinceVersion(1)
+      .SetDoc("TensorRT FP8 Dequantization - dequantizes FP8 input to FP16")
+      .Input(0, "X", "Quantized input tensor in FP8", "T1")
+      .Input(1, "scale", "Scale for dequantization in FP16", "T2")
+      .Output(0, "Y", "Dequantized output tensor in FP16", "T2")
+      .TypeConstraint("T1", {"tensor(float8e4m3fn)"}, "Input must be float8e4m3fn")
+      .TypeConstraint("T2", {"tensor(float16)"}, "Scale and output must be float16")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Output has same shape as input but FP16 type
+        auto input_type = ctx.getInputType(0);
+        if (input_type != nullptr && input_type->has_tensor_type()) {
+          auto output_type = ctx.getOutputType(0);
+          output_type->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+          if (input_type->tensor_type().has_shape()) {
+            *output_type->mutable_tensor_type()->mutable_shape() =
+                input_type->tensor_type().shape();
+          }
+        }
+      });
+
+  return schemas;
+}
+
+void CreateFP8CustomOpModel(const PathString& model_name, const std::string& graph_name) {
+  // Create custom schema registry for TRT operators
+  auto custom_schema_registry = std::make_shared<onnxruntime::OnnxRuntimeOpSchemaRegistry>();
+
+  // Register TRT FP8 operator schemas
+  auto trt_schemas = CreateTRTFP8Schemas();
+  auto status = custom_schema_registry->RegisterOpSet(trt_schemas, "trt", 1, 1);
+  ASSERT_TRUE(status.IsOK()) << "Failed to register TRT schemas: " << status.ErrorMessage();
+
+  IOnnxRuntimeOpSchemaRegistryList registries = {custom_schema_registry};
+
+  // Set the opset version: ONNX domain to 19, TRT domain to 1
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 19}, {"trt", 1}};
+  onnxruntime::Model model(graph_name, false, ModelMetaData(), PathString(),
+                           registries, domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+
+  auto& graph = model.MainGraph();
+
+  // Define input dimensions and data type
+  std::vector<int64_t> dims = {4, 64};  // 4x64 matrix
+  auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+
+  // Create input tensor type (FLOAT16)
+  ONNX_NAMESPACE::TypeProto input_tensor;
+  input_tensor.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : dims) {
+    input_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+
+  // Create input node arg
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_tensor);
+
+  // Create quantized tensor type (FLOAT8E4M3FN for per-tensor quantization)
+  ONNX_NAMESPACE::TypeProto quantized_tensor;
+  quantized_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
+  for (auto dim : dims) {
+    quantized_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& quantized_arg = graph.GetOrCreateNodeArg("X_quantized", &quantized_tensor);
+
+  // Create output tensor type (FLOAT16 - after dequantization)
+  ONNX_NAMESPACE::TypeProto output_tensor;
+  output_tensor.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : dims) {
+    output_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_tensor);
+
+  // Create scale initializer (scalar FLOAT16 for per-tensor quantization)
+  ONNX_NAMESPACE::TensorProto scale_initializer;
+  scale_initializer.set_name("scale");
+  scale_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  // For FLOAT16, we need to convert the float value to MLFloat16 and store as raw data
+  MLFloat16 scale_value(0.0078125f);
+  scale_initializer.set_raw_data(&scale_value, sizeof(MLFloat16));
+  graph.AddInitializedTensor(scale_initializer);
+
+  // Get the scale node arg
+  auto* scale_arg = graph.GetNodeArg("scale");
+
+  // Add TRT_FP8QuantizeLinear node from "trt" domain
+  // Inputs: X (float16), scale (float16)
+  // Output: X_quantized (float8e4m3fn)
+  std::vector<onnxruntime::NodeArg*> quant_inputs = {&input_arg, scale_arg};
+  std::vector<onnxruntime::NodeArg*> quant_outputs = {&quantized_arg};
+  graph.AddNode("trt_fp8_quantize_node", "TRT_FP8QuantizeLinear", "TRT FP8 Quantize FP16 input to FP8",
+                quant_inputs, quant_outputs, nullptr, "trt");
+
+  // Add TRT_FP8DequantizeLinear node from "trt" domain
+  // Inputs: X_quantized (float8e4m3fn), scale (float16)
+  // Output: Y (float16)
+  std::vector<onnxruntime::NodeArg*> dequant_inputs = {&quantized_arg, scale_arg};
+  std::vector<onnxruntime::NodeArg*> dequant_outputs = {&output_arg};
+  graph.AddNode("trt_fp8_dequantize_node", "TRT_FP8DequantizeLinear", "TRT FP8 Dequantize FP8 to FP16",
+                dequant_inputs, dequant_outputs, nullptr, "trt");
+
+  // Set graph inputs and outputs explicitly
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(Model::Save(model, model_name));
+}
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+#if !defined(DISABLE_FLOAT4_TYPES) && !defined(DISABLE_FLOAT8_TYPES)
+// Helper function to create operator schemas for TRT FP4 Dynamic Quantize custom-op
+static std::vector<ONNX_NAMESPACE::OpSchema> CreateTRTFP4Schemas() {
+  std::vector<ONNX_NAMESPACE::OpSchema> schemas;
+
+  // TRT_FP4DynamicQuantize schema
+  schemas.emplace_back();
+  ONNX_NAMESPACE::OpSchema& fp4_quant_schema = schemas.back();
+  fp4_quant_schema
+      .SetName("TRT_FP4DynamicQuantize")
+      .SetDomain("trt")
+      .SinceVersion(1)
+      .SetDoc("TensorRT FP4 Dynamic Quantization - quantizes FP16 input to FP4 with block-wise quantization")
+      .Attr("axis", "Axis along which to quantize", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("block_size", "Block size for quantization", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(16))
+      .Attr("scale_type", "Scale data type", ONNX_NAMESPACE::AttributeProto::INT, static_cast<int64_t>(17))
+      .Input(0, "X", "Input tensor in FP16", "T1")
+      .Input(1, "scale", "Scale for quantization in FP16", "T1")
+      .Output(0, "Y_quantized", "Quantized output tensor in FP4", "T2")
+      .Output(1, "Y_scale", "Computed scales in FP8", "T3")
+      .TypeConstraint("T1", {"tensor(float16)"}, "Input and scale must be float16")
+      .TypeConstraint("T2", {"tensor(float4e2m1)"}, "Quantized output must be float4e2m1")
+      .TypeConstraint("T3", {"tensor(float8e4m3fn)"}, "Scale output must be float8e4m3fn")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Output 0 (Y_quantized) has same shape as input but FP4 type
+        auto input_type = ctx.getInputType(0);
+        if (input_type != nullptr && input_type->has_tensor_type()) {
+          auto output_type_0 = ctx.getOutputType(0);
+          output_type_0->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1);
+          if (input_type->tensor_type().has_shape()) {
+            *output_type_0->mutable_tensor_type()->mutable_shape() =
+                input_type->tensor_type().shape();
+          }
+
+          // Output 1 (Y_scale) shape depends on block_size and axis
+          // For simplicity, we'll just set the type and let runtime handle shape
+          auto output_type_1 = ctx.getOutputType(1);
+          output_type_1->mutable_tensor_type()->set_elem_type(
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
+        }
+      });
+
+  return schemas;
+}
+
+void CreateFP4CustomOpModel(const PathString& model_name, const std::string& graph_name) {
+  // Create custom schema registry for TRT operators
+  auto custom_schema_registry = std::make_shared<onnxruntime::OnnxRuntimeOpSchemaRegistry>();
+
+  // Register TRT FP4 operator schemas
+  auto trt_schemas = CreateTRTFP4Schemas();
+  auto status = custom_schema_registry->RegisterOpSet(trt_schemas, "trt", 1, 1);
+  ASSERT_TRUE(status.IsOK()) << "Failed to register TRT schemas: " << status.ErrorMessage();
+
+  // Create registry list - must be std::list, not std::vector
+  IOnnxRuntimeOpSchemaRegistryList registries = {custom_schema_registry};
+
+  // Set the opset version: ONNX domain to 23, TRT domain to 1
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 23}, {"trt", 1}};
+  onnxruntime::Model model(graph_name, false, ModelMetaData(), PathString(),
+                           registries, domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // Define input dimensions and data type
+  std::vector<int64_t> input_dims = {64, 64};  // 64x64 matrix
+  auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+
+  // Create input tensor type (FLOAT16)
+  ONNX_NAMESPACE::TypeProto input_tensor;
+  input_tensor.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : input_dims) {
+    input_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+
+  // Create input node arg for data
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_tensor);
+
+  // Create scale initializer (scalar FLOAT16)
+  ONNX_NAMESPACE::TensorProto scale_initializer;
+  scale_initializer.set_name("scale");
+  scale_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  MLFloat16 scale_value(0.1234f);
+  scale_initializer.set_raw_data(&scale_value, sizeof(MLFloat16));
+  graph.AddInitializedTensor(scale_initializer);
+  auto* scale_arg = graph.GetNodeArg("scale");
+
+  // Create output 1: quantized tensor (FLOAT4E2M1) [64, 64]
+  ONNX_NAMESPACE::TypeProto quantized_output_tensor;
+  quantized_output_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1);
+  for (auto dim : input_dims) {
+    quantized_output_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& output_quantized = graph.GetOrCreateNodeArg("X_quantized", &quantized_output_tensor);
+
+  // Create output 2: scale output (FLOAT8) [64, 4]
+  // With block_size=16 and last dim=64, we get 64/16=4 blocks per row
+  std::vector<int64_t> scale_output_dims = {64, 4};
+  ONNX_NAMESPACE::TypeProto scale_output_tensor;
+  scale_output_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
+  for (auto dim : scale_output_dims) {
+    scale_output_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& output_scale = graph.GetOrCreateNodeArg("X_scale", &scale_output_tensor);
+
+  // Create attributes
+  NodeAttributes attrs;
+
+  // axis attribute
+  ONNX_NAMESPACE::AttributeProto attr_axis;
+  attr_axis.set_name("axis");
+  attr_axis.set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_axis.set_i(-1);
+  attrs["axis"] = attr_axis;
+
+  // block_size attribute
+  ONNX_NAMESPACE::AttributeProto attr_block_size;
+  attr_block_size.set_name("block_size");
+  attr_block_size.set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_block_size.set_i(16);
+  attrs["block_size"] = attr_block_size;
+
+  // scale_type attribute
+  ONNX_NAMESPACE::AttributeProto attr_scale_type;
+  attr_scale_type.set_name("scale_type");
+  attr_scale_type.set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_scale_type.set_i(17);
+  attrs["scale_type"] = attr_scale_type;
+
+  // Add TRT_FP4DynamicQuantize node from "trt" domain
+  // Inputs: X (float16), scale (float16 initializer)
+  // Outputs: X_quantized (float4e2m1), X_scale (float8)
+  std::vector<onnxruntime::NodeArg*> inputs = {&input_arg, scale_arg};
+  std::vector<onnxruntime::NodeArg*> outputs = {&output_quantized, &output_scale};
+  graph.AddNode("trt_fp4_dyn_quant", "TRT_FP4DynamicQuantize", "TRT FP4 Dynamic Quantize node",
+                inputs, outputs, &attrs, "trt");
+
+  // Create scale initializer for DequantizeLinear (FLOAT16 scalar)
+  ONNX_NAMESPACE::TensorProto dequant_scale_initializer;
+  dequant_scale_initializer.set_name("dequant_scale");
+  dequant_scale_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  MLFloat16 dequant_scale_value(0.0625f);
+  dequant_scale_initializer.set_raw_data(&dequant_scale_value, sizeof(MLFloat16));
+  graph.AddInitializedTensor(dequant_scale_initializer);
+
+  // Get the dequant_scale node arg
+  auto* dequant_scale_arg = graph.GetNodeArg("dequant_scale");
+
+  // Create dequantized scale output (FLOAT16) [64, 4]
+  ONNX_NAMESPACE::TypeProto dequant_scale_output_tensor;
+  dequant_scale_output_tensor.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : scale_output_dims) {
+    dequant_scale_output_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& output_dequant_scale = graph.GetOrCreateNodeArg("X_scale_dequantized", &dequant_scale_output_tensor);
+
+  // Add first DequantizeLinear node (#1) for scale
+  // Inputs: X_scale (float8), dequant_scale (float16)
+  // Output: X_scale_dequantized (float16)
+  std::vector<onnxruntime::NodeArg*> dequant_inputs = {&output_scale, dequant_scale_arg};
+  std::vector<onnxruntime::NodeArg*> dequant_outputs = {&output_dequant_scale};
+  graph.AddNode("dequantize_scale_node", "DequantizeLinear", "Dequantize FP8 scale to FP16",
+                dequant_inputs, dequant_outputs);
+
+  // Create final output: fully dequantized tensor (FLOAT16) [64, 64]
+  ONNX_NAMESPACE::TypeProto final_output_tensor;
+  final_output_tensor.mutable_tensor_type()->set_elem_type(dtype);
+  for (auto dim : input_dims) {
+    final_output_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  auto& output_final = graph.GetOrCreateNodeArg("X_dequantized", &final_output_tensor);
+
+  // Create attributes for second DequantizeLinear node
+  NodeAttributes dequant_attrs;
+
+  ONNX_NAMESPACE::AttributeProto dequant_attr_axis;
+  dequant_attr_axis.set_name("axis");
+  dequant_attr_axis.set_type(onnx::AttributeProto_AttributeType_INT);
+  dequant_attr_axis.set_i(-1);
+  dequant_attrs["axis"] = dequant_attr_axis;
+
+  ONNX_NAMESPACE::AttributeProto dequant_attr_block_size;
+  dequant_attr_block_size.set_name("block_size");
+  dequant_attr_block_size.set_type(onnx::AttributeProto_AttributeType_INT);
+  dequant_attr_block_size.set_i(16);
+  dequant_attrs["block_size"] = dequant_attr_block_size;
+
+  // Add second DequantizeLinear node (#2) for data
+  // Inputs: X_quantized (float4e2m1), X_scale_dequantized (float16)
+  // Output: X_dequantized (float16)
+  std::vector<onnxruntime::NodeArg*> dequant_data_inputs = {&output_quantized, &output_dequant_scale};
+  std::vector<onnxruntime::NodeArg*> dequant_data_outputs = {&output_final};
+  graph.AddNode("dequantize_data_node", "DequantizeLinear", "Dequantize FP4 data to FP16 with block quantization",
+                dequant_data_inputs, dequant_data_outputs, &dequant_attrs);
+
+  // Set graph inputs and outputs explicitly
+  // Input: X only (scale is an initializer)
+  // Output: X_dequantized only (final dequantized result)
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_final});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(Model::Save(model, model_name));
+}
+#endif  // !defined(DISABLE_FLOAT4_TYPES) && !defined(DISABLE_FLOAT8_TYPES)
 
 }  // namespace test
 }  // namespace onnxruntime
