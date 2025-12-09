@@ -93,9 +93,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, y_shape);
   Tensor* present_key = context->Output(1, present_key_shape);
   Tensor* present_value = context->Output(2, present_value_shape);
-  Tensor* output_qk = parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kNone
-                          ? nullptr
-                          : context->Output(3, output_qk_shape);
+  Tensor* output_qk = context->Output(3, output_qk_shape);
 
   // To reuse the existing attention-cuda implementation in contrib ops,
   // map the parameters to contribop_parameters.
@@ -202,8 +200,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.bias = nullptr;  // New Attention op doesn't have bias
   if (nullptr != attn_mask) {
     data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
-  } else {
-    data.attention_bias = nullptr;
   }
   data.qkv_format = contribop_parameters.qkv_format;
 
@@ -218,13 +214,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool no_qkv_workspace = onnxruntime::contrib::cuda::NoQkvWorkspace(contribop_parameters, data);
   size_t workspace_bytes = onnxruntime::contrib::cuda::GetAttentionWorkspaceSize(
       sizeof(T),
-      parameters.batch_size,
-      parameters.q_num_heads,
-      parameters.head_size,
-      parameters.v_head_size,
-      parameters.q_sequence_length,
-      parameters.kv_sequence_length,
-      parameters.total_sequence_length,
+      contribop_parameters.batch_size,
+      contribop_parameters.num_heads,
+      contribop_parameters.head_size,
+      contribop_parameters.v_head_size,
+      contribop_parameters.sequence_length,
+      contribop_parameters.kv_sequence_length,
+      contribop_parameters.total_sequence_length,
       nullptr,  // fused_runner
       false,    // use_flash_attention
       false,    // use_lean_attention
