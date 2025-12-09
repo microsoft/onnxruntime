@@ -72,7 +72,7 @@ class QuickGelu : public OpKernel {
     int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
     // SILU operation
-    if (alpha_ == 1.0f) {
+    if (alpha_ == 0.0f) {
       concurrency::ThreadPool::TryBatchParallelFor(
           tp, static_cast<int32_t>(task_count),
           [&](ptrdiff_t task_idx) {
@@ -93,12 +93,16 @@ class QuickGelu : public OpKernel {
             T* p_output = output_data + start;
             int64_t count = std::min(length_per_task, elem_count - start);
 
-            // TODO: Vectorize this compute
-            for (int64_t i = 0; i < count; i++) {
-              p_output[i] = p_input[i] * alpha_;
-            }
+            if (alpha_ != 1.0f) {
+              // TODO: Vectorize this compute
+              for (int64_t i = 0; i < count; i++) {
+                p_output[i] = p_input[i] * alpha_;
+              }
 
-            MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
+              MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
+            } else {
+              MlasComputeLogistic(p_input, p_output, onnxruntime::narrow<size_t>(count));
+            }
 
             // TODO: Vectorize this compute
             for (int64_t i = 0; i < count; i++) {
