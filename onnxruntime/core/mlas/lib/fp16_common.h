@@ -55,6 +55,10 @@ MLAS_FLOAT16X8
 MlasBroadcastFloat16x8(_mlas_fp16_ Value) { return vreinterpretq_f16_p16(vdupq_n_p16(Value)); }
 
 MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasBroadcastF16Float16x8(float16_t Value) { return vdupq_n_f16(Value); }
+
+MLAS_FORCEINLINE
 MLAS_FLOAT16X4
 MlasBroadcastFloat16x4(_mlas_fp16_ Value) { return vreinterpret_f16_p16(vdup_n_p16(Value)); }
 
@@ -77,6 +81,10 @@ MlasZeroFloat16x4(void) { return vreinterpret_f16_f32(vdup_n_f32(0.0f)); }
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasLoadFloat16x8(const _mlas_fp16_* Buffer) { return vreinterpretq_f16_u16(vld1q_u16(Buffer)); }
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasLoadf16Float16x8(const float16_t* Buffer) { return vld1q_f16(Buffer); }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
@@ -113,6 +121,13 @@ void
 MlasStoreFloat16x8(_mlas_fp16_* Buffer, MLAS_FLOAT16X8 Vector)
 {
     vst1q_u16(Buffer, vreinterpretq_u16_f16(Vector));
+}
+
+MLAS_FORCEINLINE
+void
+MlasStoref16Float16x8(float16_t* Buffer, MLAS_FLOAT16X8 Vector)
+{
+    vst1q_f16(Buffer, Vector);
 }
 
 MLAS_FORCEINLINE
@@ -577,6 +592,41 @@ MLAS_INT16X4
 MlasShiftLeftInt16(MLAS_INT16X4 Vector)
 {
     return vshl_n_s16(Vector, ShiftCount);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasReciprocalSqrtFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vrecpsq_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasApproximateReciprocalFloat16(MLAS_FLOAT16X8 Vector)
+{
+    return vrecpeq_f16(Vector);
+}
+
+MLAS_FORCEINLINE
+MLAS_UINT16X8
+MlasCompareLessThanFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vcltq_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasAbsFloat16(MLAS_FLOAT16X8 Vector)
+{
+    return vabsq_f16(Vector);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasSelectFloat16(MLAS_UINT16X8 Vector, MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vbslq_f16(Vector, Vector1, Vector2);
 }
 
 #endif  // fp16 vector intrinsic supported

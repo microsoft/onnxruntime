@@ -510,7 +510,9 @@ else()
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/Elementwise_sve_fp16.cpp)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/Elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
@@ -548,6 +550,7 @@ else()
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
           )
           if (onnxruntime_USE_ARM_NEON_NCHWC)
             list(APPEND mlas_platform_srcs
