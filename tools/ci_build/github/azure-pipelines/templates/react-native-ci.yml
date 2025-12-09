@@ -134,8 +134,9 @@ stages:
         set -e -x
         export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
         export LANG=en_US.UTF-8
-        cp $ORT_C_LOCAL_POD_PATH/onnxruntime-c.podspec $ORT_C_LOCAL_POD_PATH/Podfile
-        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c pod install --verbose
+        export ORT_C_LOCAL_POD_PATH="$(Build.BinariesDirectory)/ios_pod/onnxruntime-c"
+        pod install --verbose
+        cp "$ORT_C_LOCAL_POD_PATH/onnxruntime-c.podspec" "$ORT_C_LOCAL_POD_PATH/Podfile"
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
