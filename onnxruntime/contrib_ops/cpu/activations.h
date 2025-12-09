@@ -81,7 +81,7 @@ class QuickGelu : public OpKernel {
             T* p_output = output_data + start;
             int64_t count = std::min(length_per_task, elem_count - start);
 
-            MlasComputeSilu(p_output, p_output, onnxruntime::narrow<size_t>(count));
+            MlasComputeSilu(p_input, p_output, onnxruntime::narrow<size_t>(count));
           },
           0);
     } else {
