@@ -40,6 +40,16 @@ OrtEnv::~OrtEnv() {
 #if !defined(ORT_MINIMAL_BUILD)
   UnloadSharedProviders();
 #endif
+
+  // Explicitly destroy the Environment first, which will properly clean up DataTransferManager
+  // and call ReleaseImpl on WebGpuDataTransferImpl
+  value_.reset();
+
+  // Now that Environment is destroyed and all data transfers are cleaned up,
+  // we can safely cleanup any remaining WebGPU contexts
+#ifdef USE_WEBGPU
+  webgpu::CleanupWebGpuContexts();
+#endif
 }
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
