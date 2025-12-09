@@ -166,7 +166,7 @@ def check_if_dlls_are_present(
                 header_folder = f"{build_dir}/native/include"
             else:  # tarball package
                 folder = package_path + "/lib64"
-                header_folder = package_path + "/include"
+                header_folder = package_path + "/include/onnxruntime"
 
             if package_contains_library:
                 path = folder + "/" + "libonnxruntime.so"
