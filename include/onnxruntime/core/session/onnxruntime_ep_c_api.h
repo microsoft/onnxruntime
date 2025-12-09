@@ -1414,8 +1414,24 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
 
-  /** \brief
+  /** \brief Create the EP-specific custom op domain list.
    *
+   * This function is used when running inference on a model that contains EP-specific custom operations.
+   * For compile-based EPs, the EP does not need to provide a concrete kernel implementation for each custom op.
+   * Instead, it may provide only placeholder custom ops with the correct names so they can be recognized
+   * during model loading.
+   *
+   * Workflow:
+   * 1. The EP implements this function to supply a list of OrtCustomOpDomain instances.
+   * 2. The application calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
+   *    the plugin EP's factory.
+   * 3. SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomain list to the
+   *    session options.
+   *
+   * As a result, any session created from these session options will have these custom op domains registered
+   * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
+   *
+   * Note: EP has the responsibility to release OrtCustomOpDomain instances it creates.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
