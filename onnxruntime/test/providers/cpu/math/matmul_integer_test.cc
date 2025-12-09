@@ -333,11 +333,6 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_2D) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_PerColumn_ND) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
-  }
-
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
                         {2, 2, 2},
@@ -370,7 +365,8 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_uint8_PerColumn_ND) {
                            15, 15, 15,
                            -9, -9, -9});
 
-  test.Run();
+  // TODO: Unskip when fixed #41968513
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]
