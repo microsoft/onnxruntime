@@ -36,10 +36,6 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
 }
 
 OrtEnv::~OrtEnv() {
-#ifdef USE_WEBGPU
-  webgpu::CleanupWebGpuContexts();
-#endif
-
 // We don't support any shared providers in the minimal build yet
 #if !defined(ORT_MINIMAL_BUILD)
   UnloadSharedProviders();
