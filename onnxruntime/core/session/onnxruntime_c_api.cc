@@ -3403,7 +3403,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
 
   // create the wrapper class that uses the EP implementation
   auto stream = std::make_unique<plugin_ep::Stream>(ep_device->device_memory_info->device,
-                                                    *stream_impl, LoggingManager::DefaultLogger());
+                                                    *stream_impl, *LoggingManager::DefaultLogger().ToExternal());
 
   // cast to base type, and to API alias type
   *ort_stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(stream.release()));
@@ -4237,6 +4237,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
     // End of Version 23 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::TensorTypeAndShape_HasShape,
+    &OrtApis::KernelInfo_GetConfigEntries,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

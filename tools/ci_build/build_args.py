@@ -763,9 +763,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
     migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
-    migx_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
-    migx_group.add_argument("--rocm_version", help="ROCm stack version.")
-    migx_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")

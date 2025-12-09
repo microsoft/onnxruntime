@@ -51,5 +51,11 @@ const NodeUnit* GetParentOfInput(const GraphViewer& graph_viewer,
                                  const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                  const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map);
 
+const NodeUnit* GetOnlyChildOfOutput(const GraphViewer& graph_viewer,
+                                     const NodeUnit& node_unit,
+                                     const NodeUnitIODef& output,
+                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map);
+
 }  // namespace qnn
 }  // namespace onnxruntime

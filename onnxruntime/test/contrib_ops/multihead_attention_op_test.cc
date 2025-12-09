@@ -9,18 +9,6 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
-#if defined(USE_ROCM) && defined(USE_COMPOSABLE_KERNEL) && !defined(USE_MIGRAPHX)
-#define DISABLE_ROCM false
-#else
-#define DISABLE_ROCM true
-#endif
-
-#if defined(USE_ROCM)
-#define ROCM_GTEST_SKIP(message) GTEST_SKIP_(message)
-#else
-#define ROCM_GTEST_SKIP(message)
-#endif
-
 namespace onnxruntime {
 namespace test {
 
@@ -57,30 +45,17 @@ static void RunMultiHeadAttentionTest(
     bool disable_cpu = false,  // some cases not supported in cpu right now.
     bool disable_cuda = false,
     bool disable_webgpu = false,
-    bool disable_rocm = DISABLE_ROCM,  // not supported in rocm right now.
     bool disable_dml = false) {
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
   int past_sequence_length = (past_seq_len_data.size() == 0) ? 0 : past_seq_len_data[0];
 
   int min_cuda_architecture = use_float16 ? 750 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !disable_cuda;
-  // rocm mha is required to work with TunableOp Enabled
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider(/*test_tunable_op=*/true).get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
   bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get()) && !disable_webgpu;
 
-  if (enable_rocm && !use_float16) {
-    LOGS_DEFAULT(WARNING) << "ROCm MHA only have kernel for half datatype implemented, skip float datatype tests";
-    enable_rocm = false;
-  }
-
-  if (enable_rocm && !bias_data.empty()) {
-    LOGS_DEFAULT(WARNING) << "ROCm MHA does not support qkv_bias, skip qkv_bias tests";
-    enable_rocm = false;
-  }
-
-  if (enable_cpu || enable_cuda || enable_rocm || enable_dml || enable_webgpu) {
+  if (enable_cpu || enable_cuda || enable_dml || enable_webgpu) {
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
     tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
@@ -301,12 +276,6 @@ static void RunMultiHeadAttentionTest(
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
-    if (enable_rocm) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-    }
-
     if (enable_cpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -361,7 +330,6 @@ static void RunMultiHeadAttentionKernel(
     bool disable_cpu = false,  // some cases not supported in cpu right now.
     bool disable_cuda = false,
     bool disable_webgpu = false,
-    bool disable_rocm = DISABLE_ROCM,
     bool disable_dml = false) {
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     ScopedEnvironmentVariables scoped_env_vars{
@@ -377,7 +345,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     return;
   }
 
@@ -395,7 +363,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     return;
   }
 
@@ -413,7 +381,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     return;
   }
 
@@ -432,7 +400,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     return;
   }
 #endif
@@ -452,7 +420,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
   }
 
   if (kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
@@ -470,7 +438,7 @@ static void RunMultiHeadAttentionKernel(
         present_key_data, present_value_data, key_padding_mask_data, mask_type,
         output_data, output_qk_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, num_beams, max_sequence_length, is_static_kv, buffer_share, use_float16,
-        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        is_unidirectional, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
   }
 }
 
@@ -479,7 +447,6 @@ enum RunMultiHeadAttentionTestToggles : uint32_t {
   DISABLE_CPU = 1 << 0,
   DISABLE_CUDA = 1 << 1,
   DISABLE_WEBGPU = 1 << 2,
-  DISABLE_ROCM_MHA = 1 << 3,
   DISABLE_DML = 1 << 4,
 };
 inline RunMultiHeadAttentionTestToggles operator|(RunMultiHeadAttentionTestToggles a, RunMultiHeadAttentionTestToggles b) {
@@ -494,7 +461,6 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
   bool disable_cpu = toggles & DISABLE_CPU;
   bool disable_cuda = toggles & DISABLE_CUDA;
   bool disable_webgpu = toggles & DISABLE_WEBGPU;
-  bool disable_rocm = toggles & DISABLE_ROCM_MHA;
   bool disable_dml = toggles & DISABLE_DML;
 
   if (data.fp32_output_data.size() > 0) {
@@ -508,7 +474,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
           data.fp32_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -522,7 +488,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
             data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
             data.fp32_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
             data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-            false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+            false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
       }
     }
 #endif
@@ -534,7 +500,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
         data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
         data.fp32_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
         data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-        false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
   }
 
   if (data.fp16_output_data.size() > 0) {
@@ -547,7 +513,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     }
 
     kernel_type = AttentionKernelType::AttentionKernel_TrtFusedAttention;
@@ -558,7 +524,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -570,7 +536,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     }
 #endif
 
@@ -582,7 +548,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
           data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-          false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+          false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
     }
 
     kernel_type = AttentionKernelType::AttentionKernel_Default;
@@ -592,14 +558,13 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data,
         data.present_key_data, data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
         data.fp16_output_qk_data, kernel_type, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
         data.v_hidden_size, data.num_beams, data.max_sequence_length, data.is_static_kv, data.buffer_share, use_float16,
-        false, disable_cpu, disable_cuda, disable_webgpu, disable_rocm, disable_dml);
+        false, disable_cpu, disable_cuda, disable_webgpu, disable_dml);
   }
 }
 
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize40(data);
   RunMultiHeadAttentionTests(data);
@@ -609,7 +574,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support mask type of MASK_1D_KEY_SEQ_LEN");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true);
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
@@ -619,7 +583,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
@@ -629,7 +592,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
@@ -639,14 +601,12 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Ma
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_NoBias_NoMask_PackedKV) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(data);
   RunMultiHeadAttentionTests(data, DISABLE_WEBGPU);
 }
 
 TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_NoBias_NoMask_PackedQKV) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
   RunMultiHeadAttentionTests(data, DISABLE_WEBGPU);
@@ -654,7 +614,6 @@ TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_NoBias_NoMask_Packe
 
 // This tests qk_head_size != v_head_size
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16_8(data);
   RunMultiHeadAttentionTests(data);
@@ -664,7 +623,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16(data);
   RunMultiHeadAttentionTests(data);
@@ -674,7 +632,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize8) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize8_NoBias(data);
   RunMultiHeadAttentionTests(data, DISABLE_CUDA);
@@ -684,7 +641,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize8) {
 // Bug #50220930
 #ifndef USE_DML
 TEST(MultiHeadAttentionTest, CrossAttentionWithPast) {
-  ROCM_GTEST_SKIP("ROCm MHA only support head_size >= 8");
   AttentionTestData data;
   GetCrossAttentionDataWithPast(data);
   RunMultiHeadAttentionTests(data, DISABLE_WEBGPU);
@@ -692,22 +648,18 @@ TEST(MultiHeadAttentionTest, CrossAttentionWithPast) {
 #endif
 
 TEST(MultiHeadAttentionTest, SelfAttention_WithPast_WithAttnBias_ForT5) {
-  ROCM_GTEST_SKIP("ROCm MHA only support head_size >= 8");
   AttentionTestData data;
   GetSelfAttentionData_WithPast_WithAttnBias_ForT5(data);
   RunMultiHeadAttentionTests(data, DISABLE_CPU);
 }
 
 TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
-  // ROCM_GTEST_SKIP("ROCm does not support cutlass");
   AttentionTestData data;
   GetAttentionDataCutlassAttnBias(data);
   RunMultiHeadAttentionTests(data, DISABLE_WEBGPU);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   // Whisper decoder cross attention without mask and different sequence lengths for Q and K/V
   AttentionTestData data;
   GetCrossAttentionData_DiffSequenceLengths(data);
@@ -721,7 +673,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
 }
 
 TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBias) {
-  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   // Whisper decoder self attention with past_kv and present_kv
   AttentionTestData data;
   GetSelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias(data);
@@ -734,7 +685,7 @@ TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBia
   RunMultiHeadAttentionTests(data, DISABLE_CUDA);
 }
 
-// This test is disabled since it is not used in Whisper anymore, and it fails in ROCm.
+// This test is disabled since it is not used in Whisper anymore.
 TEST(MultiHeadAttentionTest, DISABLED_CrossAttention_WithPastPassedInDirectly_NoMask) {
   // Whisper decoder cross attention with past_kv in place of current KV and no present_kv
   AttentionTestData data;
@@ -749,7 +700,7 @@ TEST(MultiHeadAttentionTest, SelfAttention_PastPresentBufferShare_UsingDMMHAInsi
   // See onnxruntime/core/graph/contrib_ops/bert_defs.cc for more details
   AttentionTestData data;
   GetSelfAttention_PastPresentBufferShare_UsingDMMHAInsideMHA(data);
-  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_ROCM_MHA | DISABLE_WEBGPU | DISABLE_DML);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU | DISABLE_DML);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA) {
@@ -757,7 +708,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths_UsingDMMHAInside
   // Used in decoder-with-past's cross-attention layers
   AttentionTestData data;
   GetCrossAttention_DiffSequenceLengths_UsingDMMHAInsideMHA(data);
-  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_ROCM_MHA | DISABLE_WEBGPU | DISABLE_DML);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU | DISABLE_DML);
 }
 
 }  // namespace test

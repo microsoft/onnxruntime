@@ -18,10 +18,14 @@ concurrency:
 jobs:
   build_test_qnn_ep:
     name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=build_test_qnn_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    ]
     timeout-minutes: 120
     strategy:
-      matrix: 
+      matrix:
         QnnLibKind: [shared_lib, static_lib]
     env:
       AZCOPY_AUTO_LOGIN_TYPE: MSI
@@ -31,7 +35,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -50,7 +54,7 @@ jobs:
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v2.39.0.250926 .
           dir
         shell: pwsh
-            
+
       - name: Set QNN_SDK_ROOT environment variable
         shell: pwsh
         run: |

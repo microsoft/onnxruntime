@@ -33,10 +33,9 @@ static void RunAttentionTest(
     const std::vector<float>* value_cache = nullptr,
     const std::initializer_list<bool>* key_padding_mask_data = nullptr) {
   bool enable_cuda = HasCudaEnvironment(0);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = false;
 
-  if (enable_cpu || enable_cuda || enable_rocm) {
+  if (enable_cpu || enable_cuda) {
     OpTester tester("DecoderAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
@@ -103,9 +102,7 @@ static void RunAttentionTest(
     if (enable_cuda) {
       execution_providers.push_back(DefaultCudaExecutionProvider());
     }
-    if (enable_rocm) {
-      execution_providers.push_back(DefaultRocmExecutionProvider());
-    }
+
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }

@@ -9,6 +9,8 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 
+#include <optional>
+
 namespace onnxruntime {
 
 // Node argument definition, for both input and output,
@@ -107,6 +109,18 @@ class NodeArg {
   /** Gets this NodeArg as a NodeArgInfo, AKA ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 
+  /** Gets the inferred shape values as a TensorShapeProto. */
+  const std::optional<ONNX_NAMESPACE::TensorShapeProto>& GetInferredShapeValues() const noexcept { return inferred_shape_values_; }
+
+  /** Gets mutable inferred shape values as a TensorShapeProto. */
+  std::optional<ONNX_NAMESPACE::TensorShapeProto>& GetMutableInferredShapeValues() noexcept { return inferred_shape_values_; }
+
+  /** Gets the inferred shape scalar value */
+  const std::optional<int64_t> GetInferredShapeScalarValue() const noexcept { return inferred_scalar_value_; }
+
+  /** Sets the inferred shape scalar value */
+  void SetInferredShapeScalarValue(int64_t value) noexcept { inferred_scalar_value_ = value; }
+
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
@@ -127,6 +141,24 @@ class NodeArg {
 
   // Node arg name, type and shape.
   NodeArgInfo node_arg_info_;
+
+  // This variable stores the actual tensor data of the shape as a TensorShapeProto after executing
+  // the ONNX operator's PartialDataPropagationFunction(). It's used for shape inference purpose.
+  //
+  // Calling an operator's TypeAndShapeInferenceFunction() alone is sometimes insufficient
+  // for complete shape inference. For example, the Shape operator's TypeAndShapeInferenceFunction()
+  // only provides the output's rank which is 1 but not its actual shape values.
+  //
+  // The PartialDataPropagationFunction(), defined in the ONNX operator schema, must also
+  // be executed to obtain the concrete shape values output, allowing accurate propagation
+  // of shape information throughout the graph. If the concrete shape values output is not
+  // computed, nothing is stored here that's why this is optional.
+  std::optional<ONNX_NAMESPACE::TensorShapeProto> inferred_shape_values_;
+
+  // This variable stores the actual scalar value.
+  // It is also used for shape inference and data propagation to ensure consistent shape and
+  // value information throughout the graph.
+  std::optional<int64_t> inferred_scalar_value_;
 
   // Flag indicates whether <*this> node arg exists or not.
   bool exists_;

@@ -128,8 +128,8 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
           {static_cast<uint32_t>(params.kv_hidden_size_ / components)},
           {static_cast<uint32_t>(params.num_heads_)},
           {static_cast<uint32_t>(params.kv_num_heads_)},
-          {head_size_vec},
-          {half_rotary_embedding_dim_vec},
+          {static_cast<uint32_t>(head_size_vec)},
+          {static_cast<uint32_t>(half_rotary_embedding_dim_vec)},
           {static_cast<uint32_t>(dispatch_size)},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -287,7 +287,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
-    will_use_flash_attention = CanApplyFlashAttention(attention_bias, present_key, present_value, temp_params, context);
+    will_use_flash_attention = CanApplyFlashAttention(nullptr, present_key, present_value, temp_params, context);
   }
 
   if (parameters.is_packed_qkv_ && do_rotary_) {
