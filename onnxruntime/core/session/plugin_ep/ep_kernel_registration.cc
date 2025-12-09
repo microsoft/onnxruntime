@@ -44,7 +44,6 @@ class PluginEpOpKernel final : public OpKernel {
                  /*out*/ bool& is_packed, /*out*/ PrePackedWeights* /*prepacked_weights*/) override {
     // Note: The `prepacked_weights` parameter is not used because sharing of prepacked weights is only
     // really supported for ORT's CPU EP.
-
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
 
     if (kernel_impl_->PrePackConstantTensor == nullptr) {
@@ -60,6 +59,7 @@ class PluginEpOpKernel final : public OpKernel {
     // Create a non-owning OrtValue that wraps the const Tensor& with an empty deleter.
     // This is passed to OrtKernelImpl::PrePackConstantTensor() as a const OrtValue*.
     // The above reasons make the const_cast relatively "safe".
+    // Note: Documentation for OrtKernelImpl::PrePackConstantTensor disallows caching the OrtValue pointer.
     const OrtValue ort_value(const_cast<Tensor*>(&tensor), DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
 
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
