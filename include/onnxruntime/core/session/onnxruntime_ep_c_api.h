@@ -322,7 +322,8 @@ struct OrtKernelImpl {
    * \param[in] input_index The input index of the tensor in this kernel.
    * \param[in] alloc Implementation should use this allocator for allocating the packed data. It will either be
    *                  an allocator provided by the EP (default or read-only) or a shared allocator overridden by
-   *                  the application via OrtApi::CreateSharedAllocator().
+   *                  the application via OrtApi::CreateSharedAllocator(). The allocator remains valid until
+   *                  OrtKernelImpl::Release() is called.
    * \param[out] is_packed Output parameter that the implementation sets to true if the kernel packed the tensor data.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value

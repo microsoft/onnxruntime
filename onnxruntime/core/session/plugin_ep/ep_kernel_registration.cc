@@ -93,6 +93,10 @@ class PluginEpOpKernel final : public OpKernel {
   }
 
   OrtKernelImpl* kernel_impl_ = nullptr;
+
+  // We create and cache a OrtAllocator for every unique IAllocator passed to PrePack(). Need to keep these
+  // OrtAllocator instances alive because the plugin EP kernel implementation uses the OrtAllocator to allocate
+  // and free packed weight data.
   std::unordered_map<IAllocator*, std::unique_ptr<OrtAllocatorImplWrappingIAllocator>> prepack_allocs_;
 };
 
