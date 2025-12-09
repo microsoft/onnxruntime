@@ -165,7 +165,7 @@ def check_if_dlls_are_present(
                 build_dir = "buildTransitive" if is_gpu_dependent_package else "build"
                 header_folder = f"{build_dir}/native/include"
             else:  # tarball package
-                folder = package_path + "/lib"
+                folder = package_path + "/lib64"
                 header_folder = package_path + "/include"
 
             if package_contains_library:
