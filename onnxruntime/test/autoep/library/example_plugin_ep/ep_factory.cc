@@ -37,7 +37,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
-  CreateCustomOpDomain = CreateCustomOpDomainImpl;
+  CreateCustomOpDomains = CreateCustomOpDomainsImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
@@ -315,9 +315,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainImpl(OrtEpFactory* this_ptr,
-                                                                   _Outptr_result_maybenull_ OrtCustomOpDomain** out,
-                                                                   _Out_ size_t* num_domains) noexcept {
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainsImpl(OrtEpFactory* this_ptr,
+                                                                    _Outptr_result_maybenull_ OrtCustomOpDomain** out,
+                                                                    _Out_ size_t* num_domains) noexcept {
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
   std::vector<std::unique_ptr<PluginEpCustomOp>> created_custom_op_list;

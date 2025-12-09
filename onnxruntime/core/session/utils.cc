@@ -519,13 +519,13 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
         return false;
       };
 
-      if (ep_factory->CreateCustomOpDomain == nullptr) {
+      if (ep_factory->CreateCustomOpDomains == nullptr) {
         continue;
       }
 
       size_t num_domains = 0;
       OrtCustomOpDomain* domain_ptrs = nullptr;
-      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->CreateCustomOpDomain(ep_factory, &domain_ptrs, &num_domains)));
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->CreateCustomOpDomains(ep_factory, &domain_ptrs, &num_domains)));
 
       const auto custom_op_domains_span = gsl::span<OrtCustomOpDomain*>(&domain_ptrs, num_domains);
       for (auto domain : custom_op_domains_span) {

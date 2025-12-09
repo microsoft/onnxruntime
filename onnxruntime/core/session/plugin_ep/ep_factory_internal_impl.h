@@ -88,8 +88,8 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
-  virtual OrtStatus* CreateCustomOpDomain(_Outptr_result_maybenull_ OrtCustomOpDomain** out,
-                                          _Out_ size_t* num_domains) const noexcept {
+  virtual OrtStatus* CreateCustomOpDomains(_Outptr_result_maybenull_ OrtCustomOpDomain** out,
+                                           _Out_ size_t* num_domains) const noexcept {
     *out = nullptr;
     *num_domains = 0;
     return nullptr;

@@ -134,9 +134,9 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 
-  static OrtStatus* ORT_API_CALL CreateCustomOpDomainImpl(OrtEpFactory* this_ptr,
-                                                          _Outptr_result_maybenull_ OrtCustomOpDomain** out,
-                                                          _Out_ size_t* num_domains) noexcept;
+  static OrtStatus* ORT_API_CALL CreateCustomOpDomainsImpl(OrtEpFactory* this_ptr,
+                                                           _Outptr_result_maybenull_ OrtCustomOpDomain** out,
+                                                           _Out_ size_t* num_domains) noexcept;
 
   const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
