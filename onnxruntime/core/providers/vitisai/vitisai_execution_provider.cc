@@ -147,7 +147,6 @@ std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
 
 std::string VitisAIExecutionProvider::GetCompiledModelCompatibilityInfo(
     const onnxruntime::GraphViewer& graph_viewer) const {
-  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!execution_providers_) {
     return {};
   }
