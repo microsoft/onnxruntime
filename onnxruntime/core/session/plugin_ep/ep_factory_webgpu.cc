@@ -61,6 +61,13 @@ OrtStatus* WebGpuEpFactory::CreateDataTransfer(_Outptr_result_maybenull_ OrtData
   // Call the WebGPU provider's C API to create the data transfer
   // This is implemented in the WebGPU provider backend which has access to WebGPU headers
   *data_transfer = OrtWebGpuCreateDataTransfer();
+
+  // API version mismatch is a fatal error - return error status if creation failed
+  if (*data_transfer == nullptr) {
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                 "Failed to create WebGPU data transfer - API version mismatch.");
+  }
+
   return nullptr;
 }
 

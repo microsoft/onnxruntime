@@ -1002,11 +1002,6 @@ WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
   return *it->second.context;
 }
 
-bool WebGpuContextFactory::HasContext(int context_id) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return contexts_.find(context_id) != contexts_.end();
-}
-
 void WebGpuContextFactory::ReleaseContext(int context_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 

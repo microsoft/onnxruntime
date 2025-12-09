@@ -338,7 +338,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
         data_transfer_{nullptr},
-        context_id_{-1},
+        context_id_{0},  // Always use context 0 for Environment's data transfer
         init_mutex_{} {
     ort_version_supported = ORT_API_VERSION;
     CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback
@@ -375,6 +375,15 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       }
     }
 
+    // If both are GPU, they must have the same device ID
+    if (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) {
+      uint64_t src_device_id = impl.ep_api.MemoryDevice_GetDeviceId(src_memory_device);
+      uint64_t dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_memory_device);
+      if (src_device_id != dst_device_id) {
+        return false;  // Cannot copy between different devices
+      }
+    }
+
     // WebGPU supports GPU<->GPU, GPU<->CPU copies (where GPU has vendor ID 0)
     return (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) ||
            (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_CPU) ||
@@ -392,57 +401,15 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       return nullptr;
     }
 
-    // Lazy initialization: Get context_id from the first GPU tensor's device
-    int context_id = 0;  // Default to context_id 0
-    bool found_gpu_tensor = false;
-
-    // Check both src_tensors and dst_tensors to find the first GPU tensor
-    for (size_t idx = 0; idx < num_tensors && !found_gpu_tensor; ++idx) {
-      // Check source tensor
-      const OrtMemoryDevice* src_device = impl.ep_api.Value_GetMemoryDevice(src_tensors[idx]);
-      OrtMemoryInfoDeviceType src_device_type = impl.ep_api.MemoryDevice_GetDeviceType(src_device);
-      if (src_device_type == OrtMemoryInfoDeviceType_GPU) {
-        context_id = static_cast<int>(impl.ep_api.MemoryDevice_GetDeviceId(src_device));
-        found_gpu_tensor = true;
-        break;
-      }
-
-      // Check destination tensor
-      const OrtMemoryDevice* dst_device = impl.ep_api.Value_GetMemoryDevice(dst_tensors[idx]);
-      OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_device);
-      if (dst_device_type == OrtMemoryInfoDeviceType_GPU) {
-        context_id = static_cast<int>(impl.ep_api.MemoryDevice_GetDeviceId(dst_device));
-        found_gpu_tensor = true;
-        break;
-      }
-    }
-
-    // If no GPU tensor found, return an error as this indicates an invalid state
-    // CanCopy should have rejected CPU-only tensor copies
-    if (!found_gpu_tensor) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "No GPU tensor found in CopyTensors call - all tensors are CPU-only. "
-                                   "This indicates an invalid call as CanCopy should have rejected this.");
-    }
-
-    // Initialize data_transfer if not already done or if context_id changed
-    // Use mutex to ensure thread-safe lazy initialization
-    {
+    // Lazy initialization: Use double-checked locking to avoid unnecessary lock operations
+    if (impl.data_transfer_ == nullptr) {
       std::lock_guard<std::mutex> lock(impl.init_mutex_);
-
-      if (impl.data_transfer_ == nullptr || impl.context_id_ != context_id) {
-        impl.context_id_ = context_id;
-
-        // Check if context exists, create a default one if it doesn't
-        webgpu::WebGpuContext* context_ptr = nullptr;
-        if (webgpu::WebGpuContextFactory::HasContext(context_id)) {
-          context_ptr = &webgpu::WebGpuContextFactory::GetContext(context_id);
-        } else {
-          WebGpuContextParams params = GetDefaultWebGpuContextParams();
-          params.context_config.context_id = context_id;
-          context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
-          context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
-        }
+      if (impl.data_transfer_ == nullptr) {
+        // Always create a new context with context_id 0
+        WebGpuContextParams params = GetDefaultWebGpuContextParams();
+        params.context_config.context_id = impl.context_id_;
+        auto* context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
+        context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
 
         // Create the DataTransfer instance
         // Note: The DataTransfer holds a const reference to BufferManager. The BufferManager's lifecycle
@@ -450,7 +417,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         // for the lifetime of the application, ensuring the reference remains valid.
         impl.data_transfer_ = std::make_unique<webgpu::DataTransfer>(context_ptr->BufferManager());
       }
-    }  // Release lock
+    }
 
     // Now perform the actual tensor copy
     for (size_t idx = 0; idx < num_tensors; ++idx) {
@@ -465,7 +432,17 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
   }
 
   static void ReleaseImpl(OrtDataTransferImpl* this_ptr) noexcept {
-    delete static_cast<WebGpuDataTransferImpl*>(this_ptr);
+    auto* p_impl = static_cast<WebGpuDataTransferImpl*>(this_ptr);
+    int context_id = p_impl->context_id_;
+    bool data_transfer_initialized = false;
+    {
+      std::lock_guard<std::mutex> lock(p_impl->init_mutex_);
+      data_transfer_initialized = (p_impl->data_transfer_ != nullptr);
+    }
+    delete p_impl;
+    if (data_transfer_initialized) {
+      webgpu::WebGpuContextFactory::ReleaseContext(context_id);
+    }
   }
 
   const OrtApi& ort_api;

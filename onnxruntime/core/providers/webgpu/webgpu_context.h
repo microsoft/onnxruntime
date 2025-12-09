@@ -66,7 +66,6 @@ class WebGpuContextFactory {
 
   static WebGpuContext& CreateContext(const WebGpuContextConfig& config);
   static WebGpuContext& GetContext(int context_id);
-  static bool HasContext(int context_id);
 
   static void ReleaseContext(int context_id);
 
