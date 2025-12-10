@@ -90,6 +90,36 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
+#if defined(__aarch64__) && defined(__linux__)
+size_t
+MLASCALL
+MlasSBGemmPackBSize(
+    size_t N,
+    size_t K
+    );
+
+bool
+MLASCALL
+MlasSBGemmPackB(
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+bool
+MLASCALL
+MlasSBGemmBatch(
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SBGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+#endif
+
 size_t
 MLASCALL
 MlasDynamicQgemmPackBSize(

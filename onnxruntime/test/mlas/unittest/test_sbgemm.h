@@ -99,10 +99,12 @@ class MlasSBGemmTest : public MlasTestBase {
       params.ldc = ldc;
       params.AIsfp32 = true;
       params.BIsfp32 = true;
+      params.BIsPacked = false;
 
       if (Packed) {
         ASSERT_EQ(BatchSize, size_t(1)) << "Packing B not supported in batching yet!";
         params.B = PackB(N, K, B, ldb);
+        params.BIsPacked = true;
         params.ldb = 0;
         params.BIsfp32 = false;
       } else {

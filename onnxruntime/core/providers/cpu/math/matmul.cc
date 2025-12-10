@@ -272,6 +272,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
       data[i].ldc = N;
       data[i].Bias = nullptr;
       data[i].OutputProcessor = nullptr;
+      data[i].BIsPacked = bool(packed_b_);
     }
     MlasSBGemmBatch(M, N, K, max_len, data.data(), thread_pool);
   } else
