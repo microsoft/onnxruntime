@@ -1475,14 +1475,17 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     // after the fusion, the nodes are can be in a format which might be supported by other graph transforms which
     // were skipped before. Hence, some of the transforms not applied before is now valid and can be applied to
     // create a more optimal graph for execution.
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level2,
-                                   *session_logger_, graph,
-                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level3,
-                                   *session_logger_, graph,
-                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    const bool rerun_level2_and_3 = graph_optimizations_loop_level > 1 || steps == 0;
+    if (rerun_level2_and_3) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level2,
+                                     *session_logger_, graph,
+                                     ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level3,
+                                     *session_logger_, graph,
+                                     ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    }
 
     // Insert cast node/s.
     {
