@@ -530,6 +530,17 @@ onnxruntime_fetchcontent_declare(
 
 onnxruntime_fetchcontent_makeavailable(onnx)
 
+# https://github.com/onnx/onnx/pull/7087 introduces onnx_object, which
+# creates a target onnx_proto_object. If onnx_proto target does not exist,
+# we alias onnx_proto_object to onnx_proto for backward compatibility.
+if (NOT TARGET onnx_proto AND TARGET onnx_proto_object)
+  message(STATUS "Creating onnx_proto static library from onnx_proto_object")
+  add_library(onnx_proto STATIC $<TARGET_OBJECTS:onnx_proto_object>)
+  target_link_libraries(onnx_proto PUBLIC ${PROTOBUF_LIB})
+  target_include_directories(onnx_proto PUBLIC $<TARGET_PROPERTY:onnx_proto_object,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:onnx_proto_object,INTERFACE_COMPILE_DEFINITIONS>)
+endif()
+
 if(TARGET ONNX::onnx AND NOT TARGET onnx)
   message(STATUS "Aliasing ONNX::onnx to onnx")
   add_library(onnx ALIAS ONNX::onnx)
