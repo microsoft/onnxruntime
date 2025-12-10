@@ -19,14 +19,7 @@ namespace contrib {
 namespace webgpu {
 
 namespace {
-
 constexpr unsigned int kMinMForTileOptimization = 4;
-
-template <typename T>
-inline T ceil_div(T numerator, T denominator) {
-  return (numerator + denominator - 1) / denominator;
-}
-
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -246,8 +239,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
-    const uint32_t num_N_tile = ceil_div(N, tile_n);
-    const uint32_t num_M_tile = ceil_div(M, tile_m);
+    const uint32_t num_N_tile = CeilDiv(N, tile_n);
+    const uint32_t num_M_tile = CeilDiv(M, tile_m);
 
     MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, tile_m, tile_n, static_cast<uint32_t>(nbits)};
     program.SetWorkgroupSize(workgroup_size);
@@ -268,7 +261,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     if (has_zero_points) {
       program.AddInput({zero_points,
                         ProgramTensorMetadataDependency::TypeAndRank,
-                        {ceil_div(zero_points->Shape().Size(), static_cast<int64_t>(4))},
+                        {CeilDiv(zero_points->Shape().Size(), static_cast<int64_t>(4))},
                         4});
     }
     if (has_bias) {
