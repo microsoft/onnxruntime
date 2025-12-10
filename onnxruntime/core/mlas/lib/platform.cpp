@@ -601,7 +601,7 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
+    if (SMEInfo::IsSMEAvailable) {
         this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
