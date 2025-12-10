@@ -57,7 +57,7 @@ auto ProbeDevice(const std::string& device) {
 namespace onnxruntime {
 namespace test {
 
-// this test requiresOV 2025.4+ to run, currently CI uses OV 2025.2, so the test will be disabled until OV is updated
+// this test requires OV 2025.4+ to run
 TEST_P(OVEP_ExtInit_Tests, DISABLED_ModelFromExtInit) {
   const auto& device = GetParam();
   if (!ProbeDevice(device))
