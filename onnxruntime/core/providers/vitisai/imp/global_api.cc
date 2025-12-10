@@ -97,6 +97,15 @@ struct OrtVitisAIEpAPI {
   void (*profiler_collect)(
       std::vector<EventInfo>& api_events,
       std::vector<EventInfo>& kernel_events);
+  const char* (*get_compiled_model_compatibility_info)(
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* eps,
+      const void* graph_viewer) = nullptr;
+  int (*validate_compiled_model_compatibility_info)(
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* eps,
+      const char* compatibility_info,
+      const void* const* devices,
+      size_t num_devices,
+      int* model_compatibility) = nullptr;
   void (*deinitialize_onnxruntime_vitisai_ep)();
   void Ensure() {
     if (handle_)
@@ -137,6 +146,8 @@ struct OrtVitisAIEpAPI {
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "get_compiled_model_compatibility_info", (void**)&get_compiled_model_compatibility_info);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "validate_compiled_model_compatibility_info", (void**)&validate_compiled_model_compatibility_info);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_set_ep_dynamic_options", (void**)&vitisai_ep_set_ep_dynamic_options));
@@ -177,6 +188,42 @@ void profiler_collect(
   if (s_library_vitisaiep.profiler_collect) {
     s_library_vitisaiep.profiler_collect(api_events, kernel_events);
   }
+}
+
+std::string get_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const onnxruntime::GraphViewer& graph_viewer) {
+  std::string result_str;
+  if (s_library_vitisaiep.get_compiled_model_compatibility_info) {
+    const char* result = s_library_vitisaiep.get_compiled_model_compatibility_info(&eps, &graph_viewer);
+    if (result && result[0] != '\0') {
+      result_str = result;
+    }
+  }
+  return result_str;
+}
+
+Status validate_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const std::string& compatibility_info,
+    OrtCompiledModelCompatibility& model_compatibility) {
+  if (s_library_vitisaiep.validate_compiled_model_compatibility_info) {
+    // Call with nullptr devices since ORT provider doesn't have device information
+    int ret_model_compatibility = 0;
+    int status = s_library_vitisaiep.validate_compiled_model_compatibility_info(
+        &eps,
+        compatibility_info.c_str(),
+        nullptr,  // devices - not available
+        0,        // num_devices
+        &ret_model_compatibility);
+    if (status == 0) {
+      model_compatibility = static_cast<OrtCompiledModelCompatibility>(ret_model_compatibility);
+      return Status::OK();
+    }
+  }
+  // Default to NOT_APPLICABLE
+  model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  return Status::OK();
 }
 
 void change_status_with_error(void* status_ptr, int error_code, const char* error_msg) {
