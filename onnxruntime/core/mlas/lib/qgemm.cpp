@@ -206,7 +206,7 @@ MLASCALL
 MlasIsDynamicQGemmAvailable()
 {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-  return ArmKleidiAI::UseSME2;
+  return SMEInfo::CanUseSME2;
 #else
   return false;
 #endif
