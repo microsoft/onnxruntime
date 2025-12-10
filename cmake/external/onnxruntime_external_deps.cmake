@@ -530,17 +530,7 @@ onnxruntime_fetchcontent_declare(
 
 onnxruntime_fetchcontent_makeavailable(onnx)
 
-# https://github.com/onnx/onnx/pull/7087 introduces onnx_object, which
-# creates a target onnx_proto_object. If onnx_proto target does not exist,
-# we alias onnx_proto_object to onnx_proto for backward compatibility.
-if (NOT TARGET onnx_proto AND TARGET onnx_proto_object)
-  message(STATUS "Creating onnx_proto static library from onnx_proto_object")
-  add_library(onnx_proto STATIC $<TARGET_OBJECTS:onnx_proto_object>)
-  target_link_libraries(onnx_proto PUBLIC ${PROTOBUF_LIB})
-  target_include_directories(onnx_proto PUBLIC $<TARGET_PROPERTY:onnx_proto_object,INTERFACE_INCLUDE_DIRECTORIES>)
-  target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:onnx_proto_object,INTERFACE_COMPILE_DEFINITIONS>)
-endif()
-
+# In case onnx is found via find_package and targets are created with different names
 if(TARGET ONNX::onnx AND NOT TARGET onnx)
   message(STATUS "Aliasing ONNX::onnx to onnx")
   add_library(onnx ALIAS ONNX::onnx)
@@ -549,6 +539,33 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
+
+# https://github.com/onnx/onnx/pull/7087 introduces onnx_object, which creates wrapper
+# libraries (onnx, onnx_proto) that link to object libraries. The Xcode generator doesn't
+# handle these empty wrapper libraries properly - it doesn't generate .a files.
+# We recreate them as proper static libraries from the object files.
+if (CMAKE_GENERATOR MATCHES "Xcode" AND TARGET onnx_proto_object AND TARGET onnx_object)
+  message(STATUS "Creating ONNX static libraries from object files (Xcode workaround)")
+
+  # Create proper static library for onnx_proto
+  add_library(onnx_proto_lib STATIC $<TARGET_OBJECTS:onnx_proto_object>)
+  target_link_libraries(onnx_proto_lib PUBLIC ${PROTOBUF_LIB})
+  target_include_directories(onnx_proto_lib PUBLIC $<TARGET_PROPERTY:onnx_proto_object,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_compile_definitions(onnx_proto_lib PUBLIC $<TARGET_PROPERTY:onnx_proto_object,INTERFACE_COMPILE_DEFINITIONS>)
+
+  # Create proper static library for onnx
+  add_library(onnx_lib STATIC $<TARGET_OBJECTS:onnx_object> $<TARGET_OBJECTS:onnx_proto_object>)
+  target_link_libraries(onnx_lib PUBLIC ${PROTOBUF_LIB})
+  target_include_directories(onnx_lib PUBLIC $<TARGET_PROPERTY:onnx_object,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_compile_definitions(onnx_lib PUBLIC $<TARGET_PROPERTY:onnx_object,INTERFACE_COMPILE_DEFINITIONS>)
+
+  set(ONNX_LIB onnx_lib)
+  set(ONNX_PROTO_LIB onnx_proto_lib)
+else()
+  set(ONNX_LIB onnx)
+  set(ONNX_PROTO_LIB onnx_proto)
+endif()
+
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
 else()
@@ -589,17 +606,17 @@ if (onnxruntime_USE_XNNPACK)
 endif()
 
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
-                                   onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
+                                   ${ONNX_LIB} ${ONNX_PROTO_LIB} ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
                                    flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date Eigen3::Eigen)
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
-set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
+set(onnxruntime_EXTERNAL_DEPENDENCIES ${ONNX_PROTO_LIB} flatbuffers::flatbuffers)
 
 if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
-  target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+  target_compile_definitions(${ONNX_LIB} PUBLIC $<TARGET_PROPERTY:${ONNX_PROTO_LIB},INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
+    target_compile_definitions(${ONNX_LIB} PUBLIC "__ONNX_NO_DOC_STRINGS")
   endif()
 endif()
 
