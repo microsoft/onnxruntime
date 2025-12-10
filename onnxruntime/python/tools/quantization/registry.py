@@ -103,7 +103,7 @@ def CreateOpQuantizer(onnx_quantizer, node):  # noqa: N802
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateQDQQuantizer(onnx_quantizer, node):  # noqa: N802
+def create_node_tensor_reg2quant(onnx_quantizer, node):
     if node.op_type in QDQRegistry:
         return QDQRegistry[node.op_type](onnx_quantizer, node)
     return QDQOperatorBase(onnx_quantizer, node)
