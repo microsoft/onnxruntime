@@ -507,9 +507,13 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
 
-    // add custom op domain provided by EP to the session options if any
+    // Add custom op domain provided by EP to the session options if any.
+    // OrtEpFactory::GetNumCustomOpDomains and OrtEpFactory::CreateCustomOpDomains
+    // were added in ORT 1.24.
     OrtEpFactory* ep_factory = ep_device->ep_factory;
-    if (ep_factory) {
+    if (ep_factory &&
+        ep_factory->ort_version_supported >= 24 &&
+        ep_factory->CreateCustomOpDomains != nullptr) {
       auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
         for (auto ptr : domains) {
           if (domain_name == ptr->domain_) {
@@ -519,16 +523,18 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
         return false;
       };
 
-      if (ep_factory->CreateCustomOpDomains == nullptr) {
-        continue;
-      }
-
       size_t num_domains = 0;
-      OrtCustomOpDomain* domain_ptrs = nullptr;
-      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->CreateCustomOpDomains(ep_factory, &domain_ptrs, &num_domains)));
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->GetNumCustomOpDomains(ep_factory, &num_domains)));
 
-      const auto custom_op_domains_span = gsl::span<OrtCustomOpDomain*>(&domain_ptrs, num_domains);
-      for (auto domain : custom_op_domains_span) {
+      InlinedVector<OrtCustomOpDomain*> domains;
+      domains.resize(num_domains);
+
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->CreateCustomOpDomains(ep_factory,
+                                                                               domains.data(),
+                                                                               num_domains)));
+
+      const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
+      for (auto domain : domains_span) {
         if (!is_already_in_domains(domain->domain_, ort_session_options.custom_op_domains_) &&
             domain->custom_ops_.size() > 0) {
           ort_session_options.custom_op_domains_.push_back(domain);

@@ -37,6 +37,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
+  GetNumCustomOpDomains = GetNumCustomOpDomainsImpl;
   CreateCustomOpDomains = CreateCustomOpDomainsImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
@@ -71,8 +72,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                                      /*alignment*/ 0,
                                                      OrtAllocatorType::OrtDeviceAllocator};
 
-  // Custom Op Domain
-  custom_op_domain_ = Ort::CustomOpDomain{"test"};
+  // Custom Op Domains
+  custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
+  custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
 }
 
 /*static*/
@@ -315,20 +317,39 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainsImpl(OrtEpFactory* this_ptr,
-                                                                    _Outptr_result_maybenull_ OrtCustomOpDomain** out,
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetNumCustomOpDomainsImpl(OrtEpFactory* this_ptr,
                                                                     _Out_ size_t* num_domains) noexcept {
+  auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+  *num_domains = factory->custom_op_domains_.size();
+
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainsImpl(
+    OrtEpFactory* this_ptr,
+    _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
+    _Out_ size_t num_domains) noexcept {
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
   std::vector<std::unique_ptr<PluginEpCustomOp>> created_custom_op_list;
   created_custom_op_list.push_back(std::make_unique<PluginEpCustomOp>(factory->ep_name_.c_str(), nullptr));
   created_custom_op_list.back().get()->SetName("VariadicNode");
-  factory->custom_op_domain_.Add(created_custom_op_list.back().get());
+  factory->custom_op_domains_[0].Add(created_custom_op_list.back().get());
 
-  *out = factory->custom_op_domain_;
-  *num_domains = 1;
+  std::vector<std::unique_ptr<PluginEpCustomOp>> created_custom_op_list_2;
+  created_custom_op_list_2.push_back(std::make_unique<PluginEpCustomOp>(factory->ep_name_.c_str(), nullptr));
+  created_custom_op_list_2.back().get()->SetName("VariadicNode2");
+  factory->custom_op_domains_[1].Add(created_custom_op_list_2.back().get());
 
-  factory->created_custom_op_list_ = std::move(created_custom_op_list);
+  // The `num_domains` should be 2 as ORT calls GetNumCustomOpDomainsImpl() to get the number prior to
+  // call this function.
+  gsl::span<OrtCustomOpDomain*> domains_span(domains, num_domains);
+  domains_span[0] = factory->custom_op_domains_[0];
+  domains_span[1] = factory->custom_op_domains_[1];
+
+  factory->created_custom_op_lists_[0] = std::move(created_custom_op_list);
+  factory->created_custom_op_lists_[1] = std::move(created_custom_op_list_2);
 
   return nullptr;
 }
