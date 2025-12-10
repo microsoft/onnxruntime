@@ -13,12 +13,16 @@ concurrency:
 
 jobs:
   build_x64_release_xnnpack:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=build_x64_release_xnnpack-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 300
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -74,7 +78,7 @@ jobs:
       - name: NuGet restore
         shell: cmd
         run: |
-          nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\RelWithDebInfo -ConfigFile ${{ github.workspace }}\NuGet.config      
+          nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\RelWithDebInfo -ConfigFile ${{ github.workspace }}\NuGet.config
 
       - name: Build and Test
         shell: pwsh

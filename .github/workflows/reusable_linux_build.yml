@@ -58,6 +58,10 @@ on:
         required: false
         type: boolean
         default: false
+      job_identifier:
+        description: 'A unique identifier for the job, used for hosted pool tracking'
+        required: true
+        type: string
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing actions/packages'
@@ -68,6 +72,7 @@ jobs:
     runs-on:
       - self-hosted
       - "1ES.Pool=${{ inputs.pool_name }}"
+      - "JobId=${{ inputs.job_identifier }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     permissions:
       contents: read
       packages: write
@@ -75,7 +80,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Python ${{ inputs.python_version }}
         if: inputs.architecture != 'arm64'
