@@ -79,10 +79,16 @@ void
             float32x4_t Accumulator2 = MlasBroadcastFloat32x4(0.0f);
             float32x4_t Accumulator3 = MlasBroadcastFloat32x4(0.0f);
 
-            const float32x4_t BiasVector0 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize]);
-            const float32x4_t BiasVector1 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 4]);
-            const float32x4_t BiasVector2 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 8]);
-            const float32x4_t BiasVector3 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 12]);
+            float32x4_t BiasVector0 = ZeroVector;
+            float32x4_t BiasVector1 = ZeroVector;
+            float32x4_t BiasVector2 = ZeroVector;
+            float32x4_t BiasVector3 = ZeroVector;
+            if (Bias != nullptr) {
+                BiasVector0 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize]);
+                BiasVector1 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 4]);
+                BiasVector2 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 8]);
+                BiasVector3 = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize + 12]);
+            }
 
             for (size_t kernel_pos = 0; kernel_pos < KernelHeight * KernelWidth; kernel_pos++) {
                 size_t kh = kernel_pos / KernelWidth;
@@ -409,10 +415,10 @@ void
         unsigned KernelFlags
     )
 {
-    const bool Accumulate = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
+    const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
-    const bool ApplyRelu = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
-    const float firstBeta = (Accumulate || BiasAddition) ? 1.0f : 0.0f;
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+    const float firstBeta = (AccumulateOutput || BiasAddition) ? 1.0f : 0.0f;
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t InputStrideElements = InputStride / sizeof(float);
@@ -423,7 +429,7 @@ void
     MLAS_SGEMM_DATA_PARAMS gemm_params[32];
 
     if (BiasAddition) {
-        if (Accumulate) {
+        if (AccumulateOutput) {
             for (size_t f = 0; f < FilterCount; f++) {
                 float* output = Output + f * OutputStrideElements;
                 const float32x4_t BiasVector0 = MlasLoadFloat32x4(&Bias[f * BlockSize]);
@@ -474,7 +480,7 @@ void
     MlasGemmBatch(CblasNoTrans, CblasNoTrans, OutputCount, BlockSize, BlockSize,
                   gemm_params, idx, nullptr);
 
-    if (ApplyRelu) {
+    if (ReluActivation) {
         const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
         for (size_t f = 0; f < FilterCount; f++) {
             float* output = Output + f * OutputStrideElements;
