@@ -8,7 +8,34 @@
 #include "../plugin_ep_utils.h"
 
 class ExampleEpFactory;
-struct MulKernel;
+
+/// <summary>
+/// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
+/// </summary>
+struct MulKernel {
+  MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
+            const std::unordered_map<std::string, FloatInitializer>& float_initializers,
+            std::string input0_name, std::string input1_name)
+      : ort_api(ort_api),
+        logger(logger),
+        float_initializers(float_initializers),
+        input0_name(input0_name),
+        input1_name(input1_name) {}
+
+  const FloatInitializer* TryGetSavedInitializer(const std::string& name) const;
+
+  void GetInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                            /*out*/ gsl::span<const float>& data,
+                            /*out*/ std::vector<int64_t>& shape) const;
+
+  OrtStatus* Compute(OrtKernelContext* kernel_ctx);
+
+  const OrtApi& ort_api;
+  const OrtLogger& logger;
+  const std::unordered_map<std::string, FloatInitializer>& float_initializers;
+  std::string input0_name;
+  std::string input1_name;
+};
 
 /// <summary>
 /// Example EP that can compile a single Mul operator.

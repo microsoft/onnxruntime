@@ -332,14 +332,14 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainsImpl(
     _Out_ size_t num_domains) noexcept {
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
-  std::vector<std::unique_ptr<PluginEpCustomOp>> created_custom_op_list;
-  created_custom_op_list.push_back(std::make_unique<PluginEpCustomOp>(factory->ep_name_.c_str(), nullptr));
-  created_custom_op_list.back().get()->SetName("VariadicNode");
+  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list;
+  created_custom_op_list.push_back(std::make_unique<ExampleEpCustomOp>(factory->ep_name_.c_str(), factory));
+  created_custom_op_list.back().get()->SetName("Custom_Mul");
   factory->custom_op_domains_[0].Add(created_custom_op_list.back().get());
 
-  std::vector<std::unique_ptr<PluginEpCustomOp>> created_custom_op_list_2;
-  created_custom_op_list_2.push_back(std::make_unique<PluginEpCustomOp>(factory->ep_name_.c_str(), nullptr));
-  created_custom_op_list_2.back().get()->SetName("VariadicNode2");
+  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list_2;
+  created_custom_op_list_2.push_back(std::make_unique<ExampleEpCustomOp>(factory->ep_name_.c_str(), factory));
+  created_custom_op_list_2.back().get()->SetName("Custom_Mul2");
   factory->custom_op_domains_[1].Add(created_custom_op_list_2.back().get());
 
   // The `num_domains` should be 2 as ORT calls GetNumCustomOpDomainsImpl() to get the number prior to
@@ -352,4 +352,15 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainsImpl(
   factory->created_custom_op_lists_[1] = std::move(created_custom_op_list_2);
 
   return nullptr;
+}
+
+void* ExampleEpCustomOp::CreateKernel(const OrtApi& /*api*/, const OrtKernelInfo* /*info*/) const {
+  std::string node_input_0 = "X";
+  std::string node_input_1 = "W";
+  auto custom_kernel_op = std::make_unique<CustomMulKernel>(factory_->ort_api,
+                                                            factory_->default_logger_,
+                                                            float_initializers_,
+                                                            node_input_0,
+                                                            node_input_1);
+  return custom_kernel_op.release();
 }

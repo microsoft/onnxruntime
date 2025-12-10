@@ -47,6 +47,35 @@ void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
+void RunCustomMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/custom_mul.onnx"), session_options);
+
+  // Create two inputs with same values
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+  ort_input_names.push_back("X");
+  ort_input_names.push_back("W");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"Y"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(1, 4, 9, 16, 25, 36));
+}
+
 void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_options) {
   // This model has Add -> Mul -> Add. The example plugin EP only supports Mul.
   Ort::Session session(*ort_env, ORT_TSTR("testdata/add_mul_add.onnx"), session_options);
@@ -283,7 +312,7 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   EXPECT_THAT(output_span, ::testing::ElementsAre(4, 0, 24, 0, 0, 84));
 }
 
-// Creates a session with the example plugin EP and runs a model with a single Mul node.
+// Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
 // Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_Create_OrtCustomOpDomain) {
   RegisteredEpDeviceUniquePtr example_ep;
@@ -295,17 +324,7 @@ TEST(OrtEpLibrary, PluginEp_Create_OrtCustomOpDomain) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  try {
-    Ort::Session session(*ort_env, ORT_TSTR("testdata/custom_op_variadic_io.onnx"), session_options);
-    FAIL();
-  } catch (const Ort::Exception& excpt) {
-    // The session is expected to pass the custom onnx model validation as example plugin EP provides the custom op domain for VariadicNode op"
-    // If the custom op domain is not provided, the error message should be:
-    // "Load model from testdata/custom_op_variadic_io.onnx failed:Fatal error: test:VariadicNode(-1) is not a registered function/op"
-    ASSERT_THAT(excpt.what(), testing::Not(testing::HasSubstr("test:VariadicNode(-1) is not a registered function/op")));
-
-    // But still, session creation is expected to fail as example plugin EP is not able to run VariadicNode op.
-  }
+  RunCustomMulModelWithPluginEp(session_options);
 }
 }  // namespace test
 }  // namespace onnxruntime

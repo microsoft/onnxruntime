@@ -1346,7 +1346,7 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
   ORT_RETURN_IF_ERROR(AddEpOptionsToSessionOptions(ep_devices,
                                                    ep_option_keys,
                                                    ep_option_vals,
-                                                   py_sess_options.value));
+                                                   py_sess_options));
 
   py_sess_options.provider_factories.push_back(std::move(provider_factory));
   return Status::OK();

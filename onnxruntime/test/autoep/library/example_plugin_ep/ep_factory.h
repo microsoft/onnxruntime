@@ -9,30 +9,43 @@
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
 #include "../plugin_ep_utils.h"
+#include "ep.h"
 
-// This is a placeholder for "compile-based" plugin EP to provide custom op domains to ORT.
-// Please note that this is not for "kernel registration" plugin EP to register kernels.
-struct PluginEpCustomKernel {
-  PluginEpCustomKernel(const OrtKernelInfo* /*info*/, void* compute_stream)
-      : compute_stream_(compute_stream) {
+// Plugin EPs can provide two types of custom ops:
+//
+// 1. A full OrtCustomOp with a concrete kernel implementation
+//    - This Example EP demonstrates this approach.
+//    - In GetCapability(), it calls EpGraphSupportInfo_AddSingleNode() to inform ORT
+//      that the custom node should NOT be fused or compiled. Instead, ORT should invoke
+//      the custom node's Compute() function at runtime.
+//
+// 2. A "placeholder" OrtCustomOp with an empty kernel implementation
+//    - A compile-based Plugin EP can supply an OrtCustomOp whose CustomKernel::Compute()
+//      does nothing. The purpose is to satisfy model validation during model loading by
+//      registering the custom op as a valid operator in the session.
+//    - In GetCapability(), the EP should call EpGraphSupportInfo_AddNodesToFuse() to
+//      notify ORT that this custom node should be fused and compiled by the EP.
+//    - In Compile(), the EP executes its compiled bits to perform inference for
+//      the fused custom node.
+//
+// Note: Approach #2 is suitable for plugin TRT RTX EP to support TRT plugins.
+
+struct CustomMulKernel : MulKernel {
+  CustomMulKernel(const OrtApi& ort_api,
+                  const OrtLogger& logger,
+                  const std::unordered_map<std::string, FloatInitializer>& float_initializers,
+                  std::string input0_name,
+                  std::string input1_name) : MulKernel(ort_api, logger, float_initializers,
+                                                       input0_name, input1_name) {
   }
-
-  void Compute(OrtKernelContext* /*context*/) {
-    // The implementation is in plugin EP's compiled bits. No need to implement it here.
-  };
-
- private:
-  void* compute_stream_;
 };
 
-struct PluginEpCustomOp : Ort::CustomOpBase<PluginEpCustomOp, PluginEpCustomKernel> {
-  explicit PluginEpCustomOp(const char* provider, void* compute_stream) : provider_(provider),
-                                                                          compute_stream_(compute_stream) {
+struct ExampleEpCustomOp : Ort::CustomOpBase<ExampleEpCustomOp, CustomMulKernel> {
+  explicit ExampleEpCustomOp(const char* provider, ExampleEpFactory* factory) : provider_(provider),
+                                                                                factory_(factory) {
   }
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
-    return new PluginEpCustomKernel(info, compute_stream_);
-  };
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const;
 
   const char* GetName() const { return name_; };
 
@@ -70,10 +83,11 @@ struct PluginEpCustomOp : Ort::CustomOpBase<PluginEpCustomOp, PluginEpCustomKern
 
  private:
   const char* provider_ = nullptr;
-  void* compute_stream_ = nullptr;
   const char* name_ = nullptr;
   size_t num_inputs_ = 1;   // set to 1 to match with default min_arity for variadic input
   size_t num_outputs_ = 1;  // set to 1 to match with default min_arity for variadic output
+  ExampleEpFactory* factory_ = nullptr;
+  std::unordered_map<std::string, FloatInitializer> float_initializers_;
 };
 
 /// <summary>
@@ -91,6 +105,8 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   ArenaAllocator* GetArenaAllocator() const {
     return arena_allocator_.get();
   }
+
+  const OrtLogger& default_logger_;  // default logger for the EP factory
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -141,7 +157,6 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                            _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
                                                            _Out_ size_t num_domains) noexcept;
 
-  const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
@@ -160,5 +175,5 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   // std::unique_ptr<OrtCustomOpDomain, std::function<void(OrtCustomOpDomain*)>> custom_op_domain_;
   std::vector<Ort::CustomOpDomain> custom_op_domains_{2};
-  std::vector<std::vector<std::unique_ptr<PluginEpCustomOp>>> created_custom_op_lists_{2};
+  std::vector<std::vector<std::unique_ptr<ExampleEpCustomOp>>> created_custom_op_lists_{2};
 };
