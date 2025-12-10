@@ -317,13 +317,21 @@ operator!=(const MLFloat16& left, const MLFloat16& right)
 
 #endif  // BUILD_MLAS_NO_ONNXRUNTIME
 
-#if defined(MLAS_TARGET_ARM64)
-
 struct SMEInfo {
     static const bool CanUseSME2;
     static const bool CanUseSME;
     static const bool IsSMEAvailable;
 };
+
+#if !defined(MLAS_TARGET_ARM64)
+// SME is only available on arm64 systems but the structure is available in places which can be accessed by all system types
+inline const bool SMEInfo::CanUseSME2 = false;
+inline const bool SMEInfo::CanUseSME  = false;
+inline const bool SMEInfo::IsSMEAvailable = false;
+
+#endif  // !MLAS_TARGET_ARM64
+
+#if defined(MLAS_TARGET_ARM64)
 
 // Boolean condition to determine if we can use SME2
 // By default we should try for SME2 first before falling back to SME.
