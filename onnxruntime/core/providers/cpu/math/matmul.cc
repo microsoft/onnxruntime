@@ -137,6 +137,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 #if defined(__aarch64__) && defined(__linux__)
 bool GemmPackBBfloat16(AllocatorPtr& alloc,
                        const Tensor& tensor_b,
+                       bool trans_a,
                        bool trans_b,
                        IAllocatorUniquePtr<void>& packed_b,
                        size_t& packed_b_size,
@@ -152,7 +153,11 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-  packed_b_size = MlasSBGemmPackBSize(N, K);
+  packed_b_size = MlasSBGemmPackBSize(trans_a ? CBLAS_TRANSPOSE::CblasTrans : CBLAS_TRANSPOSE::CblasNoTrans,
+                                      trans_b ? CBLAS_TRANSPOSE::CblasTrans : CBLAS_TRANSPOSE::CblasNoTrans,
+                                      true,
+                                      N,
+                                      K);
   if (packed_b_size == 0) {
     return false;
   }
@@ -164,7 +169,10 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_b_data, 0, packed_b_size);
-  MlasSBGemmConvertPackB(N,
+  MlasSBGemmConvertPackB(trans_a ? CBLAS_TRANSPOSE::CblasTrans : CBLAS_TRANSPOSE::CblasNoTrans,
+                         trans_b ? CBLAS_TRANSPOSE::CblasTrans : CBLAS_TRANSPOSE::CblasNoTrans,
+                         true,
+                         N,
                          K,
                          tensor_b.Data<float>(),
                          trans_b ? K : N,
@@ -192,7 +200,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
     }
 
     if (use_fastmath_mode_ && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
-      is_packed = GemmPackBBfloat16(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+      is_packed = GemmPackBBfloat16(alloc, tensor, trans_a_attr_ != 0, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
     } else
 #endif
     {
@@ -273,8 +281,10 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
       data[i].ldc = N;
       data[i].Bias = nullptr;
       data[i].OutputProcessor = nullptr;
+      data[i].BIsPacked = static_cast<bool>(packed_b_);
     }
-    MlasSBGemmBatch(M, N, K, max_len, data.data(), thread_pool);
+    MlasSBGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
+                    M, N, K, max_len, data.data(), thread_pool);
   } else
 #endif
   {

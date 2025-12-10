@@ -906,6 +906,39 @@ void
     const float* Bias,
     void* PackedB);
 
+#if defined(__aarch64__) && defined(__linux__)
+typedef
+bool
+(MLASCALL MLAS_SBGEMM_BATCH_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SBGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef
+size_t
+(MLASCALL MLAS_SBGEMM_PACK_B_SIZE_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef
+bool
+(MLASCALL MLAS_SBGEMM_PACK_B_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
+#endif
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -1364,6 +1397,13 @@ struct MLAS_PLATFORM {
     // MLAS Conv overrides
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
+#if defined(__aarch64__) && defined(__linux__)
+    // SBGemm overrides
+    MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;
+    MLAS_SBGEMM_PACK_B_SIZE_OVERRIDE* MlasSBGemmPackBSizeOverride = nullptr;
+    MLAS_SBGEMM_PACK_B_OVERRIDE* MlasSBGemmPackBOverride = nullptr;
+#endif
+
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
