@@ -1454,12 +1454,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return Resolve(default_options);
   }
 
+  /// <summary>
+  /// This function converts all the graph TensorProto initializers into OrtValues
+  /// and creates a in-memory external data reference for each OrtValue.
+  /// </summary>
+  /// <returns></returns>
+  Status ConvertInitializersIntoOrtValues();
+
   /**
-   * @brief Converts a subset of graph TensorProto initializers into OrtValues and updates the graph proto.
-   *
-   * This function converts specified TensorProto initializers in the graph into OrtValues and
-   * creates in-memory external data references for each OrtValue. It then updates the provided
-   * GraphProto with the modified initializers.
+   * @brief This function examines the specified initializers in the graph and converts them inline
+   *        if any has external data in memory.
    *
    * @param iterators Span of iterators pointing to the initializers and the order that should be processed
    * @param output_graph_proto The GraphProto to be updated with the modified initializers
@@ -1632,17 +1636,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <param name="output_graph_proto">The GraphProto to process</param>
   /// <returns>Status indicating success or failure</returns>
   Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
-
-  /// <summary>
-  /// This function replaces all of the initializers within output_graph_proto
-  /// from this Graph instance. All in memory initializers are regenerated and inlined.
-  /// This is necessary even if the graph_proto_ is already up to date because initializers() may
-  /// contain obsolete initializers that are no longer in use due to optimizations and contain obsolete
-  /// references to OrtValues that may no longer be around (since we like appending rather than replacing).
-  /// </summary>
-  /// <param name="output_graph_proto">Destination GraphProto to receive the updated initializers.</param>
-  /// <returns>Status indicating success or failure.</returns>
-  Status RegenerateInitializersAndReplaceInMemory(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes

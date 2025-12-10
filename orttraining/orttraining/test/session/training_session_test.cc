@@ -57,7 +57,7 @@ TEST(TrainingSessionTest, LoadOptimState_FullPrecision_FP32Moments_Adam) {
   RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, false, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(TrainingSessionTest, LoadOptimState_MixedPrecision_FP32Moments_Adam) {
   RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, true, false);
 }
