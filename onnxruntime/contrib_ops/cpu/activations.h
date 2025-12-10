@@ -90,10 +90,11 @@ class QuickGelu : public OpKernel {
             MlasComputeLogistic(p_input, p_output, onnxruntime::narrow<size_t>(count));
           }
 
-          // TODO: Vectorize this compute
-          for (int64_t i = 0; i < count; i++) {
-            p_output[i] = p_input[i] * p_output[i];
-          }
+          MlasEltwiseMul<float>(p_input, p_output, p_output, onnxruntime::narrow<size_t>(count));
+
+          //for (int64_t i = 0; i < count; i++) {
+          //  p_output[i] = p_input[i] * p_output[i];
+          //}
         },
         0);
 
