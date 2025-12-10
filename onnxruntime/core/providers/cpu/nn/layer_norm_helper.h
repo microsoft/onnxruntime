@@ -3,12 +3,12 @@
 
 #pragma once
 
+#include <algorithm>
 #include "core/framework/tensor_shape.h"
 #include "core/common/status.h"
 #include "core/common/narrow.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/nn/layer_norm_macro.h"
-#include <algorithm>
 
 namespace onnxruntime {
 

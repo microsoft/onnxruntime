@@ -8,4 +8,3 @@
   ((broadcast_param == 0) ? 0                                           \
                           : norm_size * (broadcast_param > 0 ? x_row / broadcast_param : x_row % (-broadcast_param)))
 #endif
-
