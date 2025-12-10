@@ -118,7 +118,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
                                   is_channels_last,
                                   activation_.activation_kind_,
                                   kernel_shape,
-                                  conv_attrs_.auto_pad,
                                   onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
     return ApplyIm2ColMatMulProgram(context,
                                     is_channels_last,

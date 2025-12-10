@@ -78,7 +78,6 @@ bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
                                  const bool is_channels_last,
                                  const ActivationKind activation_kind,
                                  const TensorShape kernel_shape,
-                                 const AutoPadType auto_pad,
                                  const uint32_t group);
 
 Status ApplyIm2ColMatMulProgram(ComputeContext& context,
