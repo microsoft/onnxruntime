@@ -11,7 +11,7 @@ namespace test {
 using namespace std;
 using namespace onnxruntime::test;
 
-#if USE_CUDA || USE_ROCM
+#if USE_CUDA
 namespace {
 
 struct ConvGradOpAttributes {
@@ -315,7 +315,7 @@ TEST(ConvTest, Conv3D_Bias) {
   TestConvGradOp(attrs, {dY, X, W}, {dY_shape, X_shape, W_shape}, {dX, dW, dB}, {dX_shape, dW_shape, dB_shape});
   TestConvGradOp(attrs, {dY, X, W}, {dY_shape, X_shape, W_shape}, {dX, dW, dB}, {dX_shape, dW_shape, dB_shape}, true);
 }
-#endif  // USE_CUDA || USE_ROCM
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace contrib

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
+#include "core/providers/webgpu/nn/im2col_matmul.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
@@ -99,10 +100,34 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     modified_input_output_shapes.push_back(bias->Shape());
   }
   modified_input_output_shapes.push_back(TensorShape(output_shape_vector));
+
+  const auto input_height = input_shape[is_channels_last ? 1 : 2];
+  const auto input_width = input_shape[is_channels_last ? 2 : 3];
+  const auto input_channels = input_shape[is_channels_last ? 3 : 1];
+  const auto kernel_height = kernel_shape[2];
+  const auto kernel_width = kernel_shape[3];
+  const auto output_height = output_shape_vector[is_channels_last ? 1 : 2];
+  const auto output_width = output_shape_vector[is_channels_last ? 2 : 3];
+
   uint32_t auto_pad_adjust = conv_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
   auto pad0 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
   auto pad1 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
   std::vector<uint32_t> updated_pads{pad0, pad1};
+
+  if (CanApplyIm2ColMatMulProgram(context,
+                                  is_channels_last,
+                                  activation_.activation_kind_,
+                                  kernel_shape,
+                                  conv_attrs_.auto_pad,
+                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+    return ApplyIm2ColMatMulProgram(context,
+                                    is_channels_last,
+                                    dilations,
+                                    pads,
+                                    strides,
+                                    output);
+  }
+
   if (conv_attrs_.group > 1) {
     Tensor transposed_kernel;
     if (is_channels_last) {
@@ -128,13 +153,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     }
     return context.RunProgram(program);
   }
-  const auto input_height = input_shape[is_channels_last ? 1 : 2];
-  const auto input_width = input_shape[is_channels_last ? 2 : 3];
-  const auto input_channels = input_shape[is_channels_last ? 3 : 1];
-  const auto kernel_height = kernel_shape[2];
-  const auto kernel_width = kernel_shape[3];
-  const auto output_height = output_shape_vector[is_channels_last ? 1 : 2];
-  const auto output_width = output_shape_vector[is_channels_last ? 2 : 3];
 
   const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {

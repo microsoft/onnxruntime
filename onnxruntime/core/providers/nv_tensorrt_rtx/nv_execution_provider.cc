@@ -118,6 +118,7 @@ static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:         // kINT64 - 64-bit signed integer
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:  // kFP8 - 8-bit floating point
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:        // kDOUBLE - 64-bit floating point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:    // kFP4 - 4-bit floating point
       return true;
     default:
       return false;
@@ -692,6 +693,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, uint8_t)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -756,6 +758,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, uint8_t)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -766,7 +769,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 
 NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
   // Only set device if user hasn't provided a compute stream
-  if (has_user_compute_stream) {
+  if (!has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
     (void)stream;
   }
@@ -982,6 +985,17 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   } else {
     external_stream_ = false;
     stream_ = nullptr;  // Will be created in compute function
+  }
+
+  if (info.user_aux_stream_array != nullptr) {
+    if (info.auxiliary_streams <= 0) {
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams"));
+    }
+    external_aux_streams_ = true;
+    aux_streams_ = reinterpret_cast<cudaStream_t*>(info.user_aux_stream_array);
+  } else {
+    external_aux_streams_ = false;
+    aux_streams_ = nullptr;
   }
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
@@ -1407,9 +1421,30 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
   }
 
   // Find inputs and outputs of the subgraph
+
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
-  std::unordered_map<const NodeArg*, int> original_inputs, fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_map<const NodeArg*, int> original_inputs;
+
+  // These maps store the inputs and outputs of the subgraph.
+  // Please note that the inputs and outputs of the maps will be dynamically updated during node iteration
+  // to determine the final inputs and outputs of the subgraph.
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs;
+
+  // This map stores the node's output that will be consumed by another node outside of this subgraph.
+  // So the node's output should be put into the subgraph's output list.
+  std::unordered_map<const NodeArg*, int> fused_outputs_to_add;
+
+  // This map stores the node's output that is original graph's output.
+  // So the node's output should be put into the subgraph's output list.
+  std::unordered_map<const NodeArg*, int> graph_outputs_to_add;
+
   std::unordered_set<const NodeArg*> erased;
+
+  // This is the relative ordering that ensures node's input or output being added to the 'fused_inputs',
+  // 'fused_outputs', 'fused_outputs_to_add' and 'graph_outputs_to_add' maps is associated with a relative order index.
+  // Items added earlier receive a smaller order index than items added later.
+  // When constructing the final sub_graph's input or output lists, entries with smaller
+  // order indices will appear before those with larger indices.
   int input_order = 0;
   int output_order = 0;
 
@@ -1428,7 +1463,7 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
         erased.insert(input);
       } else if (erased.find(input) == erased.end()) {
         // Only when input is neither in output list nor erased list, add the input to input list
-        fused_inputs[input] = input_order++;
+        fused_inputs.insert({input, input_order++});
       }
     }
 
@@ -1443,7 +1478,7 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
         erased.insert(input);
       } else if (erased.find(input) == erased.end()) {
         // Only when input is neither in output list nor erased list, add the input to input list
-        fused_inputs[input] = input_order++;
+        fused_inputs.insert({input, input_order++});
       }
     }
 
@@ -1464,38 +1499,32 @@ std::unique_ptr<IndexedSubGraph> NvExecutionProvider::GetSubGraph(SubGraph_t gra
         } else {
           output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
         }
-        if (node_set.find(node_idx) != node_set.end()) {
-          const auto& iter = fused_inputs.find(output);
-          if (iter != fused_inputs.end()) {
-            fused_inputs.erase(iter);
-            erased.insert(output);
-          } else if (erased.find(output) == erased.end()) {
-            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
-              graph_outputs_to_add[output] = output_order;
-            }
-            fused_outputs[output] = output_order++;
-          }
-        } else {
-          fused_outputs_to_add[output] = output_order++;
+
+        if (node_set.find(node_idx) == node_set.end()) {
+          // This output will be consumed by another node outside of this subgraph.
+          // So the output should be put into the subgraph's output list.
+          fused_outputs_to_add.insert({output, output_order++});
         }
       }
-    } else {
-      for (const auto& output : node->OutputDefs()) {
-        const auto& it = fused_inputs.find(output);
-        if (it != fused_inputs.end()) {
-          fused_inputs.erase(it);
-          erased.insert(output);
-        }
-        // Only when output is neither in input list nor erased list, and the output is consumed by another node, add the output to output list
-        else if (erased.find(output) == erased.end()) {
-          if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
-            graph_outputs_to_add[output] = output_order;
-          }
+    }
 
-          if (graph.GetGraph().GetConsumerNodes(output->Name()).size() > 0) {
-            fused_outputs[output] = output_order++;
-          }
+    for (const auto& output : node->OutputDefs()) {
+      const auto& it = fused_inputs.find(output);
+      if (it != fused_inputs.end()) {
+        fused_inputs.erase(it);
+        erased.insert(output);
+      } else if (erased.find(output) == erased.end()) {
+        if (graph.GetGraph().GetConsumerNodes(output->Name()).size() > 0) {
+          // Only when output is neither in input list nor erased list,
+          // and the output is consumed by another node, add the output to output list
+          fused_outputs.insert({output, output_order++});
         }
+      }
+
+      if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+        // This output is the graph's output.
+        // So the output should be put into the subgraph's output list.
+        graph_outputs_to_add.insert({output, output_order++});
       }
     }
   }
@@ -1654,11 +1683,8 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           SetAllGraphInputs(graph_build);
         }
 
-        auto status = graph_build.Resolve();
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-          ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX graph resolve failed: " + status.ErrorMessage()));
-        }
+        ORT_THROW_IF_ERROR(graph_build.Resolve());
+
         // Add parent graph output to the subgraph
         int i = 0;
         std::vector<const NodeArg*> subgraph_outputs;
@@ -1705,41 +1731,38 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         auto model = graph_viewer->CreateModel(*GetLogger());
         auto model_proto = model->ToProto();
 
-        // ORT's default topological sort is using reversed DFS.
-        // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
-        // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
-        // the model proto that has different node ordering compared to original onnx model.
-
         // save user provided external data in memory instead of writing to ModelProto
         // needed for models > 2GB
         std::vector<TensorrtUserWeights> userWeights;
         if (use_external_data_initializer_) {
-          auto c_api = Ort::GetApi();
-          const InitializedTensorSet& allInitializers = graph_viewer->GetAllInitializedTensors();
+          const auto& allInitializers = graph_viewer->GetAllInitializedTensors();
           userWeights.reserve(allInitializers.size());
-          for (auto& entry : allInitializers) {
-            OrtValue initializer_value;
-            auto* tp = entry.second;
+          for (const auto& [name, tp] : allInitializers) {
             if (utils::HasRawData(*tp)) {
-              userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
-            } else if (graph_viewer->GetOrtValueInitializer(tp->name(), initializer_value)) {
-              // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-              size_t size = 0;
-              const void* ptr = nullptr;
-              Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
-              Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
-              userWeights.emplace_back(tp->name(), ptr, size);
+              // Keep inits in memory instead of writing to ModelProto.
+              userWeights.emplace_back(name, tp->raw_data().data(), tp->raw_data().size());
             } else if (utils::HasExternalDataInMemory(*tp)) {
-              // only copy and take ownership of the data if none of the above conditions are met
-              std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-              ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-              userWeights.emplace_back(std::move(full_init->name()), std::move(full_init->raw_data()));
+              // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+              if (OrtValue v; graph_viewer->GetOrtValueInitializer(name, v)) {
+                Ort::ConstValue initializer_value{&v};
+                const size_t size = initializer_value.GetTensorSizeInBytes();
+                const void* ptr = initializer_value.GetTensorRawData();
+                userWeights.emplace_back(name, ptr, size);
+              } else {
+                // only copy and take ownership of the data if none of the above conditions are met
+                std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+                ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+                userWeights.emplace_back(name, full_init->raw_data());
+              }
             }
           }
         }
 
+        // ORT's default topological sort is using reversed DFS.
+        // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
+        // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
+        // the model proto that has different node ordering compared to original onnx model.
         graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/, !use_external_data_initializer_ /*include raw initializers*/);
-
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         std::string string_buf;
@@ -2567,30 +2590,27 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   // exclude weights if external
   std::vector<TensorrtUserWeights> userWeights;
   if (use_external_data_initializer_) {
-    auto c_api = Ort::GetApi();
     const InitializedTensorSet& allInitializers = graph_body_viewer.GetAllInitializedTensors();
     userWeights.reserve(allInitializers.size());
-    for (auto& entry : allInitializers) {
-      OrtValue initializer_value;
-      auto* tp = entry.second;
+    for (const auto& [name, tp] : allInitializers) {
       if (utils::HasRawData(*tp)) {
-        userWeights.emplace_back(TensorrtUserWeights(tp->name(), tp->raw_data().data(), tp->raw_data().size()));
-      } else if (graph_body_viewer.GetOrtValueInitializer(tp->name(), initializer_value)) {
-        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
-        size_t size = 0;
-        const void* ptr = nullptr;
-        Ort::ThrowOnError(c_api.GetTensorSizeInBytes(&initializer_value, &size));
-        Ort::ThrowOnError(c_api.GetTensorData(&initializer_value, &ptr));
-        userWeights.emplace_back(tp->name(), ptr, size);
+        userWeights.emplace_back(name, tp->raw_data().data(), tp->raw_data().size());
       } else if (utils::HasExternalDataInMemory(*tp)) {
-        // only copy and take ownership of the data if none of the above conditions are met
-        std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
-        ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
-        userWeights.emplace_back(TensorrtUserWeights(std::move(full_init->name()), std::move(full_init->raw_data())));
+        // the initializer was marked as external data by the ORT graph at load time since it was provided in memory
+        if (OrtValue v; graph_body_viewer.GetOrtValueInitializer(name, v)) {
+          Ort::ConstValue initializer_value{&v};
+          const size_t size = initializer_value.GetTensorSizeInBytes();
+          const void* ptr = initializer_value.GetTensorRawData();
+          userWeights.emplace_back(name, ptr, size);
+        } else {
+          // only copy and take ownership of the data if none of the above conditions are met
+          std::unique_ptr<ONNX_NAMESPACE::TensorProto> full_init;
+          ORT_THROW_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(*tp, full_init));
+          userWeights.emplace_back(name, full_init->raw_data());
+        }
       }
     }
   }
-
   // ORT's default topological sort is using reversed DFS.
   // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
   // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
@@ -3033,6 +3053,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP select an optimization profile for the current context failed");
     }
 
+    // Set auxiliary stream if provided by user
+    if (external_aux_streams_ && aux_streams_ != nullptr) {
+      trt_context->setAuxStreams(aux_streams_, (int32_t)auxiliary_streams_);
+    }
+
     // Check before using trt_engine
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "No engine is found.");
@@ -3442,6 +3467,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         trt_state->context_memory_size = mem_size;
         trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
       }
+    }
+
+    // Set auxiliary stream if provided by user
+    if (external_aux_streams_ && aux_streams_ != nullptr) {
+      trt_context->setAuxStreams(aux_streams_, (int32_t)auxiliary_streams_);
     }
 
     // Start CUDA graph capture with the correct stream
