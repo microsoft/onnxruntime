@@ -206,17 +206,6 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       return nullptr;  // No nodes to process
     }
 
-    if (nodes.size() != 1) {
-      Ort::Status status("Expected to get capability from a model with only one node", ORT_EP_FAIL);
-      return status.release();
-    }
-
-    auto node_op_type = nodes[0].GetOperatorType();
-    if (node_op_type != "Mul" && node_op_type != "Custom_Mul") {
-      Ort::Status status("Expected to get capability from a model with only a Mul or Custom_Mul node", ORT_EP_FAIL);
-      return status.release();
-    }
-
     std::vector<Ort::ConstNode> supported_nodes;
 
     for (const auto& node : nodes) {
@@ -262,7 +251,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       return nullptr;
     }
 
-    if (nodes[0].GetOperatorType() == "Mul") {
+    if (supported_nodes[0].GetOperatorType() == "Mul") {
       // Create (optional) fusion options for the supported nodes to fuse.
       OrtNodeFusionOptions node_fusion_options = {};
       node_fusion_options.ort_version_supported = ORT_API_VERSION;
@@ -276,7 +265,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
                                                                    reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
                                                                    supported_nodes.size(),
                                                                    &node_fusion_options));
-    } else {
+    } else if (supported_nodes[0].GetOperatorType() == "Custom_Mul") {
       // Calls EpGraphSupportInfo_AddSingleNode() to inform ORT that the custom node should NOT be fused or compiled,
       // as CustomMul has the concrete kernel implementation.
       RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddSingleNode(graph_support_info, supported_nodes[0]));
