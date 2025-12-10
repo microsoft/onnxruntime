@@ -1092,14 +1092,6 @@ MlasComputeLogistic(
     size_t N
     );
 
-void
-MLASCALL
-MlasComputeSilu(
-    const float* Input,
-    float* Output,
-    size_t N
-    );
-
 template <typename T>
 void
 MLASCALL

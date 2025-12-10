@@ -71,46 +71,31 @@ class QuickGelu : public OpKernel {
     constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
     int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
-    // SILU operation
-    if (alpha_ == 0.0f) {
-      concurrency::ThreadPool::TryBatchParallelFor(
-          tp, static_cast<int32_t>(task_count),
-          [&](ptrdiff_t task_idx) {
-            const auto start = task_idx * length_per_task;
-            const T* p_input = input_data + start;
-            T* p_output = output_data + start;
-            int64_t count = std::min(length_per_task, elem_count - start);
+    concurrency::ThreadPool::TryBatchParallelFor(
+        tp, static_cast<int32_t>(task_count),
+        [&](ptrdiff_t task_idx) {
+          const auto start = task_idx * length_per_task;
+          const T* p_input = input_data + start;
+          T* p_output = output_data + start;
+          int64_t count = std::min(length_per_task, elem_count - start);
 
-            MlasComputeSilu(p_input, p_output, onnxruntime::narrow<size_t>(count));
-          },
-          0);
-    } else {
-      concurrency::ThreadPool::TryBatchParallelFor(
-          tp, static_cast<int32_t>(task_count),
-          [&](ptrdiff_t task_idx) {
-            const auto start = task_idx * length_per_task;
-            const T* p_input = input_data + start;
-            T* p_output = output_data + start;
-            int64_t count = std::min(length_per_task, elem_count - start);
-
-            if (alpha_ != 1.0f) {
-              // TODO: Vectorize this compute
-              for (int64_t i = 0; i < count; i++) {
-                p_output[i] = p_input[i] * alpha_;
-              }
-
-              MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
-            } else {
-              MlasComputeLogistic(p_input, p_output, onnxruntime::narrow<size_t>(count));
-            }
-
+          if (alpha_ != 1.0f) {
             // TODO: Vectorize this compute
             for (int64_t i = 0; i < count; i++) {
-              p_output[i] = p_input[i] * p_output[i];
+              p_output[i] = p_input[i] * alpha_;
             }
-          },
-          0);
-    }
+
+            MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
+          } else {
+            MlasComputeLogistic(p_input, p_output, onnxruntime::narrow<size_t>(count));
+          }
+
+          // TODO: Vectorize this compute
+          for (int64_t i = 0; i < count; i++) {
+            p_output[i] = p_input[i] * p_output[i];
+          }
+        },
+        0);
 
     return Status::OK();
   }
