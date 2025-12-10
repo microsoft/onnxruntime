@@ -1255,13 +1255,13 @@ static Status TransposeDataRank5(const TensorShape& input_shape,
   return Status::OK();
 }
 
-// Use use_dummy_tensor flag when performing only QNN op validation and no real tensor data is required.
+// Use skip_output_data_copy flag when performing only QNN op validation and no real tensor data is required.
 Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                              std::vector<uint32_t>& data_shape,
                              const onnx::TensorProto& initializer,
                              std::vector<uint8_t>& transposed_data,
                              const logging::Logger& logger,
-                             bool use_dummy_tensor) {
+                             bool skip_output_data_copy) {
   ORT_RETURN_IF_NOT(data_shape.size() == 2, "Expected shape of rank 2");
 
   std::array<size_t, 2> perm = {1, 0};
@@ -1276,7 +1276,7 @@ Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size(), 0);
 
-  if (use_dummy_tensor) {  // Only shape & dtype validation are needed, no need for real tensor
+  if (skip_output_data_copy) {  // Only shape & dtype validation are needed, no need for real tensor
     LOGS(logger, VERBOSE) << "Only shape and dtype validation are required, so we can use dummy tensor to avoid heavy memcpy.";
     data_shape = std::move(output_shape);  // Update parameter with final transposed shape
     return Status::OK();
