@@ -74,9 +74,9 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->IsStreamAware();
   }
 
-  OrtStatus* SetupGraphicsContext(_In_ const OrtMemoryDevice* memory_device,
+  OrtStatus* SetupGraphicsInterop(_In_ const OrtMemoryDevice* memory_device,
                              _In_ const struct GraphicsInteropParams* graphicsInteropParams) noexcept {
-    return impl_->SetupGraphicsContext(memory_device, graphicsInteropParams);
+    return impl_->SetupGraphicsInterop(memory_device, graphicsInteropParams);
   }
 
   OrtStatus* CreateSyncStreamForDevice(_In_ const OrtMemoryDevice* memory_device,

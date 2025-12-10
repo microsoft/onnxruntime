@@ -62,10 +62,10 @@ class EpFactoryInternalImpl {
     return false;
   }
 
-  virtual OrtStatus* SetupGraphicsContext(_In_ const OrtMemoryDevice* /*memory_device*/,
+  virtual OrtStatus* SetupGraphicsInterop(_In_ const OrtMemoryDevice* /*memory_device*/,
                                      _In_ const struct GraphicsInteropParams* /*graphicsInteropParams*/) noexcept {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
-                                 "SetupGraphicsContext is not implemented for this EP factory.");
+                                 "SetupGraphicsInterop is not implemented for this EP factory.");
   }
 
   virtual OrtStatus* ValidateCompiledModelCompatibilityInfo(

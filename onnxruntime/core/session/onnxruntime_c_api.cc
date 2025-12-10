@@ -3366,7 +3366,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device,
+ORT_API_STATUS_IMPL(OrtApis::SetupGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _In_ const struct GraphicsInteropParams* graphicsInteropParams) {
   API_IMPL_BEGIN
   if (ep_device == nullptr || graphicsInteropParams == nullptr) {
@@ -3388,13 +3388,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetupGraphicsInteropContextForEpDevice, _In_ const 
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support streams.");
   }
 
-  // Check if the factory supports Graphics context setup
-  if (factory->SetupGraphicsContext == nullptr) {
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support Graphics context setup.");
+  // Check if the factory supports Graphics interop setup
+  if (factory->SetupGraphicsInterop == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support Graphics interop setup.");
   }
 
-  // Call the EP factory to setup Graphics context
-  ORT_API_RETURN_IF_ERROR(factory->SetupGraphicsContext(ep_device->GetMutableFactory(),
+  // Call the EP factory to setup Graphics interop
+  ORT_API_RETURN_IF_ERROR(factory->SetupGraphicsInterop(ep_device->GetMutableFactory(),
                                                    static_cast<const OrtMemoryDevice*>(device),  // alias
                                                    graphicsInteropParams));
 
@@ -3494,7 +3494,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   auto* sptr_ptr = reinterpret_cast<std::shared_ptr<SemaphoreEpMap>*>(ortFence);
   auto* semaphoreEpMap = sptr_ptr->get();
@@ -3504,11 +3504,6 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ O
   }
   if(stream == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Stream is null.");
-  }
-  auto* session = reinterpret_cast<onnxruntime::InferenceSession*>(ort_session);
-  if (!session)
-  {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
   }
 
   const onnxruntime::IExecutionProvider* selectedEp = static_cast<const onnxruntime::IExecutionProvider*>(semaphoreEpMap->selectedEp);
@@ -3527,7 +3522,7 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* ort_session, _In_ O
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
   API_IMPL_BEGIN
   auto* sptr_ptr = reinterpret_cast<std::shared_ptr<SemaphoreEpMap>*>(ortFence);
   auto* semaphoreEpMap = sptr_ptr->get();  // Get raw pointer for existing code
@@ -3537,11 +3532,6 @@ ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* ort_session, _In_
   }
   if(stream == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Stream is null.");
-  }
-  auto* session = reinterpret_cast<onnxruntime::InferenceSession*>(ort_session);
-  if (!session)
-  {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Session is null");
   }
 
   const onnxruntime::IExecutionProvider* selectedEp = static_cast<const onnxruntime::IExecutionProvider*>(semaphoreEpMap->selectedEp);
@@ -3741,10 +3731,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* /*ep_device*/,
+ORT_API_STATUS_IMPL(OrtApis::SetupGraphicsInteropForEpDevice, _In_ const OrtEpDevice* /*ep_device*/,
                     _In_ const struct GraphicsInteropParams* /*graphicsInteropParams*/) {
   API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SetupGraphicsInteropContextForEpDevice is not supported in a minimal build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SetupGraphicsInteropForEpDevice is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3762,13 +3752,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtFenceForGraphicsInterop, _In_ OrtSession* ses
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpWait, _In_ OrtFence* /*ortFence*/, _In_ OrtSyncStream* /*stream*/, _In_ uint64_t /*fenceValue*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpWait is not supported in a minimal build.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue) {
+ORT_API_STATUS_IMPL(OrtApis::InteropEpSignal, _In_ OrtFence* /*ortFence*/, _In_ OrtSyncStream* /*stream*/, _In_ uint64_t /*fenceValue*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InteropEpSignal is not supported in a minimal build.");
   API_IMPL_END
@@ -4410,7 +4400,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::TensorTypeAndShape_HasShape,
 
-    &OrtApis::SetupGraphicsInteropContextForEpDevice,
+    &OrtApis::SetupGraphicsInteropForEpDevice,
     &OrtApis::GetOrtFenceForGraphicsInterop,
     &OrtApis::InteropEpWait,
     &OrtApis::InteropEpSignal,

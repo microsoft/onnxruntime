@@ -1010,7 +1010,6 @@ struct OrtEpFactory {
    * This is used to create a synchronization stream for the memory device that can be used for operations outside of
    * a session.
    *
-   * If SetupGraphicsContext was called previously for this memory device, the stream will be created on the Graphics context.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
@@ -1055,22 +1054,21 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
 
-  /** \brief Setup Graphics context for a memory device.
+  /** \brief Setup Graphics interop for a memory device.
    *
-   * This function creates a Graphics context associated with a graphics API (D3D12/Vulkan) command queue/device.
-   * Once setup, streams created via CreateSyncStreamForDevice for this memory device will be created on the Graphics context.
+   * This function sets up Graphics interop associated with a graphics API (D3D12/Vulkan) command queue/device.
    *
-   * Optional - EP factories that don't support Graphics context setup should set this to nullptr.
+   * Optional - EP factories that don't support Graphics interop setup should set this to nullptr.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] memory_device The OrtMemoryDevice to setup Graphics context for.
+   * \param[in] memory_device The OrtMemoryDevice to setup Graphics interop for.
    * \param[in] graphicsInteropParams Graphics API parameters (D3D12 command queue or Vulkan device info).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(SetupGraphicsContext, _In_ OrtEpFactory* this_ptr,
+  ORT_API2_STATUS(SetupGraphicsInterop, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
                   _In_ const struct GraphicsInteropParams* graphicsInteropParams);
 };

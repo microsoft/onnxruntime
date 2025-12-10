@@ -531,7 +531,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     CreateDataTransfer = CreateDataTransferImpl;
 
     IsStreamAware = IsStreamAwareImpl;
-    SetupGraphicsContext = SetupCigContextImpl;
+    SetupGraphicsInterop = SetupCigContextImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.

@@ -735,7 +735,7 @@ InferenceSession::~InferenceSession() {
     delete sptr_ptr;
   }
   ort_fences_for_cleanup_.clear();
-  
+
   if (session_options_.enable_profiling) {
     ORT_TRY {
       EndProfiling();

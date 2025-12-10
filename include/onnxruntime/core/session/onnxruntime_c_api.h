@@ -6631,21 +6631,19 @@ struct OrtApi {
 
   /** \brief Setup Graphics Interopcontext for an execution provider device.
    *
-   * This function enables D3D12/Vulkan interoperability by creating a Graphics context
-   * associated with a graphics API command queue/device. Once setup, any OrtSyncStream
-   * created for this ep_device via CreateSyncStreamForEpDevice will be created on the
-   * Graphics context, enabling efficient GPU-side synchronization.
+   * This function enables D3D12/Vulkan interoperability with a graphics API command queue/device. Once setup, any OrtSyncStream
+   * created for this ep_device via CreateSyncStreamForEpDevice will be created, enabling efficient GPU-side synchronization.
    *
    * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device.
    *
-   * \param[in] ep_device The OrtEpDevice to setup Graphics context for.
+   * \param[in] ep_device The OrtEpDevice to setup Graphics interop for.
    * \param[in] graphicsInteropParams Pointer to struct containing D3D12 command queue or Vulkan device info.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(SetupGraphicsInteropContextForEpDevice, _In_ const OrtEpDevice* ep_device,
+  ORT_API2_STATUS(SetupGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
                   _In_ const struct GraphicsInteropParams* graphicsInteropParams);
 
   /**
@@ -6659,7 +6657,7 @@ struct OrtApi {
    * GPU-side synchronization between ONNX Runtime inference and external graphics workloads.
    *
    * Prerequisites:
-   * - SetupGraphicsInteropContextForEpDevice must be called first for the relevant ep_device.
+   * - SetupGraphicsInteropForEpDevice must be called first for the relevant ep_device.
    * - The external fence/semaphore provided must be compatible with the graphics API specified in graphicsInteropParams.
    *
    * \param[in] session An OrtSession instance whose execution providers participate in the graphics interop.
@@ -6688,7 +6686,6 @@ struct OrtApi {
    *
    * The implementation and support for this is execution provider-specific.
    *
-   * \param[in] session The OrtSession instance for which synchronization is required.
    * \param[in] extSemFence The handle to the external synchronization primitive, as returned from GetOrtFenceForGraphicsInterop.
    * \param[in] stream The OrtSyncStream instance on which the synchronization will be performed.
    * \param[in] fenceValue The fence value for synchronization (if required for the specific graphics API/interop scenario).
@@ -6699,7 +6696,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpWait, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpWait, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 
   /**
    * \brief Signal a graphics interop external fence/semaphore using an ONNX Runtime execution provider.
@@ -6713,7 +6710,6 @@ struct OrtApi {
    *
    * The behavior and support for this operation is execution provider-specific.
    *
-   * \param[in] session   The OrtSession instance corresponding to the computation that should be synchronized.
    * \param[in] extSemFence The handle to the external synchronization primitive, as returned from GetOrtFenceForGraphicsInterop.
    * \param[in] stream    The OrtSyncStream on which the signal operation should occur.
    * \param[in] fenceValue The fence value to signal (if required for the specific graphics API or interop scenario).
@@ -6724,7 +6720,7 @@ struct OrtApi {
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(InteropEpSignal, _In_ OrtSession* session, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
+  ORT_API2_STATUS(InteropEpSignal, _In_ OrtFence* ortFence, _In_ OrtSyncStream* stream, _In_ uint64_t fenceValue);
 };
 
 /*

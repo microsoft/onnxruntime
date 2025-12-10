@@ -154,22 +154,22 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
   std::string graph_name = "test";
   constexpr int image_dim = 1080;
-  
+
   // Create a simple 1-input, 1-output Relu model
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
-  
+
   ONNX_NAMESPACE::TypeProto tensor_type;
   tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(image_dim);
   tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(image_dim);
-  
+
   auto& input_arg = graph.GetOrCreateNodeArg("input", &tensor_type);
   auto& output_arg = graph.GetOrCreateNodeArg("output", &tensor_type);
   graph.AddNode("relu_node", "Relu", "Relu operation", {&input_arg}, {&output_arg});
-  
+
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_name));
 
@@ -199,7 +199,7 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   ComPtr<ID3D12GraphicsCommandList> pUploadCommandList;
   ComPtr<ID3D12GraphicsCommandList> pDownloadCommandList;
   ComPtr<ID3D12CommandAllocator> pAllocatorCopy;
-  
+
   uint64_t fenceValue = 0;
   GraphicsInteropParams graphicsInteropParams;
   graphicsInteropParams.extSyncPrimitive = ExternalSyncPrimitive_D3D12Fence;
@@ -239,7 +239,7 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
 
   std::string trtLibPath = "onnxruntime_providers_nv_tensorrt_rtx.dll";
   std::wstring wideTrtLibPath = std::wstring(trtLibPath.begin(), trtLibPath.end());
-  
+
   OrtStatus* status = ortApi.RegisterExecutionProviderLibrary(*ort_env, "NvTensorRtRtx", wideTrtLibPath.c_str());
   if (status != nullptr) {
     std::string error_message = ortApi.GetErrorMessage(status);
@@ -268,7 +268,7 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   }
 
   // Must be called before other interop functions to create the context
-  ortApi.SetupGraphicsInteropContextForEpDevice(trt_ep_device, &graphicsInteropParams);
+  ortApi.SetupGraphicsInteropForEpDevice(trt_ep_device, &graphicsInteropParams);
 
   // Create ORT stream - this will be created on the context we just set up
   OrtSyncStream* stream = nullptr;
@@ -280,11 +280,11 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
   OrtMemoryInfo* memory_info_agnostic = nullptr;
   const OrtHardwareDevice* hw_device = ortApi.EpDevice_Device(trt_ep_device);
   UINT vID = ortApi.HardwareDevice_VendorId(hw_device);
-  ortApi.CreateMemoryInfo_V2("Device_Agnostic", OrtMemoryInfoDeviceType_GPU, 
-                              /*vendor_id*/vID, /*device_id*/0, 
-                              OrtDeviceMemoryType_DEFAULT, /*default alignment*/0, 
+  ortApi.CreateMemoryInfo_V2("Device_Agnostic", OrtMemoryInfoDeviceType_GPU,
+                              /*vendor_id*/vID, /*device_id*/0,
+                              OrtDeviceMemoryType_DEFAULT, /*default alignment*/0,
                               OrtArenaAllocator, &memory_info_agnostic);
-  
+
   auto memory_info_cleanup = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>(
     memory_info_agnostic,
     [&ortApi](OrtMemoryInfo* ptr) {
@@ -384,7 +384,7 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
 
       // make ORT wait for upload
       pCommandQueue->Signal(pFence.Get(), fenceValue);
-      ortApi.InteropEpWait(session, ortFence, stream, fenceValue);    // make ORT wait on the fence (on CUDA side internally)
+      ortApi.InteropEpWait(ortFence, stream, fenceValue);    // make ORT wait on the fence (on CUDA side internally)
 
       // run the model
       Ort::RunOptions runOptions;
@@ -393,7 +393,7 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
 
       fenceValue++;
       // make DX wait for ORT
-      ortApi.InteropEpSignal(session, ortFence, stream, fenceValue);  // signal from CUDA side (internally)
+      ortApi.InteropEpSignal(ortFence, stream, fenceValue);  // signal from CUDA side (internally)
       pCommandQueue->Wait(pFence.Get(), fenceValue);
 
       // download the output to cpu memory (again using DX)
@@ -414,7 +414,7 @@ TEST(NvExecutionProviderTest, GraphicsORTInteropTest) {
     std::cerr << cpuInputHalf[i] << " ";
   }
   std::cerr << std::endl;
-  
+
   std::cerr << "First 50 elements of cpuOutputHalf:\n";
   for (int i = 0; i < 50; i++) {
     std::cerr << cpuOutputHalf[i] << " ";
