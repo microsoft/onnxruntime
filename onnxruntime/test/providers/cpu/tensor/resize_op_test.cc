@@ -304,7 +304,6 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
   std::vector<uint8_t> Y = {2, 4};
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  test.SetOutputAbsErr("Y", 1.0f);
   // CUDA: result mismatch due to not implementing NHWC support
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
@@ -642,7 +641,6 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
   std::vector<uint8_t> Y = {1, 7, 12};
 
   test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
-  test.SetOutputAbsErr("Y", 1.0f);
   // CUDA: result mismatch due to not implementing NHWC support
   // DML: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",

@@ -853,9 +853,6 @@ TEST(CastOpTest, Int32ToInt4x2OddNumberOfElements) {
 }
 
 TEST(CastOpTest, Int32ToInt4x2EmptyTensor) {
-  if (DefaultOpenVINOExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "The OpenVINO not support 0 size input";
-  }
   // GIVEN
   const std::vector<int64_t> empty_shape{0};
   const std::vector<int32_t> empty_input = {};

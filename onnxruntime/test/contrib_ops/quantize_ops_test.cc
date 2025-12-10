@@ -287,7 +287,6 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
                           127, -127,
                           127, -128,
                           127, -128});
-  test.SetOutputAbsErr("y", 1.0f);
   // Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -312,7 +311,6 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint16) {
                             32769, 32765,
                             65535, 0,
                             65535, 0});
-  test.SetOutputAbsErr("y", 1.0f);
 
   // Disable Tensorrt EP due to error: unsupported data type
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

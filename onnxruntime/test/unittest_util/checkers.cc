@@ -225,27 +225,17 @@ template <>
 struct TensorCheck<Int4x2> {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
                   const std::string& /*provider_type*/) const {
-    const bool has_abs_err = params.absolute_error.has_value();
-    Tensor expected_sorted, actual_sorted;
+    ORT_UNUSED_PARAMETER(params);
     const Int4x2* cur_expected;
     const Int4x2* cur_actual;
     const auto size = narrow<size_t>(actual.Shape().Size());
     cur_expected = expected.Data<Int4x2>();
     cur_actual = actual.Data<Int4x2>();
-    double threshold = 0.0f;
-    if (has_abs_err) {
-      threshold = *(params.absolute_error);
-    }
 
     for (size_t i = 0; i < size; ++i) {
       size_t r = i >> 1;
       size_t c = i & 0x1;
-      // TODO: the relative error is not used for int4 yet.
-      if (has_abs_err) {
-        EXPECT_NEAR(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c), threshold) << "i:" << i;
-      } else {
-        EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
-      }
+      EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
     }
   }
 };
@@ -254,28 +244,17 @@ template <>
 struct TensorCheck<UInt4x2> {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
                   const std::string& /*provider_type*/) const {
-    const bool has_abs_err = params.absolute_error.has_value();
-    Tensor expected_sorted, actual_sorted;
+    ORT_UNUSED_PARAMETER(params);
     const UInt4x2* cur_expected;
     const UInt4x2* cur_actual;
     const auto size = narrow<size_t>(actual.Shape().Size());
     cur_expected = expected.Data<UInt4x2>();
     cur_actual = actual.Data<UInt4x2>();
 
-    double threshold = 0.0f;
-    if (has_abs_err) {
-      threshold = *(params.absolute_error);
-    }
-
-    for (size_t i = 0; i < static_cast<size_t>(size); ++i) {
+    for (size_t i = 0; i < size; ++i) {
       size_t r = i >> 1;
       size_t c = i & 0x1;
-      // TODO: the relative error is not used for int4 yet.
-      if (has_abs_err) {
-        EXPECT_NEAR(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c), threshold) << "i:" << i;
-      } else {
-        EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
-      }
+      EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
     }
   }
 };
@@ -313,7 +292,7 @@ struct TensorCheck<uint8_t> {
     // For any other EPs, we still expect an exact match for the results
     // TODO: Verify if DML can possibly have a ROUNDING_MODE parameter and conform to the other EPs #41968513
     if ((provider_type == kNnapiExecutionProvider || provider_type == kDmlExecutionProvider ||
-         provider_type == kXnnpackExecutionProvider || provider_type == kOpenVINOExecutionProvider) &&
+         provider_type == kXnnpackExecutionProvider) &&
         (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err ? *(params.absolute_error)
                                      : 0.0;
@@ -369,49 +348,6 @@ struct TensorCheck<int8_t> {
 
       for (int64_t i = 0; i < size; ++i) {
         EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
-      }
-    } else {
-      for (int64_t i = 0; i < size; ++i) {
-        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
-      }
-    }
-  }
-};
-
-template <>
-struct TensorCheck<uint16_t> {
-  void operator()(const Tensor& expected,
-                  const Tensor& actual,
-                  const ValidateOutputParams& params,
-                  const std::string&) const {
-    const bool has_abs_err = params.absolute_error.has_value();
-    const bool has_rel_err = params.relative_error.has_value();
-
-    Tensor expected_sorted, actual_sorted;
-    const uint16_t* cur_expected;
-    const uint16_t* cur_actual;
-    const auto size = actual.Shape().Size();
-    if (params.sort_output) {
-      sort_expected_and_actual_buffers<uint16_t>(expected, expected_sorted, actual, actual_sorted);
-      cur_expected = expected_sorted.Data<uint16_t>();
-      cur_actual = actual_sorted.Data<uint16_t>();
-    } else {
-      cur_expected = expected.Data<uint16_t>();
-      cur_actual = actual.Data<uint16_t>();
-    }
-
-    if (has_abs_err || has_rel_err) {
-      double threshold = has_abs_err ? *(params.absolute_error)
-                                     : 0.0;
-
-      for (int64_t i = 0; i < size; ++i) {
-        if (has_rel_err) {
-          EXPECT_NEAR(cur_expected[i], cur_actual[i],
-                      *(params.relative_error) * cur_expected[i])  // expected[i] is unsigned, can't be negative
-              << "i:" << i;
-        } else {  // has_abs_err
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
-        }
       }
     } else {
       for (int64_t i = 0; i < size; ++i) {
