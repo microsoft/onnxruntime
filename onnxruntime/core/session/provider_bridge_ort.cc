@@ -168,6 +168,25 @@ struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Ite
   google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension> v_;
 };
 
+struct TensorProto_ConstIterator_Impl : TensorProto_ConstIterator {
+  explicit TensorProto_ConstIterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const ONNX_NAMESPACE::TensorProto>&& v) : v_{std::move(v)} {}
+
+  bool operator!=(const TensorProto_ConstIterator& p) const override { return v_ != static_cast<const TensorProto_ConstIterator_Impl*>(&p)->v_; }
+
+  void operator++() override { v_.operator++(); }
+  const ONNX_NAMESPACE::TensorProto& operator*() const override { return *v_; }
+
+  google::protobuf::internal::RepeatedPtrIterator<const ONNX_NAMESPACE::TensorProto> v_;
+};
+
+struct TensorProto_Iterator_Impl : TensorProto_Iterator {
+  explicit TensorProto_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<ONNX_NAMESPACE::TensorProto>&& v) : v_{std::move(v)} {}
+  bool operator!=(const TensorProto_Iterator& p) const override { return v_ != reinterpret_cast<const TensorProto_Iterator_Impl*>(&p)->v_; }
+  void operator++() override { v_.operator++(); }
+  ONNX_NAMESPACE::TensorProto& operator*() const override { return *v_; }
+  google::protobuf::internal::RepeatedPtrIterator<ONNX_NAMESPACE::TensorProto> v_;
+};
+
 struct NodeAttributes_Iterator_Impl : NodeAttributes_Iterator {
   NodeAttributes_Iterator_Impl(NodeAttributes::const_iterator&& v) : v_{std::move(v)} {}
 
@@ -594,7 +613,14 @@ struct ProviderHostImpl : ProviderHost {
   std::string* GraphProto__mutable_name(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_name(); }
   ONNX_NAMESPACE::NodeProto* GraphProto__mutable_node(ONNX_NAMESPACE::GraphProto* p, int index) override { return p->mutable_node(index); }
 
-  void GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) override { *p = v; }
+  ONNX_NAMESPACE::GraphProto& GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) override {
+    *p = v;
+    return *p;
+  }
+  ONNX_NAMESPACE::GraphProto& GraphProto__operator_move_assign(ONNX_NAMESPACE::GraphProto* p, ONNX_NAMESPACE::GraphProto&& v) override {
+    *p = std::move(v);
+    return *p;
+  }
 
   void GraphProto__set_name(ONNX_NAMESPACE::GraphProto* p, const std::string& name) override { p->set_name(name); }
   void GraphProto__set_doc_string(ONNX_NAMESPACE::GraphProto* p, const std::string& doc_str) override {
@@ -633,7 +659,14 @@ struct ProviderHostImpl : ProviderHost {
   // TensorProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TensorProto>(); }
   void TensorProto__operator_delete(ONNX_NAMESPACE::TensorProto* p) override { delete p; }
-  void TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) override { *p = v; }
+  ONNX_NAMESPACE::TensorProto& TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) override {
+    *p = v;
+    return *p;
+  }
+  ONNX_NAMESPACE::TensorProto& TensorProto__operator_move_assign(ONNX_NAMESPACE::TensorProto* p, ONNX_NAMESPACE::TensorProto&& v) override {
+    *p = std::move(v);
+    return *p;
+  }
   bool TensorProto__has_name(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_name(); }
   void TensorProto__set_name(ONNX_NAMESPACE::TensorProto* p, const ::std::string& name) override { p->set_name(name); }
   const ::std::string& TensorProto__name(const ONNX_NAMESPACE::TensorProto* p) override { return p->name(); }
@@ -663,8 +696,20 @@ struct ProviderHostImpl : ProviderHost {
 
   // TensorProtos (wrapped)
   ONNX_NAMESPACE::TensorProto* TensorProtos__Add(ONNX_NAMESPACE::TensorProtos* p) override { return p->Add(); }
-  int TensorProtos__size(ONNX_NAMESPACE::TensorProtos* p) override { return p->size(); }
+  int TensorProtos__size(const ONNX_NAMESPACE::TensorProtos* p) override { return p->size(); }
   ONNX_NAMESPACE::TensorProto& TensorProtos__at(ONNX_NAMESPACE::TensorProtos* p, int index) override { return p->at(index); };
+  std::unique_ptr<TensorProto_ConstIterator> TensorProtos__begin(const ONNX_NAMESPACE::TensorProtos* p) override {
+    return std::make_unique<TensorProto_ConstIterator_Impl>(p->begin());
+  }
+  std::unique_ptr<TensorProto_ConstIterator> TensorProtos__end(const ONNX_NAMESPACE::TensorProtos* p) override {
+    return std::make_unique<TensorProto_ConstIterator_Impl>(p->end());
+  }
+  std::unique_ptr<TensorProto_Iterator> TensorProtos__begin(ONNX_NAMESPACE::TensorProtos* p) override {
+    return std::make_unique<TensorProto_Iterator_Impl>(p->begin());
+  }
+  std::unique_ptr<TensorProto_Iterator> TensorProtos__end(ONNX_NAMESPACE::TensorProtos* p) override {
+    return std::make_unique<TensorProto_Iterator_Impl>(p->end());
+  }
 
   // TensorShapeProto_Dimension (wrapped)
   int TensorShapeProto_Dimension__value_case(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) override { return p->value_case(); }
