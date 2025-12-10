@@ -78,6 +78,12 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
       test_registered += RegisterTestTransposeABProduct(1, b, b, 1, 1.0f, 0.0f);
       test_registered += RegisterTestTransposeABProduct(b, 1, b, 1, 1.0f, 0.0f);
     }
+    // Exercise M == 1 && N == 1 cases with K > 1 to validate LHS gather handling.
+    test_registered += RegisterTestTransposeABProduct(1, 1, 16, 1, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1, 1, 31, 1, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1, 1, 64, 1, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1, 1, 16, 3, 1.0f, 0.0f);
+
     return test_registered;
   }
 

@@ -151,16 +151,20 @@ ArmKleidiAI::MlasGemvBatch(
 
         for (size_t b = 0; b < BatchSize; ++b) {
             // Depending on the value of M or N we might transpose when packing
+            const bool using_m_path = (M == 1);
+            const bool using_n_path = (N == 1 && !m_n_both_one);
             CBLAS_TRANSPOSE tb = TransB;
             size_t rhs_shape = N;
-            size_t ldl = Data[b].ldb;
-            const float* rhs_base = (M == 1) ? reinterpret_cast<const float*>(Data[b].B) : reinterpret_cast<const float*>(Data[b].A);
-            const float* lhs_base = (M == 1) ? static_cast<const float*>(Data[b].A) : static_cast<const float*>(Data[b].B);
-            if (N == 1 && !m_n_both_one)
+            size_t rhs_ld = Data[b].ldb;
+            size_t lhs_ld = using_m_path ? Data[b].lda : Data[b].ldb;
+            const float* rhs_base = using_m_path ? reinterpret_cast<const float*>(Data[b].B) : reinterpret_cast<const float*>(Data[b].A);
+            const float* lhs_base = using_m_path ? static_cast<const float*>(Data[b].A) : static_cast<const float*>(Data[b].B);
+            if (using_n_path)
             {
                 tb = CblasTrans;
                 rhs_shape = M;
-                ldl = Data[b].lda;
+                rhs_ld = Data[b].lda;
+                lhs_ld = Data[b].ldb;
             }
             // Prepare packed RHS if needed
             const void* rhs_packed_ptr = nullptr;
@@ -176,17 +180,19 @@ ArmKleidiAI::MlasGemvBatch(
                 ArmKleidiAI::MlasGemmPackB(
                     TransA, tb, rhs_shape, K,
                     rhs_base,
-                    ldl,
+                    rhs_ld,
                     g_kai_tls.rhs_packed.data());
                 rhs_packed_ptr = g_kai_tls.rhs_packed.data();
             }
-            // We have to handle the case where we transpose the data to the correct format as we used a transpose packing kernel
-            if (N == 1 && TransB == CblasNoTrans)
-            {
+            // Ensure LHS is a contiguous K-length row for the GEMV microkernel.
+            // Compute once whether we need to gather based on which side is LHS.
+            const bool needs_gather =
+                (using_m_path ? (TransA == CblasTrans)
+                              : (using_n_path ? (TransB == CblasNoTrans) : false));
+            if (needs_gather) {
                 g_kai_tls.gemv_lhs_row_tmp.resize(K);
-
                 for (size_t k = 0; k < K; ++k) {
-                    g_kai_tls.gemv_lhs_row_tmp[k] = lhs_base[k * Data[b].ldb];
+                    g_kai_tls.gemv_lhs_row_tmp[k] = lhs_base[k * lhs_ld];
                 }
                 lhs_base = g_kai_tls.gemv_lhs_row_tmp.data();
             }
