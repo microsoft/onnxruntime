@@ -160,10 +160,12 @@ class MatMulIntegerBase : public OpKernel {
     }
 
     if (!AreScalesValid(*ctx.scale)) {
+      can_use_dynamic_quant_mlas_ = false;
       return false;
     }
 
     if (!IsBShapeSupportedForDynamicQuant(tensor.Shape())) {
+      can_use_dynamic_quant_mlas_ = false;
       return false;
     }
 

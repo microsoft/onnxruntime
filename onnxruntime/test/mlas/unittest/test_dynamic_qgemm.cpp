@@ -167,8 +167,8 @@ class MlasDynamicQgemmSingleThreadTest : public MlasDynamicQgemmTestBase {
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME())
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() && !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2())
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME or SME2 but it was not detected. Skipping test.";
     Run(M, N, K, BatchSize, /*threadpool*/ nullptr, /*require_threadpool*/ false, "SingleThread");
   }
   static const char* GetTestSuiteName() { return "DynamicQgemmSingleThread"; }
@@ -178,8 +178,8 @@ class MlasDynamicQgemmThreadPoolTest : public MlasDynamicQgemmTestBase {
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize) {
     // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME())
-      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME but it was not detected. Skipping test.";
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() && !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2())
+      GTEST_SKIP() << "MlasDynamicQGemmBatch() requires ARM64 SME or SME2 but it was not detected. Skipping test.";
     MLAS_THREADPOOL* tp = GetMlasThreadPool();
     if (!tp) GTEST_SKIP() << "Mlas thread pool not available";
     Run(M, N, K, BatchSize, tp, /*require_threadpool*/ true, "ThreadPool");
