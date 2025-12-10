@@ -51,6 +51,9 @@
 
 namespace ArmKleidiAI {
 
+// By default we should try for SME2 first before falling back to SME.
+inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+
 // Buffer packing routines.
 //
 size_t

@@ -193,7 +193,6 @@ ArmKleidiAI::MlasGemvBatch(
 
             // Temporary buffer for output row
             g_kai_tls.output_tile.resize(rhs_shape);
-            std::fill_n(g_kai_tls.output_tile.data(), rhs_shape, 0.0f);
 
             // Run specialized 1xN-by-K kernel
             sgemm_gemv.run_matmul(
@@ -559,8 +558,6 @@ Return Value:
         g_kai_tls.output_tile.resize(tile_elems);
 
         float* temp_tile = g_kai_tls.output_tile.data();
-        std::fill_n(temp_tile, tile_elems, 0.0f);
-
 
         sgemm_gemm.run_matmul(
             TileSizeM,

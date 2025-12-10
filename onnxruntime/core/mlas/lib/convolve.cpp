@@ -938,9 +938,9 @@ Return Value:
 --*/
 {
     // Override
-    if(SMEInfo::IsSMEAvailable && GetMlasPlatform().MlasConvOverride != nullptr &&
+    if(GetMlasPlatform().MlasConvOverride != nullptr &&
         GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool)){
-        return;
+    return;
     }
 
     const size_t FilterCount = Parameters->FilterCount;
@@ -1201,7 +1201,7 @@ Return Value:
 --*/
 {
     // Override
-    if (SMEInfo::IsSMEAvailable && GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
+    if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
         Activation, WorkingBufferSize, Beta, ThreadPool)){
@@ -1411,8 +1411,8 @@ Return Value:
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
-            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K,
-                                                          Parameters->FilterCount * Parameters->OutputSize,
+            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K, 
+                                                          Parameters->FilterCount * Parameters->OutputSize, 
                                                           static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
             TargetThreadCount = MaximumThreadCount;
             if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
