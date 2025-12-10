@@ -229,8 +229,7 @@ MlasLUTGemmPackQuantBDataSize(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    bool HasZeroPoint
 );
 
 

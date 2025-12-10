@@ -241,7 +241,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
     if (prefer_lut_gemm_) {
       MlasInitLUTGemmKernelConfig(N_, K_, nbits_, block_size_, has_zp_input_);
-      packed_b_size_ = MlasLUTGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, compute_type_);
+      packed_b_size_ = MlasLUTGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_);
       if (packed_b_size_ == 0) {
         return Status::OK();
       }
@@ -258,7 +258,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
                                   has_zp_input_, nullptr, threadpool_ptr);
-    
+
     }
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
@@ -877,7 +877,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
     if (prefer_lut_gemm_ && MlasIsLUTGemmAvailable(nbits_, block_size_)) {
       return ComputeBPackedLUT(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }
-      
+
     if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
       return ComputeBPacked(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }

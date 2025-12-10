@@ -106,11 +106,9 @@ size_t MlasLUTGemmPackQuantBDataSize(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    bool HasZeroPoint
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(ComputeType);
     const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth);
     const size_t PackedQuantBDataSize = (N * BlkBitWidth) * (K / tmac_params.g / tmac_params.ngroups_per_elem);
     return PackedQuantBDataSize;
@@ -344,7 +342,7 @@ bool MLASCALL MlasIsLUTGemmAvailable(
     if (GetMlasPlatform().LUTGenKernel == nullptr) {
         return false;
     }
-    
+
     if (BlkBitWidth != 2) {
         return false;
     }
