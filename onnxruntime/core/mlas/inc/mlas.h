@@ -2006,6 +2006,7 @@ struct MLAS_SBGEMM_DATA_PARAMS {
     bool AIsfp32 = false; /**< matrix A is fp32, needs to be converted to bf16*/
     bool BIsfp32 = false; /**< matrix B is fp32, needs to be converted to bf16*/
     bool ZeroMode = true; /**< true: C = A*B, false: C += A*B */
+    bool BIsPacked = false;   /**< Whether B is pre-packed */
 };
 
 /**
@@ -2015,6 +2016,8 @@ struct MLAS_SBGEMM_DATA_PARAMS {
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
  *
+ * @param[in]  TransA  Supplies the transpose operation for matrix A.
+ * @param[in]  TransB  Supplies the transpose operation for matrix B.
  * @param[in]  M       row size of matrix A and C
  * @param[in]  N       column size of matrix B and C
  * @param[in]  K       column size of matrix A and row size of matrix B
@@ -2024,23 +2027,44 @@ struct MLAS_SBGEMM_DATA_PARAMS {
  * @return
  */
 void MLASCALL
-MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool);
+MlasSBGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_SBGEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool = nullptr
+);
 
 /**
  * @brief For bfloat16 precision GEMM, returns size of the
  *        packing buffer needed for right hand side
- * @param[in] N   Number of columns
- * @param[in] K   Number of rows
+ * @param[in] TransA     Supplies the transpose operation for matrix A.
+ * @param[in] TransB     Supplies the transpose operation for matrix B.
+ * @param[in] BIsfp32    Is matrix B datatype FP32
+ * @param[in] N          Number of columns
+ * @param[in] K          Number of rows
  * @return  size of the packing buffer,
  *          0 if operation not supported
  */
 size_t MLASCALL
-MlasSBGemmPackBSize(size_t N, size_t K);
+MlasSBGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N,
+    size_t K
+);
 
 /**
  * @brief For bfloat16 precision GEMM, convert the float matrix B
  *        to blfoat16 precision and pack it into a packing buffer
  *
+ * @param[in]  TransA    Supplies the transpose operation for matrix A.
+ * @param[in]  TransB    Supplies the transpose operation for matrix B.
+ * @param[in]  BIsfp32   Is matrix B datatype FP32
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
  * @param[in]  B        Address of matrix B
@@ -2048,7 +2072,16 @@ MlasSBGemmPackBSize(size_t N, size_t K);
  * @param[out] PackedB  Address of the packed matrix
  */
 void MLASCALL
-MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB);
+MlasSBGemmConvertPackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+);
 #endif
 
 /**

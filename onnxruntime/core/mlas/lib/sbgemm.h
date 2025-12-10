@@ -299,11 +299,29 @@ MlasSBGemmGetDispatch()
 }
 
 size_t MLASCALL
-MlasSBGemmPackBSize(size_t N, size_t K)
+MlasSBGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N, 
+    size_t K)
 {
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+    if (GetMlasPlatform().MlasSBGemmPackBSizeOverride != nullptr &&
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
+        TransB != CBLAS_TRANSPOSE::CblasTrans &&
+        BIsfp32) {
+        size_t bytes_required;
+        bytes_required = GetMlasPlatform().MlasSBGemmPackBSizeOverride(TransA, TransB, N, K);
+        if (bytes_required != 0){ // If ArmKleidiAI::MlasSBGemmPackBSize ran to completion
+            return bytes_required;
+        }
+    }
+#endif
+
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return 0;
 
@@ -322,8 +340,27 @@ MlasSBGemmPackBSize(size_t N, size_t K)
 }
 
 void MLASCALL
-MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB)
+MlasSBGemmConvertPackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+)
 {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+    if (GetMlasPlatform().MlasSBGemmPackBOverride != nullptr &&
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
+        TransB != CBLAS_TRANSPOSE::CblasTrans &&
+        BIsfp32 &&
+        GetMlasPlatform().MlasSBGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+        return;
+    }
+#endif
+
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 
@@ -331,8 +368,28 @@ MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* Pac
 }
 
 void MLASCALL
-MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* Data, MLAS_THREADPOOL* ThreadPool)
+MlasSBGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_SBGEMM_DATA_PARAMS* Data,
+    MLAS_THREADPOOL* ThreadPool
+)
 {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+    if (GetMlasPlatform().MlasSBGemmBatchOverride != nullptr &&
+        TransA != CBLAS_TRANSPOSE::CblasTrans &&
+        TransB != CBLAS_TRANSPOSE::CblasTrans &&
+        Data->AIsfp32 &&
+        (Data->BIsPacked || Data->BIsfp32) &&
+        GetMlasPlatform().MlasSBGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchN, ThreadPool)){
+        return;
+    }
+#endif
+
     const MLAS_SBGEMM_DISPATCH* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 
