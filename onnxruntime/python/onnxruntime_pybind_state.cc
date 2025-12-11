@@ -2783,11 +2783,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               ORT_THROW("No options were provided");
             }
 
-            auto status = sess->GetSessionHandle()->SetEpDynamicOptions(keys, values);
-
-            if (!status.IsOK()) {
-              ORT_THROW("Failed to set EP dynamic options: " + status.ErrorMessage());
-            } },
+            ORT_THROW_IF_ERROR(sess->GetSessionHandle()->SetEpDynamicOptions(keys, values));
+            },
            R"pbdoc(Set dynamic options for execution providers.
 
           Args:
