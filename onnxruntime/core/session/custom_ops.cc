@@ -49,7 +49,9 @@ static constexpr uint32_t min_ort_version_with_compute_v2_support = 16;
 static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT8_TYPES) && !defined(DISABLE_FLOAT4_TYPES)
+#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv11()
+#elif !defined(DISABLE_FLOAT8_TYPES)
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv10()
 #else
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()

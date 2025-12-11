@@ -15,6 +15,11 @@ namespace webgpu {
 
 class ShaderVariableHelper;
 
+template <typename T>
+inline T CeilDiv(T numerator, T denominator) {
+  return (numerator + denominator - 1) / denominator;
+}
+
 /**
  * Returns the maximum number of components `N` to be used as `vecN` for the given size.
  */

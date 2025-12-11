@@ -10,15 +10,7 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
 namespace {
-
-// TODO: move to common header.
-template <typename T>
-inline T ceil_div(T numerator, T denominator) {
-  return (numerator + denominator - 1) / denominator;
-}
-
 // Chooses the optimal tile size (M, N) for the im2col operation.
 // This tile size is performance-tuned and varies depending on the target device.
 std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_n) {
@@ -32,8 +24,8 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
     const uint32_t tile_m = tile_pair.first;
     const uint32_t tile_n = tile_pair.second;
 
-    const uint32_t dispatch_m = ceil_div(im2col_m, tile_m);
-    const uint32_t dispatch_n = ceil_div(im2col_n, tile_n);
+    const uint32_t dispatch_m = CeilDiv(im2col_m, tile_m);
+    const uint32_t dispatch_n = CeilDiv(im2col_n, tile_n);
     const uint32_t dispatch = dispatch_m * dispatch_n;
 
     if (dispatch >= 128) {
@@ -115,7 +107,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   OIHW2OHWIProgram transpose_program{};
   transpose_program.SetWorkgroupSize(64);
 
-  const uint32_t Ci_tiles = ceil_div(channel_input, 64u);
+  const uint32_t Ci_tiles = CeilDiv(channel_input, 64u);
   transpose_program.SetDispatchGroupSize(channel_output, Ci_tiles);
 
   transpose_program.AddInput({weight,
@@ -127,7 +119,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {kernel_height},
                                          {kernel_width},
                                          {Ci_tiles},
-                                         {ceil_div(kernel_height * kernel_height, 4u)}});
+                                         {CeilDiv(kernel_height * kernel_height, 4u)}});
   ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
 
   // im2col-matmul
@@ -156,8 +148,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, use_subgroup};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
 
-  const uint32_t M_tiles = ceil_div(im2col_m, tile_m);
-  const uint32_t N_tiles = ceil_div(im2col_n, tile_n);
+  const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
+  const uint32_t N_tiles = CeilDiv(im2col_n, tile_n);
   im2col_mm_program.SetDispatchGroupSize(M_tiles, N_tiles, batch);
 
   im2col_mm_program.AddInput({src,
@@ -185,7 +177,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {im2col_n},
                                          {M_tiles},
                                          {N_tiles},
-                                         {ceil_div(ceil_div(im2col_k, 4u), 4u)},
+                                         {CeilDiv(CeilDiv(im2col_k, 4u), 4u)},
                                          {dilations},
                                          {pads},
                                          {strides}});

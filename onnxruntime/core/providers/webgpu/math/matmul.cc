@@ -9,6 +9,7 @@
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -148,7 +149,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     }
     program
         .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
-        .SetDispatchGroupSize((output_size + 63) / 64)  // Integer ceiling division
+        .SetDispatchGroupSize(CeilDiv(output_size, 64u))
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
 

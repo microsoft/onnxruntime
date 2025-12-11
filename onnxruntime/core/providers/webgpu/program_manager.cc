@@ -119,6 +119,7 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   wgpu::ShaderModuleDescriptor descriptor{};
   descriptor.nextInChain = &wgsl_source;
+  descriptor.label = program.Name().c_str();
 
   auto shader_module = device.CreateShaderModule(&descriptor);
 
