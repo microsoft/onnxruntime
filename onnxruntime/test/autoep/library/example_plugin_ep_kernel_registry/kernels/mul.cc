@@ -36,10 +36,21 @@ OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) {
 
   // Get second input's data.
   // This second input may have been pre-packed if it is a constant weight.
-  Ort::ConstValue ort_value1 = packed_weight_1_.has_value() ? packed_weight_1_->GetConst() : kernel_context.GetInput(1);
   gsl::span<const float> input1;
   std::vector<int64_t> shape1;
-  RETURN_IF_ERROR(GetValueDataAndShape<float>(ort_value1, input1, shape1));
+
+  if (packed_weight_1_info_.has_value()) {
+    shape1 = packed_weight_1_info_->shape;
+
+    size_t num_elems = 1;
+    for (auto s : shape1) {
+      num_elems *= s;
+    }
+
+    input1 = gsl::span<const float>(reinterpret_cast<const float*>(packed_weight_1_info_->data.get()), num_elems);
+  } else {
+    RETURN_IF_ERROR(GetValueDataAndShape<float>(kernel_context.GetInput(1), input1, shape1));
+  }
 
   RETURN_IF(shape0 != shape1, Ort::GetApi(), "Mul kernel doesn't support broadcasting.");  // Checked by GetCapability
 
@@ -53,8 +64,8 @@ OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) {
   return nullptr;
 }
 
-OrtStatus* Mul::DoPrePackConstantTensor(const OrtValue* tensor, int input_index, OrtAllocator* alloc,
-                                        /*out*/ bool& is_packed) {
+OrtStatus* Mul::DoPrePackWeight(const OrtValue* tensor, int input_index, OrtAllocator* alloc,
+                                OrtSharedPrePackedWeightCache* prepacked_weight_cache, /*out*/ bool& is_packed) {
   // This example Mul kernel does not really need to pre-pack mul initializers, but we show it here as an example.
   // This implementation just copies original tensor without modification. An actual implementation would, for example,
   // transform to an appropriate data layout.
@@ -66,12 +77,56 @@ OrtStatus* Mul::DoPrePackConstantTensor(const OrtValue* tensor, int input_index,
 
   Ort::ConstValue original_weight(tensor);
   auto type_shape_info = original_weight.GetTensorTypeAndShapeInfo();
-  std::vector<int64_t> shape = type_shape_info.GetShape();
-  auto elem_type = type_shape_info.GetElementType();
+  size_t num_bytes = original_weight.GetTensorSizeInBytes();
 
-  packed_weight_1_ = Ort::Value::CreateTensor(alloc, shape.data(), shape.size(), elem_type);
-  RETURN_IF_ERROR(CopyTensor(original_weight, packed_weight_1_->GetUnowned()));
+  PackedWeightInfo weight_info = {};
+  weight_info.mem_info = Ort::ConstMemoryInfo(alloc->Info(alloc));
+  weight_info.shape = type_shape_info.GetShape();
+  weight_info.elem_type = type_shape_info.GetElementType();
+  weight_info.num_bytes = num_bytes;
+  weight_info.data = AllocateBytes(alloc, num_bytes);
+
+  // Note: This Ort::Value does not own the underlying data. It is owned by `alloc`.
+  Ort::Value packed_weight = Ort::Value::CreateTensor(weight_info.mem_info, weight_info.data.get(),
+                                                      weight_info.num_bytes, weight_info.shape.data(),
+                                                      weight_info.shape.size(), weight_info.elem_type);
+
+  RETURN_IF_ERROR(CopyTensor(original_weight, packed_weight.GetUnowned()));
+
+  if (prepacked_weight_cache != nullptr) {
+    std::array<void*, 1> buffer_data_ptrs = {weight_info.data.get()};
+    std::array<size_t, 1> buffer_data_sizes = {weight_info.num_bytes};
+
+    RETURN_IF_ERROR(Ort::GetEpApi().SharedPrePackedWeightCache_StoreWeightData(prepacked_weight_cache,
+                                                                               buffer_data_ptrs.data(),
+                                                                               buffer_data_sizes.data(),
+                                                                               buffer_data_ptrs.size(),
+                                                                               alloc));
+
+    // IMPORTANT: This kernel no longer owns the packed weight data.
+    // It will be re-initialized in the call to UseSharedPrePackWeight()
+    weight_info.data.release();
+    weight_info.data = nullptr;
+  }
+
+  packed_weight_1_info_ = std::move(weight_info);
   is_packed = true;
+  return nullptr;
+}
+
+OrtStatus* Mul::DoSetSharedPrePackedWeight(const void* const* buffer_data_ptrs, size_t num_buffers,
+                                           int input_index) {
+  if (input_index != 1) {
+    return nullptr;
+  }
+
+  RETURN_IF(num_buffers != 1, Ort::GetApi(), "Invalid number of pre-packed data buffers for Mul kernel's 2nd input");
+  RETURN_IF(!packed_weight_1_info_.has_value(), Ort::GetApi(),
+            "ERROR! OrtKernelImpl::PrePackWeight should have "
+            "initialized a valid PackedWeightInfo struct for use in SetSharedPrePackedWeight.");
+
+  packed_weight_1_info_->data = AllocationUniquePtr(const_cast<void*>(buffer_data_ptrs[0]),
+                                                    [](void* /*ptr*/) { /*no delete (don't own)*/ });
 
   return nullptr;
 }

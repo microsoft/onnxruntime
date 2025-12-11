@@ -29,6 +29,7 @@ ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
 ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
+ORT_RUNTIME_CLASS(SharedPrePackedWeightCache);
 
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
@@ -309,32 +310,90 @@ struct OrtKernelImpl {
    */
   ORT_API_T(void, Release, _In_ OrtKernelImpl* this_ptr);
 
-  /** \brief Optional function to pack an initialized constant tensor to the kernel's preferred data layout.
+  /** \brief Optional function to pre-pack a constant tensor (i.e., a weight) to the kernel's preferred data layout.
    *
-   * For example, a Conv kernel can define this function to pack input W to the channel-last data layout.
+   * For example, a Conv kernel can define this function to pack input W to the channel-last data layout
+   * before inference.
    *
-   * \note The kernel is responsible for storing/owning the packed data and related metadata if it sets `is_packed`
-   *       to true. In this case, ORT may release the original constant tensor, which must not be accessed in
-   *       the OrtKernelImpl::Compute() function.
+   * \note Pre-packing can operate in three different modes: no pre-packing mode, sharing mode, and non-sharing mode.
+   *       1) No pre-packing mode: The kernel can forgo any weight pre-packing by setting `is_packed` to false and
+   *                               returning a successful OrtStatus.
+   *       2) Sharing mode: Sharing is allowed if the `prepacked_weight_cache` argument is not NULL and the EP stores
+   *                        weight data in CPU-accessible memory. In this case, the kernel can optionally choose
+   *                        to share the packed weight with other kernels that use the same weight
+   *                        (compared by content hash). To do so, the kernel must allocate the packed weight with the
+   *                        provided `allocator`, then it stores the packed weight data into `prepacked_weight_cache`
+   *                        via SharedPrePackedWeightCache_StoreWeightData(), sets `is_packed` to true, and returns a
+   *                        successful OrtStatus. ORT will subsequently call OrtKernelImpl::SetSharedPrePackedWeight()
+   *                        to provide this kernel with the actual shared weight data, whose memory location could
+   *                        differ (i.e., if shared data was allocated by a previously processed kernel).
+   *       3) Non-sharing mode: In non-sharing mode, the `prepacked_weight_cache` argument is ignored. In this case,
+   *                            the kernel may choose to allocate the packed data with the provided `allocator` or
+   *                            any EP allocator of its choosing. The kernel then sets `is_packed` to true and returns
+   *                            a successful OrtStatus. The kernel is ultimately responsible for storing/owning the
+   *                            packed data for the weight. ORT may release the original (unpacked) weight, which must
+   *                            not be accessed in OrtKernelImpl::Compute(). Note that in this mode, the kernel's
+   *                            OrtKernelImpl::SetSharedPrePackedWeight() function is not called by ORT.
+   *
+   * \note This function is based on the internal OpKernel::PrePack() virtual function used within ORT.
    *
    * \param[in] this_ptr The OrtKernelImpl instance.
-   * \param[in] tensor The OrtValue instance representing the constant tensor. Do not cache in the kernel.
+   * \param[in] tensor The OrtValue instance representing the constant tensor (weight). Do not cache in the kernel.
    * \param[in] input_index The input index of the tensor in this kernel.
-   * \param[in] alloc Implementation should use this allocator for allocating the packed data. It will either be
-   *                  an allocator provided by the EP (default or read-only) or a shared allocator overridden by
-   *                  the application via OrtApi::CreateSharedAllocator(). The allocator remains valid until
-   *                  OrtKernelImpl::Release() is called.
+   * \param[in] allocator Implementation can use this allocator for allocating the packed data. Use of this allocator
+   *                      is only required in "sharing mode" (see above). This allocator will either be
+   *                      an allocator originally provided by the EP (default or read-only) or a shared allocator
+   *                      overridden by the application via OrtApi::CreateSharedAllocator(). The allocator remains
+   *                      valid throughout the lifetime of the OrtKernelImpl instance.
+   * \param[in] prepacked_weights_cache May be NULL. If not NULL, the kernel may choose to share a packed weight by
+   *                                    first storing it in the OrtSharedPrePackedWeightCache instance and then
+   *                                    receiving the actual shared weight data in the call to
+   *                                    OrtKernelImpl::SetSharedPrePackedWeight(). See the above description for
+   *                                    "sharing mode".
    * \param[out] is_packed Output parameter that the implementation sets to true if the kernel packed the tensor data.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \note Implementation of this function is optional. If not implemented (set to NULL), ORT assumes the kernel
-   *       does not pre-pack constant tensors.
+   *       does not pre-pack weight data (i.e., `is_packed` defaults to false).
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(PrePackConstantTensor, _In_ OrtKernelImpl* this_ptr, _In_ const OrtValue* tensor,
-                  _In_ int input_index, _Inout_ OrtAllocator* alloc, _Out_ bool* is_packed);
+  ORT_API2_STATUS(PrePackWeight, _In_ OrtKernelImpl* this_ptr, _In_ const OrtValue* tensor,
+                  _In_ int input_index, _Inout_ OrtAllocator* allocator,
+                  _In_opt_ OrtSharedPrePackedWeightCache* prepacked_weight_cache, _Out_ bool* is_packed);
+
+  /** \brief Optional function that receives data for a shared pre-packed weight from ORT.
+   *
+   * This function is only called if the prior call to OrtKernelImpl::PrePackWeight set `is_packed` to true and
+   * stored weight data (that the kernel wants to share) into the provided `OrtSharedPrePackedWeightCache` instance.
+   * Refer to the description of the "sharing-mode" in the documentation for OrtKernelImpl::PrePackWeight().
+   *
+   * \note This function is based on the internal OpKernel::UseSharedPrePackedBuffers() virtual function used
+   *       within ORT.
+   *
+   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
+   *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed
+   *                             buffers and it is up to the kernel implementation to determine how to split the data
+   *                             into multiple buffers (if desired) in the call to OrtKernelImpl::PrePack(). Each
+   *                             buffer element in this array is provided in the same order defined by the kernel
+   *                             implementation in the call to OrtKernelImpl::PrePack().
+   * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
+   * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
+   *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_sizes` arrays.
+   * \param[in] input_index The input index of the tensor in this kernel. This index identifies the identity of
+   *                        the weight.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is generally optional. It is only required if OrtKernelImpl::PrePack()
+   *       elects to share pre-packed weights.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SetSharedPrePackedWeight, _In_ OrtKernelImpl* this_ptr, _In_ const void* const* buffer_data_ptrs,
+                  _In_ size_t num_buffers, _In_ int input_index);
 };
 
 /** \brief Type definition for a function that creates an OrtKernelImpl instance for an operator kernel.
@@ -873,6 +932,30 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
                   _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
+
+  /** \brief Sets one or more data buffers that collectively hold the pre-packed data for a single shared weight.
+   *
+   * \note Used within the implementation of OrtKernelImpl::PrePackWeight() when the kernel wants to share pre-packed
+   *       weight data with other kernels.
+   *
+   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
+   *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed
+   *                             buffers and it is up to the kernel implementation to determine how to split the data
+   *                             into multiple buffers (if desired).
+   * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
+   * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
+   *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_sizes` arrays.
+   * \param[in] deleter The OrtAllocator that should be used to delete the buffer data.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SharedPrePackedWeightCache_StoreWeightData,
+                  _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
+                  _In_ void** buffer_data_ptrs, _In_ size_t* buffer_data_sizes, _In_ size_t num_buffers,
+                  _In_ OrtAllocator* deleter);
 };
 
 /**

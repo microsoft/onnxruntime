@@ -5,6 +5,7 @@
 
 #include "../plugin_ep_utils.h"
 
+#include <functional>
 #include <memory>
 
 // `OrtAllocator` is a C API struct. `BaseAllocator` is a minimal C++ struct which inherits from `OrtAllocator`.
@@ -45,3 +46,10 @@ struct CustomAllocator : BaseAllocator {
  private:
   const OrtMemoryInfo* memory_info;
 };
+
+using AllocationUniquePtr = std::unique_ptr<void, std::function<void(void*)>>;
+
+inline AllocationUniquePtr AllocateBytes(OrtAllocator* allocator, size_t num_bytes) {
+  void* p = allocator->Alloc(allocator, num_bytes);
+  return AllocationUniquePtr(p, [allocator](void* d) { allocator->Free(allocator, d); });
+}

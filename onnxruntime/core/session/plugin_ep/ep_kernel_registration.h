@@ -4,12 +4,26 @@
 #pragma once
 
 #include <memory>
+#include "core/common/inlined_containers_fwd.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
+
+/// <summary>
+/// Implementation of the public C API opaque type OrtSharedPrePackedWeightCache.
+/// This is eventually converted into an instance of onnxruntime::PrePackedWeights.
+/// The OrtAllocator* member allows ORT to verify that any shared weight data was actually allocated with
+/// the required allocator.
+/// </summary>
+struct OrtSharedPrePackedWeightCache {
+  onnxruntime::InlinedVector<onnxruntime::IAllocatorUniquePtr<void>> buffer_data_ptrs;
+  onnxruntime::InlinedVector<size_t> buffer_sizes;
+  OrtAllocator* allocator;
+};
 
 namespace onnxruntime {
 
