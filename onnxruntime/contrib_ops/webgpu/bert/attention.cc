@@ -105,7 +105,21 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let n = (workgroup_idx % uniforms.num_total_seq_length_tile) * TILE_SIZE;\n"
                             << "let batch_head_idx = u32(workgroup_idx / (uniforms.num_total_seq_length_tile * uniforms.num_seq_length_tile));\n"
                             << "let batch_idx = batch_head_idx / uniforms.num_heads;\n"
-                            << "let qOffset = batch_head_idx * uniforms.M * uniforms.K + m * uniforms.K;\n"
+                            << "let head_idx = batch_head_idx % uniforms.num_heads;\n";
+
+  if (has_attention_bias_) {
+    if (broadcast_attn_bias_dim_0_ && broadcast_attn_bias_dim_1_) {
+      shader.MainFunctionBody() << "let bias_batch_head_idx = 0u;\n";
+    } else if (broadcast_attn_bias_dim_0_) {
+      shader.MainFunctionBody() << "let bias_batch_head_idx = head_idx;\n";
+    } else if (broadcast_attn_bias_dim_1_) {
+      shader.MainFunctionBody() << "let bias_batch_head_idx = batch_idx;\n";
+    } else {
+      shader.MainFunctionBody() << "let bias_batch_head_idx = batch_head_idx;\n";
+    }
+  }
+
+  shader.MainFunctionBody() << "let qOffset = batch_head_idx * uniforms.M * uniforms.K + m * uniforms.K;\n"
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.N;\n";
   std::ostringstream oss;
@@ -156,8 +170,9 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "}\n";
 
   shader.MainFunctionBody() << "if (m + local_id.y < uniforms.M && n + local_id.x < total_sequence_length) {\n"
+                            << "  let in_head_pos = (m + local_id.y) * uniforms.N + n + local_id.x;\n"
                             << "  let headOffset = batch_head_idx * uniforms.M * uniforms.N;\n"
-                            << "  let outputIdx = headOffset + (m + local_id.y) * uniforms.N + n + local_id.x;\n"
+                            << "  let outputIdx = headOffset + in_head_pos;\n"
                             << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
 
   // Add causal masking for unidirectional attention
@@ -172,7 +187,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
   if (has_attention_bias_) {
-    shader.MainFunctionBody() << " + attention_bias[outputIdx]";
+    shader.MainFunctionBody() << " + attention_bias[bias_batch_head_idx * uniforms.M * uniforms.N + in_head_pos]";
   }
   shader.MainFunctionBody() << ";\n"
                             << "}\n";
@@ -194,7 +209,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_, parameters.is_unidirectional_};
+                                components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_, parameters.is_unidirectional_, parameters.broadcast_attn_bias_dim_0_, parameters.broadcast_attn_bias_dim_1_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
@@ -216,7 +231,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const uint32_t num_seq_length_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_length_tile * num_total_seq_length_tile)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_)
+      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_, parameters.broadcast_attn_bias_dim_0_, parameters.broadcast_attn_bias_dim_1_)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
