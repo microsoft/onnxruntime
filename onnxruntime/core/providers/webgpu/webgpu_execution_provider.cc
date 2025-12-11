@@ -421,8 +421,8 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterND);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterND);
 
-std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = false) {
-  auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
+std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture) {
+  auto kernel_registry = std::make_unique<KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
@@ -787,6 +787,16 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
   return kernel_registry;
 }
 
+std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture) {
+  if (enable_graph_capture) {
+    static std::shared_ptr<KernelRegistry> registry = RegisterKernels(true);
+    return registry;
+  } else {
+    static std::shared_ptr<KernelRegistry> registry = RegisterKernels(false);
+    return registry;
+  }
+}
+
 }  // namespace webgpu
 
 using namespace webgpu;
@@ -842,7 +852,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       continue;
     }
 
-    const KernelCreateInfo* webgpu_kernel_def = kernel_lookup.LookUpKernel(node);
+    const auto* webgpu_kernel_def = kernel_lookup.LookUpKernel(node);
     // none of the provided registries has a webgpu kernel for this node
     if (webgpu_kernel_def == nullptr) {
       LOGS(*GetLogger(), INFO) << "webgpu kernel not found in registries for Op type: "
@@ -909,16 +919,6 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
     result.emplace_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
   return result;
-}
-
-std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() const {
-  if (enable_graph_capture_) {
-    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(true);
-    return registry;
-  } else {
-    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(false);
-    return registry;
-  }
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {

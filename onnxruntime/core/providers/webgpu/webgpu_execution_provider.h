@@ -24,6 +24,10 @@ class GpuBufferAllocator;
 
 // Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
 struct CapturedCommandInfo;
+
+// The actual implementation of kernel registration.
+std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture);
+
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
@@ -52,7 +56,11 @@ class WebGpuExecutionProvider : public IExecutionProvider {
       const GraphOptimizerRegistry& /* graph_optimizer_registry */,
       IResourceAccountant* /* resource_accountant */) const override;
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    return webgpu::GetKernelRegistry(enable_graph_capture_);
+  }
+#endif
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 #if defined(__wasm__)
   std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
