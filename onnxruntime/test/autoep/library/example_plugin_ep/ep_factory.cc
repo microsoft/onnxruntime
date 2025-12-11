@@ -71,10 +71,6 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                                      OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                                      /*alignment*/ 0,
                                                      OrtAllocatorType::OrtDeviceAllocator};
-
-  // Custom Op Domains
-  custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
-  custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
 }
 
 /*static*/
@@ -331,6 +327,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainsImpl(
     _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
     _Out_ size_t num_domains) noexcept {
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+
+  // Custom Op Domains
+  factory->custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
+  factory->custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
 
   std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list;
   created_custom_op_list.push_back(std::make_unique<ExampleEpCustomOp>(factory->ep_name_.c_str(), factory));

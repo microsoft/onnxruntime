@@ -173,7 +173,6 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 
-  // std::unique_ptr<OrtCustomOpDomain, std::function<void(OrtCustomOpDomain*)>> custom_op_domain_;
   std::vector<Ort::CustomOpDomain> custom_op_domains_{2};
   std::vector<std::vector<std::unique_ptr<ExampleEpCustomOp>>> created_custom_op_lists_{2};
 };
