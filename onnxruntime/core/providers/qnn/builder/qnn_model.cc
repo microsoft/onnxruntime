@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include <gsl/gsl>
+#include <thread>
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -346,8 +347,11 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
       profiling_info.start_time = qnn::utils::GetTimeStampInUs();
     }
 #endif
-
     auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
+
+    auto thread_id = std::this_thread::get_id();
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetPerThreadHtpPowerConfigs(thread_id, true));
+
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),
@@ -362,6 +366,8 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
       profiling_info.graph_name = graph_info_->Name();
     }
 #endif
+
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetPerThreadHtpPowerConfigs(thread_id, false));
 
     // NOTE: This function returns immediately when profiling is disabled.
     // Extracting profiling data can be expensive, but it is typically only enabled for debugging purposes
