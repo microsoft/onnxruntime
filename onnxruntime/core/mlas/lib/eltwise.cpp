@@ -76,7 +76,7 @@ MlasEltwiseMul<float>(
             output += 4;
             N -= 4;
         } else {
-            *output = (*left) * (*right);
+            *output = *left * *right;
 
             left += 1;
             right += 1;
