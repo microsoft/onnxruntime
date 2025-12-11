@@ -101,7 +101,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
 
   if (has_attention_bias_) {
-    shader.AdditionalImplementation() << "fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> f32 {\n"
+    shader.AdditionalImplementation() << "fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> output_value_t {\n"
                                       << "  // Handle broadcasting: if dimension size is 1, use index 0\n"
                                       << "  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);\n"
                                       << "  let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);\n"
@@ -111,7 +111,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                       << "               bias_head_idx * uniforms.M * uniforms.N +\n"
                                       << "               q_idx * uniforms.N +\n"
                                       << "               k_idx;\n"
-                                      << "  return f32(attention_bias[offset]);\n"
+                                      << "  return attention_bias[offset];\n"
                                       << "}\n";
   }
 
