@@ -70,7 +70,6 @@ class QuickGelu : public OpKernel {
     int64_t elem_count = input->Shape().Size();
     constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
     int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
-
     concurrency::ThreadPool::TryBatchParallelFor(
         tp, static_cast<int32_t>(task_count),
         [&](ptrdiff_t task_idx) {
@@ -80,7 +79,11 @@ class QuickGelu : public OpKernel {
           int64_t count = std::min(length_per_task, elem_count - start);
 
           if (alpha_ != 1.0f) {
-            // TODO: Vectorize this compute
+            // TODO: Consider vectorizing this scalar multiplication.
+            // It needs exposing a new API in MLAS to take in a scalar
+            // that will be used in the elementwise multiplcation.
+            // Estimate the cost-benefit tradeoff before proceeding
+            // with that optimization.
             for (int64_t i = 0; i < count; i++) {
               p_output[i] = p_input[i] * alpha_;
             }
