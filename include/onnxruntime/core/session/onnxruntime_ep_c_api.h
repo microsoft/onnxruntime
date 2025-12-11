@@ -24,6 +24,12 @@ ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
+// Opaque types for kernel-based EPs
+ORT_RUNTIME_CLASS(KernelRegistry);
+ORT_RUNTIME_CLASS(KernelDefBuilder);
+ORT_RUNTIME_CLASS(KernelDef);
+ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
+
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
  * \since Version 1.23.
@@ -274,6 +280,51 @@ struct OrtNodeComputeInfo {
   void(ORT_API_CALL* ReleaseState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
 };
 
+struct OrtKernelImpl;
+typedef struct OrtKernelImpl OrtKernelImpl;
+
+/**
+ * \brief Contains functions that an OrtEp implements to specify the computation for an operator kernel.
+ * \since Version 1.24.
+ */
+struct OrtKernelImpl {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+
+  /** \brief Computation function called to execute the kernel on an EP.
+   *
+   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] context The OrtKernelContext instance that provides access to the inputs and outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(Compute, _In_ OrtKernelImpl* this_ptr, _In_ OrtKernelContext* context);
+
+  /** \brief Called by ORT to release the OrtKernelImpl instance and its resources.
+   *
+   * \param[in] this_ptr The OrtKernelImpl instance.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, Release, _In_ OrtKernelImpl* this_ptr);
+};
+
+/** \brief Type definition for a function that creates an OrtKernelImpl instance for an operator kernel.
+ *
+ * \param[in] kernel_create_func_state Opaque state initially provided by the EP that registered the kernel.
+ *                                     Refer to OrtEpApi::KernelRegistry_AddKernel(). May be null.
+ * \param[in] info The OrtKernelInfo instance that provides access to the kernel's input and output characteristics.
+ * \param[out] kernel_out Output parameter set to the new OrtKernelImpl instance.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \since Version 1.24.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ void* kernel_create_func_state,
+                                                      _In_ const OrtKernelInfo* info,
+                                                      _Outptr_result_maybenull_ OrtKernelImpl** kernel_out);
+
 /**
  * \brief The OrtEpApi struct provides functions that are relevant to the implementation of an execution provider.
  *
@@ -507,6 +558,294 @@ struct OrtEpApi {
                   _Out_ OrtHardwareDevice** hardware_device);
 
   ORT_CLASS_RELEASE(HardwareDevice);
+
+  /** \brief Creates an empty kernel registry. A kernel registry contains kernel creation information for
+   * every operator kernel supported by an EP.
+   *
+   * \remarks Refer to OrtEp::GetKernelRegistry, which returns an EP's kernel registry to ORT.
+   *
+   * \param[out] kernel_registry Output parameter set to the new OrtKernelRegistry instance.
+   *                             Must be released with OrtEpApi::ReleaseKernelRegistry.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateKernelRegistry, _Outptr_ OrtKernelRegistry** kernel_registry);
+
+  ORT_CLASS_RELEASE(KernelRegistry);
+
+  /** \brief Adds kernel creation information for a supported operator kernel to the given kernel registry.
+   *
+   * \remarks Refer to OrtEp::GetKernelRegistry, which returns an EP's kernel registry to ORT.
+   *
+   * \param[in] kernel_registry The OrtKernelRegistry instance.
+   * \param[in] kernel_def The kernel definition, which includes operator type, version, EP name, type constraints, etc.
+   * \param[in] kernel_create_func Function that creates an instance of the operator kernel as a OrtKernelImpl instance.
+   * \param[in] kernel_create_func_state Custom state passed to the kernel creation function. Can be null.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelRegistry_AddKernel, _In_ OrtKernelRegistry* kernel_registry,
+                  _In_ const OrtKernelDef* kernel_def, _In_ OrtKernelCreateFunc kernel_create_func,
+                  _In_ void* kernel_create_func_state);
+
+  /** \brief Creates a kernel definition builder used to create instances of OrtKernelDef.
+   *
+   * \param[out] kernel_def_builder_out Output parameter set to the new OrtKernelDefBuilder instance.
+   *                                    Must be released with OrtEpApi::ReleaseKernelDefBuilder().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateKernelDefBuilder, _Outptr_ OrtKernelDefBuilder** kernel_def_builder_out);
+
+  ORT_CLASS_RELEASE(KernelDefBuilder);
+
+  /** \brief Sets the kernel's operator type.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] op_type A null-terminated string representing the operator type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_SetOperatorType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ const char* op_type);
+
+  /** \brief Sets the kernel's domain.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] domain A null-terminated string representing the operator's domain.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_SetDomain, _In_ OrtKernelDefBuilder* kernel_def_builder, _In_ const char* domain);
+
+  /** \brief Sets the kernel's opset version range that is supported.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] since_version_start The starting opset version that is supported.
+   * \param[in] since_version_end The ending opset version (inclusive) that is supported.
+   *                              Can be set equal to the starting version to indicate that only one
+   *                              version is supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_SetSinceVersion, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ int since_version_start, _In_ int since_version_end);
+
+  /** \brief Sets the name of the kernel's intended execution provider.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] ep_name A null-terminated string representing the execution provider's name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_SetExecutionProvider, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ const char* ep_name);
+
+  /** \brief Sets the memory type for a kernel input.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] input_index The index of the input.
+   * \param[in] mem_type The input's memory type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_SetInputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ size_t input_index, _In_ OrtMemType mem_type);
+
+  /** \brief Sets the memory type for a kernel output.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] output_index The index of the output.
+   * \param[in] mem_type The output's memory type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_SetOutputMemType, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ size_t output_index, _In_ OrtMemType mem_type);
+
+  /** \brief Adds type constraints for a kernel argument represented as a string (e.g., "T").
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] arg_name A null-terminated string representing the argument to constrain (e.g., "T").
+   * \param[in] types Array of OrtDataType instances representing allowed types for the argument.
+   *                  Must contain `num_types` elements.
+   * \param[in] num_types The number of OrtDataType elements in the `types` array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_AddTypeConstraint, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_ const char* arg_name, _In_reads_(num_types) const OrtDataType* const* types,
+                  _In_ size_t num_types);
+
+  /** \brief Adds aliases for the given input and output pairs.
+   *
+   * \note Used for operators like Identity and Reshape to allow ORT to reuse the input buffer for the output
+   *       without modification.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] input_indices Array of input indices. Array must contain `num_io_indices` elements.
+   * \param[in] output_indices Array of output indices. Each output index is aliased with a corresponding
+   *                           input index in `input_indices`. Array must contain `num_io_indices` elements.
+   * \param[in] num_io_indices The number of input/output index pairs to alias.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_AddInputOutputAliases, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_reads_(num_io_indices) int const* input_indices,
+                  _In_reads_(num_io_indices) int const* output_indices,
+                  _In_ size_t num_io_indices);
+
+  /** \brief Adds mutable aliases for the given input and output pairs.
+   *
+   * \note Allows ORT to reuse and *modify* an input buffer (in-place) for the output buffer.
+   *       This is also known as "MayInplace" within the ORT codebase.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[in] input_indices Array of input indices. Array must contain `num_io_indices` elements.
+   * \param[in] output_indices Array of output indices. Each output index is aliased with a corresponding
+   *                           input index in `input_indices`. Array must contain `num_io_indices` elements.
+   * \param[in] num_io_indices The number of input/output index pairs to alias.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_AddInputOutputMutableAliases, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _In_reads_(num_io_indices) int const* input_indices,
+                  _In_reads_(num_io_indices) int const* output_indices,
+                  _In_ size_t num_io_indices);
+
+  /** \brief Creates a OrtKernelDef instance from the given kernel definition builder.
+   *
+   * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
+   * \param[out] kernel_def_out The new OrtKernelDef instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDefBuilder_Build, _In_ OrtKernelDefBuilder* kernel_def_builder,
+                  _Outptr_ OrtKernelDef** kernel_def_out);
+
+  ORT_CLASS_RELEASE(KernelDef);
+
+  /** \brief Returns the operator type from the kernel definition.
+   *
+   * \param[in] kernel_def The OrtKernelDef instance.
+   * \return A null-terminated string representing the operator type.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(const char*, KernelDef_GetOperatorType, _In_ const OrtKernelDef* kernel_def);
+
+  /** \brief Returns the operator's domain from the kernel definition.
+   *
+   * \param[in] kernel_def The OrtKernelDef instance.
+   * \return A null-terminated string representing the operator's domain.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(const char*, KernelDef_GetDomain, _In_ const OrtKernelDef* kernel_def);
+
+  /** \brief Gets the kernel's opset version range that is supported.
+   *
+   * \param[in] kernel_def The OrtKernelDef instance.
+   * \param[out] version_start Output parameter set to the starting opset version that is supported.
+   * \param[out] version_end Output parameter set to the ending opset version (inclusive) that is supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDef_GetSinceVersion, _In_ const OrtKernelDef* kernel_def,
+                  _Out_ int* start_version, _Out_ int* end_version);
+
+  /** \brief Returns the name of the kernel's intended execution provider.
+   *
+   * \param[in] kernel_def The OrtKernelDef instance.
+   * \return A null-terminated string representing the name of the execution provider.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(const char*, KernelDef_GetExecutionProvider, _In_ const OrtKernelDef* kernel_def);
+
+  /** \brief Gets the memory type for a kernel input.
+   *
+   * \param[in] kernel_def The OrtKernelDef instance.
+   * \param[in] input_index The index of the input.
+   * \param[out] mem_type Output parameter set to the input's memory type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDef_GetInputMemType, _In_ const OrtKernelDef* kernel_def,
+                  _In_ size_t input_index, _Out_ OrtMemType* mem_type);
+
+  /** \brief Gets the memory type for a kernel output.
+   *
+   * \param[in] kernel_def The OrtKernelDef instance.
+   * \param[in] output_index The index of the output.
+   * \param[out] mem_type Output parameter set to the output's memory type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(KernelDef_GetOutputMemType, _In_ const OrtKernelDef* kernel_def,
+                  _In_ size_t output_index, _Out_ OrtMemType* mem_type);
+
+  /** \brief Gets the OrtDataType that represents the data type for a tensor of the given element type.
+   *
+   * \param[in] elem_type The tensor's element type.
+   * \param[out] out Output parameter set to the OrtDataType. Owned by ORT and must not be released.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
+                  _Outptr_ const OrtDataType** out);
+
+  /** \brief Gets the kernel definition for a given node, if any exists for the calling execution provider.
+   *
+   * Used within OrtEp::GetCapability() to get the registered kernel definition for the given node.
+   * The kernel definition is set to NULL if there is no registered kernel definition for the node
+   * and execution provider.
+   *
+   * \param[in] graph_support_info The OrtEpGraphSupportInfo instance to query.
+   * \param[in] node The node for which to look up a kernel definition.
+   * \param[out] out_kernel_def Output parameter set to the OrtKernelDef or NULL.
+   *                            Owned by ORT and must not be released.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                  _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
 };
 
 /**
@@ -603,6 +942,9 @@ struct OrtEp {
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
    *
+   * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
+   *       uses a kernel registry instead.
+   *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Compile, _In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
@@ -615,6 +957,9 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \param[inout] node_compute_infos The OrtNodeComputeInfo instances to release.
    * \param[in] num_node_compute_infos The number of OrtNodeComputeInfo instances.
+   *
+   * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
+   *       uses a kernel registry instead.
    *
    * \since Version 1.23.
    */
@@ -768,6 +1113,22 @@ struct OrtEp {
    */
   ORT_API_T(const char*, GetCompiledModelCompatibilityInfo, _In_ OrtEp* this_ptr,
             _In_ const OrtGraph* graph);
+
+  /** \brief Gets the execution provider's kernel registry, if any.
+   *
+   * A kernel registry contains kernel creation information for operator kernels supported by an EP.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] kernel_registry Output parameter set to the EP's kernel registry, which must remain valid throughout
+   *                             the lifetime of the EP. Can be NULL if the EP doesn't use a kernel registry.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP compiles nodes.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetKernelRegistry, _In_ OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

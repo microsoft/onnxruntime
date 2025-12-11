@@ -80,12 +80,9 @@ def create_session(
     if use_gpu:
         if provider == "dml":
             execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-        elif provider == "rocm":
-            execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
         elif provider == "migraphx":
             execution_providers = [
                 "MIGraphXExecutionProvider",
-                "ROCMExecutionProvider",
                 "CPUExecutionProvider",
             ]
         elif provider == "cuda":
@@ -128,11 +125,8 @@ def create_session(
     if use_gpu:
         if provider == "dml":
             assert "DmlExecutionProvider" in session.get_providers()
-        elif provider == "rocm":
-            assert "ROCMExecutionProvider" in session.get_providers()
         elif provider == "migraphx":
             assert "MIGraphXExecutionProvider" in session.get_providers()
-            assert "ROCMExecutionProvider" in session.get_providers()
         elif provider == "cuda":
             assert "CUDAExecutionProvider" in session.get_providers()
         elif provider == "tensorrt":

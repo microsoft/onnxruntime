@@ -2127,9 +2127,6 @@ public class InferenceTest {
         case ARM_NN:
           options.addArmNN(false);
           break;
-        case ROCM:
-          options.addROCM();
-          break;
         case CORE_ML:
           options.addCoreML();
           break;

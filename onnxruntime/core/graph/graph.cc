@@ -1233,28 +1233,6 @@ Graph::Graph(const Model& owning_model,
   ArgNameToTypeMap name_to_type_map;
   const auto& model_path = ModelPath();
 
-  // If the tensor proto data is large enough, move data from TensorProto to an OrtValue
-  // - Add external data reference to TensorProto that points to an OrtValue.
-  // This lambda should not be used on initializers that already have external data reference.
-  // Otherwise, this function does nothing.
-  auto put_large_tensor_in_ort_value = [this, &model_path](ONNX_NAMESPACE::TensorProto& tensor_proto) {
-    size_t size_in_bytes = 0;
-    ORT_THROW_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
-    if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
-      OrtValue ort_value;
-      ORT_THROW_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), model_path, tensor_proto,
-                                                      CPUAllocator::DefaultInstance(), ort_value));
-      constexpr const bool use_tensor_buffer_true = true;
-      auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
-                                                            use_tensor_buffer_true);
-      assert(ort_value.IsAllocated());
-      auto ins_result = ortvalue_initializers_.insert_or_assign(tensor_proto_to_add.name(), std::move(ort_value));
-      ORT_ENFORCE(ins_result.second, "Unexpected duplicate insert or assign OrtValue for tensor: ", tensor_proto_to_add.name(),
-                  " in the initializer list.");
-      tensor_proto = std::move(tensor_proto_to_add);
-    }
-  };
-
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
   for (auto& node : graph_proto_->node()) {
@@ -1273,8 +1251,6 @@ Graph::Graph(const Model& owning_model,
         }
       }
     }
-
-    put_large_tensor_in_ort_value(*tensor);
 
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
@@ -1352,25 +1328,7 @@ Graph::Graph(const Model& owning_model,
   }
 
   // Copy initial tensors to a map.
-  for (int i = 0, lim = graph_proto_->initializer_size(); i < lim; ++i) {
-    auto& tensor = *graph_proto_->mutable_initializer(i);
-    // If data is on disk, it will be loaded either by optimizers
-    // or during session state finalization.
-    // If data is already in memory, do nothing.
-    if (!utils::HasExternalData(tensor)) {
-      // sparse_tensor_names_ contain references to strings to save memory
-      // in case we replace the tensor_proto, we want to make sure we remove
-      // the old reference first, and then add a new one.
-      const bool is_sparse = sparse_tensor_names_.count(tensor.name());
-      if (is_sparse) {
-        sparse_tensor_names_.erase(tensor.name());
-      }
-      put_large_tensor_in_ort_value(tensor);
-      if (is_sparse) {
-        sparse_tensor_names_.emplace(tensor.name());
-      }
-    }
-
+  for (auto& tensor : graph_proto_->initializer()) {
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
     if (!p.second) {
       LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << tensor.name()
@@ -3762,6 +3720,54 @@ Status Graph::Resolve(const ResolveOptions& options) {
   return ForThisAndAllSubgraphs(all_subgraphs, finalize_func);
 }
 
+Status Graph::ConvertInitializersIntoOrtValues() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+
+  auto put_weights_maybe_in_memory_func = [&](Graph& graph) -> Status {
+    // if we have any initializers that are not in memory, put them there.
+    const auto& model_path = graph.ModelPath();
+    auto& graph_proto = *graph.graph_proto_;
+    for (int i = 0, lim = graph_proto.initializer_size(); i < lim; ++i) {
+      auto& tensor_proto = *graph_proto.mutable_initializer(i);
+
+      if (utils::HasExternalData(tensor_proto)) {
+        if (utils::HasExternalDataInMemory(tensor_proto)) {
+          // This can happen when the model is created with ModelEditor.
+          // We want to guard against malicious models with arbitrary in-memory references.
+          if (OrtValue v; GetOrtValueInitializer(tensor_proto.name(), v)) {
+            ORT_RETURN_IF_NOT(graph_utils::CheckInMemoryDataMatch(tensor_proto, v.Get<Tensor>()),
+                              "In-memory data mismatch for initializer: ", tensor_proto.name(),
+                              " this is an invalid model");
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "The model contains initializers with arbitrary in-memory references.",
+                                   "This is an invalid model.");
+          }
+        }
+        // ignore data on disk, that will be loaded either by EP or at session_state finalize
+        // ignore valid in-memory references
+        continue;
+      }
+
+      size_t size_in_bytes = 0;
+      ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
+      if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
+        OrtValue ort_value;
+        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), model_path, tensor_proto,
+                                                         CPUAllocator::DefaultInstance(), ort_value));
+        constexpr const bool use_tensor_buffer_true = true;
+        auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
+                                                              use_tensor_buffer_true);
+        ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto_to_add, ort_value));
+      }
+    }
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, put_weights_maybe_in_memory_func);
+}
+
 void Graph::SetName(const std::string& name) {
   graph_proto_->set_name(name);
 }
@@ -3839,6 +3845,10 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_p
                       "Element type mismatch between tensor proto and ortvalue_initializer");
     const auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
     ORT_RETURN_IF_NOT(proto_shape == tensor.Shape(), "Shape mismatch with ortvalue_initializer");
+
+    const bool data_ptr_match = graph_utils::CheckInMemoryDataMatch(tensor_proto, tensor);
+    ORT_RETURN_IF_NOT(data_ptr_match,
+                      "In-memory data pointer mismatch between tensor proto and ortvalue_initializer");
 
     ortvalue_initializers_.insert_or_assign(tensor_proto.name(), ortvalue_initializer);
   } else {

@@ -47,10 +47,6 @@
 #include <cuda_runtime.h>
 #endif
 
-#ifdef USE_ROCM
-#include <hip/hip_runtime.h>
-#endif
-
 #ifdef USE_DML
 #include <wrl/client.h>
 #include <wil/result.h>
@@ -295,14 +291,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
-  } else if (provider_type == 3) {
-#ifdef USE_ROCM
-    std::cout << "Running simple inference with rocm provider" << std::endl;
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
-#else
-    return;
-#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -347,7 +335,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
 static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
 #endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
@@ -1715,15 +1703,12 @@ TEST(CApiTest, test_custom_op_library) {
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 1, nullptr, lib_name.c_str());
-#elif USE_ROCM
-  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 3, nullptr, lib_name.c_str());
 #elif USE_DML
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 4, nullptr, lib_name.c_str());
 #else
-TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                       expected_values_y, 0, nullptr, lib_name.c_str());
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
 
@@ -2103,27 +2088,6 @@ TEST(CApiTest, get_allocator_cuda) {
 }
 #endif
 
-#ifdef USE_ROCM
-TEST(CApiTest, get_allocator_rocm) {
-  Ort::SessionOptions session_options;
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
-  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
-
-  Ort::MemoryInfo info_rocm("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-  Ort::Allocator rocm_allocator(session, info_rocm);
-
-  auto allocator_info = rocm_allocator.GetInfo();
-  ASSERT_TRUE(info_rocm == allocator_info);
-  void* p = rocm_allocator.Alloc(1024);
-  ASSERT_NE(p, nullptr);
-  rocm_allocator.Free(p);
-
-  auto mem_allocation = rocm_allocator.GetAllocation(1024);
-  ASSERT_NE(nullptr, mem_allocation.get());
-  ASSERT_EQ(1024U, mem_allocation.size());
-}
-#endif
-
 #if defined(USE_QNN)
 
 TEST(CApiTest, get_allocator_qnn_htp_shared) {
@@ -2424,7 +2388,7 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
 
 #endif  // defined(USE_QNN)
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_DML)
 TEST(CApiTest, basic_cuda_graph) {
   [[maybe_unused]] const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
@@ -2445,19 +2409,6 @@ TEST(CApiTest, basic_cuda_graph) {
   cuda_options.Update(options_map);
   session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
-#elif defined(USE_ROCM)
-  // Enable hip graph in rocm provider option.
-  OrtROCMProviderOptions* rocm_options = nullptr;
-  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
-  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
-      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
-  std::vector<const char*> keys{"enable_hip_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
-
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_rocm_options.get()) == nullptr);
 #elif defined(USE_DML)
   // Enable dynamic DML graph in DML provider option.
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
@@ -2469,13 +2420,7 @@ TEST(CApiTest, basic_cuda_graph) {
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
-#if defined(USE_ROCM)
-// local hipify
-#define cudaMemcpy hipMemcpy
-#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
-#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
-  Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#elif defined(USE_CUDA) || defined(USE_TENSORRT)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_DML)
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
@@ -2491,7 +2436,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
   ASSERT_NE(input_data.get(), nullptr);
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> input_resource;
@@ -2524,7 +2469,7 @@ TEST(CApiTest, basic_cuda_graph) {
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> output_resource;
@@ -2538,7 +2483,7 @@ TEST(CApiTest, basic_cuda_graph) {
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
@@ -2549,7 +2494,7 @@ TEST(CApiTest, basic_cuda_graph) {
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 #elif defined(USE_DML)
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
@@ -2559,7 +2504,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
   session.Run(Ort::RunOptions(), binding);
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
@@ -2571,14 +2516,9 @@ TEST(CApiTest, basic_cuda_graph) {
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
-#if defined(USE_ROCM)
-#undef cudaMemcpy
-#undef cudaMemcpyHostToDevice
-#undef cudaMemcpyDeviceToHost
-#endif
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
 struct CudaGraphInputOutputData_0 {
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -2622,12 +2562,6 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
                                        Ort::MemoryAllocation& input_data,
                                        Ort::MemoryAllocation& output_data,
                                        const char* cuda_graph_annotation) {
-// a local hipify of select cuda symbols to avoid code duplication
-#ifdef USE_ROCM
-#define cudaMemcpy hipMemcpy
-#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
-#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
-#endif
 #ifdef USE_DML
   Ort::SessionOptions session_options;
   Ort::Allocator allocator(session, info_mem);
@@ -2731,11 +2665,6 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
-#ifdef USE_ROCM
-#undef cudaMemcpy
-#undef cudaMemcpyHostToDevice
-#undef cudaMemcpyDeviceToHost
-#endif
 }
 
 TEST(CApiTest, basic_cuda_graph_with_annotation) {
@@ -2758,20 +2687,6 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#elif defined(USE_ROCM)
-  // Enable hip graph in rocm provider option.
-  OrtROCMProviderOptions* rocm_options = nullptr;
-  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
-  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
-      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
-  std::vector<const char*> keys{"enable_hip_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
-
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_rocm_options.get()) == nullptr);
-  Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #endif
 
   Ort::Session session(*ort_env, CUDA_GRAPH_ANNOTATION_MODEL_URI, session_options);
@@ -2820,34 +2735,10 @@ TEST(CApiTest, cuda_graph_with_shape_nodes) {
 }
 #endif  // defined(USE_CUDA) || defined(USE_TENSORRT)
 
-#if defined(USE_ROCM)
-TEST(CApiTest, hip_graph_with_shape_nodes) {
-  const auto& api = Ort::GetApi();
-
-  // Enable hip graph in rocm provider option.
-  OrtROCMProviderOptions* rocm_options = nullptr;
-  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
-  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
-      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
-  std::vector<const char*> keys{"enable_hip_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
-
-  Ort::SessionOptions session_options;
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_rocm_options.get()) == nullptr);
-
-  // Successful loading of the ONNX model with shape nodes with hip graph feature enabled
-  Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
-}
-#endif  // defined(USE_ROCM)
-
 #if defined(USE_DML)
 TEST(CApiTest, dml_graph_with_shape_nodes) {
   const auto& api = Ort::GetApi();
 
-  // Enable hip graph in rocm provider option.
   const OrtDmlApi* ort_dml_api;
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
@@ -2861,7 +2752,7 @@ TEST(CApiTest, dml_graph_with_shape_nodes) {
 
 #endif  // REDUCED_OPS_BUILD
 
-#endif  // defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA) || defined(USE_TENSORRT)
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
@@ -4869,4 +4760,37 @@ TEST(CApiTest, custom_cast) {
   TestInference<double, float>(*ort_env, TSTR("testdata/cast_float_to_double.onnx"),
                                inputs, "output", expected_dims_y, expected_values_y, 0,
                                custom_op_domain, nullptr);
+}
+
+TEST(CApiTest, ModelWithMaliciousExternalDataShouldFailToLoad) {
+  // Attempt to create an ORT session with the malicious model
+  // This should fail due to the invalid external data reference
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_evil_weights.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, model_path, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious external data";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("in-memory") != std::string::npos ||
+              exception_message.find("references") != std::string::npos ||
+              exception_message.find("invalid") != std::string::npos ||
+              exception_message.find("model") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
 }

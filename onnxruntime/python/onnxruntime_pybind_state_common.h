@@ -34,7 +34,7 @@ struct OrtStatus {
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 #define BACKEND_PROC "GPU"
 #else
 #define BACKEND_PROC "CPU"
@@ -122,10 +122,6 @@ struct OrtStatus {
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_provider_factory.h"
-#include "core/providers/rocm/rocm_execution_provider_info.h"
-#endif
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -198,23 +194,7 @@ ProviderInfo_CANN& GetProviderInfo_CANN();
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_ROCM
-namespace onnxruntime {
-ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
-ProviderInfo_ROCM& GetProviderInfo_ROCM();
-namespace python {
-// TODO remove deprecated global config
-extern bool miopen_conv_exhaustive_search;
-// TODO remove deprecated global config
-extern bool do_copy_in_default_stream;
-// TODO remove deprecated global config
-extern onnxruntime::rocm::TunableOpInfo tunable_op;
-extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
-}  // namespace python
-}  // namespace onnxruntime
-#endif
-
-#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
+#if defined(USE_MIGRAPHX)
 namespace onnxruntime {
 namespace python {
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
