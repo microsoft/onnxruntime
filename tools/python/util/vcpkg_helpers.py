@@ -26,7 +26,7 @@ def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal
     )
 """
     )
-    if (is_emscripten):
+    if is_emscripten:
         # workaround for https://github.com/google/benchmark/issues/2057
         f.write(
             r"""
@@ -40,8 +40,7 @@ def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal
         )
     f.write(r"""
 endif()  # benchmark
-"""
-    )
+""")
 
     f.write(
         r"""if(PORT MATCHES "date")
