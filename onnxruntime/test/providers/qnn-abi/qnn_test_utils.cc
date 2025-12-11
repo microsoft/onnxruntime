@@ -344,6 +344,17 @@ NodeArg* MakeTestQDQBiasInputABI(ModelTestBuilder& builder, const TestInputDef<f
   return bias;
 }
 
+// Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to
+// determine if the HTP backend is supported on specific platforms (e.g., Windows ARM64).
+// TODO: Remove once HTP can be emulated on Windows ARM64.
+class MockKernelLookup : public onnxruntime::IExecutionProvider::IKernelLookup {
+ public:
+  const KernelCreateInfo* LookUpKernel(const Node& /* node */) const {
+    // Do nothing.
+    return nullptr;
+  }
+};
+
 // Testing helper function that calls QNN EP's GetCapability() function with a mock graph to check
 // if the HTP backend is available.
 // TODO: Remove once HTP can be emulated on Windows ARM64.
@@ -395,7 +406,9 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
   if (!EpGraph::Create(graph_viewer, ep_graph).IsOK()) {
     return BackendSupport::UNSUPPORTED;
   }
-  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
+
+  MockKernelLookup kernel_lookup;
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph, kernel_lookup);
 
   RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
@@ -480,7 +493,9 @@ void QnnABIHTPBackendTests::TearDownTestSuite() {
     LOGS(logger, WARNING) << "Failed to tear down QnnABIHTPBackendTests.";
     return;
   }
-  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
+
+  MockKernelLookup kernel_lookup;
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph, kernel_lookup);
 
   RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
@@ -531,7 +546,9 @@ static BackendSupport GetGPUSupport(const onnxruntime::logging::Logger& logger) 
   if (!EpGraph::Create(graph_viewer, ep_graph).IsOK()) {
     return BackendSupport::UNSUPPORTED;
   }
-  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
+
+  MockKernelLookup kernel_lookup;
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph, kernel_lookup);
 
   RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
@@ -621,7 +638,9 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger, 
   if (!EpGraph::Create(graph_viewer, ep_graph).IsOK()) {
     return BackendSupport::UNSUPPORTED;
   }
-  OrtEpGraphSupportInfo graph_support_info(*ep_graph);
+
+  MockKernelLookup kernel_lookup;
+  OrtEpGraphSupportInfo graph_support_info(*ep_graph, kernel_lookup);
 
   RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;

@@ -61,9 +61,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
             Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"));
 #endif
-#if USE_ROCM
-            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
-#endif
         }
     }
 
@@ -493,4 +490,3 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
     }
 }
-

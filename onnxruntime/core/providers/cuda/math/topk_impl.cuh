@@ -485,7 +485,7 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
                                                  int64_t N,                        \
                                                  int64_t dimension)
 
-// This file is causing excessive long compilation time in ROCm EP. Split all those compilations into multiple
+// This file is causing excessive long compilation time. Split all those compilations into multiple
 // translation units to speed it up.
 TOPKIMPLE(TOPK_IMPL_TYPE);
 

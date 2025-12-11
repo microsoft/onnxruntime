@@ -107,7 +107,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
       .RunWithConfig();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(GatherOpTest, Gather_invalid_index_gpu) {
   OpTester test("Gather");
   // Invalid index 3. data[3] does not exist.
@@ -126,8 +126,6 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
   test
 #if defined(USE_CUDA)
       .ConfigEp(DefaultCudaExecutionProvider())
-#else
-      .ConfigEp(DefaultRocmExecutionProvider())
 #endif
       .RunWithConfig();
 }
@@ -440,9 +438,6 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_PositiveAxis) {
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
-#endif
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
@@ -463,9 +458,6 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_NegativeAxis) {
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
@@ -488,9 +480,6 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidIndicesRank) {
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
-#endif
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
@@ -511,9 +500,6 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidInputRank) {
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);

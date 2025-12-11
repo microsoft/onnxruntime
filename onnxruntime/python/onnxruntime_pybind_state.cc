@@ -509,27 +509,6 @@ const CANNExecutionProviderInfo GetCannExecutionProviderInfo(ProviderInfo_CANN* 
 }
 #endif
 
-#ifdef USE_ROCM
-const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
-                                                             const ProviderOptionsMap& provider_options_map) {
-  ORT_ENFORCE(rocm_provider_info);
-  const auto it = provider_options_map.find(kRocmExecutionProvider);
-  ROCMExecutionProviderInfo info;
-  if (it != provider_options_map.end())
-    rocm_provider_info->ROCMExecutionProviderInfo__FromProviderOptions(it->second, info);
-  else {
-    info.device_id = cuda_device_id;
-    info.gpu_mem_limit = gpu_mem_limit;
-    info.arena_extend_strategy = arena_extend_strategy;
-    info.miopen_conv_exhaustive_search = miopen_conv_exhaustive_search;
-    info.do_copy_in_default_stream = do_copy_in_default_stream;
-    info.external_allocator_info = external_allocator_info;
-    info.tunable_op = tunable_op;
-  }
-  return info;
-}
-#endif
-
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
   if (auto* tensorrt_provider_info = TryGetProviderInfo_TensorRT()) {
@@ -1029,26 +1008,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                              "make sure they're in the PATH, and that your GPU is supported.";
 #endif  // defined(USE_CUDA)
 #endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
-  } else if (type == kRocmExecutionProvider) {
-#ifdef USE_ROCM
-    if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
-      const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
-                                                                          provider_options_map);
-
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated,
-      // however they still exist and are in-use. Nevertheless, it is used to return ROCMAllocator, hence we must
-      // try to initialize it here if we can since FromProviderOptions might contain external ROCM allocator.
-      external_allocator_info = info.external_allocator_info;
-      return rocm_provider_info->CreateExecutionProviderFactory(info);
-    } else {
-      if (!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
-        ORT_THROW(
-            "ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version "
-            "of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, "
-            "and that your GPU is supported.");
-      }
-    }
-#endif
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate dnnl_options
@@ -1475,7 +1434,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
 }
 
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE) || \
-    defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
+    defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 static void LogDeprecationWarning(
     const std::string& deprecated, const optional<std::string>& alternative = nullopt) {
   LOGS_DEFAULT(WARNING) << "This is DEPRECATED and will be removed in the future: " << deprecated;
@@ -1629,7 +1588,7 @@ void addGlobalMethods(py::module& m) {
       "Gets the dynamically selected OpenVINO device type for inference.");
 #endif
 
-#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   /*
    * The following set_* methods are deprecated.
    *
@@ -1639,40 +1598,30 @@ void addGlobalMethods(py::module& m) {
    */
   // TODO remove deprecated global config
   m.def("set_cuda_device_id", [](const int id) {
-    LogDeprecationWarning("set_cuda_device_id", "CUDA/ROCM execution provider option \"device_id\"");
+    LogDeprecationWarning("set_cuda_device_id", "CUDA execution provider option \"device_id\"");
     cuda_device_id = static_cast<OrtDevice::DeviceId>(id);
   });
   // TODO remove deprecated global config
   m.def("set_cudnn_conv_algo_search", [](const OrtCudnnConvAlgoSearch algo) {
     LogDeprecationWarning("set_cudnn_conv_algo_search", "CUDA execution provider option \"cudnn_conv_algo_search\"");
-#ifdef USE_ROCM
-    ORT_UNUSED_PARAMETER(algo);
-    ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
-#else
     cudnn_conv_algo_search = algo;
-#endif
   });
   // TODO remove deprecated global config
   m.def("set_do_copy_in_default_stream", [](const bool use_single_stream) {
     LogDeprecationWarning(
         "set_do_copy_in_default_stream", "CUDA execution provider option \"do_copy_in_default_stream\"");
-#ifdef USE_ROCM
-    ORT_UNUSED_PARAMETER(use_single_stream);
-    ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
-#else
     do_copy_in_default_stream = use_single_stream;
-#endif
   });
   // TODO remove deprecated global config
   m.def("set_gpu_mem_limit", [](const int64_t limit) {
     LogDeprecationWarning(
         "set_gpu_mem_limit",
-        "CUDA execution provider option \"gpu_mem_limit\", ROCM execution provider option \"gpu_mem_limit\"");
+        "CUDA execution provider option \"gpu_mem_limit\"");
     gpu_mem_limit = gsl::narrow<size_t>(limit);
   });
   // TODO remove deprecated global config
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) {
-    LogDeprecationWarning("set_arena_extend_strategy", "CUDA/ROCM execution provider option \"arena_extend_strategy\"");
+    LogDeprecationWarning("set_arena_extend_strategy", "CUDA execution provider option \"arena_extend_strategy\"");
     arena_extend_strategy = strategy;
   });
 #endif
@@ -1825,7 +1774,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
              } else if (type == OrtDevice::GPU) {
 #if USE_CUDA || USE_NV || USE_NV_PROVIDER_INTERFACE || USE_CUDA_PROVIDER_INTERFACE
                vendor = OrtDevice::VendorIds::NVIDIA;
-#elif USE_ROCM || USE_MIGRAPHX
+#elif USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
 #endif
              } else if (type == OrtDevice::NPU) {
@@ -1892,7 +1841,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::class_<OrtSyncStream> py_sync_stream(m, "OrtSyncStream",
                                            R"pbdoc(Represents a synchronization stream for model inference.)pbdoc");
-  py_sync_stream.def("get_handle", [](OrtSyncStream* stream) -> uintptr_t { 
+  py_sync_stream.def("get_handle", [](OrtSyncStream* stream) -> uintptr_t {
       Ort::UnownedSyncStream ort_stream(stream);
       return reinterpret_cast<uintptr_t>(ort_stream.GetHandle()); }, R"pbdoc(SyncStream handle that can be converted to a string and added to SessionOptions)pbdoc");
 
@@ -2006,7 +1955,7 @@ for model inference.)pbdoc");
       .def_property_readonly("allocator_type", [](const OrtMemoryInfo* mem_info) -> OrtAllocatorType { return mem_info->alloc_type; }, R"pbdoc(Allocator type)pbdoc")
       .def_property_readonly("device_mem_type", [](const OrtMemoryInfo* mem_info) -> OrtDeviceMemoryType {
               auto mem_type = mem_info->device.MemType();
-              return (mem_type == OrtDevice::MemType::DEFAULT) ? 
+              return (mem_type == OrtDevice::MemType::DEFAULT) ?
                   OrtDeviceMemoryType_DEFAULT: OrtDeviceMemoryType_HOST_ACCESSIBLE ; }, R"pbdoc(Device memory type (Device or Host accessible).)pbdoc")
       .def_property_readonly("device_vendor_id", [](const OrtMemoryInfo* mem_info) -> uint32_t { return mem_info->device.Vendor(); });
 
@@ -2748,7 +2697,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             auto res = sess->GetSessionHandle()->GetModelMetadata();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+      .def_property_readonly("input_meminfos", [](const PyInferenceSession* sess) -> py::list {
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto inputs_mem_info = session.GetMemoryInfoForInputs();
           py::list result;
@@ -2757,7 +2706,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             result.append(py::cast(p_info, py::return_value_policy::reference));
           }
           return result; })
-      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list { 
+      .def_property_readonly("output_meminfos", [](const PyInferenceSession* sess) -> py::list {
           Ort::ConstSession session(reinterpret_cast<const OrtSession*>(sess->GetSessionHandle()));
           auto outputs_mem_info = session.GetMemoryInfoForOutputs();
           py::list result;
