@@ -122,13 +122,10 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& b,
                         const ShaderIndicesHelper* batch_dims,
                         bool transA,
-                        bool transB,
-                        bool is_vec4,
-                        bool use_subgroup) {
-  // Always read A with 1-component when using subgroup.
-  int components = use_subgroup ? 1 : (is_vec4 ? 4 : 1);
+                        bool transB) {
+  const int a_components = a.NumComponents();
   const std::string data_type = "output_element_t";
-  std::string type_string = MakeScalarOrVectorType(components, data_type);
+  std::string type_string = MakeScalarOrVectorType(a_components, data_type);
 
   shader.AdditionalImplementation()
       << "fn mm_readA(batch: i32, row: i32, colIn: i32 "
@@ -137,7 +134,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
               : "")
       << ") -> " << type_string << " {\n"
       << "  var value = " << type_string << "(0);\n"
-      << "  let col = colIn * " << components << ";\n";
+      << "  let col = colIn * " << a_components << ";\n";
   if (transA) {
     shader.AdditionalImplementation() << "  if(row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_a_outer)) {\n";
   } else {
@@ -156,8 +153,8 @@ void MatMulReadFnSource(ShaderHelper& shader,
                                     << "}\n\n";
 
   // Add the mm_readB function
-  components = is_vec4 ? 4 : 1;
-  type_string = MakeScalarOrVectorType(components, data_type);
+  const int b_components = b.NumComponents();
+  type_string = MakeScalarOrVectorType(b_components, data_type);
   shader.AdditionalImplementation()
       << "fn mm_readB(batch: i32, row: i32, colIn: i32 "
       << (batch_dims
@@ -165,7 +162,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
               : "")
       << ") -> " << type_string << " {\n"
       << "  var value = " << type_string << "(0);\n"
-      << "  let col = colIn * " << components << ";\n";
+      << "  let col = colIn * " << b_components << ";\n";
 
   if (transB) {
     shader.AdditionalImplementation() << "  if(row < i32(uniforms.dim_b_outer) && col < i32(uniforms.dim_inner)) {\n";
@@ -188,12 +185,12 @@ void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper* bias,
                          bool is_gemm,
                          int c_components,
-                         int output_components,
                          bool c_is_scalar,
                          std::string activation_snippet,
                          bool is_channels_last,
                          bool use_split_k,
                          ProgramVariableDataType output_variable_type) {
+  const int output_components = output.NumComponents();
   shader.AdditionalImplementation()
       << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) {\n";
 

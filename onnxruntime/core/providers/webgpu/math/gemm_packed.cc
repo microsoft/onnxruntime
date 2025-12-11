@@ -23,7 +23,7 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
-    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_, is_vec4_);
+    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
   if (is_vec4_) {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_));
@@ -35,7 +35,7 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (need_handle_bias_) {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
   }
-  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, output_components_, c_is_scalar_);
+  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, c_is_scalar_);
 
   return Status::OK();
 }

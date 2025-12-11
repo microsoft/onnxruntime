@@ -14,7 +14,7 @@ namespace intel {
 class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
  public:
   GemmSubgroupProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul,
-                      int c_components, bool c_is_scalar, int output_components, bool is_vec4,
+                      int c_components, bool c_is_scalar, bool is_vec4,
                       const gsl::span<int64_t>& elements_per_thread)
       : Program{"GemmSubgroup"},
         transA_{transA},
@@ -24,7 +24,6 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
         need_handle_matmul_{need_handle_matmul},
         c_components_(c_components),
         c_is_scalar_(c_is_scalar),
-        output_components_(output_components),
         is_vec4_(is_vec4),
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
@@ -45,7 +44,6 @@ class GemmSubgroupProgram final : public Program<GemmSubgroupProgram> {
   bool need_handle_matmul_;
   int c_components_;
   bool c_is_scalar_ = false;
-  int output_components_;
   bool is_vec4_ = false;
   const InlinedVector<int64_t> elements_per_thread_;
 };

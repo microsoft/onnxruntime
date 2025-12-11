@@ -20,7 +20,7 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                              ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_, is_vec4_, true);
+    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
 
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, nullptr, is_vec4_, transA_, transB_,
@@ -29,7 +29,7 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (need_handle_bias_) {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
   }
-  MatMulWriteFnSource(shader, output, c, true, c_components_, output_components_, c_is_scalar_);
+  MatMulWriteFnSource(shader, output, c, true, c_components_, c_is_scalar_);
 
   return Status::OK();
 }
@@ -91,7 +91,7 @@ Status ApplyGemmIntel(const Tensor* a,
                                                (kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1]));
 
   GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar,
-                              output_components, is_vec4, elements_per_thread};
+                              is_vec4, elements_per_thread};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
@@ -102,7 +102,7 @@ Status ApplyGemmIntel(const Tensor* a,
     program.AddInput({c, ProgramTensorMetadataDependency::TypeAndRank, c_components});
   }
 
-  program.CacheHint(alpha, transA, transB, c_is_scalar, is_vec4, absl::StrJoin(elements_per_thread, "-"))
+  program.CacheHint(alpha, transA, transB, c_is_scalar, absl::StrJoin(elements_per_thread, "-"))
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(dispatch_x, dispatch_y, 1)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1)

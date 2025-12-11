@@ -27,8 +27,8 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
-  MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false, is_vec4_, true);
-  MatMulWriteFnSource(shader, output, bias, /* is_gemm = */ false, 1, is_vec4_ ? 4 : 1,
+  MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
+  MatMulWriteFnSource(shader, output, bias, /* is_gemm = */ false, 1,
                       false, apply_activation, /*is_channels_last = */ false);
   // generate the main function
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_));
@@ -111,7 +111,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   MatMulSubgroupProgram program{activation, has_bias, is_vec4, elements_per_thread};
   program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components)
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
