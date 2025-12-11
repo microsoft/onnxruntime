@@ -537,7 +537,7 @@ TEST(ConvTest, Conv2D_AutoPad2) {
 }
 
 
-TEST(ConvTest, Conv2D_Im2col_AutoPad) {
+TEST(ConvTest, Conv2D_AutoPad3) {
   ConvOpAndTestAttributes attrs = {
       "SAME_UPPER",           // auto_pad
       vector<int64_t>{1, 1},  // dilations
