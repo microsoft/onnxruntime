@@ -79,6 +79,7 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_UINT4 = 21,
   TensorProto_DataType_INT4 = 22,
   TensorProto_DataType_FLOAT4E2M1 = 23,
+  TensorProto_DataType_FLOAT8E8M0 = 24,
 };
 
 enum TensorProto_DataLocation : int {
@@ -98,7 +99,8 @@ enum Version : int {
   IR_VERSION_2021_7_31 = 8,
   IR_VERSION_2023_5_5 = 9,
   IR_VERSION_2024_3_25 = 10,
-  IR_VERSION = 11
+  IR_VERSION_2025_05_12 = 11,
+  IR_VERSION = 12
 };
 
 enum OperatorStatus : int {
