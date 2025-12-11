@@ -10,6 +10,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
+#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+
 // Use the CPU implementation for the logic
 class If final : public onnxruntime::If {
  public:
@@ -17,6 +19,16 @@ class If final : public onnxruntime::If {
 
   Status Compute(OpKernelContext* ctx) const override;
 };
+
+#else
+
+class If final : public OpKernel {
+ public:
+  If(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* ctx) const override;
+};
+#endif
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -69,8 +69,13 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         If);
 
 Status If::Compute(OpKernelContext* ctx) const {
+#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
   // call the base CPU version.
   return onnxruntime::If::Compute(ctx);
+#else
+  // TODO(fs-eire): implement WebGPU If kernel
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "If operator is not implemented for WebGPU EP yet.");
+#endif
 }
 
 }  // namespace webgpu

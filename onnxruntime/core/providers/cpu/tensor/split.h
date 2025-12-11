@@ -22,7 +22,8 @@ class SplitBase {
                            std::vector<int64_t>& split_sizes) const;
 
  protected:
-  SplitBase(const OpKernelInfo& info, uint32_t opset) : opset_{opset} {
+  template <typename KernelInfoType>
+  SplitBase(const KernelInfoType& info, uint32_t opset) : opset_{opset} {
     axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
 
     size_t num_inputs = info.GetInputCount();
