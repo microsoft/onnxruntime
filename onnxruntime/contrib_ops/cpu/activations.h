@@ -90,6 +90,7 @@ class QuickGelu : public OpKernel {
 
             MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
           } else {
+            // SILU activation - this needs no `alpha_` scaling as `alpha_` will be 1.0f
             MlasComputeLogistic(p_input, p_output, onnxruntime::narrow<size_t>(count));
           }
 
