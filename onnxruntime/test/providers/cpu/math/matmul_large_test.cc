@@ -166,24 +166,14 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   test.RunWithConfig();
 }
 
-TEST(MatMul_Large, Float32) {
-  RunTestTyped<float, 13>({512, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({511, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({511, 1024}, {1024, 1023});
-  RunTestTyped<float, 13>({1, 512, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({2, 512, 1024}, {1024, 1024});
-  RunTestTyped<float, 13>({2, 512, 1024}, {2, 1024, 1024});
-  RunTestTyped<float, 13>({2, 2, 512, 1024}, {2, 1024, 1024});
-}
+TEST(MatMul_Large, Float) {
+  std::vector<std::pair<std::initializer_list<int64_t>, std::initializer_list<int64_t>>> tests = {
+      {{128, 64}, {64, 1024}}, {{127, 64}, {64, 1024}}, {{127, 63}, {63, 1023}}, {{2, 128, 64}, {64, 1024}}, {{2, 128, 64}, {2, 64, 1024}}, {{2, 2, 128, 64}, {2, 64, 1024}}, {{2, 128, 64}, {64, 1023}}, {{2, 128, 64}, {2, 64, 1023}}, {{2, 2, 128, 64}, {2, 64, 1023}}};
 
-TEST(MatMul_Large, Float16) {
-  RunTestTyped<MLFloat16, 13>({512, 1024}, {1024, 1024});
-  RunTestTyped<MLFloat16, 13>({511, 1024}, {1024, 1024});
-  RunTestTyped<MLFloat16, 13>({511, 1024}, {1024, 1023});
-  RunTestTyped<MLFloat16, 13>({1, 512, 1024}, {1024, 1024});
-  RunTestTyped<MLFloat16, 13>({2, 512, 1024}, {1024, 1024});
-  RunTestTyped<MLFloat16, 13>({2, 512, 1024}, {2, 1024, 1024});
-  RunTestTyped<MLFloat16, 13>({2, 2, 512, 1024}, {2, 1024, 1024});
+  for (auto& test : tests) {
+    RunTestTyped<float, 13>(test.first, test.second);
+    RunTestTyped<MLFloat16, 13>(test.first, test.second);
+  }
 }
 
 }  // namespace test
