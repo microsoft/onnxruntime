@@ -135,7 +135,7 @@ stages:
         export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
         export LANG=en_US.UTF-8
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c pod install --verbose
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/react_native/e2e/ios'
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
     # Run unit tests on iOS simulator
