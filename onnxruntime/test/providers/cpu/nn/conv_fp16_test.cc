@@ -6,6 +6,7 @@
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(USE_WEBGPU)
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
