@@ -282,6 +282,8 @@ MlasLUTPackScalesAndZeroPoints(
  */
 bool MLASCALL
 MlasIsLUTGemmAvailable(
+    size_t N,
+    size_t K,
     size_t BlkBitWidth,
     size_t BlkLen
 );

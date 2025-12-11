@@ -15,17 +15,17 @@ module includes kernel functions for generating LUT for T-MAC GEMM optimization 
 /** T-MAC GEMM kernel Config */
 static std::unordered_map<std::string, struct MlasTMACKernelParams> tmac_kernel_configs;
 
-const MlasTMACKernelParams& MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits) {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits);
+const MlasTMACKernelParams& MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size) {
+    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
     if (tmac_kernel_configs.count(key)) {
         return tmac_kernel_configs[key];
     } else {
-        ORT_THROW("T-MAC kernel parameters not initialized for M=", M, ", N=", N, ", nbits=", nbits);
+        ORT_THROW("T-MAC kernel parameters not initialized for M=", M, ", N=", N, ", nbits=", nbits, ", block_size=", block_size);
     }
 }
 
 void MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zp_point) {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits);
+    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
     if (tmac_kernel_configs.count(key)) {
         return;
     }
@@ -109,7 +109,7 @@ size_t MlasLUTGemmPackQuantBDataSize(
     bool HasZeroPoint
 )
 {
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth, BlkLen);
     const size_t PackedQuantBDataSize = (N * BlkBitWidth) * (K / tmac_params.g / tmac_params.ngroups_per_elem);
     return PackedQuantBDataSize;
 }
@@ -127,7 +127,7 @@ MlasLUTGemmPackQuantBData(
 )
 {
     // decompose W into w1,... w_bits create temp buffer buf2 of size N * bits * (K/g)
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth, BlkLen);
     const size_t bits = tmac_params.bits;
     const size_t g = tmac_params.g;
     const size_t ngroups_per_elem = tmac_params.ngroups_per_elem;
@@ -275,7 +275,7 @@ void MlasLUTPackScalesAndZeroPoints(
     const uint8_t* QuantBZeroPoint
 )
 {
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth, BlkLen);
     const size_t bits = tmac_params.bits;
     const size_t simd_n_out = tmac_params.simd_n_out;
     const size_t bm = tmac_params.bm;
@@ -335,22 +335,47 @@ void MlasLUTPackScalesAndZeroPoints(
 
 
 bool MLASCALL MlasIsLUTGemmAvailable(
+    size_t N,
+    size_t K,
     size_t BlkBitWidth,
     size_t BlkLen
-) // TODO(Vraspar): fix the below to use smthg besides the gen kernel, add ComputeGemm
+)
 {
-    if (GetMlasPlatform().LUTGenKernel == nullptr) {
+    const auto* lut_kernel = GetMlasPlatform().LUTGenKernel;
+    if (lut_kernel == nullptr || lut_kernel->GenerateLUT == nullptr || lut_kernel->ComputeGemm == nullptr) {
         return false;
     }
 
-    if (BlkBitWidth != 2) {
+    // currently only 2-bit is supported
+    if (BlkBitWidth != 2 || BlkLen == 0 || (BlkLen % 32) != 0) {
         return false;
     }
 
-    if (BlkLen % 32 != 0) {
+    if (K % 32 != 0) {
         return false;
     }
 
+    size_t n_div = 0;
+    switch (BlkBitWidth) {
+        case 1:
+            n_div = 256;
+            break;
+        case 2:
+            n_div = 128;
+            break;
+        case 3:
+            n_div = 64;
+            break;
+        case 4:
+            n_div = 32;
+            break;
+        default:
+            return false;
+    }
+
+    if (N % n_div != 0) {
+        return false;
+    }
     return true;
 }
 
@@ -410,7 +435,7 @@ void MLASCALL MlasLUTGemm(
     // n_tiles_num = m * bits / bm;
 
     // TODO(vraspar): support other bitwidths
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, 2);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, 2, BlkLen);
     const size_t lut_scales_size = K / tmac_params.act_group_size;
     size_t lut_buffer_size = CalculateLUTBufferSize(N, K, M, tmac_params);
 

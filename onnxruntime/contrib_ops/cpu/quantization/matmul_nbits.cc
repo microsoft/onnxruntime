@@ -50,11 +50,6 @@ template <typename T>
 MLAS_QNBIT_GEMM_COMPUTE_TYPE
 GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
 
-  // TODO(vraspar): check against session option
-  if (MlasIsLUTGemmAvailable(nbits, block_size)) {
-    return TMAC;
-  }
-
   // For Fp32, only accuracy level 1 or 4 makes sense.
   // non-ARM CPU converts Fp16 to Fp32.
   // By converting Fp32 to Fp16, precision becomes worse. And due to the casting,
@@ -129,6 +124,7 @@ class MatMulNBits final : public OpKernel {
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
     prefer_lut_gemm_ = true;
+    prefer_lut_gemm_ = prefer_lut_gemm_ && MlasIsLUTGemmAvailable(N_, K_, nbits_, block_size_);
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -206,11 +202,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     return Status::OK();
   }
 
-  if (prefer_lut_gemm_ && !MlasIsLUTGemmAvailable(nbits_, block_size_)) {
-    return Status::OK();
-  }
-
-  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) && compute_type_ != TMAC) {
+  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) && !prefer_lut_gemm_) {
     return Status::OK();
   }
 
@@ -365,13 +357,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
       is_packed = false;
     }
 #endif  // MLAS_TARGET_AMD64_IX86
-  } else if (compute_type_ == TMAC) {
-    //TODO:: handle fp16 scales
-    // TMAC packs scales and zero points together by interleaving them
-
-
-
-  }
+  } 
 
   return Status::OK();
 }
@@ -874,7 +860,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // If this changes, i.e., if MlasIsQNBitGemmAvailable() can return true while
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
-    if (prefer_lut_gemm_ && MlasIsLUTGemmAvailable(nbits_, block_size_)) {
+    if (prefer_lut_gemm_) {
       return ComputeBPackedLUT(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
     }
 

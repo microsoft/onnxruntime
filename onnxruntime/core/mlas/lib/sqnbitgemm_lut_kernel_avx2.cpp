@@ -189,6 +189,10 @@ void partial_max_g4_int8_k8(float* lut_scales, const float* b) {
     *lut_scales = std::max(*lut_scales, scales);
 }
 
+
+// Current implementation requires (K * 4) == act_group_size and K >= 8
+// s0 = -1, s1 = 1
+// TODO: loop K
 inline void lut_ctor_g4_int8_impl(
     int32_t act_k,
     int8_t* qlut,
@@ -312,6 +316,7 @@ GenerateLUT_avx2(
     size_t N,
     size_t act_group_size
 ) {
+    // TODO: handle bitnet here
     const size_t kk_outer_max = K / act_group_size;
 
     for (int32_t kk_outer = 0; kk_outer < kk_outer_max; ++kk_outer) {
@@ -486,7 +491,7 @@ void TMACComputeGemm_avx2(
     }
 
     // get kernel config
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(M, K, 2);
+    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(M, K, 2, BlkLen);
 
 
 

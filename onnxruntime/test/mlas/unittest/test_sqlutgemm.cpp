@@ -186,11 +186,11 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K, bool WithThreadpool, bool Symmetric) {
-    if (!MlasIsLUTGemmAvailable(BlkBitWidth, BlkLen)) {
+    if (!MlasIsLUTGemmAvailable(N, K, BlkBitWidth, BlkLen)) {
       return 0;
     }
 
-    if (M < BlkLen || N < BlkLen || N < BlkLen) {
+    if (M < BlkLen || N < BlkLen) {
       return 0;
     }
 
@@ -221,6 +221,12 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
     size_t count = 0;
     for (bool with_threadpool : {true}) {
       for (bool symmetric : {true}) {
+
+		for (size_t b = 256; b < 320; b += 32) {
+          count += RegisterSingleTest(b, b, b, with_threadpool, symmetric);
+        }
+
+
         count += RegisterSingleTest(64, 128, 128, with_threadpool, symmetric);
         count += RegisterSingleTest(128, 256, 256, with_threadpool, symmetric);
       }
