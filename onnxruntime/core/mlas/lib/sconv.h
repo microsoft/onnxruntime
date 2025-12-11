@@ -36,7 +36,7 @@ LoadInputVectorWithBounds(
     const float* row_end
 )
 {
-    if (ptr >= row_start && ptr < row_end) {
+    if (ptr >= row_start && (ptr + 3) < row_end) {
         return MlasLoadFloat32x4(ptr);
     }
     return MlasBroadcastFloat32x4(0.0f);
