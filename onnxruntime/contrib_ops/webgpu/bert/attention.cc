@@ -103,13 +103,19 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
                             << "let m = u32(workgroup_idx / uniforms.num_total_seq_length_tile) % uniforms.num_seq_length_tile  * TILE_SIZE;\n"
                             << "let n = (workgroup_idx % uniforms.num_total_seq_length_tile) * TILE_SIZE;\n"
-                            << "let batch_head_idx = u32(workgroup_idx / (uniforms.num_total_seq_length_tile * uniforms.num_seq_length_tile));\n"
-                            << "let batch_idx = batch_head_idx / uniforms.num_heads;\n"
-                            << "let head_idx = batch_head_idx % uniforms.num_heads;\n";
+                            << "let batch_head_idx = u32(workgroup_idx / (uniforms.num_total_seq_length_tile * uniforms.num_seq_length_tile));\n";
+
+  if (has_seqlen_k_ || (has_attention_bias_ && broadcast_attn_bias_dim_1_ && !broadcast_attn_bias_dim_0_)) {
+    shader.MainFunctionBody() << "let batch_idx = batch_head_idx / uniforms.num_heads;\n";
+  }
+
+  if (has_attention_bias_ && broadcast_attn_bias_dim_0_ && !broadcast_attn_bias_dim_1_) {
+    shader.MainFunctionBody() << "let head_idx = batch_head_idx % uniforms.num_heads;\n";
+  }
 
   if (has_attention_bias_) {
     if (broadcast_attn_bias_dim_0_ && broadcast_attn_bias_dim_1_) {
-      shader.MainFunctionBody() << "let bias_batch_head_idx = 0u;\n";
+      // bias_batch_head_idx is 0
     } else if (broadcast_attn_bias_dim_0_) {
       shader.MainFunctionBody() << "let bias_batch_head_idx = head_idx;\n";
     } else if (broadcast_attn_bias_dim_1_) {
@@ -187,7 +193,13 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
   if (has_attention_bias_) {
-    shader.MainFunctionBody() << " + attention_bias[bias_batch_head_idx * uniforms.M * uniforms.N + in_head_pos]";
+    shader.MainFunctionBody() << " + attention_bias[";
+    if (broadcast_attn_bias_dim_0_ && broadcast_attn_bias_dim_1_) {
+      shader.MainFunctionBody() << "in_head_pos";
+    } else {
+      shader.MainFunctionBody() << "bias_batch_head_idx * uniforms.M * uniforms.N + in_head_pos";
+    }
+    shader.MainFunctionBody() << "]";
   }
   shader.MainFunctionBody() << ";\n"
                             << "}\n";
