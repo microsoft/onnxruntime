@@ -118,6 +118,7 @@ static bool IsSupportedDataType(ONNXTensorElementDataType data_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:         // kINT64 - 64-bit signed integer
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:  // kFP8 - 8-bit floating point
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:        // kDOUBLE - 64-bit floating point
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:    // kFP4 - 4-bit floating point
       return true;
     default:
       return false;
@@ -692,6 +693,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, uint8_t)
       default: {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -756,6 +758,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, int32_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, uint8_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, uint8_t)
     default: {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP output tensor data type: " + std::to_string(output_type) + " not supported.");
@@ -766,7 +769,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 
 NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
   // Only set device if user hasn't provided a compute stream
-  if (has_user_compute_stream) {
+  if (!has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
     (void)stream;
   }
@@ -982,6 +985,17 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   } else {
     external_stream_ = false;
     stream_ = nullptr;  // Will be created in compute function
+  }
+
+  if (info.user_aux_stream_array != nullptr) {
+    if (info.auxiliary_streams <= 0) {
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Auxiliary streams must be greater than 0 when using external auxiliary streams"));
+    }
+    external_aux_streams_ = true;
+    aux_streams_ = reinterpret_cast<cudaStream_t*>(info.user_aux_stream_array);
+  } else {
+    external_aux_streams_ = false;
+    aux_streams_ = nullptr;
   }
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
@@ -3039,6 +3053,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP select an optimization profile for the current context failed");
     }
 
+    // Set auxiliary stream if provided by user
+    if (external_aux_streams_ && aux_streams_ != nullptr) {
+      trt_context->setAuxStreams(aux_streams_, (int32_t)auxiliary_streams_);
+    }
+
     // Check before using trt_engine
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "No engine is found.");
@@ -3448,6 +3467,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
         trt_state->context_memory_size = mem_size;
         trt_context->setDeviceMemoryV2(trt_state->context_memory.get(), mem_size);
       }
+    }
+
+    // Set auxiliary stream if provided by user
+    if (external_aux_streams_ && aux_streams_ != nullptr) {
+      trt_context->setAuxStreams(aux_streams_, (int32_t)auxiliary_streams_);
     }
 
     // Start CUDA graph capture with the correct stream
