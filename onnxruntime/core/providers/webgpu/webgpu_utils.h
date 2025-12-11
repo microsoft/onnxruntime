@@ -116,8 +116,15 @@ class SplitKConfig {
   bool enable_split_k_ = false;
   uint32_t split_dim_inner_ = 0;
   uint32_t min_dim_inner_with_split_k_ = 0;
-  uint32_t max_dim_inner_with_split_k_ = 0;
-  float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.0f;
+
+  uint32_t GetMaxDimInnerWithSplitK() const;
+
+  struct ConfigAtRange {
+    ConfigAtRange(uint32_t max_dim_inner, float rate);
+    uint32_t max_dim_inner_with_rate = 0;
+    float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner = 0.0f;
+  };
+  std::vector<ConfigAtRange> configs_per_dim_inner_range_;
 };
 
 /**
