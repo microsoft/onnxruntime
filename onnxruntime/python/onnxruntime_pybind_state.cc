@@ -2783,8 +2783,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               ORT_THROW("No options were provided");
             }
 
-            ORT_THROW_IF_ERROR(sess->GetSessionHandle()->SetEpDynamicOptions(keys, values));
-            },
+            ORT_THROW_IF_ERROR(sess->GetSessionHandle()->SetEpDynamicOptions(keys, values)); },
            R"pbdoc(Set dynamic options for execution providers.
 
           Args:
