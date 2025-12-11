@@ -11,7 +11,8 @@ namespace onnxruntime {
 template <bool allow_multi_axes>
 class ReduceKernelBase {
  protected:
-  ReduceKernelBase(const OpKernelInfo& info, optional<int64_t> keepdims_override = {}) {
+  template <typename KernelInfoType>
+  ReduceKernelBase(const KernelInfoType& info, optional<int64_t> keepdims_override = {}) {
     if (allow_multi_axes) {
       axes_ = ToShapeVector(info.GetAttrsOrDefault<int64_t>("axes"));
     } else {

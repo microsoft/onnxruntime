@@ -18,7 +18,8 @@ namespace onnxruntime {
 struct ConvAttributes {
   using ConvPadVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
 
-  explicit ConvAttributes(const OpKernelInfo& info) {
+  template <typename KernelInfoType>
+  explicit ConvAttributes(const KernelInfoType& info) {
     std::string auto_pad_str;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad_str);
     if (status.IsOK()) {
@@ -32,8 +33,8 @@ struct ConvAttributes {
       strides.resize(kernel_shape_.size(), 1);
     }
 
-    gsl::span<const int64_t> pads_span;
-    status = info.GetAttrsAsSpan("pads", pads_span);
+    std::vector<int64_t> pads_attr;
+    status = info.GetAttrs("pads", pads_attr);
     if (!status.IsOK()) {
       if (kernel_shape_specified) {
         // If pads are not explicitly provided, fill the container with all zeros
@@ -44,7 +45,7 @@ struct ConvAttributes {
       // Pads are explicitly provided, make sure that auto_pad is NOTSET
       ORT_ENFORCE(auto_pad == AutoPadType::NOTSET,
                   "A Conv/ConvTranspose node has both 'auto_pad' and 'pads' attributes");
-      pads.assign(pads_span.begin(), pads_span.end());
+      pads.assign(pads_attr.begin(), pads_attr.end());
     }
 
     status = info.GetAttrs("dilations", dilations);

@@ -24,7 +24,8 @@ struct PoolAttributes {
   // Shared providers don't know about OpNodeProtoHelper
   PoolAttributes(const OpKernelInfo& info,
 #else
-  PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info,
+  template <typename KernelInfoType>
+  PoolAttributes(const KernelInfoType& info,
 #endif
                  const std::string& op_name, int start_version)
       : global_pooling(IsGlobalPooling(op_name)) {
