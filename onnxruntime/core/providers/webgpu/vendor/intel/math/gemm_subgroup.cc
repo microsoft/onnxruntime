@@ -88,7 +88,7 @@ bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
     bool use_subgroup = (context.AdapterInfo().architecture == std::string_view{"xe-2lpg"} ||
                          context.AdapterInfo().architecture == std::string_view{"xe-2hpg"}) &&
-                        M >= 32 && N > 768 && K >= 32 && !transA && !transB;
+                        M >= 64 && N >= 512 && K >= 32 && !transA && !transB;
     return use_subgroup;
   }
 
