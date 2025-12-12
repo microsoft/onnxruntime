@@ -9,10 +9,8 @@ bool ScanReplacement::SatisfyCondition(const Graph& graph, const Node& node, con
   auto last_output = outputs.at(outputs.size() - 1);
 
   auto name = last_output->Name();
-  LOGS(logger, INFO) << name;
   if (name.size() < 8)
     return true;
-  LOGS(logger, INFO) << name.substr(name.size() - 8);
   return name.substr(name.size() - 8) != "_carries";
 }
 
@@ -22,8 +20,6 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   Graph* body = node.GetMutableGraphAttribute("body");
   ORT_ENFORCE(body != nullptr);
   auto n_carries = body->GetInputs().size() - attributes.at("num_scan_inputs").i();
-
-  LOGS(logger, INFO) << "Node name:" << node.Name();
 
   // Modify body subgraph. Make all carries per step output.
   auto& inputs = body->GetInputs();

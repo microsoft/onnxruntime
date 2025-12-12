@@ -170,16 +170,15 @@ class GradientBuilderBase {
 
   // gradient of i-th input of forward op
   ArgDef GII(const size_t i) const {
-	ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
-	return ArgDef(GradientName(node_->ImplicitInputDefs()[i]->Name()), node_->ImplicitInputDefs()[i]->TypeAsProto());
+    ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
+    return ArgDef(GradientName(node_->ImplicitInputDefs()[i]->Name()), node_->ImplicitInputDefs()[i]->TypeAsProto());
   }
 
   // gradient of i-th implicit input of forward op - useful when gradient type does not match input type
-  ArgDef GII(const size_t i, const TypeProto *type) const {
-	  ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
-	  return ArgDef(GradientName(node_->ImplicitInputDefs()[i]->Name()), type);
+  ArgDef GII(const size_t i, const TypeProto* type) const {
+    ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
+    return ArgDef(GradientName(node_->ImplicitInputDefs()[i]->Name()), type);
   }
-
 
   // gradient of i-th output of forward op
   ArgDef GO(const size_t i) const {
@@ -200,8 +199,8 @@ class GradientBuilderBase {
 
   // type of i-th implicit input of forward op
   const TypeProto* IIType(const size_t i) const {
-	  ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
-	  return node_->InputDefs()[i]->TypeAsProto();
+    ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
+    return node_->InputDefs()[i]->TypeAsProto();
   }
 
   // type of i-th output of forward op
@@ -217,7 +216,7 @@ class GradientBuilderBase {
 
   // Element type of i-th implicit input of forward op.
   int IIElemType(const size_t i) const {
-	  return IIType(i)->tensor_type().elem_type();
+    return IIType(i)->tensor_type().elem_type();
   }
 
   // Element type of i-th output of forward op.
@@ -231,8 +230,8 @@ class GradientBuilderBase {
   }
 
   int GetSrcNodeImplicitInputSize() const {
-	  ORT_ENFORCE(node_ != nullptr);
-	  return (int)node_->ImplicitInputDefs().size();
+    ORT_ENFORCE(node_ != nullptr);
+    return (int)node_->ImplicitInputDefs().size();
   }
 
   int GetSrcNodeOutputSize() const {
@@ -266,24 +265,10 @@ class GradientBuilderBase {
     return node_->GetAttributes();
   }
 
-  std::unique_ptr<Graph> Subgraph(const std::string& name) const {
-    ONNX_NAMESPACE::GraphProto* subgraph_proto = new ONNX_NAMESPACE::GraphProto(node_->GetAttributes().at(name).g());
-    /*
-    const Graph *original_subgraph = node_->GetGraphAttribute(name);
-    ORT_ENFORCE(original_subgraph != nullptr);
-    ONNX_NAMESPACE::GraphProto subgraph_proto = original_subgraph->ToGraphProto();
-    */
-    std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(*graph_, *node_, *subgraph_proto);
-
-    Graph::ResolveOptions options;
-    std::vector<Graph*> additional_graphs = {subgraph.get()};
-    options.additional_graphs = &additional_graphs;
-    ORT_THROW_IF_ERROR(subgraph->Resolve(options));
-    return subgraph;
-  }
-
-  std::unique_ptr<ONNX_NAMESPACE::GraphProto> SubgraphGradient(const std::string& name, std::function<void(std::vector<std::string>&, std::vector<std::string>&)> grad_func, std::function<void(Graph*)> adjust_func) const;
-  void SubgraphGradient(Graph* graph) const;
+  std::unique_ptr<ONNX_NAMESPACE::GraphProto> SubgraphGradient(
+      const std::string& name,
+      std::function<void(std::vector<std::string>&, std::vector<std::string>&)> grad_func,
+      std::function<void(Graph*)> adjust_func) const;
 
   const std::string& SrcNodeOpType() const {
     return node_->OpType();

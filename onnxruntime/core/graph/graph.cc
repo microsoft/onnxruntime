@@ -999,7 +999,7 @@ void Node::AddAttributeProto(AttributeProto value) {
   }
 
   if (is_subgraph)
-	  CreateSubgraph(name);
+    CreateSubgraph(name);
 }
 
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
@@ -3357,7 +3357,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
 #ifdef ENABLE_TRAINING
   for (auto subgraph : resolve_context_.isolated_graph) {
-    LOGS(logger_, INFO) << "Veryfing isolated subgraph";
     ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
   }
 #endif

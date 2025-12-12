@@ -175,123 +175,81 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
               {a_op, b_op}));
 }
 
-std::unique_ptr<ONNX_NAMESPACE::GraphProto> GradientBuilderBase::SubgraphGradient(const std::string &name, std::function<void(std::vector<std::string>&, std::vector<std::string>&)> grad_func, std::function<void(Graph*)> adjust_func) const {
-	const Graph *node_subgraph = node_->GetGraphAttribute(name);
-	ORT_ENFORCE(node_subgraph != nullptr);
-	auto implicit_inputs = node_->ImplicitInputDefs();
-	auto subgraph_proto = std::make_unique<ONNX_NAMESPACE::GraphProto>(node_subgraph->ToGraphProto());
+std::unique_ptr<ONNX_NAMESPACE::GraphProto> GradientBuilderBase::SubgraphGradient(
+    const std::string& name,
+    std::function<void(std::vector<std::string>&, std::vector<std::string>&)> grad_func,
+    std::function<void(Graph*)> adjust_func) const {
+  const Graph* node_subgraph = node_->GetGraphAttribute(name);
+  ORT_ENFORCE(node_subgraph != nullptr);
+  auto implicit_inputs = node_->ImplicitInputDefs();
+  auto subgraph_proto = std::make_unique<ONNX_NAMESPACE::GraphProto>(node_subgraph->ToGraphProto());
 
-	/*
-	for (auto &input : *subgraph_proto->mutable_input())
-		*input.mutable_name() = unique_node_prefix_ + input.name();
-	for (auto &output : *subgraph_proto->mutable_output())
-		*output.mutable_name() = unique_node_prefix_ + output.name();
-	for (auto &initializer : *subgraph_proto->mutable_initializer())
-		*initializer.mutable_name() = unique_node_prefix_ + initializer.name();
-	for (auto &node : *subgraph_proto->mutable_node())
-	{
-		for (auto& input : *node.mutable_input())
-		{
-			if (std::find_if(implicit_inputs.begin(), implicit_inputs.end(), [&input](const NodeArg* arg) { return arg->Name() == input; }) == implicit_inputs.end())
-				input = unique_node_prefix_ + input;
-		}
-		for (auto& output : *node.mutable_output())
-			output = unique_node_prefix_ + output;
-	}
-	//*/
+  std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(*graph_, *node_, *subgraph_proto);
+  for (auto ii : implicit_inputs)
+    subgraph->AddOuterScopeNodeArg(ii->Name());
 
-	std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(*graph_, *node_, *subgraph_proto);
-	// subgraph->SetName(GradientName(subgraph->Name()));  
-	for (auto ii : implicit_inputs)
-		subgraph->AddOuterScopeNodeArg(ii->Name());
+  std::vector<Graph*> additional_graph = {subgraph.get()};
+  Graph::ResolveOptions options;
+  options.additional_graphs = &additional_graph;
+  ORT_THROW_IF_ERROR(subgraph->Resolve(options));
 
-	std::vector<Graph*> additional_graph = {subgraph.get()};
-	Graph::ResolveOptions options;
-	options.additional_graphs = &additional_graph;
-	ORT_THROW_IF_ERROR(subgraph->Resolve(options));
+  // subgraph's gradient graph input and outputs
+  std::vector<const NodeArg*> inputs = subgraph->GetInputs();
+  std::vector<const NodeArg*> outputs = subgraph->GetOutputs();
 
-	// subgraph's gradient graph input and outputs
-	std::vector<const NodeArg*> inputs = subgraph->GetInputs();
-	std::vector<const NodeArg*> outputs = subgraph->GetOutputs();
-
-	GradientGraphConfiguration config = gradient_graph_config_;
-	config.set_gradients_as_graph_outputs = true;
-
-	std::vector<std::string> gradient_inputs;
-	std::vector<std::string> gradient_outputs;
-
-	for (auto output : subgraph->GetOutputs())
-		gradient_inputs.push_back(output->Name());
-
-	for (auto input : subgraph->GetInputs())
-		gradient_outputs.push_back(input->Name());
-
-	for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
-		if (IsGradientRequiredForSrcNodeImplicitInput(i))
-			gradient_outputs.push_back(II(i).name);
-
-	grad_func(gradient_inputs, gradient_outputs);
-
-	GradientGraphBuilder builder(subgraph.get(), std::unordered_set(gradient_inputs.begin(), gradient_inputs.end()), std::unordered_set(gradient_outputs.begin(), gradient_outputs.end()), "", config, logger_);
-	ORT_THROW_IF_ERROR(builder.Build(nullptr, true));
-
-	adjust_func(subgraph.get());
-
-	subgraph->SetGraphProtoSyncNeeded();
-	subgraph->ToGraphProto();
-
-	std::stringstream buf;
-	buf << "Inputs: ";
-	for (auto i : subgraph->GetInputs())
-		buf << i->Name() << ", ";
-	buf << std::endl << "Outputs: ";
-	for (auto i : subgraph->GetOutputs())
-		buf << i->Name() << ", ";
-	buf << std::endl;
-	LOGS(logger_, INFO) << buf.str();
-
-	///*
-	std::string prefix = subgraph->Name() + "_grad/";
-	std::unordered_set<std::string> orig_name;
-	for (auto& input : *subgraph_proto->mutable_input())
-	{
-		orig_name.insert(input.name());
-		if (!input.name().empty())
-			input.mutable_name()->insert(0, prefix);
-	}
-	for (auto& output : *subgraph_proto->mutable_output())
-		if (!output.name().empty())
-			output.mutable_name()->insert(0, prefix);
-	for (auto& node : *subgraph_proto->mutable_node())
-	{
-		for (auto& input : *node.mutable_input())
-			if (!input.empty() && (orig_name.find(input) != orig_name.end()))
-				input.insert(0, prefix);
-
-		for (auto& output : *node.mutable_output())
-		{
-			orig_name.insert(output);
-			if (!output.empty())
-				output.insert(0, prefix);
-		}
-	}
-	//*/
-	return subgraph_proto;
-}
-
-void GradientBuilderBase::SubgraphGradient(Graph* graph) const {
-  auto config = gradient_graph_config_;
-  std::unordered_set<std::string> grad_input;
-  std::unordered_set<std::string> grad_output;
+  GradientGraphConfiguration config = gradient_graph_config_;
   config.set_gradients_as_graph_outputs = true;
 
-  for (auto o : graph->GetOutputs())
-    grad_input.insert(o->Name());
-  for (auto i : graph->GetInputs())
-    grad_output.insert(i->Name());
+  std::vector<std::string> gradient_inputs;
+  std::vector<std::string> gradient_outputs;
 
-  GradientGraphBuilder builder(graph, grad_input, grad_output, "", config, logger_);
+  for (auto output : subgraph->GetOutputs())
+    gradient_inputs.push_back(output->Name());
+
+  for (auto input : subgraph->GetInputs())
+    gradient_outputs.push_back(input->Name());
+
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
+    if (IsGradientRequiredForSrcNodeImplicitInput(i))
+      gradient_outputs.push_back(II(i).name);
+
+  grad_func(gradient_inputs, gradient_outputs);
+
+  GradientGraphBuilder builder(
+      subgraph.get(),
+      std::unordered_set(gradient_inputs.begin(), gradient_inputs.end()),
+      std::unordered_set(gradient_outputs.begin(), gradient_outputs.end()),
+      "", config, logger_);
   ORT_THROW_IF_ERROR(builder.Build(nullptr, true));
+
+  adjust_func(subgraph.get());
+
+  subgraph->SetGraphProtoSyncNeeded();
+  subgraph->ToGraphProto();
+
+  // Add prefix to avoid name conflict
+  std::string prefix = subgraph->Name() + "_grad/";
+  std::unordered_set<std::string> orig_name;
+  for (auto& input : *subgraph_proto->mutable_input()) {
+    orig_name.insert(input.name());
+    if (!input.name().empty())
+      input.mutable_name()->insert(0, prefix);
+  }
+  for (auto& output : *subgraph_proto->mutable_output())
+    if (!output.name().empty())
+      output.mutable_name()->insert(0, prefix);
+  for (auto& node : *subgraph_proto->mutable_node()) {
+    for (auto& input : *node.mutable_input())
+      if (!input.empty() && (orig_name.find(input) != orig_name.end()))
+        input.insert(0, prefix);
+
+    for (auto& output : *node.mutable_output()) {
+      orig_name.insert(output);
+      if (!output.empty())
+        output.insert(0, prefix);
+    }
+  }
+  return subgraph_proto;
 }
 
 void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
