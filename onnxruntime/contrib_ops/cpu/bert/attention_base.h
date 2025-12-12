@@ -32,7 +32,8 @@ class AttentionBase {
                      int& past_sequence_length) const;
 
  protected:
-  AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
+  template <typename KernelInfoType>
+  AttentionBase(const KernelInfoType& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
     num_heads_ = static_cast<int>(num_heads);

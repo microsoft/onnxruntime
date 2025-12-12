@@ -37,7 +37,8 @@ class TransposeBase {
                             concurrency::ThreadPool* tp = nullptr);
 
  protected:
-  TransposeBase(const OpKernelInfo& info) {
+  template <typename KernelInfoType>
+  TransposeBase(const KernelInfoType& info) {
     std::vector<int64_t> temp_perm;
     Status status = info.GetAttrs<int64_t>("perm", temp_perm);
     if (status.IsOK()) {

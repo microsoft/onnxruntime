@@ -47,6 +47,20 @@ class PadBase {
                           PadsVector& pads);
 
   /// <summary>
+  /// Compute Pads by applying axes if specified otherwise copy the supplied pads.
+  ///
+  /// The function queries optional axes input (since version 18) and if present,
+  /// applies it as a mask to the pads. If axes is not present, the pads are copied as is.
+  /// If axes are present, they  are used as a mask over pads, so only those axes are being padded.
+  /// </summary>
+  /// <param name="axes_tensor">optional axes tensor</param>
+  /// <param name="data_rank">input rank</param>
+  /// <param name="pads_data">pads data from pads input</param>
+  /// <param name="pads">resulting pads</param>
+  static void ComputePads(const Tensor* axes_tensor, size_t data_rank, gsl::span<const int64_t> pads_data,
+                          PadsVector& pads);
+
+  /// <summary>
   /// Separates negative pad values to slices and zeros them out in original pads.
   /// Leaving the rest of slices values as zero.
   ///
@@ -95,7 +109,8 @@ class PadBase {
                           size_t inner_no_pad_size, PadsVector& reshaped_pad);
 
  protected:
-  PadBase(const OpKernelInfo& info) : value_(info.GetAttrOrDefault("value", 0.f)) {
+  template <typename KernelInfoType>
+  PadBase(const KernelInfoType& info) : value_(info.GetAttrOrDefault("value", 0.f)) {
     std::string mode;
     if (info.GetAttr("mode", &mode).IsOK()) {
       if (mode == "constant")
@@ -121,10 +136,10 @@ class PadBase {
     }
 
     if (!is_dynamic_) {
-      gsl::span<const int64_t> pads_span;
-      if (!info.GetAttrsAsSpan("pads", pads_span).IsOK())
+      std::vector<int64_t> pads_attr;
+      if (!info.GetAttrs("pads", pads_attr).IsOK())
         ORT_THROW("Invalid 'pads' attribute value");
-      pads_.assign(pads_span.begin(), pads_span.end());
+      pads_.assign(pads_attr.begin(), pads_attr.end());
       // Separate out any negative pads_ into the slices_ array
       slices_.resize(pads_.size(), 0);
       for (size_t index = 0; index < pads_.size(); index++) {

@@ -128,7 +128,8 @@ class UpsampleBase {
                                 InlinedVector<float>& scales) const;
 
  protected:
-  explicit UpsampleBase(const OpKernelInfo& info)
+  template <typename KernelInfoType>
+  explicit UpsampleBase(const KernelInfoType& info)
       : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();

@@ -301,8 +301,12 @@ static void ComputePadWithAxes(
 
 void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                           PadsVector& pads) {
+  ComputePads(ctx.Input<Tensor>(3), data_rank, pads_data, pads);
+}
+
+void PadBase::ComputePads(const Tensor* axes_tensor, size_t data_rank, gsl::span<const int64_t> pads_data,
+                          PadsVector& pads) {
   pads.reserve(2 * data_rank);
-  const Tensor* axes_tensor = ctx.Input<Tensor>(3);
   if (axes_tensor) {
     const size_t num_axes_dims = axes_tensor->Shape().NumDimensions();
     ORT_ENFORCE(num_axes_dims == 1, "Axes tensor should be a 1D tensor ");
