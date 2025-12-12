@@ -1967,6 +1967,43 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertTrue(np.allclose(outputs[0], expected_output))
 
+    def test_get_graph_provider_partitioning_info(self):
+        """
+        Tests querying for information about the nodes assigned to the CPU EP.
+        """
+
+        # Create session options that enables recording EP graph partitioning info.
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("session.record_ep_graph_partitioning_info", "1")
+
+        session = onnxrt.InferenceSession(get_name("add_mul_add.onnx"), sess_options=session_options)
+
+        # Query session for information on each subgraph assigned to an EP.
+        ep_subgraphs = session.get_provider_graph_partitioning_info()
+
+        # Check that the single subgraph was assigned to CPU EP
+        self.assertEqual(len(ep_subgraphs), 1)
+        self.assertEqual(ep_subgraphs[0].ep_name, "CPUExecutionProvider")
+
+        # Get count of operator types and a list of all node names (prefixed by op type).
+        op_type_counts: dict[str, int] = {}
+        node_op_and_names: list[str] = []
+
+        for ep_node in ep_subgraphs[0].get_nodes():
+            node_op_and_names.append(f"{ep_node.op_type}/{ep_node.name}")
+
+            if ep_node.op_type not in op_type_counts:
+                op_type_counts[ep_node.op_type] = 1
+            else:
+                op_type_counts[ep_node.op_type] += 1
+
+        # Should have 1 Mul and 2 Adds.
+        self.assertEqual(op_type_counts.get("Mul", 0), 1)
+        self.assertEqual(op_type_counts.get("Add", 0), 2)
+        self.assertIn("Add/add_0", node_op_and_names)
+        self.assertIn("Add/add_1", node_op_and_names)
+        self.assertIn("Mul/mul_0", node_op_and_names)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

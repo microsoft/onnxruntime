@@ -37,6 +37,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
+#include "core/session/ep_graph_partition_info.h"
 #include "core/session/environment.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
@@ -869,6 +870,88 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
                                        run_async_callback,
                                        user_data));
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_subgraphs' argument is null");
+  }
+
+  if (num_ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_ep_subgraphs' argument is null");
+  }
+
+  auto inference_session = reinterpret_cast<const onnxruntime::InferenceSession*>(session);
+  const std::vector<const OrtEpAssignedSubgraph*>& partitioning_info = inference_session->GetEpGraphPartitioningInfo();
+
+  *ep_subgraphs = partitioning_info.data();
+  *num_ep_subgraphs = partitioning_info.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(session);
+  ORT_UNUSED_PARAMETER(ep_subgraphs);
+  ORT_UNUSED_PARAMETER(num_ep_subgraphs);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph partitioning information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API(const char*, OrtApis::EpAssignedSubgraph_EpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph) {
+#if !defined(ORT_MINIMAL_BUILD)
+  return ep_subgraph->ep_name.c_str();
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  fprintf(stderr, "EP graph partitioning information is not supported in this build\n");
+  return nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_nodes' argument is null");
+  }
+
+  if (num_ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_ep_nodes' argument is null");
+  }
+
+  *ep_nodes = ep_subgraph->nodes.data();
+  *num_ep_nodes = ep_subgraph->nodes.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(ep_nodes);
+  ORT_UNUSED_PARAMETER(num_ep_nodes);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph partitioning information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API(const char*, OrtApis::EpAssignedNode_Name, _In_ const OrtEpAssignedNode* ep_node) {
+#if !defined(ORT_MINIMAL_BUILD)
+  return ep_node->name.c_str();
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  fprintf(stderr, "EP graph partitioning information is not supported in this build\n");
+  return nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+}
+
+ORT_API(const char*, OrtApis::EpAssignedNode_OpType, _In_ const OrtEpAssignedNode* ep_node) {
+#if !defined(ORT_MINIMAL_BUILD)
+  return ep_node->op_type.c_str();
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  fprintf(stderr, "EP graph partitioning information is not supported in this build\n");
+  return nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 struct OrtIoBinding {
@@ -4238,6 +4321,11 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::TensorTypeAndShape_HasShape,
     &OrtApis::KernelInfo_GetConfigEntries,
+    &OrtApis::Session_GetEpGraphPartitioningInfo,
+    &OrtApis::EpAssignedSubgraph_EpName,
+    &OrtApis::EpAssignedSubgraph_GetNodes,
+    &OrtApis::EpAssignedNode_Name,
+    &OrtApis::EpAssignedNode_OpType,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
