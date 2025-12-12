@@ -28,7 +28,7 @@ class BackendManager {
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   SessionContext& GetSessionContext();
-  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph);
+  void TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph, bool include_embed_data);
   ov::CompiledModel GetOVCompiledModel();
   void RewindKVCache(size_t index);
 
