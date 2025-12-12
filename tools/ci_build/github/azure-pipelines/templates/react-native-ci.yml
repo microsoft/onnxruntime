@@ -138,26 +138,20 @@ stages:
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
-    # Run unit tests on iOS simulator
-    - task: Xcode@5
-      inputs:
-        actions: 'test'
-        configuration: 'Debug'
-        sdk: 'iphonesimulator'
-        xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace'
-        scheme: 'OnnxruntimeModuleTest'
-        packageApp: false
-        destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 15,OS=17.4'
-        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
-        xcprettyArgs: '--output build/reports/test-results.xml'
-        publishJUnitResults: true
-        testRunTitle: 'React Native iOS Instrumented Test Results'
-      displayName: Run React Native iOS Instrumented Tests
+    - script: |
+        set -e -x
+        detox build --configuration ios.sim.release
+        JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
+        detox test --record-logs all \
+                    --configuration ios.sim.release \
+                    --loglevel verbose \
+                    --take-screenshots failing
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: Build and Run Detox iOS e2e Tests
 
     - task: PublishTestResults@2
       inputs:
-        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml'
         failTaskOnFailedTests: true
         testRunTitle: 'React Native iOS Instrumented Test results'
       condition: succeededOrFailed()
