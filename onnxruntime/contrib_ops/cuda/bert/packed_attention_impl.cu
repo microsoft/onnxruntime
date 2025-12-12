@@ -418,6 +418,40 @@ Status LaunchTransposeRemovePadding(
   return CUDA_CALL(cudaGetLastError());
 }
 
+template <>
+Status LaunchTransposeRemovePadding(
+    BFloat16* output, const BFloat16* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream) {
+  // Make sure memory is aligned to 128 bit
+  ORT_ENFORCE(!(reinterpret_cast<size_t>(input) & 0xF) && !(reinterpret_cast<size_t>(output) & 0xF), "alignment");
+
+  if (head_size % 8 == 0) {
+    const int4* input2 = reinterpret_cast<const int4*>(input);
+    int4* output2 = reinterpret_cast<int4*>(output);
+    TransposeRemovePadding<int4><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 8);
+  } else if (head_size % 4 == 0) {
+    const int64_t* input2 = reinterpret_cast<const int64_t*>(input);
+    int64_t* output2 = reinterpret_cast<int64_t*>(output);
+    TransposeRemovePadding<int64_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 4);
+  } else if (head_size % 2 == 0) {
+    const int32_t* input2 = reinterpret_cast<const int32_t*>(input);
+    int32_t* output2 = reinterpret_cast<int32_t*>(output);
+    TransposeRemovePadding<int32_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 2);
+  } else {
+    const int16_t* input2 = reinterpret_cast<const int16_t*>(input);
+    int16_t* output2 = reinterpret_cast<int16_t*>(output);
+    TransposeRemovePadding<int16_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size);
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
 // input: [batch_size, number_heads, seq_len, head_size]
 // output: [token_count, number_heads * head_size]
 template <>
@@ -711,6 +745,13 @@ template Status QkvToContext<half>(
     PackedAttentionParameters& parameters,
     PackedAttentionData<half>& data);
 
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudaStream_t stream,
+    PackedAttentionParameters& parameters,
+    PackedAttentionData<BFloat16>& data);
+
 template Status LaunchTransposeRemovePadding<float>(
     float* output, const float* input,
     const int* token_offset, const int token_count,
@@ -719,6 +760,12 @@ template Status LaunchTransposeRemovePadding<float>(
 
 template Status LaunchTransposeRemovePadding<half>(
     half* output, const half* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
+
+template Status LaunchTransposeRemovePadding<BFloat16>(
+    BFloat16* output, const BFloat16* input,
     const int* token_offset, const int token_count,
     const int batch_size, const int seq_len, const int number_heads, const int head_size,
     cudaStream_t stream);

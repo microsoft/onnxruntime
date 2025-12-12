@@ -905,6 +905,13 @@ template Status QkvToContext<half>(
     PackedAttentionParameters& parameters,
     PackedMultiHeadAttentionData<half>& data);
 
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudaStream_t stream,
+    PackedAttentionParameters& parameters,
+    PackedMultiHeadAttentionData<BFloat16>& data);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
