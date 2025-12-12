@@ -27,8 +27,8 @@ struct KaiTlsBuffers {
 };
 static thread_local KaiTlsBuffers g_kai_tls;
 
-const kai_matmul_clamp_f32_f32p_f32p_ukernel sgemm_gemm = GetKleidiAISGemmUKernel();
-const kai_matmul_clamp_f32_f32_f32p_ukernel sgemm_gemv = GetKleidiAISGemvUKernel();
+const kai_matmul_clamp_f32_f32p_f32p_ukernel& sgemm_gemm = GetKleidiAISGemmUKernel();
+const kai_matmul_clamp_f32_f32_f32p_ukernel& sgemm_gemv = GetKleidiAISGemvUKernel();
 
 
 // Helpers for GEMV
@@ -141,33 +141,44 @@ ArmKleidiAI::MlasGemvBatch(
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize
 ) {
-        // Edge case where M and N are both one so we can take the simpler M == 1 Path
-        bool m_n_both_one = (M == 1 && N == 1);
-        if (N == 1 && Data->BIsPacked && !m_n_both_one)
-        {
-            // Exit early because we cannot support cases where N is 1 and B is already packed
+        // Only two paths: M-path (M == 1, also covers M == N == 1) or N-path (N == 1).
+        if (M != 1 && N != 1) {
+            return false;
+        }
+    
+        const bool m_path = (M == 1);
+    
+        // We cannot support cases where N == 1 and B is already packed.
+        // When both are 1, we route through the M-path, so this naturally doesn't trigger.
+        if (!m_path && Data->BIsPacked) {
             return false;
         }
 
+        // Decide RHS and transposition once based on the path
+        CBLAS_TRANSPOSE tb = m_path ? TransB : CblasTrans;
+        size_t rhs_shape = m_path ? N : M;
+
         for (size_t b = 0; b < BatchSize; ++b) {
-            // Depending on the value of M or N we might transpose when packing
-            const bool using_m_path = (M == 1);
-            const bool using_n_path = (N == 1 && !m_n_both_one);
-            CBLAS_TRANSPOSE tb = TransB;
-            size_t rhs_shape = N;
-            size_t rhs_ld = Data[b].ldb;
-            size_t lhs_ld = using_m_path ? Data[b].lda : Data[b].ldb;
-            const float* rhs_base = using_m_path ? reinterpret_cast<const float*>(Data[b].B) : reinterpret_cast<const float*>(Data[b].A);
-            const float* lhs_base = using_m_path ? static_cast<const float*>(Data[b].A) : static_cast<const float*>(Data[b].B);
-            if (using_n_path)
-            {
-                tb = CblasTrans;
-                rhs_shape = M;
-                rhs_ld = Data[b].lda;
-                lhs_ld = Data[b].ldb;
-            }
+
+            size_t rhs_ld    = m_path ? Data[b].ldb : Data[b].lda;
+            // LHS is the vector row we feed to the GEMV microkernel
+            // - M-path: LHS is A, stride = lda
+            // - N-path: LHS is B, stride = ldb
+            size_t lhs_ld = m_path ? Data[b].lda : Data[b].ldb;
+            
+            const float* rhs_base = m_path ? static_cast<const float*>(Data[b].B)
+                                           : static_cast<const float*>(Data[b].A);
+            const float* lhs_base = m_path ? static_cast<const float*>(Data[b].A) 
+                                           : static_cast<const float*>(Data[b].B);
+
             // Prepare packed RHS if needed
             const void* rhs_packed_ptr = nullptr;
+            
+            // The if branch can only be taken in cases where we are dealing with M == 1
+            // We previously reject any prepacked B where N == 1
+            // In cases where N == 1 we Pack A Matrix as the RHS using tb = CBlasTrans
+            // After which the rhs_packed_ptr points to Packed A not B
+            // rhs_packed_ptr = Data[b].B only when M == 1
             if (Data[b].BIsPacked) {
                 rhs_packed_ptr = Data[b].B;
             } else {
@@ -186,9 +197,7 @@ ArmKleidiAI::MlasGemvBatch(
             }
             // Ensure LHS is a contiguous K-length row for the GEMV microkernel.
             // Compute once whether we need to gather based on which side is LHS.
-            const bool needs_gather =
-                (using_m_path ? (TransA == CblasTrans)
-                              : (using_n_path ? (TransB == CblasNoTrans) : false));
+            const bool needs_gather = m_path ? (TransA == CblasTrans) : (TransB == CblasNoTrans);
             if (needs_gather) {
                 g_kai_tls.gemv_lhs_row_tmp.resize(K);
                 for (size_t k = 0; k < K; ++k) {
@@ -215,8 +224,8 @@ ArmKleidiAI::MlasGemvBatch(
                 std::numeric_limits<float>::max()
             );
             // Apply alpha/beta to destination C row
-            bool allowMemCopy = (M == 1) ? (Data[b].ldc == N) : (Data[b].ldc == 1);
-            size_t destStride = (M == 1) ? 1 : Data[b].ldc;
+            bool allowMemCopy = m_path ? (Data[b].ldc == N) : (Data[b].ldc == 1);
+            size_t destStride = m_path ? 1 : Data[b].ldc;
             ApplyAlphaBetaStrided(g_kai_tls.output_tile.data(), rhs_shape, Data[b].alpha, Data[b].beta, Data[b].C, destStride, allowMemCopy);
         }
         return true;
