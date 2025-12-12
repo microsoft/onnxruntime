@@ -1498,8 +1498,8 @@ struct ProviderHostImpl : ProviderHost {
   const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo* p) const override {
     return p->GetRelPath();
   }
-  OFFSET_TYPE ExternalDataInfo__GetOffset(const ExternalDataInfo* p) const override {
-    return p->GetOffset();
+  int64_t ExternalDataInfo__GetOffset(const ExternalDataInfo* p) const override {
+    return narrow<int64_t>(p->GetOffset());
   }
   size_t ExternalDataInfo__GetLength(const ExternalDataInfo* p) const override {
     return p->GetLength();

@@ -523,6 +523,7 @@ Status TensorProtoWithExternalDataToTensorProto(
 
 /// <summary>
 /// The functions will make sure the 'location' specified in the external data is under the 'base_dir'.
+/// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
 /// </summary>
 /// <param name="base_dir">model location directory</param>
 /// <param name="location">location is a string retrieved from TensorProto external data that is not

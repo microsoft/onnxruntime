@@ -38,11 +38,6 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class ExternalDataInfo;
-#ifdef _WIN32
-using OFFSET_TYPE = int64_t;
-#else
-using OFFSET_TYPE = off_t;
-#endif
 
 class PhiloxGenerator;
 using ProviderType = const std::string&;
@@ -1148,7 +1143,7 @@ struct ProviderHost {
   // ExternalDataInfo
   virtual void ExternalDataInfo__operator_delete(ExternalDataInfo*) = 0;
   virtual const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo*) const = 0;
-  virtual OFFSET_TYPE ExternalDataInfo__GetOffset(const ExternalDataInfo*) const = 0;
+  virtual int64_t ExternalDataInfo__GetOffset(const ExternalDataInfo*) const = 0;
   virtual size_t ExternalDataInfo__GetLength(const ExternalDataInfo*) const = 0;
   virtual const std::string& ExternalDataInfo__GetChecksum(const ExternalDataInfo*) const = 0;
   virtual Status ExternalDataInfo__Create(const ONNX_NAMESPACE::StringStringEntryProtos& input,

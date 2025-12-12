@@ -1202,6 +1202,7 @@ struct ConstGraphNodes final {
 };
 
 class ExternalDataInfo {
+ public:
   static void operator delete(void* p) {
     g_host->ExternalDataInfo__operator_delete(reinterpret_cast<ExternalDataInfo*>(p));
   }
@@ -1210,7 +1211,7 @@ class ExternalDataInfo {
     return g_host->ExternalDataInfo__GetRelPath(this);
   }
 
-  OFFSET_TYPE GetOffset() const {
+  int64_t GetOffset() const {
     return g_host->ExternalDataInfo__GetOffset(this);
   }
 

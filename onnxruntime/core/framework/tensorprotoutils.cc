@@ -311,15 +311,19 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
   // Reject absolute paths
   ORT_RETURN_IF(location.is_absolute(),
                 "Absolute paths not allowed for external data location");
-  // Resolve and verify the path stays within model directory
-  auto resolved = std::filesystem::weakly_canonical(base_dir / location);
-  auto base_canonical = std::filesystem::weakly_canonical(base_dir);
-  // Check that resolved path starts with base directory
-  auto [base_end, resolved_it] = std::mismatch(
-      base_canonical.begin(), base_canonical.end(),
-      resolved.begin(), resolved.end());
-  ORT_RETURN_IF(base_end != base_canonical.end(),
-                "External data path: ", location, " escapes model directory: ", base_dir);
+  if (!base_dir.empty()) {
+    // Resolve and verify the path stays within model directory
+    auto base_canonical = std::filesystem::weakly_canonical(base_dir);
+    // If the symlink exists, it resolves to the target path;
+    // so if the symllink is outside the directory it would be caught here.
+    auto resolved = std::filesystem::weakly_canonical(base_dir / location);
+    // Check that resolved path starts with base directory
+    auto [base_end, resolved_it] = std::mismatch(
+        base_canonical.begin(), base_canonical.end(),
+        resolved.begin(), resolved.end());
+    ORT_RETURN_IF(base_end != base_canonical.end(),
+                  "External data path: ", location, " escapes model directory: ", base_dir);
+  }
   return Status::OK();
 }
 
