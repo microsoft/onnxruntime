@@ -22,10 +22,11 @@ OrtStatus* BaseKernelImpl::DoPrePackWeight(const OrtValue* /*tensor*/, int /*inp
   return nullptr;
 }
 
-// Default implementation that does not use shared weights.
+// Default implementation that returns an error if called.
 OrtStatus* BaseKernelImpl::DoSetSharedPrePackedWeight(const void* const* /*buffer_data_ptrs*/, size_t /*num_buffers*/,
                                                       int /*input_index*/) {
-  return nullptr;
+  return Ort::GetApi().CreateStatus(ORT_EP_FAIL,
+                                    "ExampleKernelEp did not expect a call to OrtKernelImpl::SetSharedPrePackedWeight");
 }
 
 OrtStatus* BaseKernelImpl::CopyTensor(Ort::ConstValue src_tensor, Ort::UnownedValue dst_tensor) noexcept {

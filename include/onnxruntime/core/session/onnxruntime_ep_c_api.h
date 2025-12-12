@@ -315,25 +315,25 @@ struct OrtKernelImpl {
    * For example, a Conv kernel can define this function to pack input W to the channel-last data layout
    * before inference.
    *
-   * \note Pre-packing can operate in three different modes: no pre-packing mode, sharing mode, and non-sharing mode.
-   *       1) No pre-packing mode: The kernel can forgo any weight pre-packing by setting `is_packed` to false and
-   *                               returning a successful OrtStatus.
-   *       2) Sharing mode: Sharing is allowed if the `prepacked_weight_cache` argument is not NULL and the EP stores
-   *                        weight data in CPU-accessible memory. In this case, the kernel can optionally choose
-   *                        to share the packed weight with other kernels that use the same weight
-   *                        (compared by content hash). To do so, the kernel must allocate the packed weight with the
-   *                        provided `allocator`, then it stores the packed weight data into `prepacked_weight_cache`
-   *                        via SharedPrePackedWeightCache_StoreWeightData(), sets `is_packed` to true, and returns a
-   *                        successful OrtStatus. ORT will subsequently call OrtKernelImpl::SetSharedPrePackedWeight()
-   *                        to provide this kernel with the actual shared weight data, whose memory location could
-   *                        differ (i.e., if shared data was allocated by a previously processed kernel).
-   *       3) Non-sharing mode: In non-sharing mode, the `prepacked_weight_cache` argument is ignored. In this case,
-   *                            the kernel may choose to allocate the packed data with the provided `allocator` or
-   *                            any EP allocator of its choosing. The kernel then sets `is_packed` to true and returns
-   *                            a successful OrtStatus. The kernel is ultimately responsible for storing/owning the
-   *                            packed data for the weight. ORT may release the original (unpacked) weight, which must
-   *                            not be accessed in OrtKernelImpl::Compute(). Note that in this mode, the kernel's
-   *                            OrtKernelImpl::SetSharedPrePackedWeight() function is not called by ORT.
+   * Pre-packing can operate in three different modes: no pre-packing mode, sharing mode, and non-sharing mode.
+   *    1) No pre-packing mode: The kernel can forgo any weight pre-packing by setting `is_packed` to false and
+   *                            returning a successful OrtStatus.
+   *    2) Sharing mode: Sharing is allowed if the `prepacked_weight_cache` argument is not NULL and the EP stores
+   *                     weight data in CPU-accessible memory. In this case, the kernel can optionally choose
+   *                     to share the packed weight with other kernels that use the same weight
+   *                     (compared by content hash). To do so, the kernel must allocate the packed weight with the
+   *                     provided `allocator`, then it stores the packed weight data into `prepacked_weight_cache`
+   *                     via SharedPrePackedWeightCache_StoreWeightData(), sets `is_packed` to true, and returns a
+   *                     successful OrtStatus. ORT will subsequently call OrtKernelImpl::SetSharedPrePackedWeight()
+   *                     to provide this kernel with the actual shared weight data, whose memory location could
+   *                     differ (i.e., if shared data was allocated by a previously processed kernel).
+   *    3) Non-sharing mode: In non-sharing mode, the `prepacked_weight_cache` argument is ignored. In this case,
+   *                         the kernel may choose to allocate the packed data with the provided `allocator` or
+   *                         any EP allocator of its choosing. The kernel then sets `is_packed` to true and returns
+   *                         a successful OrtStatus. The kernel is ultimately responsible for storing/owning the
+   *                         packed data for the weight. ORT may release the original (unpacked) weight, which must
+   *                         not be accessed in OrtKernelImpl::Compute(). Note that in this mode, the kernel's
+   *                         OrtKernelImpl::SetSharedPrePackedWeight() function is not called by ORT.
    *
    * \note This function is based on the internal OpKernel::PrePack() virtual function used within ORT.
    *
@@ -365,8 +365,10 @@ struct OrtKernelImpl {
 
   /** \brief Optional function that receives data for a shared pre-packed weight from ORT.
    *
-   * This function is only called if the prior call to OrtKernelImpl::PrePackWeight set `is_packed` to true and
+   * This function is called after a prior call to OrtKernelImpl::PrePackWeight set `is_packed` to true and
    * stored weight data (that the kernel wants to share) into the provided `OrtSharedPrePackedWeightCache` instance.
+   * If the this function is called for an unexpected shared weight (as identified by `input_index`), the
+   * implementation should return an error OrtStatus with an error code of ORT_EP_FAIL.
    * Refer to the description of the "sharing-mode" in the documentation for OrtKernelImpl::PrePackWeight().
    *
    * \note This function is based on the internal OpKernel::UseSharedPrePackedBuffers() virtual function used
@@ -392,7 +394,8 @@ struct OrtKernelImpl {
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(SetSharedPrePackedWeight, _In_ OrtKernelImpl* this_ptr, _In_ const void* const* buffer_data_ptrs,
+  ORT_API2_STATUS(SetSharedPrePackedWeight, _In_ OrtKernelImpl* this_ptr,
+                  _In_reads_(num_buffers) const void* const* buffer_data_ptrs,
                   _In_ size_t num_buffers, _In_ int input_index);
 };
 

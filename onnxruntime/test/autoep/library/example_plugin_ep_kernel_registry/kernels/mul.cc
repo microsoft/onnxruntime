@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <gsl/span>
+#include <sstream>
 #include "mul.h"
 #include "utils.h"
 
@@ -117,7 +118,10 @@ OrtStatus* Mul::DoPrePackWeight(const OrtValue* tensor, int input_index, OrtAllo
 OrtStatus* Mul::DoSetSharedPrePackedWeight(const void* const* buffer_data_ptrs, size_t num_buffers,
                                            int input_index) {
   if (input_index != 1) {
-    return nullptr;
+    std::ostringstream oss;
+    oss << "ExampleKernelEp did not expect a call to OrtKernelImpl::SetSharedPrePackedWeight for input index "
+        << input_index << " of the Mul kernel.";
+    return Ort::GetApi().CreateStatus(ORT_EP_FAIL, oss.str().c_str());
   }
 
   RETURN_IF(num_buffers != 1, Ort::GetApi(), "Invalid number of pre-packed data buffers for Mul kernel's 2nd input");
