@@ -159,14 +159,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // QKV format: Determine based on input dimensions
   // 3D inputs (B, S, D): Q_K_V_BSNH - will be transposed by PrepareQkv to BNSH
-  // TODO(titaiwang, xadupre): 4D inputs (B, N, S, H): not supported yet
-  bool is_4d_input = Q->Shape().NumDimensions() == 4;
-  if (is_4d_input) {
-    // 4D inputs are currently not supported
-    ORT_ENFORCE(false, "4D input is currently not supported yet in Attention op (CUDA).");
+  // transpose_output is true for 3D inputs, false for 4D inputs
+  if (!parameters.transpose_output) {
+    contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH;
+    contribop_parameters.is_4d_input = true;
   } else {
     // 3D inputs in BSNH format (will be transposed)
     contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH;
+    contribop_parameters.is_4d_input = false;  // default
   }
 
   // TODO(titaiwang, xadupre): Group query attention is not supported yet
@@ -202,6 +202,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
   }
   data.qkv_format = contribop_parameters.qkv_format;
+  data.is_4d_input = contribop_parameters.is_4d_input;
 
   // TODO: Determine which kernel to use (Flash Attention, Memory Efficient Attention, etc.)
   // For now, set flags to false and let QkvToContext use the unfused path
