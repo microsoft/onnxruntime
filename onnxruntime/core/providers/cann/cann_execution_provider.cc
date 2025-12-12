@@ -9,6 +9,11 @@
 #include <map>
 #include <unordered_set>
 
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
+#include <string>
+
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cann/cann_execution_provider.h"
