@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -147,7 +148,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     }
     program
         .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
-        .SetDispatchGroupSize((output_size + 63) / 64)  // Integer ceiling division
+        .SetDispatchGroupSize(CeilDiv(output_size, 64u))
         .AddIndices(outer_dims)
         .AddUniformVariables({{output_size}, {m}, {n}, {k}});
 
@@ -256,8 +257,6 @@ Status ComputeMatMul(ComputeContext* context,
 
     // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
     // number of splits along `dim_inner`.
-    // TODO: avoid using `global_id.xxx` or `workgroup_id.xxx` in `MatMulProgram` when we normalize
-    // the dispatch size with `ProgramManager::NormalizeDispatchGroupSize()` for `MatMulProgram`.
     split_dim_inner = split_k_config.GetSplitDimInner();
     dispatch_z = (dim_inner + split_dim_inner - 1) / split_dim_inner;
 
@@ -271,7 +270,7 @@ Status ComputeMatMul(ComputeContext* context,
       .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)

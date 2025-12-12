@@ -15,8 +15,6 @@ namespace test {
 
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_ROCM
-constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
 static void TestSoftmaxCrossEntropy(const std::vector<int64_t>& X_dims,
@@ -423,8 +421,6 @@ static void TestSCELoss(const char* op, int opset_version,
       []() -> std::unique_ptr<IExecutionProvider> {
 #ifdef USE_CUDA
         return DefaultCudaExecutionProvider();
-#elif USE_ROCM
-        return DefaultRocmExecutionProvider();
 #endif
       },
       reduction, ignore_index,
@@ -934,8 +930,6 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
           []() -> std::unique_ptr<IExecutionProvider> {
 #ifdef USE_CUDA
             return DefaultCudaExecutionProvider();
-#elif USE_ROCM
-            return DefaultRocmExecutionProvider();
 #endif
           },
           reduction, ignore_index, error_tolerance, has_bias,

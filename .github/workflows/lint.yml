@@ -37,7 +37,11 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=lint-python-format-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions:
       contents: read
       security-events: write
@@ -114,7 +118,11 @@ jobs:
 
   lint-js:
     name: Lint JavaScript
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=lint-js-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

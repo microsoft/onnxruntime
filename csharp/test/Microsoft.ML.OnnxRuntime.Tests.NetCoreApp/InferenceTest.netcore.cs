@@ -1531,7 +1531,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         // TestGpu() will test
         //  - the CUDA EP on CUDA enabled builds
         //  - the DML EP on DML enabled builds
-        //  - the ROCm EP on ROCm enabled builds
         [GpuFact(DisplayName = "TestGpu")]
         private void TestGpu()
         {
@@ -1574,9 +1573,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
-#endif
-#if USE_ROCM
-            ,"OrtSessionOptionsAppendExecutionProvider_ROCM"
 #endif
 #if USE_DML
             ,"OrtSessionOptionsAppendExecutionProvider_DML"

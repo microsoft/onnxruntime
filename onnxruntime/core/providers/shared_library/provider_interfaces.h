@@ -70,11 +70,25 @@ struct IteratorHolder {
   bool operator!=(const IteratorHolder& p) const { return p_->operator!=(*p.p_); }
 
   void operator++() { p_->operator++(); }
-  const TResult& operator*() { return p_->operator*(); }
+  TResult& operator*() { return p_->operator*(); }
   T* operator->() { return p_.get(); }
 
  private:
   std::unique_ptr<T> p_;
+};
+
+struct TensorProto_ConstIterator {
+  virtual ~TensorProto_ConstIterator() = default;
+  virtual bool operator!=(const TensorProto_ConstIterator& p) const = 0;
+  virtual void operator++() = 0;
+  virtual const ONNX_NAMESPACE::TensorProto& operator*() const = 0;
+};
+
+struct TensorProto_Iterator {
+  virtual ~TensorProto_Iterator() = default;
+  virtual bool operator!=(const TensorProto_Iterator& p) const = 0;
+  virtual void operator++() = 0;
+  virtual ONNX_NAMESPACE::TensorProto& operator*() const = 0;
 };
 
 struct NodeAttributes_Iterator {
@@ -200,19 +214,6 @@ struct ProviderHost {
 
   virtual std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) = 0;
-
-#ifdef USE_ROCM
-  virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
-
-  virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
-  virtual void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
-  virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
-  virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
-
-  virtual Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
-  virtual void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
-#endif
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const IExecutionProvider::IKernelLookup& kernel_lookup,
@@ -439,7 +440,8 @@ struct ProviderHost {
   // GraphProto
   virtual std::unique_ptr<ONNX_NAMESPACE::GraphProto> GraphProto__construct() = 0;
   virtual void GraphProto__operator_delete(ONNX_NAMESPACE::GraphProto* p) = 0;
-  virtual void GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) = 0;
+  virtual ONNX_NAMESPACE::GraphProto& GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) = 0;
+  virtual ONNX_NAMESPACE::GraphProto& GraphProto__operator_move_assign(ONNX_NAMESPACE::GraphProto* p, ONNX_NAMESPACE::GraphProto&& v) = 0;
 
   virtual const ONNX_NAMESPACE::ValueInfoProto& GraphProto__input(const ONNX_NAMESPACE::GraphProto* p, int index) = 0;
   virtual ONNX_NAMESPACE::ValueInfoProtos* GraphProto__mutable_input(ONNX_NAMESPACE::GraphProto* p) = 0;
@@ -492,7 +494,8 @@ struct ProviderHost {
   // TensorProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() = 0;
   virtual void TensorProto__operator_delete(ONNX_NAMESPACE::TensorProto* p) = 0;
-  virtual void TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) = 0;
+  virtual ONNX_NAMESPACE::TensorProto& TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) = 0;
+  virtual ONNX_NAMESPACE::TensorProto& TensorProto__operator_move_assign(ONNX_NAMESPACE::TensorProto* p, ONNX_NAMESPACE::TensorProto&& v) = 0;
   virtual bool TensorProto__has_name(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual void TensorProto__set_name(ONNX_NAMESPACE::TensorProto* p, const ::std::string& name) = 0;
   virtual const ::std::string& TensorProto__name(const ONNX_NAMESPACE::TensorProto* p) = 0;
@@ -521,8 +524,12 @@ struct ProviderHost {
 
   // TensorProtos
   virtual ONNX_NAMESPACE::TensorProto* TensorProtos__Add(ONNX_NAMESPACE::TensorProtos* p) = 0;
-  virtual int TensorProtos__size(ONNX_NAMESPACE::TensorProtos* p) = 0;
+  virtual int TensorProtos__size(const ONNX_NAMESPACE::TensorProtos* p) = 0;
   virtual ONNX_NAMESPACE::TensorProto& TensorProtos__at(ONNX_NAMESPACE::TensorProtos* p, int index) = 0;
+  virtual std::unique_ptr<TensorProto_ConstIterator> TensorProtos__begin(const ONNX_NAMESPACE::TensorProtos* p) = 0;
+  virtual std::unique_ptr<TensorProto_ConstIterator> TensorProtos__end(const ONNX_NAMESPACE::TensorProtos* p) = 0;
+  virtual std::unique_ptr<TensorProto_Iterator> TensorProtos__begin(ONNX_NAMESPACE::TensorProtos* p) = 0;
+  virtual std::unique_ptr<TensorProto_Iterator> TensorProtos__end(ONNX_NAMESPACE::TensorProtos* p) = 0;
 
   // TensorShapeProto_Dimension
   virtual int TensorShapeProto_Dimension__value_case(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
