@@ -1403,9 +1403,9 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         std::lock_guard<std::mutex> lock(g_mutex);
         auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
-          std::string om_flie = filename + ".om";
+          std::string om_file = filename + ".om";
 
-          int fd = open(om_file.c_str(), O_RDWR | O_CREATE, 0666);
+          int fd = open(om_file.c_str(), O_RDWR | O_CREAT, 0666);
 
           if (fd >= 0){
             flock(fd, LOCK_SH);

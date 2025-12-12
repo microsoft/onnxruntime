@@ -122,7 +122,7 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   if (info.dump_om_model) {
     std::string final_file = file_name + ".om";
 
-    int lock_fd = open(final_flie.c_str(), O_CREATE | O_RDWR, 0666);
+    int lock_fd = open(final_file.c_str(), O_CREAT | O_RDWR, 0666);
 
     if (flock(lock_fd, LOCK_EX) == 0){
       CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
