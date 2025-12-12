@@ -1428,9 +1428,6 @@ struct OrtEpFactory {
   /** \brief Creates the EP-specific OrtCustomOpDomains.
    *
    * This function is used when running inference on a model that contains EP-specific custom operations.
-   * For compile-based EPs, the EP does not need to provide a concrete kernel implementation for each custom op.
-   * Instead, it may provide only placeholder custom ops with the correct names so they can be recognized
-   * during model loading.
    *
    * Workflow:
    * 1. The EP implements this function to supply a list of OrtCustomOpDomain instances.
@@ -1441,6 +1438,22 @@ struct OrtEpFactory {
    *
    * As a result, any session created from these session options will have these custom op domains registered
    * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
+   *
+   * Plugin EPs can provide two types of custom ops:
+   *  1. A full OrtCustomOp with a concrete kernel implementation
+   *    - This Example EP demonstrates this approach.
+   *    - In GetCapability(), it calls EpGraphSupportInfo_AddSingleNode() to inform ORT
+   *      that the custom node should NOT be fused or compiled. Instead, ORT should invoke
+   *      the custom node's Compute() function at runtime.
+   *
+   * 2. A "placeholder" OrtCustomOp with an empty kernel implementation
+   *    - A compile-based Plugin EP can supply an OrtCustomOp whose CustomKernel::Compute()
+   *      does nothing. The purpose is to satisfy model validation during model loading by
+   *      registering the custom op as a valid operator in the session.
+   *    - In GetCapability(), the EP should call EpGraphSupportInfo_AddNodesToFuse() to
+   *      notify ORT that this custom node should be fused and compiled by the EP.
+   *    - In Compile(), the EP executes its compiled bits to perform inference for
+   *      the fused custom node.
    *
    * Note: EP has the responsibility to release OrtCustomOpDomain instances it creates. It happens
    *       automatically if using ORT C++ api.
