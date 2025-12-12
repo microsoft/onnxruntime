@@ -595,22 +595,22 @@ TEST(MatMulNBits, Float16_Comprehensive) {
 // M, N, K, block_size, has_zeropoint, zp_is_4bit = true, abs_error = 0.f, has_g_idx = false, has_bias = false
 // TODO : QNN GPU supports only symmetric quantization. ie. zero_points = 8 (UFXP4) and 0 (SFXP4)
 // Add symmetric quantization in gtest.
-TEST(MatMulNBits, QnnGpuBackend_Basic_M1_N128_K32_withZp) {
+TEST(MatMulNBits, Basic_M1_N128_K32_withZp) {
   constexpr float abs_error = 0.03f;
   RunTest<float>(1, 128, 512, 32, true, true, abs_error, false, false);
 }
 
-TEST(MatMulNBits, QnnGpuBackend_Basic_M1_N128_K32) {
+TEST(MatMulNBits, Basic_M1_N128_K32) {
   constexpr float abs_error = 0.03f;
   RunTest<float>(1, 128, 512, 32, false, true, abs_error, false, false);
 }
 
-TEST(MatMulNBits, QnnGpuBackend_Basic_M10_N128_K32_withZp) {
+TEST(MatMulNBits, Basic_M10_N128_K32_withZp) {
   constexpr float abs_error = 0.03f;
   RunTest<float>(10, 128, 512, 32, true, true, abs_error, false, false);
 }
 
-TEST(MatMulNBits, QnnGpuBackend_Basic_M10_N128_K32) {
+TEST(MatMulNBits, Basic_M10_N128_K32) {
   constexpr float abs_error = 0.03f;
   RunTest<float>(10, 128, 512, 32, false, true, abs_error, false, false);
 }
