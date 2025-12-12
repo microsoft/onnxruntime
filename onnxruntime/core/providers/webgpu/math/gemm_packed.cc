@@ -117,7 +117,7 @@ Status ApplyGemmPacked(const Tensor* a,
       bias = c;
       output_components_in_fill_bias_program = c_components;
     }
-    const TensorShape output_shape = TensorShape{1, M, N / output_components_in_fill_bias_program};
+    const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
 
     auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
         bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, c_is_scalar, output_shape);

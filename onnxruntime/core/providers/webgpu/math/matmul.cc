@@ -304,20 +304,11 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t total_outputs = dim_a_outer * dim_b_outer;
   const uint32_t dispatch_x = (total_outputs + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
-  TensorShape output_shape_temp;
-  if (is_gemm) {
-    // GEMM doesn't have `batch` in its output shape.
-    output_shape_temp = TensorShape({dim_a_outer, dim_b_outer});
-  } else {
-    const uint32_t batch_size = 1;
-    output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer});
-  }
-
   // To reuse `MatMulWriteFnSource()` we need to set `dim_b_outer` in components when `output_shape`
   // is in `vec4`, while use `output_shape` directly as the output shape.
   const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
   program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape_temp, static_cast<int32_t>(output_components)})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, static_cast<int32_t>(output_components)})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer_components}, {beta}})
       .SetDispatchGroupSize(dispatch_x);
 
