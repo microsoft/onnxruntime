@@ -521,6 +521,17 @@ Status TensorProtoWithExternalDataToTensorProto(
     const std::filesystem::path& model_path,
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
+/// <summary>
+/// The functions will make sure the 'location' specified in the external data is under the 'base_dir'.
+/// </summary>
+/// <param name="base_dir">model location directory</param>
+/// <param name="location">location is a string retrieved from TensorProto external data that is not
+///                        an in-memory tag</param>
+/// <returns>The function will fail if the resolved full path is not under the model directory
+///          or one of the subdirectories</returns>
+Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
+                                const std::filesystem::path& location);
+
 #endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {
