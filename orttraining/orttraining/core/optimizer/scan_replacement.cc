@@ -23,16 +23,20 @@ Status ScanReplacement::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   ORT_ENFORCE(body != nullptr);
   auto n_carries = body->GetInputs().size() - attributes.at("num_scan_inputs").i();
 
+  LOGS(logger, INFO) << "Node name:" << node.Name();
+
   // Modify body subgraph. Make all carries per step output.
+  auto& inputs = body->GetInputs();
   auto outputs = body->GetOutputs();
   for (size_t i = 0; i < n_carries; i++) {
-    const ONNX_NAMESPACE::TypeProto* type = outputs[i]->TypeAsProto();
-    std::string carries_name = outputs[i]->Name() + "_carries";
-    std::string identity_name = outputs[i]->Name() + "_identity";
-    NodeArg* carries = &body->GetOrCreateNodeArg(carries_name, type);
-    body->AddNode(body->GenerateNodeName(identity_name), "Identity", "", {body->GetNodeArg(outputs[i]->Name())}, {carries});
-    outputs.push_back(carries);
+    const ONNX_NAMESPACE::TypeProto* type = inputs[i]->TypeAsProto();
+    std::string input_carries_name = inputs[i]->Name() + "_carries";
+    std::string input_identity_name = inputs[i]->Name() + "_identity";
+    NodeArg* input_carries = &body->GetOrCreateNodeArg(input_carries_name, type);
+    body->AddNode(body->GenerateNodeName(input_identity_name), "Identity", "", {body->GetNodeArg(inputs[i]->Name())}, {input_carries});
+    outputs.push_back(input_carries);
   }
+
   body->SetOutputs(outputs);
   body->SetGraphProtoSyncNeeded();
   body->SetGraphResolveNeeded();

@@ -989,11 +989,17 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 void Node::AddAttributeProto(AttributeProto value) {
+  bool is_subgraph = (value.type() == ONNX_NAMESPACE::AttributeProto::GRAPH) || (value.type() == ONNX_NAMESPACE::AttributeProto::GRAPHS);
+  const std::string& name = value.name();
+
   utils::SetNodeAttribute(std::move(value), attributes_);
   if (graph_) {
     graph_->SetGraphResolveNeeded();
     graph_->SetGraphProtoSyncNeeded();
   }
+
+  if (is_subgraph)
+	  CreateSubgraph(name);
 }
 
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
@@ -1794,10 +1800,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
     }
   }
 
+#ifdef ENABLE_TRAINING
   if (!resolve_context_.isolated_graph.empty())
     for (auto subgraph : resolve_context_.isolated_graph) {
       ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(nullptr, subgraph, outer_scope_node_args_consumed));
     }
+#endif
 
   // now build connections within this Graph instance
   for (auto& node : Nodes()) {
@@ -3196,6 +3204,7 @@ common::Status Graph::TypeCheckInputsAndInitializers(const ResolveOptions& optio
     }
   }
 
+#ifdef ENABLE_TRAINING
   if (options.additional_graphs) {
     for (auto g : *options.additional_graphs) {
       ResolveOptions _options = options;
@@ -3203,6 +3212,7 @@ common::Status Graph::TypeCheckInputsAndInitializers(const ResolveOptions& optio
       ORT_RETURN_IF_ERROR(g->TypeCheckInputsAndInitializers(_options));
     }
   }
+#endif
 
   return Status::OK();
 }
@@ -3345,10 +3355,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     }
   }
 
+#ifdef ENABLE_TRAINING
   for (auto subgraph : resolve_context_.isolated_graph) {
     LOGS(logger_, INFO) << "Veryfing isolated subgraph";
     ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
   }
+#endif
 
   return Status::OK();
 }
@@ -3425,16 +3437,6 @@ Status Graph::Resolve(const ResolveOptions& options) {
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
-    std::stringstream buf;
-    buf << std::endl
-        << "Input" << std::endl;
-    for (auto& input : GetInputs())
-      buf << "Name: " << input->Name() << ", DType: " << input->ToProto().type().tensor_type().elem_type() << std::endl;
-    buf << std::endl
-        << "Output" << std::endl;
-    for (auto& output : GetOutputs())
-      buf << "Name: " << output->Name() << ", DType: " << output->ToProto().type().tensor_type().elem_type() << std::endl;
-    LOGS(logger_, INFO) << buf.str();
     return parent_graph_->Resolve(options);
   }
 
@@ -3448,7 +3450,6 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
     for (auto g : *options.additional_graphs)
       for (auto i = g->Nodes().begin(), e = g->Nodes().end(); i != e; i++);
-    // i->SetOriginalNodeProto(nullptr);
   }
 #endif
 

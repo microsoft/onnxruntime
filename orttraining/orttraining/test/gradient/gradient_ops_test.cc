@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef NDEBUG  // disable for debug builds because some of these tests are slow
+// #ifdef NDEBUG  // disable for debug builds because some of these tests are slow
 
 #include <algorithm>
 #include <bitset>
@@ -3403,7 +3403,62 @@ TEST(GradientCheckerTest, ReduceMaxGrad) {
   RunReductionTests(op_def_20, true, true);
 }
 
+TEST(GradientCheckerTest, ScanGrad) {
+	ONNX_NAMESPACE::GraphProto subgraph_proto;
+
+	auto add = subgraph_proto.add_node();
+	add->set_op_type("Add");
+	*add->add_input() = "h";
+	*add->add_input() = "x";
+	*add->add_output() = "h_next";
+	auto identity = subgraph_proto.add_node();
+	identity->set_op_type("Identity");
+	*identity->add_input() = "h_next";
+	*identity->add_output() = "y";
+	// Need to emulate ScanReplacement
+	auto identity2 = subgraph_proto.add_node();
+	identity2->set_op_type("Identity");
+	*identity2->add_input() = "h_next";
+	*identity2->add_output() = "h_next_carries";
+
+	subgraph_proto.set_name("body");
+
+	ONNX_NAMESPACE::TensorShapeProto shape;
+	auto graph_h = subgraph_proto.add_input();
+	graph_h->set_name("h");
+	graph_h->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+	*graph_h->mutable_type()->mutable_tensor_type()->mutable_shape() = shape;
+	auto graph_x = subgraph_proto.add_input();
+	graph_x->set_name("x");
+	graph_x->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+	*graph_x->mutable_type()->mutable_tensor_type()->mutable_shape() = shape;
+	auto graph_h_next = subgraph_proto.add_output();
+	graph_h_next->set_name("h_next");
+	graph_h_next->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+	*graph_h_next->mutable_type()->mutable_tensor_type()->mutable_shape() = shape;
+	auto graph_y = subgraph_proto.add_output();
+	graph_y->set_name("y");
+	graph_y->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+	*graph_y->mutable_type()->mutable_tensor_type()->mutable_shape() = shape;
+	auto graph_h_next_carries = subgraph_proto.add_output();
+	graph_h_next_carries->set_name("h_next_carries");
+	graph_h_next_carries->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+	*graph_h_next_carries->mutable_type()->mutable_tensor_type()->mutable_shape() = shape;
+	
+	OpDef op_def = {"Scan"};
+	float max_error;
+	float error_tolerance = 1e-3;
+	GradientChecker<float, float, float> checker;
+	TensorInfo h_info({});
+	TensorInfo x_info({8});
+	TensorInfo h_next_info({});
+	TensorInfo y_info({8});
+	TensorInfo h_next_carries_info({8}, false);
+	ASSERT_STATUS_OK(checker.ComputeGradientError(op_def, {h_info, x_info}, {h_next_info, y_info, h_next_carries_info}, &max_error, {MakeAttribute("num_scan_inputs", static_cast<int64_t>(1)), MakeAttribute("body", subgraph_proto)}));
+	EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // NDEBUG
+// #endif  // NDEBUG

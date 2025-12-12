@@ -2332,8 +2332,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
   std::vector<int64_t> scan_output_axes;
   std::vector<int64_t> scan_output_directions;
 
-  ORT_ENFORCE(n_inputs == num_scan_inputs, "n_inputs and num_scan_inputs should be same in current version.");
-
   if (attributes.find("scan_input_axes") != attributes.end()) {
     auto a = attributes.at("scan_input_axes").ints();
     scan_input_axes.insert(scan_input_axes.end(), a.begin(), a.end());
@@ -2354,7 +2352,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
     auto a = attributes.at("scan_output_axes").ints();
     scan_output_axes.insert(scan_output_axes.end(), a.begin(), a.end());
   } else {
-    for (size_t i = 0; i < n_outputs; i++)
+    // n_outputs + n_carries because ScanReplacement adds carries output for all time step.
+    for (size_t i = 0; i < (n_outputs + n_carries); i++)
       scan_output_axes.push_back(0);
   }
 
@@ -2362,73 +2361,86 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
     auto a = attributes.at("scan_output_directions").ints();
     scan_output_directions.insert(scan_output_directions.end(), a.begin(), a.end());
   } else {
-    for (size_t i = 0; i < n_outputs; i++)
+    // n_outputs + n_carries because ScanReplacement adds carries output for all time step.
+    for (size_t i = 0; i < (n_outputs + n_carries); i++)
       scan_output_directions.push_back(0);
   }
 
-  // body graph:
-  // in  : carries_t, inputs_t
-  // out : carries_{t+1}, outputs_t, carries_{t+1}
-  std::unique_ptr<Graph> body = Subgraph("body");
-  // backward body graph:
-  // in  : carries_t, inputs_t
-  // out : carries_{t+1}, outputs_t, carries_{t+1}, carries_t_grad, inputs_t_grad
-  SubgraphGradient(body.get());
-  // Because body is subgraph we want previous grad as inputs
-  // in  : carries_t, inputs_t, carries_{t+1}_grad, outputs_t_grad, carries_{t+1}_grad
-  // out : carries_{t+1}, outputs_t, carries_{t+1}, carries_t_grad, inputs_t_grad
-  // (For carries_{t+1}_grad in input, actually, they have different name)
-  std::vector<const NodeArg*> inputs = body->GetInputs();
-  std::vector<const NodeArg*> outputs = body->GetOutputs();
-  for (size_t i = 0; i < output_size; i++) {
-    std::string grad_name = GradientName(outputs[i]->Name());
-    inputs.push_back(&body->GetOrCreateNodeArg(grad_name, nullptr));
+  // body_gradient: gradient graph for body.
+  // In:  carry, input, GO(...)
+  // Out: carry, output, saved carries, GI(...), GII(...)
+  // We want:
+  // In:  carry_grad, carry, input, output_grad, carry_grad
+  // Out: carry_grad, input_grad, implicit_input_grad
+  auto body_gradient = SubgraphGradient("body",
+		  [&](std::vector<std::string>& gradient_inputs, std::vector<std::string>& gradient_outputs)
+		  {
+		  	// remove saved carry from input grad
+		  	gradient_inputs.erase(gradient_inputs.begin() + n_carries + n_outputs, gradient_inputs.end());
+		  },
+		  [&](Graph *graph) {
+		  std::vector<const NodeArg*> inputs(graph->GetInputs());
+		  std::vector<const NodeArg*> outputs(graph->GetOutputs());
+		  outputs.reserve(graph->GetOutputs().size());
 
-    const Node* producer = body->GetProducerNode(grad_name);
-    if (producer == nullptr)
-      continue;
+		  std::vector<const NodeArg*> saved_carries;
+		  saved_carries.reserve(n_carries);
+		  for (size_t i = 0; i < n_carries; i++)
+		  {
+		  	NodeArg *carry = &graph->GetOrCreateNodeArg(inputs[i]->Name(), nullptr);
+		  	NodeArg *saved_carry = &graph->GetOrCreateNodeArg(Name(outputs[i + n_carries + n_outputs]->Name()), outputs[i + n_carries + n_outputs]->TypeAsProto());
+		  	saved_carries.push_back(saved_carry);
+			graph->AddNode("", "Identity", "", {saved_carry}, {carry}, nullptr, kOnnxDomain);
+		  }
 
-    for (const Node* consumer : body->GetConsumerNodes(grad_name))
-      for (auto i = producer->OutputEdgesBegin(); i != producer->OutputEdgesEnd(); i++)
-        body->RemoveEdge(producer->Index(), consumer->Index(), i->GetSrcArgIndex(), i->GetDstArgIndex());
+		  std::vector<const NodeArg*> i_inputs;
+		  i_inputs.reserve(n_inputs);
+		  for (size_t i = 0; i < n_inputs; i++)
+		  	i_inputs.push_back(&graph->GetOrCreateNodeArg(inputs[i + n_carries]->Name(), nullptr));
+		  
+		  std::vector<const NodeArg*> go_carries;
+		  go_carries.reserve(n_carries);
+		  for (size_t i = 0; i < n_carries; i++)
+		  	go_carries.push_back(&graph->GetOrCreateNodeArg(inputs[i + n_carries + n_inputs]->Name(), nullptr));
 
-    body->RemoveNode(producer->Index());
-  }
-  // Because former one of carries_{t+1}_grad cannot be retrieved, make the variable by identity latter one.
-  // in  : carries_t, inputs_t, outputs_t_grad, carries_{t+1}_grad
-  for (size_t i = 0; i < n_carries; i++) {
-    NodeArg* tgt = body->GetNodeArg(inputs[i + n_carries + n_inputs]->Name());
-    NodeArg* src = body->GetNodeArg(inputs[i + n_carries * 2 + n_inputs + n_outputs]->Name());
-    body->AddNode("", "Identity", "Identity for carry state grad", {src}, {tgt}, nullptr, kOnnxDomain);
-  }
-  inputs.erase(inputs.begin() + (n_carries + n_inputs), inputs.begin() + (n_inputs + n_carries * 2));
-  // Also, we don't need forward outputs
-  // out : carries_t_grad, inputs_t_grad
-  outputs.erase(outputs.begin(), outputs.end() - (n_carries + n_inputs));
-  // Because backward is caclulated in reverse order, so need to modify inputs
-  // in  : carries_{t+1}_grad, carries_t, inputs_t, output_t_grad
-  std::rotate(inputs.begin(), inputs.begin() + (n_carries + n_inputs + n_outputs), inputs.end());
+		  std::vector<const NodeArg*> go_outputs;
+		  go_outputs.reserve(n_outputs);
+		  for (size_t i = 0; i < n_outputs; i++)
+		  {
+			const std::string &name = inputs[i + 2 * n_carries + n_inputs]->Name();
+		  	go_outputs.push_back(&graph->GetOrCreateNodeArg(name, nullptr));
 
-  for (auto i : inputs)
-    std::cout << i->Name() << ", ";
-  std::cout << std::endl;
-  for (auto i : outputs)
-    std::cout << i->Name() << ", ";
-  std::cout << std::endl;
+		  }
 
-  // Apply updated inputs/outputs, and should be
-  // in  : carries_{t+1}_grad, carries_t, inputs_t, output_t_grad
-  // out : carries_t_grad, inputs_t_grad
-  body->SetInputs(inputs);
-  body->SetOutputs(outputs);
-  body->SetGraphResolveNeeded();
-  body->SetGraphProtoSyncNeeded();
+		  std::vector<const NodeArg*> gi;
+		  gi.reserve(GetSrcNodeInputSize());
+		  for (int i = 0; i < GetSrcNodeInputSize(); i++)
+			  gi.push_back(&graph->GetOrCreateNodeArg(outputs[i + 2 * n_carries + n_outputs]->Name(), nullptr));
 
+		  std::vector<const NodeArg*> gii;
+		  gii.reserve(GetSrcNodeImplicitInputSize());
+		  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
+			  gii.push_back(&graph->GetOrCreateNodeArg(outputs[i + 3 * n_carries + n_outputs + n_inputs]->Name(), nullptr));
+
+		  inputs.clear();
+		  inputs.insert(inputs.end(), go_carries.begin(), go_carries.end());
+		  inputs.insert(inputs.end(), saved_carries.begin(), saved_carries.end());
+		  inputs.insert(inputs.end(), i_inputs.begin(), i_inputs.end());
+		  inputs.insert(inputs.end(), go_outputs.begin(), go_outputs.end());
+
+		  outputs.clear();
+		  outputs.insert(outputs.end(), gi.begin(), gi.end());
+		  outputs.insert(outputs.end(), gii.begin(), gii.end());
+
+		  graph->SetInputs(inputs);
+		  graph->SetOutputs(outputs);
+		  });
   // Now, we need to setup attributes for backward Scan.
   // Because backward Scan calculate reverse order from forward one, we need to flip direction for carries_t, and inputs_t.
   // output_t_grad is also scan input, so need to copy scan direction and flip them.
   // We need to do similar things to output.
   int64_t training_num_scan_inputs = n_carries + n_inputs + n_outputs;
+  int64_t training_num_scan_outputs = n_inputs + GetSrcNodeImplicitInputSize();
   std::vector<int64_t> training_scan_input_axes;
   std::vector<int64_t> training_scan_input_directions;
   std::vector<int64_t> training_scan_output_axes;
@@ -2436,6 +2448,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
 
   training_scan_input_axes.reserve(training_num_scan_inputs);
   training_scan_input_directions.reserve(training_num_scan_inputs);
+  training_scan_output_axes.reserve(training_num_scan_outputs);
+  training_scan_output_directions.reserve(training_num_scan_outputs);
 
   for (size_t i = 0; i < n_carries; i++) {
     training_scan_input_axes.push_back(0);
@@ -2454,26 +2468,54 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
   training_scan_output_axes.reserve(training_num_scan_inputs);
   training_scan_output_directions.reserve(training_num_scan_inputs);
 
-  for (size_t i = 0; i < n_carries; i++) {
-    training_scan_output_axes.push_back(0);
-    training_scan_output_directions.push_back(0);  // Will be flipped to 1
+  training_scan_output_axes.insert(training_scan_output_axes.end(), scan_input_axes.begin(), scan_input_axes.end());
+  training_scan_output_directions.insert(training_scan_output_directions.end(), scan_input_directions.begin(), scan_input_directions.end());
+
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
+  {
+	  training_scan_output_axes.push_back(0);
+	  training_scan_output_directions.push_back(0);
   }
 
-  training_scan_output_axes.insert(training_scan_output_axes.end(), scan_input_axes.begin() + n_carries, scan_input_axes.end());
-  training_scan_output_directions.insert(training_scan_output_directions.end(), scan_input_directions.begin() + n_carries, scan_input_directions.end());
   for (auto i = training_scan_output_directions.begin(); i != training_scan_output_directions.end(); i++)
     *i = !*i;
 
+  /*
+  std::cout << "BODY GRADIENT" << std::endl << "Input: ";
+  for (auto input : body_gradient->input())
+	  std::cout << input.name() << ", ";
+  std::cout << std::endl << "Initializers: ";
+  for (auto initializer : body_gradient->initializer())
+	  std::cout << initializer.name() << ", ";
+  std::cout << std::endl << "Output: ";
+  for (auto output : body_gradient->output())
+	  std::cout << output.name() << ", ";
+  std::cout << std::endl;
+  for (auto node : body_gradient->node())
+  {
+	  std::cout << "Node: " << node.name() << " Op: " << node.op_type() << std::endl;
+	  std::cout << "Input: ";
+	  for (auto input : node.input())
+		  std::cout << input << ", ";
+	  std::cout << std::endl << "Output: ";
+	  for (auto output : node.output())
+		  std::cout << output << ", ";
+	  std::cout << std::endl;
+  }
+  std::cout << std::endl;
+  //*/
+
   std::vector<ONNX_NAMESPACE::AttributeProto> training_attributes;
-  training_attributes.push_back(MakeAttribute("body", body->ToGraphProto()));
+  training_attributes.push_back(MakeAttribute("body", *body_gradient));
   training_attributes.push_back(MakeAttribute("num_scan_inputs", training_num_scan_inputs));
   training_attributes.push_back(MakeAttribute("scan_input_axes", training_scan_input_axes));
   training_attributes.push_back(MakeAttribute("scan_input_directions", training_scan_input_directions));
   training_attributes.push_back(MakeAttribute("scan_output_axes", training_scan_output_axes));
   training_attributes.push_back(MakeAttribute("scan_output_directions", training_scan_output_directions));
+
   // Finally, setup inputs and outputs for Scan node:
   // in  : carries_T_grad, carries, input, output_grad
-  // out : carries_0_grad, input_grad
+  // out : carries_0_grad, input_grad, implicit_input_grad
   // Note, I, and O are different from above body graph inputs/outputs
   // I: carries, inputs
   // O: carries, outputs, carries
@@ -2498,7 +2540,37 @@ IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
   for (size_t i = 0; i < n_outputs; i++)
     training_inputs.push_back(GO(n_carries + i));
 
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
+  {
+	  std::stringstream buf;
+	  buf << "GI" << i;
+	  training_outputs.push_back(IA(buf.str()));
+  }
+
+  /*
+  result.push_back(ConstantScalarNode(static_cast<float>(0), {}, Name("0")));
+  for (int i = 0; i < GetSrcNodeOutputSize(); i++)
+  {
+	  if (IsGradientAvailableForSrcNodeOutput(i))
+		  continue;
+	  auto shape = IA("O(" + std::to_string(i) + ")_shape");
+	  result.push_back(NodeDef("Shape", {O(i)}, {shape}));
+	  result.push_back(NodeDef("Expand", {ArgDef(Name("0")), shape}, {GO(i)}));
+  }
+  */
+
   result.push_back(NodeDef("Scan", training_inputs, training_outputs, training_attributes));
+
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
+  {
+	  // if (i == 0)
+		  // result.push_back(ConstantScalarNode(static_cast<int64_t>(0), {}, IA("0").name));
+
+	  std::stringstream buf;
+	  buf << "GI" << i;
+	  // result.push_back(NodeDef("ReduceSum", {IA(buf.str()), IA("0")}, {GII(i)}, {MakeAttribute("keepdims", static_cast<int64_t>(0))}));
+	  result.push_back(NodeDef("ReduceSum", {IA(buf.str())}, {GII(i)}, std::vector{MakeAttribute("axes", std::vector<int64_t>({0})), MakeAttribute("keepdims", static_cast<int64_t>(0))}));
+  }
 
   return result;
 }

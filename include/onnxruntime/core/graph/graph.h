@@ -1722,7 +1722,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       inputs_and_initializers.clear();
       node_name_to_index.clear();
       nodes_with_subgraphs.clear();
+      #ifdef ENABLE_TRAINING
       isolated_graph.clear();
+      #endif
     }
 
    private:
