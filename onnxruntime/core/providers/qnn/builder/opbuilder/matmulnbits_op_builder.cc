@@ -10,7 +10,8 @@
 namespace onnxruntime {
 namespace qnn {
 /* Op Resolution
-    --> MatMulNBits : Incoming ONNX Node
+    --> Incoming ONNX Node
+    1. MatMulNBits
     Attributes : INT64
       - accuracy_level  : 4
       - bits            : 4
@@ -19,26 +20,33 @@ namespace qnn {
       - N               :
 
     Inputs
-      - A           : (float16/float32) :[1(batch_size), sequence_len, K]
-      - B           : Initializer       : (uint8) [N, K/block_size, blob_size(16)]
-      - scales      : Initializer       :  (float32) : [N * K / block_size]
-      - zero_points : (optional)        : Initializer : (uint8) : [N * K / (block_size * 2)]
-      - bias        : (optional)        : Initializer : (?) : [?]  : [?]
+      - A           :                 : (fp16/32) : [batch_size{1}, sequence_len, K]
+      - B           : Init            : (uint8)   : [N, K/block_size, blob_size(16)]
+      - scales      : Init            : (fp32)    : [N * K / block_size]
+      - zero_points : (optional)Init  : (uint8)   : [N * K / (block_size * 2)]
+      - bias        : (optional)Init  : [?]       : [?]
 
     Outputs
-      -  Y          : (float16/float32) : [1(batch_size), sequence_len, N]
+      -  Y          :                 : (fp16/32) : [batch_size{1}, sequence_len, N]
 
-  <-- FullyConnected : Outgoing QNN Node
+  <-- Outgoing QNN Node
+  1. FullyConnected
   Attributes
     -
   Inputs
-    - Input           : (float16/float32) : [1(batch_size), sequence_len, K]
+    - Input           : (fp16/32)         : [batch_size{1}, sequence_len, K]
     - Weight          : Static : (qint4)  : [N, K]
-      - Scales        : float32           : [3072 * 2048 / 32]
-      - Offsets       : int32_t           : [3072 * 2048 / 32]
-    - Bias - Static   : (float16/float32) : [1, N]
+      - Scales        : fp32              : [(N * K) / block_size{32}]
+      - Offsets       : int32_t           : [(N * K) / block_size{32}]
+    - Bias            : Static :(fp16/32) : [1, N]
   Outputs
-    - Output          : (float16/float32) :  [sequence_len, N]
+    - Output          : (fp16/32)         : [batch_size{1} * sequence_len, N]
+
+  2. Reshape
+  Inputs
+    - Input           : (fp16/32)         : [batch_size{1} * sequence_len, N]
+  Outputs
+    - Output          : (fp16/32)         : [batch_size{1}, sequence_len, N]
 */
 
 class MatMulNBitsOpBuilder : public BaseOpBuilder {
@@ -67,7 +75,9 @@ class MatMulNBitsOpBuilder : public BaseOpBuilder {
   void DQQToSignedFixedPoint4(std::vector<uint8_t>& quant_data, int64_t num_blocks, int64_t block_size) const;
 };
 
-void MatMulNBitsOpBuilder::DQQToSignedFixedPoint4(std::vector<uint8_t>& quant_data, int64_t num_blocks, int64_t block_size) const {
+void MatMulNBitsOpBuilder::DQQToSignedFixedPoint4(std::vector<uint8_t>& quant_data,
+                                                  int64_t num_blocks,
+                                                  int64_t block_size) const {
   for (int32_t block_idx = 0; block_idx < gsl::narrow_cast<int32_t>(num_blocks); ++block_idx) {
     uint32_t zero_point = 8;
     for (int32_t val_idx = 0; val_idx < (gsl::narrow_cast<int32_t>(block_size) / 2); ++val_idx) {
