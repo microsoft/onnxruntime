@@ -125,14 +125,18 @@ class PadBase {
         ORT_THROW("Invalid 'mode' attribute value");
     }
 
-    const auto& kernel_def = info.GetKernelDef();
+    if constexpr (std::is_same_v<KernelInfoType, OpKernelInfo>) {
+      const auto& kernel_def = info.GetKernelDef();
 
-    int start_ver, end_ver;
-    kernel_def.SinceVersion(&start_ver, &end_ver);
+      int start_ver, end_ver;
+      kernel_def.SinceVersion(&start_ver, &end_ver);
 
-    // kMSDomain contrib kernel AND OnnxDomain start version >= 11 => DynamicPad
-    if (start_ver >= 11 || kernel_def.Domain() == kMSDomain) {
-      is_dynamic_ = true;
+      // kMSDomain contrib kernel AND OnnxDomain start version >= 11 => DynamicPad
+      if (start_ver >= 11 || kernel_def.Domain() == kMSDomain) {
+        is_dynamic_ = true;
+      }
+    } else {
+      // TODO(fs-eire): support opset version check for OrtKernelInfo
     }
 
     if (!is_dynamic_) {

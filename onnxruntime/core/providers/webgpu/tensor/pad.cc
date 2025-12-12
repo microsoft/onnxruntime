@@ -49,7 +49,7 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
     const auto pads_data = pads_tensor->DataAsSpan<int64_t>();
 
     // Compute Pads by applying axes if specified otherwise copy the supplied pads.
-    PadBase::ComputePads(context.KernelContext(), data_rank, pads_data, pads);
+    PadBase::ComputePads(context.Input(3), data_rank, pads_data, pads);
 
     // Separate out any negative pads into the slices array
     PadBase::SeparateNegativeToSlices(pads, slices);

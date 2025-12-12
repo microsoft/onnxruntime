@@ -219,8 +219,16 @@ class UpsampleBase {
     if (scales_input_idx_ > 0) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
-      auto x_shape = node.InputDefs()[0]->Shape();
-      int64_t rank = x_shape ? x_shape->dim_size() : -1;
+      int64_t rank = -1;
+      if constexpr (std::is_same_v<Info, OpKernelInfo>) {
+        auto x_shape = node.InputDefs()[0]->Shape();
+        if (x_shape != nullptr) {
+          rank = x_shape->dim_size();
+        }
+      } else {
+        // TODO(fs-eire): get shape inference info
+        rank = -1;
+      }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
         scales_cached_ = true;
