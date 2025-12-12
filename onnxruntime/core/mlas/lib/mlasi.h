@@ -333,13 +333,20 @@ inline const bool SMEInfo::IsSMEAvailable = false;
 
 #if defined(MLAS_TARGET_ARM64)
 
+// There's a compile time option to disable the use of the SME feature. Turn it into a boolean.
+#ifdef onnxruntime_KLEIDIAI_SME_DISABLED
+inline const bool SME_Disabled = true;
+#else
+inline const bool SME_Disabled = false;
+#endif
+
 // Boolean condition to determine if we can use SME2
 // By default we should try for SME2 first before falling back to SME.
 inline const bool SMEInfo::CanUseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
 // Boolean condition to determine if we can use SME
 inline const bool SMEInfo::CanUseSME  = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
 // Boolean condition to tell us if SME is enabled on this system
-inline const bool SMEInfo::IsSMEAvailable = SMEInfo::CanUseSME2 || SMEInfo::CanUseSME;
+inline const bool SMEInfo::IsSMEAvailable = !SME_Disabled && (SMEInfo::CanUseSME2 || SMEInfo::CanUseSME);
 
 #endif // MLAS_TARGET_ARM64
 
