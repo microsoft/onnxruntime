@@ -5,6 +5,11 @@
 #include <map>
 #include <set>
 
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
+#include <string>
+
 #include "core/providers/cann/cann_graph.h"
 
 namespace onnxruntime {
@@ -115,7 +120,15 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildModel(graph, options, model));
 
   if (info.dump_om_model) {
-    CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
+    std::string final_file = file_name + ".om";
+
+    int lock_fd = open(final_flie.c_str(), O_CREATE | O_RDWR, 0666);
+
+    if (flock(lock_fd, LOCK_EX) == 0){
+      CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
+      flock(lock_fd, LOCK_UN);
+    };
+    close(lock_fd);
   }
 
   return Status::OK();

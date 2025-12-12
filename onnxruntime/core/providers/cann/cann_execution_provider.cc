@@ -1398,7 +1398,20 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         std::lock_guard<std::mutex> lock(g_mutex);
         auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
+          std::string om_flie = filename + ".om";
+
+          int fd = open(om_file.c_str(), O_RDWR | O_CREATE, 0666);
+
+          if (fd >= 0){
+            flock(fd, LOCK_SH);
+          }
+
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
+
+          if (fd >= 0){
+            flock(fd, LOCK_UN);
+            close(fd);
+          }
         } else {
           ge::Graph graph{cann_state->node_name.c_str()};
           ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
