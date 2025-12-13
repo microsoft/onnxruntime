@@ -781,14 +781,13 @@ Status UnfusedAttention(
       scratch2, total_sequence_length, sequence_length * total_sequence_length,
       &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
-  Status result = Status::OK();
   if (!data.is_4d_input) {
     // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
-    Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
-                                   device_prop.maxThreadsPerBlock, false, temp_output, data.output);
+    ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
+                                       device_prop.maxThreadsPerBlock, false, temp_output, data.output));
   }
   DUMP_TENSOR_D("Attention Output", data.output, batch_size, sequence_length, num_heads, v_head_size);
-  return result;
+  return Status::OK();
 }
 
 template <typename T>

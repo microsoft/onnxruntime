@@ -128,9 +128,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // The attention_bias should be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length)
   // attn_mask can be 2D, 3D, or 4D. Broadcasting aligns from the right (trailing dimensions).
   if (attn_mask != nullptr) {
+    // TODO(titaiwang, xadupre): attn_mask bool is not supported yet
+    if (attn_mask->IsDataType<bool>()) {
+      ORT_THROW("Boolean attn_mask is not supported yet in Attention op (CUDA).");
+    }
+
     size_t attn_mask_dims_size = attn_mask->Shape().NumDimensions();
     auto attn_mask_dims = attn_mask->Shape().GetDims();
-
     // For 2D mask (q_seq_len, total_seq_len): both batch and heads dimensions need broadcasting
     // For 3D mask (X, q_seq_len, total_seq_len): batch needs broadcasting if X==1, heads always needs broadcasting
     // For 4D mask (B, H, q_seq_len, total_seq_len): check if B==1 and H==1
@@ -171,7 +175,20 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO(titaiwang, xadupre): Group query attention is not supported yet
   if (parameters.kv_num_heads != parameters.q_num_heads) {
-    ORT_ENFORCE(false, "Group query attention is not supported yet in Attention op (CUDA).");
+    ORT_THROW("Group query attention is not supported yet in Attention op (CUDA).");
+  }
+
+  // TODO(titaiwang, xadupre): qk_matmul_output_mode only supports kNone and kQK for now
+  if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
+      qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kQK) {
+    ORT_THROW("qk_matmul_output_mode other than -1 (None) and 0 (QK) is not supported yet in Attention op (CUDA).");
+  }
+  // TODO(titaiwang, xadupre): softcap and softmax_precision are not used yet
+  if (parameters.softcap != 0.0f) {
+    ORT_THROW("softcap is not supported yet in Attention op (CUDA).");
+  }
+  if (parameters.softmax_precision != 0) {
+    ORT_THROW("softmax_precision is not supported yet in Attention op (CUDA).");
   }
 
   // TODO(titaiwang): Continue on these parameters
