@@ -938,8 +938,9 @@ Return Value:
 --*/
 {
     // Override
-    if(GetMlasPlatform().MlasConvOverride != nullptr &&
-        GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool)){
+    if(SMEInfo::IsSMEAvailable &&
+       GetMlasPlatform().MlasConvOverride != nullptr &&
+       GetMlasPlatform().MlasConvOverride(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool)) {
     return;
     }
 
@@ -1201,7 +1202,8 @@ Return Value:
 --*/
 {
     // Override
-    if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
+    if (SMEInfo::IsSMEAvailable &&
+        GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
         Activation, WorkingBufferSize, Beta, ThreadPool)){
