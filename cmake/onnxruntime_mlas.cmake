@@ -286,13 +286,17 @@ function(setup_kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 
+  if(onnxruntime_KLEIDIAI_SME_DISABLED)
+    target_compile_definitions(onnxruntime_mlas PRIVATE onnxruntime_KLEIDIAI_SME_DISABLED=1)
+  endif()
+
   # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
   if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG=1)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE onnxruntime_KLEIDIAI_DEBUG_LOGGING=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE onnxruntime_KLEIDIAI_KERNEL_LOGGING=1)
   endif()
   if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
-    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE onnxruntime_KLEIDIAI_KERNEL_LOGGING=1)
   endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
