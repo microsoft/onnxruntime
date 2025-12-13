@@ -365,7 +365,7 @@ TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, true);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMulFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -445,7 +445,7 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
   RunMatMulZeroKTest<int32_t>();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -482,7 +482,7 @@ TEST(MathOpTest, MatMul_Float16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(MathOpTest, MatMul_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -506,13 +506,6 @@ TEST(MathOpTest, MatMul_bfloat16) {
   test.Config(run_with_tunable_op);
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-  test.ConfigEps(std::move(execution_providers))
-      .RunWithConfig();
-
-  execution_providers.clear();
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
 #elif USE_DNNL
   execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif

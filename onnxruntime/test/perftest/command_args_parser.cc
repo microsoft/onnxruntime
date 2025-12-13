@@ -15,6 +15,8 @@
 #include <core/graph/constants.h>
 #include <core/platform/path_lib.h>
 #include <core/optimizer/graph_transformer_level.h>
+#include <core/session/onnxruntime_session_options_config_keys.h>
+#include <core/session/onnxruntime_run_options_config_keys.h>
 
 #include "test_configuration.h"
 #include "strings_helper.h"
@@ -24,6 +26,7 @@
 #include "absl/flags/usage.h"
 #include "absl/flags/usage_config.h"
 #include "absl/flags/reflection.h"
+#include "absl/strings/str_split.h"
 
 static const onnxruntime::perftest::PerformanceTestConfig& DefaultPerformanceTestConfig() {
   static onnxruntime::perftest::PerformanceTestConfig default_config{};
@@ -39,7 +42,7 @@ ABSL_FLAG(std::string, F, "",
           "[Usage]: -f \"dimension_denotation1:override_value1\" -f \"dimension_denotation2:override_value2\" ...  or"
           " -f \"dimension_denotation1:override_value1 dimension_denotation2 : override_value2... \". Override value must > 0.");
 ABSL_FLAG(std::string, m, "duration", "Specifies the test mode. Value could be 'duration' or 'times'.");
-ABSL_FLAG(std::string, e, "cpu", "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
+ABSL_FLAG(std::string, e, "cpu", "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
 ABSL_FLAG(size_t, r, DefaultPerformanceTestConfig().run_config.repeated_times, "Specifies the repeated times if running in 'times' test mode.");
 ABSL_FLAG(size_t, t, DefaultPerformanceTestConfig().run_config.duration_in_seconds, "Specifies the seconds to run for 'duration' mode.");
 ABSL_FLAG(std::string, p, "", "Specifies the profile name to enable profiling and dump the profile data to the file.");
@@ -149,8 +152,10 @@ ABSL_FLAG(std::string, C, "",
           "Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
           "[Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n");
 ABSL_FLAG(std::string, R, "", "Allows user to register custom op by .so or .dll file.");
-ABSL_FLAG(bool, A, DefaultPerformanceTestConfig().run_config.enable_cpu_mem_arena, "Disables memory arena.");
-ABSL_FLAG(bool, M, DefaultPerformanceTestConfig().run_config.enable_memory_pattern, "Disables memory pattern.");
+ABSL_FLAG(bool, A, !DefaultPerformanceTestConfig().run_config.enable_cpu_mem_arena, "Disables memory arena.");
+ABSL_FLAG(std::string, shrink_arena_between_runs, "", "When arena is enabled call Shrink for specified devices 'cpu:0;gpu:0'");
+ABSL_FLAG(std::string, enable_cuda_mempool, "", "When cuda is enabled use CudaMempoolArena with params 'pool_release_threshold;bytes_to_keep_on_shrink'");
+ABSL_FLAG(bool, M, !DefaultPerformanceTestConfig().run_config.enable_memory_pattern, "Disables memory pattern.");
 ABSL_FLAG(bool, s, DefaultPerformanceTestConfig().run_config.f_dump_statistics, "Shows statistics result, like P75, P90. If no result_file provided this defaults to on.");
 ABSL_FLAG(bool, v, DefaultPerformanceTestConfig().run_config.f_verbose, "Shows verbose information.");
 ABSL_FLAG(bool, I, DefaultPerformanceTestConfig().run_config.generate_model_input_binding, "Generates tensor input binding. Free dimensions are treated as 1 unless overridden using -f.");
@@ -261,10 +266,34 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   }
 
   // -M
-  test_config.run_config.enable_memory_pattern = absl::GetFlag(FLAGS_M);
+  test_config.run_config.enable_memory_pattern = !absl::GetFlag(FLAGS_M);
 
   // -A
-  test_config.run_config.enable_cpu_mem_arena = absl::GetFlag(FLAGS_A);
+  test_config.run_config.enable_cpu_mem_arena = !absl::GetFlag(FLAGS_A);
+
+  // --shrink_arena_between_runs
+  if (test_config.run_config.enable_cpu_mem_arena) {
+    auto shrink_spec = absl::GetFlag(FLAGS_shrink_arena_between_runs);
+    test_config.run_config.run_config_entries.emplace(
+        kOrtRunOptionsConfigEnableMemoryArenaShrinkage,
+        std::move(shrink_spec));
+  }
+
+  // --enable_cuda_mempool
+  {
+    auto cuda_mempool_spec = absl::GetFlag(FLAGS_enable_cuda_mempool);
+    if (!cuda_mempool_spec.empty()) {
+      // Split the string with ';' separator in two parts
+      std::vector<std::string> parts = absl::StrSplit(cuda_mempool_spec, ';');
+      if (parts.size() == 2U) {
+        test_config.run_config.cuda_mempool_arena_config = {
+            std::move(parts[0]), std::move(parts[1])};
+      } else {
+        std::cerr << "Invalid format for --enable_cuda_mempool. "
+                  << "Expected format : <pool_release_threshold;bytes_to_keep_on_shrink>" << std::endl;
+      }
+    }
+  }
 
   // -e
   {
@@ -296,8 +325,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
       } else if (ep == "armnn") {
         test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
-      } else if (ep == "rocm") {
-        test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
       } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
       } else if (ep == "xnnpack") {

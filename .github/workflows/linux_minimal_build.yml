@@ -22,13 +22,17 @@ jobs:
   # Job 1: Build full onnxruntime and generate ORT format test files
   build_full_ort:
     name: 1. Build Full ORT and Generate ORT Files
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_full_ort-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -58,14 +62,18 @@ jobs:
   # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
   build_minimal_exceptions_disabled:
     name: 2. Build Minimal (Exceptions Disabled)
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_minimal_exceptions_disabled-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
       - uses: actions/setup-node@v6
@@ -115,14 +123,18 @@ jobs:
   build_minimal_custom_ops:
     name: 3a. Build Minimal (Custom Ops)
     needs: build_full_ort # Depends on Job 1 for test data
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_minimal_custom_ops-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
       - uses: actions/setup-node@v6
@@ -149,14 +161,18 @@ jobs:
   build_minimal_type_reduction:
     name: 3b. Build Minimal (Type Reduction)
     needs: build_full_ort # Depends on Job 1 for test data
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_minimal_type_reduction-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
       - uses: actions/setup-node@v6
@@ -181,14 +197,18 @@ jobs:
   # Job 4: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
   build_minimal_globally_allowed_types:
     name: 4. Build Minimal (Globally Allowed Types)
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_minimal_globally_allowed_types-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
       - uses: actions/setup-node@v6
@@ -215,14 +235,18 @@ jobs:
   # Job 5: Build extended minimal onnxruntime and run tests
   build_extended_minimal:
     name: 5. Build Extended Minimal
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_extended_minimal-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
       - uses: actions/setup-node@v6
@@ -279,14 +303,18 @@ jobs:
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
     name: 6a. Build Regular (No Optional Features)
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_regular_no_optional-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -356,14 +384,18 @@ jobs:
   # Job 6b: Minimal build with all optional features disabled.
   build_minimal_no_optional:
     name: 6b. Build Minimal (No Optional Features)
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_minimal_no_optional-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -423,14 +455,18 @@ jobs:
   # Job 6c: Extended minimal build with all optional features disabled.
   build_extended_minimal_no_optional:
     name: 6c. Build Extended Minimal (No Optional Features)
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_extended_minimal_no_optional-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -498,14 +534,18 @@ jobs:
   build_extended_minimal_android:
     name: 7. Build Extended Minimal (Android NNAPI)
     needs: build_full_ort # Depends on Job 1 for test data
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=build_extended_minimal_android-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions: # Permissions needed for build-docker-image
       contents: read
       packages: write
       id-token: write # If using OIDC for ACR login
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
       - uses: actions/setup-node@v6

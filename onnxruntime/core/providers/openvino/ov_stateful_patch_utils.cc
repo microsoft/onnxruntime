@@ -2,6 +2,8 @@
 // Licensed under the MIT License
 
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -59,6 +61,17 @@ bool ModelHasInputOutputNames(std::shared_ptr<ov::Model> model, const std::strin
   return false;
 }
 
+std::string GetInputOutputName(std::shared_ptr<ov::Model> ov_model,
+                               const std::vector<std::string>& candidate_names) {
+  for (const auto& name : candidate_names) {
+    if (ModelHasInputOutputNames(ov_model, name)) {
+      return name;
+    }
+  }
+  // Return the first candidate as default if none are found
+  return candidate_names.empty() ? "" : candidate_names[0];
+}
+
 void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
                       std::vector<std::string>& not_kv_inputs,
                       const std::vector<std::string>& key_value_input_names,
@@ -67,10 +80,15 @@ void FuseCacheReorder(std::shared_ptr<ov::Model> ov_model,
     throw std::runtime_error("Model already has fused cache");
   }
 
-  std::string main_input_name = "inputs_embeds";
-  if (ModelHasInputOutputNames(ov_model, "input_ids")) {
-    main_input_name = "input_ids";
-  }
+  // Define input name candidates in priority order
+  const std::vector<std::string> input_name_candidates = {
+      "inputs_embeds",                       // Default fallback
+      "input_ids",                           // Most common
+      "input_hidden_states",                 // Alternative
+      "/model/embed_tokens/Gather_output_0"  // Specific model type
+  };
+
+  std::string main_input_name = GetInputOutputName(ov_model, input_name_candidates);
 
   auto input_batch = ov_model->input(main_input_name).get_partial_shape()[0];
 
@@ -116,21 +134,108 @@ void MakeStateful(std::shared_ptr<ov::Model>& ov_model,
   manager.run_passes(ov_model);
 }
 
-// Converted to C++ from below reference URL:
-// https://github.com/huggingface/optimum-intel/blob/main/optimum/exporters/openvino/stateful.py#L281
-void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
-  std::vector<std::string> key_value_input_names;
-  std::vector<std::string> not_kv_inputs;
-  for (const ov::Output<ov::Node>& input : model->inputs()) {
-    auto& names = input.get_names();
+// Helper function to extract KV patterns from output names dynamically
+//
+// Example: Given output names ["present_key_cross_0", "present_key_cross_1", "present_value_cross_0", "present_value_cross_1", "logits"]
+//   key_value_output_names = ["present_key_cross_0", "present_key_cross_1", "present_value_cross_0", "present_value_cross_1"]
+//   unique_patterns = {"key_cross", "value_cross"}
+std::pair<std::vector<std::string>, std::unordered_set<std::string>> ExtractKVPatternsFromOutputs(const std::shared_ptr<ov::Model>& model) {
+  std::vector<std::string> key_value_output_names;
+  std::unordered_set<std::string> unique_patterns;
 
-    bool found = false;
-    for (auto& name : names) {
-      if (name.find("key_values") != std::string::npos) {
-        key_value_input_names.push_back(name);
-        found = true;
+  const std::string prefix = "present_";
+  const size_t prefix_len = prefix.length();
+  for (const ov::Output<ov::Node>& output : model->outputs()) {
+    const auto& names = output.get_names();
+    for (const auto& name : names) {
+      if (name.find(prefix) == 0 && name.length() > prefix_len) {
+        size_t last_underscore_pos = name.rfind('_');
+        // Extract pattern between "present_" and the last underscore
+        if (last_underscore_pos != std::string::npos && last_underscore_pos > prefix_len) {
+          std::string pattern = name.substr(prefix_len, last_underscore_pos - prefix_len);
+          if (!pattern.empty()) {
+            unique_patterns.insert(pattern);
+            key_value_output_names.push_back(name);
+          }
+        }
         break;
       }
+    }
+  }
+
+  if (unique_patterns.size() > 2) {
+    ORT_THROW("More than two unique KV patterns found in output names.");
+  }
+  return std::make_pair(key_value_output_names, unique_patterns);
+}
+
+// Main function to extract KV tensors using dynamic pattern matching
+//
+// Example: Given input names ["input_ids", "attention_mask", "past_key_cross_0", "past_key_cross_1", "past_value_cross_0", "past_value_cross_1"]
+//   kv_patterns = {"key_cross", "value_cross"}
+//
+//   key_value_input_names = ["past_key_cross_0", "past_key_cross_1", "past_value_cross_0", "past_value_cross_1"]
+//   not_kv_inputs = ["input_ids", "attention_mask"]
+std::pair<std::vector<std::string>, std::vector<std::string>> ExtractInputKVTensors(
+    const std::shared_ptr<ov::Model>& model, const std::unordered_set<std::string>& kv_patterns) {
+  std::vector<std::string> key_value_input_names;
+  std::vector<std::string> not_kv_inputs;
+
+  if (kv_patterns.empty()) {
+    // Fallback: use original substring matching
+    for (const ov::Output<ov::Node>& input : model->inputs()) {
+      const auto& names = input.get_names();
+      const std::string input_name = input.get_any_name();
+
+      bool is_kv_input = false;
+      for (const auto& name : names) {
+        if (name.find("key_values") != std::string::npos ||
+            name.find("keys") != std::string::npos ||
+            name.find("values") != std::string::npos) {
+          key_value_input_names.push_back(name);
+          is_kv_input = true;
+          break;
+        }
+      }
+
+      if (!is_kv_input) {
+        not_kv_inputs.push_back(input_name);
+      }
+    }
+
+    return std::make_pair(key_value_input_names, not_kv_inputs);
+  }
+
+  // Inline helper function to check if name is matched with provided pattern followed by "_%d"
+  auto matches_pattern = [](const std::string& name, const std::string& pattern) -> bool {
+    size_t pos = name.find(pattern);
+    if (pos == std::string::npos) {
+      return false;
+    }
+
+    size_t after_pattern = pos + pattern.length();
+    if (after_pattern >= name.length() || name[after_pattern] != '_') {
+      return false;
+    }
+
+    std::string suffix = name.substr(after_pattern + 1);
+    return !suffix.empty() && std::all_of(suffix.begin(), suffix.end(), ::isdigit);
+  };
+
+  for (const ov::Output<ov::Node>& input : model->inputs()) {
+    auto& names = input.get_names();
+    bool found = false;
+
+    // Check if any input name contains either key or value pattern
+    for (const auto& name : names) {
+      for (const auto& pattern : kv_patterns) {
+        if (matches_pattern(name, pattern)) {
+          key_value_input_names.push_back(name);
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
     }
 
     if (!found) {
@@ -138,20 +243,25 @@ void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
     }
   }
 
-  std::vector<std::string> key_value_output_names;
-  for (const ov::Output<ov::Node>& output : model->outputs()) {
-    auto& names = output.get_names();
-    for (auto& name : names) {
-      if (name.find("present") != std::string::npos) {
-        key_value_output_names.push_back(name);
-        break;
-      }
-    }
-  }
+  return std::make_pair(key_value_input_names, not_kv_inputs);
+}
+
+// Updated PatchStatefulDecoder function
+void PatchStatefulDecoder(std::shared_ptr<ov::Model> model) {
+  // Use the dynamic pattern-based extraction logic
+  auto [key_value_output_names, extracted_patterns] = ExtractKVPatternsFromOutputs(model);
+  auto [key_value_input_names, not_kv_inputs] = ExtractInputKVTensors(model, extracted_patterns);
 
   if (key_value_input_names.empty() || key_value_output_names.empty()) {
-    std::cout << "no key_value_input_names or key_value_output_names found" << std::endl;
-    return;
+    ORT_THROW("No key_value_input_names or key_value_output_names found");
+  }
+
+  if (key_value_input_names.size() != key_value_output_names.size()) {
+    ORT_THROW("Found different sizes between key_value_input_names (",
+              key_value_input_names.size(),
+              ") and key_value_output_names (",
+              key_value_output_names.size(),
+              "). They couldn't be paired.");
   }
 
   // By default, batch is the 0 - th but chatglm uses 1 - st dimension as batch
@@ -295,13 +405,6 @@ void UpdateNPUConfig(ov::AnyMap& config, const KVAxesPosition& kv_pos, const KVD
   RenameKey(config, "PREFILL_HINT", "NPUW_LLM_PREFILL_HINT");
   RenameKey(config, "GENERATE_CONFIG", "NPUW_LLM_GENERATE_CONFIG");
   RenameKey(config, "GENERATE_HINT", "NPUW_LLM_GENERATE_HINT");
-
-  const size_t npuw_context_len_threshold = 2048;
-  if ((kv_desc.max_prompt_len + kv_desc.min_response_len) >= npuw_context_len_threshold) {
-    // This improves accuracy for generation sequences that exceed 2k tokens.
-    config["++NPUW_LLM_PREFILL_CONFIG"] = ov::AnyMap{{"NPUW_DEVICES", "NPU,CPU"}, {"NPUW_ONLINE_AVOID", "P:SinCos/NPU"}};
-    config["++NPUW_LLM_GENERATE_CONFIG"] = ov::AnyMap{{"NPUW_DEVICES", "NPU,CPU"}, {"NPUW_ONLINE_AVOID", "P:SinCos/NPU"}};
-  }
 }
 
 std::optional<ov::Any> PopOptionNew(ov::AnyMap& config, const std::string& option_name) {

@@ -46,6 +46,10 @@ struct InitializationConfig {
   std::vector<size_t> selected_ep_device_indices{};
 
   std::map<std::string, std::string> default_ep_options{};
+
+  // Specifies any tests to skip.
+  // Tests should be specified by full name, i.e., "<test suite name>.<test name>".
+  std::vector<std::string> tests_to_skip{};
 };
 
 // Parses `InitializationConfig` from JSON.
@@ -74,6 +78,9 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger = nullp
 
 // Gets the dynamic plugin EP name, or `std::nullopt` if uninitialized.
 std::optional<std::string> GetEpName();
+
+// Gets the list of tests to skip, or an empty list if uninitialized.
+std::vector<std::string> GetTestsToSkip();
 
 }  // namespace dynamic_plugin_ep_infra
 }  // namespace test

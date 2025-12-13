@@ -41,10 +41,15 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+  static std::unique_ptr<OrtCustomOpDomain> native_custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  static std::vector<std::unique_ptr<TensorRTCustomOp>> native_custom_op_list;
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
+    if (native_custom_op_domain->domain_ != "" && native_custom_op_domain->custom_ops_.size() > 0) {
+      domain_list.push_back(native_custom_op_domain.get());
+    }
     return Status::OK();
   }
 
@@ -136,6 +141,19 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
   }
+
+  // Register native custom ops (register these independent of TRT plugin library availability)
+  const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
+  int num_native_custom_ops = std::size(native_custom_ops_names);
+
+  for (int i = 0; i < num_native_custom_ops; i++) {
+    native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
+    native_custom_op_list.back()->SetName(native_custom_ops_names[i]);
+    native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
+  }
+
+  native_custom_op_domain->domain_ = "trt";
+  domain_list.push_back(native_custom_op_domain.get());
   return Status::OK();
 }
 

@@ -34,6 +34,7 @@ jobs:
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory
       execution_providers: 'cuda tensorrt'
+      job_identifier: build-linux-TensorRT-x64-release
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 
@@ -43,12 +44,13 @@ jobs:
     runs-on:
       - self-hosted
       - "1ES.Pool=Onnxruntime-github-Linux-GPU-H100"
+      - "JobId=test-linux-TensorRT-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     permissions:
       contents: read
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       # --- Build the Docker image needed for testing ---
       - name: Build Docker Image for Testing

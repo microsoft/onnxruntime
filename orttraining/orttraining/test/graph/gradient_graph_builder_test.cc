@@ -16,7 +16,7 @@
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 #include "bert_toy_fetches.h"
 #endif
 
@@ -382,7 +382,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   ASSERT_TRUE(count > 1);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
@@ -401,8 +401,6 @@ static void RunBertTrainingWithChecks(
 
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#elif USE_ROCM
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(training_session->Initialize());
 
@@ -579,7 +577,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
   SessionOptions so;
   RunBertTrainingWithChecks(so, backprop_model_file);
 #endif

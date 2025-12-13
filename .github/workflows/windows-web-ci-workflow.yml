@@ -19,7 +19,11 @@ on:
 
 jobs:
   build_onnxruntime_web:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-WEBGPU-A10"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-WEBGPU-A10",
+      "JobId=build_onnxruntime_web-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
 
     env:
       webgpu_commandline_extra_flags: "--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de"
@@ -29,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 

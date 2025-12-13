@@ -3,11 +3,7 @@
 
 #pragma once
 
-#ifdef USE_ROCM
-#include "core/providers/rocm/shared_inc/rocm_utils.h"
-#else
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#endif
 
 namespace onnxruntime {
 namespace cuda {
