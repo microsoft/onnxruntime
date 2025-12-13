@@ -502,7 +502,7 @@ TEST(MatMulNBits, LegacyShape_4b) {
 #endif
 #endif
 
-#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU) || defined(USE_QNN)
 
 namespace {
 // Legacy test function.
@@ -552,6 +552,12 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728").IsOK());
     execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
 #endif
+#ifdef USE_QNN
+    ProviderOptions provider_options;
+    provider_options["backend_type"] = "gpu";
+    provider_options["offload_graph_io_quantization"] = "0";
+    execution_providers.push_back(QnnExecutionProviderWithOptions(provider_options));
+#endif
     RunTest<float>(opts, std::move(execution_providers));
   }
 }
@@ -582,6 +588,33 @@ TEST(MatMulNBits, Float16_Comprehensive) {
     }
   }
 }
+
+#if defined(USE_QNN) && defined(_M_ARM64)
+// QNN GPU Only support FP16 activations and Q4_0 weights.
+// Accumulation with larger channel accumulates more error. Set higher abs_error with respect to K.
+// M, N, K, block_size, has_zeropoint, zp_is_4bit = true, abs_error = 0.f, has_g_idx = false, has_bias = false
+// TODO : QNN GPU supports only symmetric quantization. ie. zero_points = 8 (UFXP4) and 0 (SFXP4)
+// Add symmetric quantization in gtest.
+TEST(MatMulNBits, Basic_M1_N128_K32_withZp) {
+  constexpr float abs_error = 0.03f;
+  RunTest<float>(1, 128, 512, 32, true, true, abs_error, false, false);
+}
+
+TEST(MatMulNBits, Basic_M1_N128_K32) {
+  constexpr float abs_error = 0.03f;
+  RunTest<float>(1, 128, 512, 32, false, true, abs_error, false, false);
+}
+
+TEST(MatMulNBits, Basic_M10_N128_K32_withZp) {
+  constexpr float abs_error = 0.03f;
+  RunTest<float>(10, 128, 512, 32, true, true, abs_error, false, false);
+}
+
+TEST(MatMulNBits, Basic_M10_N128_K32) {
+  constexpr float abs_error = 0.03f;
+  RunTest<float>(10, 128, 512, 32, false, true, abs_error, false, false);
+}
+#endif
 
 TEST(MatMulNBits, Float16_Large) {
 #ifdef USE_DML
