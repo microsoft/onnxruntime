@@ -24,7 +24,7 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
   }
 
   uint32_t output_size = onnxruntime::narrow<uint32_t>(n);
-  RangeProgram program{};
+  RangeProgram program{output_tensor->GetElementType()};
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
@@ -48,9 +48,19 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
 Status RangeProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                        << "  let value = bitcast<output_value_t>(uniforms.start) + output_value_t(global_idx) * bitcast<output_value_t>(uniforms.delta);\n"
-                        << output.SetByOffset("global_idx", "value");
+  sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
+
+  // For int64, we need to cast to i32 first, then assign to output (which handles vec2<u32> conversion)
+  // For int32 and float, we can use output_value_t directly
+  if (data_type_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    // int64 case: bitcast to i32, compute with i32, then assign (automatic conversion to vec2<u32>)
+    sh.MainFunctionBody() << "  let value = bitcast<i32>(uniforms.start) + i32(global_idx) * bitcast<i32>(uniforms.delta);\n"
+                          << output.SetByOffset("global_idx", "value");
+  } else {
+    // float or int32 case: use output_value_t
+    sh.MainFunctionBody() << "  let value = bitcast<output_value_t>(uniforms.start) + output_value_t(global_idx) * bitcast<output_value_t>(uniforms.delta);\n"
+                          << output.SetByOffset("global_idx", "value");
+  }
 
   return Status();
 }
@@ -71,6 +81,7 @@ Status RangeProgram::GenerateShaderCode(ShaderHelper& sh) const {
 
 WEBGPU_RANGE_KERNEL(float)
 WEBGPU_RANGE_KERNEL(int32_t)
+WEBGPU_RANGE_KERNEL(int64_t)
 
 }  // namespace webgpu
 }  // namespace onnxruntime
