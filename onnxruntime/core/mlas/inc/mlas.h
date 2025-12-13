@@ -1126,6 +1126,16 @@ MlasEltwiseAdd(
     size_t N
     );
 
+template <typename T>
+void
+MLASCALL
+MlasEltwiseMul(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
 template<typename T>
 void
 MLASCALL
