@@ -1832,7 +1832,9 @@ class SymbolicShapeInference:
         self._fuse_tensor_type(node, 0, vi_out_seq.type, vi_tensor.type)
 
     def _infer_Shape(self, node):  # noqa: N802
-        self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)
+        start = get_attribute(node, "start", 0)
+        end = get_attribute(node, "end", -1)
+        self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)[start:end]
 
     def _infer_Size(self, node):  # noqa: N802
         sympy_shape = self._get_sympy_shape(node, 0)
