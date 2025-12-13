@@ -840,6 +840,12 @@ endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
         ${ONNXRUNTIME_ROOT})
+# Expose QNN SDK headers to unit tests via onnxruntime_test_utils so downstream test targets inherit them.
+if(onnxruntime_USE_QNN)
+  target_include_directories(onnxruntime_test_utils PUBLIC
+    ${onnxruntime_QNN_HOME}/include
+    ${onnxruntime_QNN_HOME}/include/QNN)
+endif()
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
