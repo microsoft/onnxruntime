@@ -161,20 +161,27 @@ inline ONNXTensorElementDataType GetTensorElemDataType<int64_t>() {
 }
 
 template <typename T>
-inline OrtStatus* GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
-                                             /*out*/ gsl::span<const T>& data,
-                                             /*out*/ std::vector<int64_t>& shape) {
-  Ort::ConstValue input = kernel_context.GetInput(index);
-  auto type_shape = input.GetTensorTypeAndShapeInfo();
+inline OrtStatus* GetValueDataAndShape(Ort::ConstValue value,
+                                       /*out*/ gsl::span<const T>& data,
+                                       /*out*/ std::vector<int64_t>& shape) {
+  auto type_shape = value.GetTensorTypeAndShapeInfo();
 
   ONNXTensorElementDataType elem_type = type_shape.GetElementType();
   RETURN_IF(elem_type != GetTensorElemDataType<T>(), Ort::GetApi(),
             "EP expected kernel input of tensor type");
 
-  const T* float_data = input.GetTensorData<T>();
+  const T* elem_data = value.GetTensorData<T>();
   size_t num_elems = type_shape.GetElementCount();
-  data = gsl::span<const T>(float_data, num_elems);
+  data = gsl::span<const T>(elem_data, num_elems);
   shape = type_shape.GetShape();
 
   return nullptr;
+}
+
+template <typename T>
+inline OrtStatus* GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                                             /*out*/ gsl::span<const T>& data,
+                                             /*out*/ std::vector<int64_t>& shape) {
+  Ort::ConstValue input = kernel_context.GetInput(index);
+  return GetValueDataAndShape<T>(input, data, shape);
 }

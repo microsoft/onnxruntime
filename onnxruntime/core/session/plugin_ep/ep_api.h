@@ -100,4 +100,9 @@ ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtDataType** out);
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
                     _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
+
+ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
+                    _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
+                    _In_ void** buffer_data_ptrs, _In_ size_t* buffer_data_sizes, _In_ size_t num_buffers,
+                    _In_ OrtAllocator* deleter);
 }  // namespace OrtExecutionProviderApi
