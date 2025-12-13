@@ -4,7 +4,7 @@ description: How to troubleshoot common problems
 has_children: false
 parent: How to
 grand_parent: Generate API (Preview)
-nav_order: 4
+nav_order: 5
 ---
 
 # Troubleshoot issues with ONNX Runtime generate() API
@@ -14,6 +14,18 @@ nav_order: 4
 {:toc}
 
 ## Installation issues
+
+### API compatibility issue 
+
+```
+AttributeError: 'onnxruntime_genai.onnxruntime_genai.GeneratorParams' object has no attribute 'input_ids'
+```
+
+```
+AttributeError: 'onnxruntime_genai.onnxruntime_genai.Generator' object has no attribute 'compute_logits'
+```
+
+If you see the above errors, this means that you are running version < 0.5.2 code in a > 0.6.0 environment. See the [migration guide](./migrate.md) for a full description of the new API and how to write code to be compatible with it. 
 
 ### Windows Conda import error
 
