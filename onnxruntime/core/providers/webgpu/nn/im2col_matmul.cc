@@ -190,7 +190,6 @@ bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
                                  const bool is_channels_last,
                                  const ActivationKind activation_kind,
                                  const TensorShape weight_shape,
-                                 const AutoPadType auto_pad,
                                  const uint32_t group) {
   if (!IsDeviceSupported(context)) {
     return false;
@@ -198,9 +197,8 @@ bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
 
   // TODO: Support !is_channels_last
   // TODO: Support fuse
-  // TODO: Support auto pad
   // TODO: Support group conv
-  if (!is_channels_last || activation_kind != ActivationKind::None || auto_pad != AutoPadType::NOTSET || group != 1) {
+  if (!is_channels_last || activation_kind != ActivationKind::None || group != 1) {
     return false;
   }
 
