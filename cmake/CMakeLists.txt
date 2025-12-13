@@ -888,6 +888,8 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
     if (onnxruntime_USE_QNN AND (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux"))
       file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libQnn*.so"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Qnn*.dll"
+                                             "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libGenie*.so"
+                                             "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Genie*.dll"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libHtpPrepare.so"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/HtpPrepare.dll")
       if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc" OR ${QNN_ARCH_ABI} STREQUAL "arm64x-windows-msvc")
