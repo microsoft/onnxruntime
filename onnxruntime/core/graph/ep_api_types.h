@@ -254,6 +254,7 @@ struct EpGraph : public OrtGraph {
 
    private:
     NodeIndex min_node_index_ = 0;
+    NodeIndex max_node_index_ = 0;
     std::vector<EpNode*> nodes_;
   };
 
