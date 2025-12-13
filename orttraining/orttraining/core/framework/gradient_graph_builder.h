@@ -100,7 +100,7 @@ class GradientGraphBuilder {
                        const GradientGraphConfiguration& gradient_graph_config,
                        const logging::Logger& logger);
 
-  Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
+  Status Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr, bool is_isolated = false);
 
   const std::unordered_set<std::string>& GetNonDifferentiableYNodeArgNames() const {
     return non_differentiable_y_node_arg_names_;

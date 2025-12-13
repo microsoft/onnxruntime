@@ -1433,6 +1433,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     // Whether to set that no proto sync is required after resolving.
     // Useful for resolving right after loading from a GraphProto.
     bool no_proto_sync_required = false;
+#ifdef ENABLE_TRAINING
+    // Subgraphs which is resolved additionally. (For controlflow gradient implementation)
+    const std::vector<Graph*>* additional_graphs = nullptr;
+#endif
   };
 
   /**
@@ -1694,6 +1698,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     std::unordered_set<std::string_view> inputs_and_initializers;
     std::unordered_map<std::string_view, NodeIndex> node_name_to_index;
     std::unordered_set<Node*> nodes_with_subgraphs;
+#ifdef ENABLE_TRAINING
+    std::vector<Graph*> isolated_graph;
+#endif
 
     // check if the provided name is an input/initialize/node output of this Graph instance during Graph::Resolve.
     // Graph::node_args_ can have stale entries so we can't rely on that.
@@ -1708,6 +1715,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       inputs_and_initializers.clear();
       node_name_to_index.clear();
       nodes_with_subgraphs.clear();
+#ifdef ENABLE_TRAINING
+      isolated_graph.clear();
+#endif
     }
 
    private:
@@ -1727,6 +1737,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Build and verify node connection (edges).
   // Verify NodeArg name/type/shape matching correctly.
   common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed);
+  common::Status BuildConnectionsSubgraph(Node* node, Graph* subgraph, std::unordered_set<std::string>& outer_scope_node_args_consumed);
 
   common::Status VerifyNoDuplicateName();
 
@@ -1756,7 +1767,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status CleanUpShapeValuesFromDataPropagation();
 
   // Apply type-inference and type-checking to all inputs and initializers:
-  common::Status TypeCheckInputsAndInitializers();
+  common::Status TypeCheckInputsAndInitializers(const ResolveOptions& options);
 
   // Compute set of input and initializer names and checking for duplicate names
   common::Status VerifyInputAndInitializerNames();
