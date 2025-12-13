@@ -462,6 +462,14 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
  */
 uint64_t GetTimeStampInUs();
 
+template <typename T>
+inline std::ostream& operator<<(std::ostream& out, const std::vector<T>& vec) {
+  for (const auto& elem : vec) {
+    out << elem << " ";
+  }
+  return out;
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime

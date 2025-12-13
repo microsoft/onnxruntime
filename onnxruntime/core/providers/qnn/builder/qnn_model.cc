@@ -217,6 +217,46 @@ Status QnnModel::FinalizeGraphs(const logging::Logger& logger) {
   return Status::OK();
 }
 
+// Helper function to check if ORT tensor shape matches expected QNN tensor shape (excluding batch dimension at index 0)
+template <typename OrtValueType>
+static Status CheckShape(const OrtValueType& ort_tensor,
+                         const QnnTensorInfo& qnn_io_info) {
+  const auto input_output_shape = ort_tensor.GetTensorTypeAndShapeInfo().GetShape();
+  const auto shape_size = input_output_shape.size();
+  const auto& expected_shape = qnn_io_info.ori_dimensions_;
+  const auto expected_shape_size = expected_shape.size();
+  const auto& tensor_name = qnn_io_info.tensor_wrapper->GetName();
+
+  ORT_RETURN_IF_NOT(shape_size == expected_shape_size,
+                    "Invalid rank for tensor: ", tensor_name,
+                    " Got: ", shape_size, " Expected: ", expected_shape_size,
+                    " Please fix either the inputs/outputs or the model.");
+
+  // Collect all invalid dimension indices (skip batch dimension at index 0)
+  InlinedVector<size_t> invalid_dim_indices;
+  invalid_dim_indices.reserve(shape_size);
+  for (size_t i = 1; i < shape_size; ++i) {
+    if (input_output_shape[i] != static_cast<int64_t>(expected_shape[i])) {
+      invalid_dim_indices.push_back(i);
+    }
+  }
+
+  if (!invalid_dim_indices.empty()) {
+    std::ostringstream ostr;
+    ostr << "Got invalid dimensions for tensor: " << tensor_name
+         << " for the following indices (excluding batch dimension)\n";
+    for (const auto idx : invalid_dim_indices) {
+      ostr << " index: " << idx
+           << " Got: " << input_output_shape[idx]
+           << " Expected: " << expected_shape[idx] << "\n";
+    }
+    ostr << " Please fix either the inputs/outputs or the model.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  }
+
+  return Status::OK();
+}
+
 Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   LOGS(logger, VERBOSE) << "Setting up QNN input/output for graph: " << graph_info_->Name();
 
@@ -282,8 +322,27 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
     return element_size * length;
   };
 
+  constexpr size_t BATCH_DIMENSION_INDEX = 0;
+  uint32_t batch_multiplier = static_cast<uint32_t>(
+      TensorDataSize(context.GetInput(qnn_input_infos_[0].ort_index)) / qnn_input_infos_[0].tensor_byte_size);
+  auto backend_type = qnn_backend_manager_->GetQnnBackendType();
+  // Check if batch multiplier is used, and it's only supported on the HTP backend.
+  ORT_RETURN_IF(batch_multiplier != 1 && !IsNpuBackend(backend_type),
+                "Batch multiplier is only supported on HTP backend, but current backend is: ",
+                static_cast<int>(backend_type));
+
+  // ===== Phase 1: Prepare inputs (thread-safe, no lock needed) =====
   std::vector<Qnn_Tensor_t> qnn_inputs;
   qnn_inputs.reserve(qnn_input_infos_.size());
+
+  // The dimensions field in Qnn_Tensor_t is a pointer, so qnn_inputs.push_back() performs a shallow copy.
+  // Multiple threads would share the same dimensions array, leading to race conditions when directly modifying batch size.
+  // To ensure thread safety, we create independent dimension copies for each thread when batch multiplier > 1.
+  // These copies are stored in dimensions_copies to maintain their lifetime throughout execution.
+  std::vector<std::vector<uint32_t>> input_dimensions_copies;
+  if (batch_multiplier > 1) {
+    input_dimensions_copies.reserve(qnn_input_infos_.size());
+  }
 
   for (const auto& qnn_input_info : qnn_input_infos_) {
     LOGS(logger, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
@@ -292,46 +351,110 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
     auto ort_tensor_size = TensorDataSize(ort_input_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
                           << " Ort tensor size: " << ort_tensor_size;
-    ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
-                      "ORT Tensor data size does not match QNN tensor data size.");
+    LOGS(logger, VERBOSE) << "Original Qnn input tensor shape: " << qnn_input_info.ori_dimensions_;
+    LOGS(logger, VERBOSE) << "Qnn input tensor shape: " << qnn_input_info.tensor_wrapper->GetTensorDims();
+    LOGS(logger, VERBOSE) << "Ort input tensor shape: " << ort_input_tensor.GetTensorTypeAndShapeInfo().GetShape();
+    ORT_RETURN_IF_NOT(ort_tensor_size % qnn_input_info.tensor_byte_size == 0,
+                      "ORT tensor size (", ort_tensor_size, " bytes) must match QNN tensor size (",
+                      qnn_input_info.tensor_byte_size, " bytes) or be a valid batch multiplier. ",
+                      "Expected: exact match or integer multiple.");
 
+    // check if there is only one batch multiplier value.
+    uint32_t bm = static_cast<uint32_t>(ort_tensor_size / qnn_input_info.tensor_byte_size);
+    ORT_RETURN_IF_NOT(bm == batch_multiplier,
+                      "Batch multiplier should be the same across all the inputs. Expected: ", batch_multiplier, ", Got: ", bm);
+
+    // Get QNN tensor (shallow copy)
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
+
+    // Modify batch dimensions
+    if (batch_multiplier > 1) {
+      // Check dimensions except for batch dimension (index 0)
+      ORT_RETURN_IF_ERROR(CheckShape(ort_input_tensor, qnn_input_info));
+
+      // Create independent dimensions copy to avoid race conditions
+      std::vector<uint32_t> dims_copy = qnn_input_info.ori_dimensions_;
+      dims_copy[BATCH_DIMENSION_INDEX] =
+          static_cast<uint32_t>(ort_input_tensor.GetTensorTypeAndShapeInfo().GetShape()[BATCH_DIMENSION_INDEX]);
+      LOGS(logger, VERBOSE) << "qnn_inputs batch size (bm triggered): " << dims_copy[BATCH_DIMENSION_INDEX];
+      input_dimensions_copies.push_back(std::move(dims_copy));
+      // Point QNN tensor to the independent dimensions copy
+      SetQnnTensorDim(qnn_inputs.back(), input_dimensions_copies.back());
+    }
 
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
-        const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
+        const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size * batch_multiplier,
         graph_info_->GraphContext(),
         qnn_inputs.back()));
   }
 
+  // ===== Phase 2: Prepare outputs (thread-safe, no lock needed) =====
   std::vector<Qnn_Tensor_t> qnn_outputs;
   qnn_outputs.reserve(qnn_output_infos_.size());
+
+  // Create independent copies of dimensions for outputs
+  std::vector<std::vector<uint32_t>> output_dimensions_copies;
+  if (batch_multiplier > 1) {
+    output_dimensions_copies.reserve(qnn_output_infos_.size());
+  }
 
   for (auto& qnn_output_info : qnn_output_infos_) {
     const std::string& model_output_name = qnn_output_info.tensor_wrapper->GetName();
     LOGS(logger, VERBOSE) << "model_output = " << model_output_name << " index = " << qnn_output_info.ort_index;
     const auto& ort_output_info = GetOutputInfo(model_output_name);
-    const std::vector<int64_t>& output_shape = ort_output_info->shape_;
+    // Adjust output shape to match input batch size
+    std::vector<int64_t> output_shape = ort_output_info->shape_;
+    if (batch_multiplier > 1) {
+      output_shape[BATCH_DIMENSION_INDEX] *= batch_multiplier;
+      LOGS(logger, VERBOSE) << "batch multiplier triggered: " << batch_multiplier;
+      LOGS(logger, VERBOSE) << "Modify ORT output batch size to : " << output_shape[BATCH_DIMENSION_INDEX];
+    }
     auto ort_output_tensor = context.GetOutput(qnn_output_info.ort_index, output_shape.data(), output_shape.size());
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
     LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
                           << " Ort tensor size: " << ort_tensor_size;
-    ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,
-                      "ORT Tensor data size does not match QNN tensor data size");
+    LOGS(logger, VERBOSE) << "Original Qnn output tensor shape: " << qnn_output_info.ori_dimensions_;
+    LOGS(logger, VERBOSE) << "ORT output tensor shape: " << ort_output_tensor.GetTensorTypeAndShapeInfo().GetShape();
+    LOGS(logger, VERBOSE) << "Qnn output tensor shape: " << qnn_output_info.tensor_wrapper->GetTensorDims();
+    ORT_RETURN_IF_NOT(ort_tensor_size % qnn_output_info.tensor_byte_size == 0,
+                      "ORT tensor size (", ort_tensor_size, " bytes) must match QNN tensor size (",
+                      qnn_output_info.tensor_byte_size, " bytes) or be a valid batch multiplier. ",
+                      "Expected: exact match or integer multiple.");
+    uint32_t bm = static_cast<uint32_t>(ort_tensor_size / qnn_output_info.tensor_byte_size);
+    ORT_RETURN_IF_NOT(bm == batch_multiplier,
+                      "Batch multiplier should be the same across all the inputs. Expected: ", batch_multiplier, ", Got: ", bm);
 
+    // Get QNN tensor (shallow copy)
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
+
+    // Modify batch dimensions
+    if (batch_multiplier > 1) {
+      // Check dimensions except for batch dimension (index 0)
+      ORT_RETURN_IF_ERROR(CheckShape(ort_output_tensor, qnn_output_info));
+
+      // Create independent dimensions copy to avoid race conditions
+      std::vector<uint32_t> dims_copy = qnn_output_info.ori_dimensions_;
+      dims_copy[BATCH_DIMENSION_INDEX] =
+          static_cast<uint32_t>(ort_output_tensor.GetTensorTypeAndShapeInfo().GetShape()[BATCH_DIMENSION_INDEX]);
+      LOGS(logger, VERBOSE) << "qnn_outputs batch_size (bm triggered): " << dims_copy[BATCH_DIMENSION_INDEX];
+      output_dimensions_copies.push_back(std::move(dims_copy));
+      // Point QNN tensor to the independent dimensions copy
+      SetQnnTensorDim(qnn_outputs.back(), output_dimensions_copies.back());
+    }
 
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
-        ort_output_tensor.GetTensorMutableRawData(), qnn_output_info.tensor_byte_size,
+        ort_output_tensor.GetTensorMutableRawData(), qnn_output_info.tensor_byte_size * batch_multiplier,
         graph_info_->GraphContext(),
         qnn_outputs.back()));
   }
 
+  // ===== Phase 3: Execute graph (requires mutex lock) =====
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
   {
     const auto& qnn_interface = qnn_backend_manager_->GetQnnInterface();
@@ -418,6 +541,7 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
     qnn_tensor_info.tensor_wrapper = &tensor_wrapper;
     qnn_tensor_info.tensor_byte_size = static_cast<uint32_t>(length);
     qnn_tensor_info.ort_index = ort_index;
+    qnn_tensor_info.ori_dimensions_.assign(tensor_wrapper.GetTensorDims().begin(), tensor_wrapper.GetTensorDims().end());
   }
   // The number of graph inputs and the number of tensor wrappers may not match.
   // - For example, for ResizeNearestNeighbor op, Qnn only cares about the 1st input,
