@@ -755,4 +755,16 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
 
 ORT_API_STATUS_IMPL(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
 
+ORT_API_STATUS_IMPL(Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs);
+
+// OrtEpAssignedSubgraph accessors.
+ORT_API(const char*, EpAssignedSubgraph_EpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph);
+ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+
+// OrtEpAssignedNode accessors.
+ORT_API(const char*, EpAssignedNode_Name, _In_ const OrtEpAssignedNode* ep_node);
+ORT_API(const char*, EpAssignedNode_OpType, _In_ const OrtEpAssignedNode* ep_node);
 }  // namespace OrtApis

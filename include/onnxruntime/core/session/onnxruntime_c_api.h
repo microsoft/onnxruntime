@@ -330,6 +330,8 @@ ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
 ORT_RUNTIME_CLASS(SyncStream);  // Opaque class to create an onnxruntime::Stream.
 ORT_RUNTIME_CLASS(ExternalInitializerInfo);
+ORT_RUNTIME_CLASS(EpAssignedSubgraph);
+ORT_RUNTIME_CLASS(EpAssignedNode);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -6608,6 +6610,67 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Get information about the subgraphs assigned to each EP and the nodes within.
+   *
+   * Each returned OrtEpAssignedSubgraph instance contains details of the subgraph/nodes assigned to an execution provider,
+   * including the execution provider's name, and the name and operator type for every node.
+   *
+   * \note Application must enable the recording of graph partitioning information by enabling the session configuration
+   *       for the key "session.record_ep_graph_partitioning_info". Refer to onnxruntime_session_options_config_keys.h.
+   *       If the session configuration is not enabled, this function returns an empty result.
+   *
+   * \param[in] session The OrtSession instance to query.
+   * \param[out] ep_subgraphs The OrtEpAssignedSubgraph instances denoting the EP graph partitioning.
+   * \param[out] num_ep_subgraphs The number of OrtEpAssignedSubgraph instances returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+                  _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                  _Out_ size_t* num_ep_subgraphs);
+
+  /** \brief Get the name of the execution provider to which the subgraph was assigned.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
+   * \return The execution provider name.
+   *
+   * \since Version 1.24.
+   */
+  const char*(ORT_API_CALL* EpAssignedSubgraph_EpName)(_In_ const OrtEpAssignedSubgraph* ep_subgraph);
+
+  /** \brief Get the list of nodes assigned to an execution provider.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
+   * \param[out] ep_nodes Output parameter set to the list of OrtEpAssignedNode instances.
+   * \param[out] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instances returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+
+  /** \brief Get the name of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance to query.
+   * \return The node's name.
+   *
+   * \since Version 1.24.
+   */
+  const char*(ORT_API_CALL* EpAssignedNode_Name)(_In_ const OrtEpAssignedNode* ep_node);
+
+  /** \brief Get the operator type of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance to query.
+   * \return The node's operator type.
+   *
+   * \since Version 1.24.
+   */
+  const char*(ORT_API_CALL* EpAssignedNode_OpType)(_In_ const OrtEpAssignedNode* ep_node);
 };
 
 /*

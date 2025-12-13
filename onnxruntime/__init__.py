@@ -34,6 +34,8 @@ try:
         OrtArenaCfg,  # noqa: F401
         OrtCompileApiFlags,  # noqa: F401
         OrtDeviceMemoryType,  # noqa: F401
+        OrtEpAssignedNode,  # noqa: F401
+        OrtEpAssignedSubgraph,  # noqa: F401
         OrtEpDevice,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
         OrtExternalInitializerInfo,  # noqa: F401

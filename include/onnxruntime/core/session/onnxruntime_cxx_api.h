@@ -1147,6 +1147,38 @@ OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
     const std::vector<ConstEpDevice>& ep_devices,
     const char* compatibility_info);
 
+namespace detail {
+template <typename T>
+struct EpAssignedNodeImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  const char* Name() const;
+  const char* OpType() const;
+};
+}  // namespace detail
+
+/** \brief Constant wrapper around ::OrtEpAssignedNode
+ * \remarks EpAssignedNode is always read-only for ORT API users.
+ */
+using ConstEpAssignedNode = detail::EpAssignedNodeImpl<Ort::detail::Unowned<const OrtEpAssignedNode>>;
+
+namespace detail {
+template <typename T>
+struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  const char* EpName() const;
+  std::vector<ConstEpAssignedNode> GetNodes() const;
+};
+}  // namespace detail
+
+/** \brief Constant wrapper around ::OrtEpAssignedSubgraph
+ * \remarks EpAssignedSubgraph is always read-only for ORT API users.
+ */
+using ConstEpAssignedSubgraph = detail::EpAssignedSubgraphImpl<Ort::detail::Unowned<const OrtEpAssignedSubgraph>>;
+
 /** \brief The Env (Environment)
  *
  * The Env holds the logging state used by all other objects.
@@ -1644,9 +1676,14 @@ struct ConstSessionImpl : Base<T> {
 
   int GetOpset(const std::string& domain) const;  ///< Wraps OrtApi::SessionGetOpsetForDomain
 
-  // Will move before checkin if that's the case.
   std::vector<ValueInfo> GetInputs() const;
   std::vector<ValueInfo> GetOutputs() const;
+
+  /** \brief Returns information on the subgraph/nodes assigned to execution providers in the session.
+   *
+   * \return A list of ConstEpAssignedSubgraph instances.
+   */
+  std::vector<ConstEpAssignedSubgraph> GetEpGraphPartitioningInfo() const;
 };
 
 template <typename T>
