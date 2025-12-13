@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cstddef>
+#include <cmath>
+#include <optional>
+#include <vector>
+
+#include "core/common/cpuid_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
@@ -18,8 +25,13 @@ class MatMulIntegerBase : public OpKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override {
     is_packed = false;
 
-    // only pack Matrix B
+    // only pack Matrix B++
     if (input_idx == GetBIdx()) {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+      if (TryKleidiaiDynamicPrePack(tensor, input_idx, alloc, is_packed, prepacked_weights)) {
+        return Status::OK();
+      }
+#endif
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();
@@ -88,6 +100,192 @@ class MatMulIntegerBase : public OpKernel {
   virtual bool IsBTransposed() const {
     return false;
   }
+
+  virtual int GetBScaleIdx() const {
+    return -1;
+  }
+
+  virtual int GetBZeroPointIdx() const {
+    return -1;
+  }
+
+  virtual int GetBiasIdx() const {
+    return -1;
+  }
+
+  virtual bool SupportsKleidiaiDynamicQuant() const {
+    return false;
+  }
+
+  bool can_use_dynamic_quant_mlas_{false};
+
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+  struct KleidiaiDynamicPackContext {
+    const Tensor* scale{nullptr};
+    const Tensor* bias{nullptr};
+    const uint8_t* b_data{nullptr};
+    size_t K{0};
+    size_t N{0};
+    std::optional<Tensor> transposed_buffer;
+  };
+
+  bool TryKleidiaiDynamicPrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                 bool& is_packed,
+                                 PrePackedWeights* prepacked_weights) {
+    if (!SupportsKleidiaiDynamicQuant() || input_idx != GetBIdx()) {
+      return false;
+    }
+
+    KleidiaiDynamicPackContext ctx;
+    if (!PrepareKleidiaiDynamicPack(tensor, alloc, ctx)) {
+      return false;
+    }
+
+    return ExecuteKleidiaiDynamicPack(ctx, alloc, is_packed, prepacked_weights);
+  }
+
+  bool PrepareKleidiaiDynamicPack(const Tensor& tensor,
+                                  AllocatorPtr alloc,
+                                  KleidiaiDynamicPackContext& ctx) {
+    can_use_dynamic_quant_mlas_ = false;
+    dynamic_quant_mlas_bias_data_was_packed_ = false;
+
+    ctx.scale = GetConstantInputTensor(GetBScaleIdx());
+    if (ctx.scale == nullptr) {
+      return false;
+    }
+
+    if (!IsZeroPointSymmetric()) {
+      return false;
+    }
+
+    if (!AreScalesValid(*ctx.scale)) {
+      return false;
+    }
+
+    if (!IsBShapeSupportedForDynamicQuant(tensor.Shape())) {
+      return false;
+    }
+
+    ctx.bias = GetConstantInputTensor(GetBiasIdx());
+    if (ctx.bias != nullptr) {
+      dynamic_quant_mlas_bias_data_was_packed_ = true;
+    }
+
+    ctx.K = static_cast<size_t>(b_shape_[0]);
+    ctx.N = static_cast<size_t>(b_shape_[1]);
+    ctx.b_data = static_cast<const uint8_t*>(tensor.DataRaw());
+
+    if (IsBTransposed()) {
+      std::swap(ctx.K, ctx.N);
+      ctx.b_data = quantization::TransPoseInputData(ctx.b_data, ctx.transposed_buffer, alloc, ctx.N, ctx.K);
+    }
+
+    can_use_dynamic_quant_mlas_ = true;
+    return true;
+  }
+
+  bool ExecuteKleidiaiDynamicPack(const KleidiaiDynamicPackContext& ctx,
+                                  AllocatorPtr alloc,
+                                  bool& is_packed,
+                                  PrePackedWeights* prepacked_weights) {
+    if (!can_use_dynamic_quant_mlas_) {
+      return false;
+    }
+
+    is_packed = false;
+
+    const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K);
+    if (packed_b_size == 0) {
+      can_use_dynamic_quant_mlas_ = false;
+      return true;
+    }
+
+    packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
+    memset(packed_b_.get(), 0, packed_b_size);
+
+    const auto scales = static_cast<size_t>(ctx.scale->Shape().Size()) == ctx.N
+                            ? std::vector<float>(&ctx.scale->Data<float>()[0],
+                                                 &ctx.scale->Data<float>()[ctx.N])
+                            : std::vector<float>(ctx.N, ctx.scale->Data<float>()[0]);
+
+    const auto biases = ctx.bias != nullptr
+                            ? std::vector<float>(&ctx.bias->Data<float>()[0],
+                                                 &ctx.bias->Data<float>()[ctx.N])
+                            : std::vector<float>(ctx.N, 0.f);
+
+    MlasDynamicQgemmPackB(ctx.N, ctx.K, reinterpret_cast<const int8_t*>(ctx.b_data),
+                          scales.data(), biases.data(), packed_b_.get());
+
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+    }
+
+    is_packed = true;
+    return true;
+  }
+
+  bool IsZeroPointSymmetric() {
+    const Tensor* b_zp_constant_tensor = GetConstantInputTensor(GetBZeroPointIdx());
+    if (b_zp_constant_tensor != nullptr) {
+      assert(b_zp_constant_tensor->IsDataType<uint8_t>() || b_zp_constant_tensor->IsDataType<int8_t>());
+      const auto* zp_bytes = static_cast<const std::byte*>(b_zp_constant_tensor->DataRaw());
+      const size_t zp_size_in_bytes = b_zp_constant_tensor->SizeInBytes();
+      can_use_dynamic_quant_mlas_ = std::none_of(zp_bytes, zp_bytes + zp_size_in_bytes,
+                                                 [](std::byte v) { return v != std::byte{0}; });
+      return can_use_dynamic_quant_mlas_;
+    }
+
+    const auto input_defs = Info().node().InputDefs();
+    const int b_zp_idx = GetBZeroPointIdx();
+    const bool b_zp_input_exists = b_zp_idx >= 0 &&
+                                   static_cast<size_t>(b_zp_idx) < input_defs.size() &&
+                                   input_defs[b_zp_idx]->Exists();
+    can_use_dynamic_quant_mlas_ = !b_zp_input_exists;
+    return can_use_dynamic_quant_mlas_;
+  }
+
+  bool AreScalesValid(const Tensor& b_scale_tensor) {
+    const auto bs = b_scale_tensor.DataAsSpan<float>();
+    const bool has_invalid =
+        std::any_of(bs.begin(), bs.end(),
+                    [](float s) { return !std::isfinite(s) || s <= 0.0f; });
+
+    if (has_invalid) {
+      can_use_dynamic_quant_mlas_ = false;
+    }
+    return can_use_dynamic_quant_mlas_;
+  }
+
+  bool IsBShapeSupportedForDynamicQuant(const TensorShape& tensor_shape) {
+    b_shape_ = tensor_shape;
+    if (b_shape_.NumDimensions() < 2) {
+      return false;
+    }
+
+    for (size_t i = 0; i < (b_shape_.NumDimensions() - 2); ++i) {
+      if (b_shape_[i] != 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const Tensor* GetConstantInputTensor(int input_idx) const {
+    if (input_idx < 0) {
+      return nullptr;
+    }
+    const OrtValue* ort_value = nullptr;
+    if (!Info().TryGetConstantInput(input_idx, &ort_value)) {
+      return nullptr;
+    }
+
+    return &ort_value->Get<Tensor>();
+  }
+
+  bool dynamic_quant_mlas_bias_data_was_packed_{false};
+#endif
 
   // Check if quantization parameter of B is supported.
   // It should be in one of the formats below:
