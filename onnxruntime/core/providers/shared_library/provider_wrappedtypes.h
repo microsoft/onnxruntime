@@ -1201,6 +1201,39 @@ struct ConstGraphNodes final {
   PROVIDER_DISALLOW_ALL(ConstGraphNodes)
 };
 
+class ExternalDataInfo {
+ public:
+  static void operator delete(void* p) {
+    g_host->ExternalDataInfo__operator_delete(reinterpret_cast<ExternalDataInfo*>(p));
+  }
+
+  const PathString& GetRelPath() const {
+    return g_host->ExternalDataInfo__GetRelPath(this);
+  }
+
+  int64_t GetOffset() const {
+    return g_host->ExternalDataInfo__GetOffset(this);
+  }
+
+  size_t GetLength() const {
+    return g_host->ExternalDataInfo__GetLength(this);
+  }
+
+  const std::string& GetChecksum() const {
+    return g_host->ExternalDataInfo__GetChecksum(this);
+  }
+
+  static Status Create(
+      const ONNX_NAMESPACE::StringStringEntryProtos& input,
+      std::unique_ptr<ExternalDataInfo>& out) {
+    return g_host->ExternalDataInfo__Create(input, out);
+  }
+
+  ExternalDataInfo() = delete;
+  ExternalDataInfo(const ExternalDataInfo&) = delete;
+  ExternalDataInfo& operator=(const ExternalDataInfo& v) = delete;
+};
+
 class Initializer {
  public:
   Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
