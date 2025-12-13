@@ -490,6 +490,11 @@ class InferenceSession {
   int GetCurrentNumRuns() const;
 
   /**
+   * Get the total number of Run calls made for this session.
+   */
+  int GetTotalRunCount() const;
+
+  /**
    * Get the names of registered Execution Providers. The returned vector is ordered by Execution Provider
    * priority. The first provider in the vector has the highest priority.
    */
@@ -926,6 +931,9 @@ class InferenceSession {
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
+
+  // Total number of Run calls for this session
+  std::atomic<int> total_run_count_ = 0;
 
   mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
