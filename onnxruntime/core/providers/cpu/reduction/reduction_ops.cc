@@ -13,7 +13,6 @@
 #endif
 using namespace std;
 namespace onnxruntime {
-
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion)                            \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
       x,                                                                              \
@@ -760,14 +759,10 @@ bool CommonFastReduceCopy(OpKernelContext* ctx, TensorShapeVector& input_axes, b
     } else {
       input_axes.clear();
     }
-
+    // noop_with_empty_axes is handled upstream by ApplyNoopEmptyAxesElementwise().
+    // Return false for clarity and to prevent unsafe memcpy fallback.
     if (input_axes.empty() && noop_with_empty_axes) {
-      const Tensor* input = ctx->Input<Tensor>(0);
-      auto* output = ctx->Output(0, input->Shape());
-      memcpy(output->MutableDataRaw(),
-             input->DataRaw(),
-             input->SizeInBytes());
-      return true;
+      return false;
     }
   }
   return false;
@@ -800,7 +795,6 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
   fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, input_axes.empty() ? axes_ : input_axes,
       fast_shape, output_shape, fast_axes, keepdims_ != 0, noop_with_empty_axes);
-
   if (which_fast_reduce != FastReduceKind::kNone) {
     if (IsFastReduceKindAvailable(fast_kind, which_fast_reduce)) {
       Tensor* output = ctx->Output(0, output_shape);
@@ -921,10 +915,39 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
 }
 
 template <typename AGG>
+inline void ApplyNoopEmptyAxesElementwise(OpKernelContext* ctx) {
+  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto& shape = X->Shape();
+  Tensor* Y = ctx->Output(0, shape);
+
+  if constexpr (!ReduceAggTraits<AGG>::kHasPreOp && !ReduceAggTraits<AGG>::kHasPostOp) {
+    std::memcpy(Y->MutableDataRaw(), X->DataRaw(), X->SizeInBytes());
+
+  } else {
+    using Tin = typename AGG::input_type;
+    using Tacc = typename AGG::value_type;
+    const Tin* x = X->Data<Tin>();
+    Tacc* y = Y->MutableData<Tacc>();
+    const int64_t n = shape.Size();
+
+    for (int64_t i = 0; i < n; ++i) {
+      AGG agg(1, x[i]);
+      agg.update(x[i]);
+      y[i] = agg.get_value();
+    }
+  }
+}
+
+template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                        bool noop_with_empty_axes) {
   if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
+    return;
+  }
+
+  if (axes_.empty() && noop_with_empty_axes) {
+    ApplyNoopEmptyAxesElementwise<AGG>(ctx);
     return;
   }
 
@@ -939,6 +962,7 @@ void CommonReduce1Loop(OpKernelContext* ctx,
 
   const Tensor* input = ctx->Input<Tensor>(0);
   Tensor* output = ctx->Output(0, output_shape);
+
   if (fast_kind == FastReduceKind::kEmpty) {
     const TensorShape& input_shape = input->Shape();
     if (input_shape.Size() == 1) {
@@ -965,6 +989,11 @@ void CommonReduce2Loops(OpKernelContext* ctx,
     return;
   }
 
+  if (axes_.empty() && noop_with_empty_axes) {
+    ApplyNoopEmptyAxesElementwise<AGG>(ctx);
+    return;
+  }
+
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, output_shape, fast_axes;
   if (CommonFastReduce<AGG>(ctx, axes_, keepdims_, noop_with_empty_axes,
@@ -988,7 +1017,6 @@ void CommonReduce2Loops(OpKernelContext* ctx,
     }
     return;
   }
-
   ResultsNoTransposePrepareForReduce last_results;
   NoTransposeReduce2Loops<AGG>(output, fast_shape, *input, fast_axes, ctx->GetOperatorThreadPool(), last_results);
 }
