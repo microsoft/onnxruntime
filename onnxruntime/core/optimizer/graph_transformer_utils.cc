@@ -31,6 +31,7 @@
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
+#include "core/optimizer/mul_add_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
@@ -255,6 +256,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
                                                                   session_options.config_options));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
+      transformers.emplace_back(std::make_unique<MulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
