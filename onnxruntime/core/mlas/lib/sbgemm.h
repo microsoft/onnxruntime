@@ -303,6 +303,16 @@ MlasSBGemmPackBSize(size_t N, size_t K)
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasSBGemmPackBSizeOverride != nullptr) {
+        size_t bytes_required;
+        bytes_required = GetMlasPlatform().MlasSBGemmPackBSizeOverride(N, K);
+        if (bytes_required != 0){// If ArmKleidiAI::MlasSBGemmPackBSize ran to completion
+            return bytes_required;
+        }
+    }
+#endif
+
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return 0;
 
@@ -323,6 +333,13 @@ MlasSBGemmPackBSize(size_t N, size_t K)
 void MLASCALL
 MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB)
 {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if (GetMlasPlatform().MlasSBGemmPackBOverride != nullptr  &&
+        GetMlasPlatform().MlasSBGemmPackBOverride(N, K, B, ldb, PackedB)){
+        return;
+    }
+#endif
+
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 
@@ -332,6 +349,13 @@ MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* Pac
 void MLASCALL
 MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* Data, MLAS_THREADPOOL* ThreadPool)
 {
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if(GetMlasPlatform().MlasSBGemmBatchOverride != nullptr &&
+       GetMlasPlatform().MlasSBGemmBatchOverride(M, N, K, Data, BatchN, ThreadPool)){
+        return;
+    }
+#endif
+
     const MLAS_SBGEMM_DISPATCH* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 
