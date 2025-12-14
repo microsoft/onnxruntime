@@ -14,5 +14,9 @@
         "-build/include_subdir",
         "-runtime/references"
     ],
-    "C_Cpp.autoAddFileAssociations": false
+    "C_Cpp.autoAddFileAssociations": false,
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.pythonProjects": [],
+    "cmake.sourceDirectory": "G:/onnxruntime-chrisd/build/_deps/protobuf-subbuild"
 }

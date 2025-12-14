@@ -267,7 +267,7 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
     return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
   }
 
-  ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
+  ORT_NOT_IMPLEMENTED("[model_file_path]", ToUTF8String(file_path), " is not supported");
 }
 
 PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
