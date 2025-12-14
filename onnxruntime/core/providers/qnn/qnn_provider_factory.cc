@@ -36,7 +36,8 @@ struct QNNProviderFactory : IExecutionProviderFactory {
 
     for (const auto& [key, value] : config_options_map) {
       if (key.rfind(key_prefix, 0) == 0) {
-        provider_options[key.substr(key_prefix.size())] = value;
+        // Do not overwrite the provider option if already present.
+        provider_options.insert({key.substr(key_prefix.size()), value});
       }
     }
 
@@ -82,11 +83,31 @@ struct QNN_Provider : Provider {
 
   Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
                                   const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                  size_t /*num_devices*/,
+                                  size_t num_devices,
                                   ProviderOptions& provider_options,
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
+    if (num_devices == 0) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "No devices were provided to QNN EP.");
+    } else if (num_devices > 1) {
+      // Currently, QNN EP does not handle partitioning across multiple backends. For now, we choose
+      // to default to HTP if multiple EP devices are provided.
+      LOGS_DEFAULT(WARNING) << "QNN EP only supports one device. Only the NPU device will be used.";
+      auto backend_path_it = provider_options.find("backend_path");
+      if (backend_path_it != provider_options.end()) {
+        const std::filesystem::path parent_path = std::filesystem::path{backend_path_it->second}.parent_path();
+#ifdef _WIN32
+        const auto htp_backend_lib = "QnnHtp.dll";
+#else
+        const auto htp_backend_lib = "libQnnHtp.so";
+#endif
+        backend_path_it->second = (parent_path / htp_backend_lib).string();
+      } else {
+        return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "Failed to find \"backend_path\" in QNN provider_options.");
+      }
+    }
+
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
     std::array<const void*, 2> configs_array = {&provider_options, config_options};
