@@ -94,7 +94,11 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
   } else {
     // Get DequantizeLinear contains per-block int scales and per-channel float scales
     // DequantizeLinear connects to scale (input 1) of DequantizeLinear node
-    const std::string& scale_name = (p_w_dql_node_unit->Inputs()[0]).quant_param->scale.Name();
+    const auto& w_dql_input_0 = p_w_dql_node_unit->Inputs()[0];
+    if (!w_dql_input_0.quant_param.has_value() || !w_dql_input_0.quant_param->scale.Exists()) {
+      return nullptr;
+    }
+    const std::string& scale_name = w_dql_input_0.quant_param->scale.Name();
     p_scale_dql_node_unit = GetParentOfInputByName(graph_viewer,
                                                    *p_w_dql_node_unit,
                                                    scale_name,
@@ -170,17 +174,17 @@ Status LowPowerBlockQuantizedGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw,
 }
 
 gsl::span<const NodeUnit* const> LowPowerBlockQuantizedGemmFusion::GetNodeUnits() const {
-  static std::vector<const NodeUnit*> filtered_units;
-  filtered_units.clear();
-
-  // Add only non-nullptr node units
-  for (size_t i = 0; i < node_units_.size(); ++i) {
-    if (node_units_[i] != nullptr) {
-      filtered_units.push_back(node_units_[i]);
+  if (!filtered_node_units_initialized_) {
+    // Add only non-nullptr node units
+    for (size_t i = 0; i < node_units_.size(); ++i) {
+      if (node_units_[i] != nullptr) {
+        filtered_node_units_.push_back(node_units_[i]);
+      }
     }
+    filtered_node_units_initialized_ = true;
   }
 
-  return gsl::make_span(filtered_units);
+  return gsl::make_span(filtered_node_units_);
 }
 
 const NodeUnit* LowPowerBlockQuantizedGemmFusion::GetTargetNodeUnit() const {
@@ -264,7 +268,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
 
   const std::optional<NodeUnitIODef::QuantParam>& w_dql_quant_param = w_dql_input_1_def.quant_param;
   bool is_int4_type = false;
-  if (w_dql_quant_param->zero_point != nullptr) {
+  if (w_dql_quant_param.has_value() && w_dql_quant_param->zero_point != nullptr) {
     int32_t elem_data_type = 0;
     ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(*w_dql_quant_param->zero_point, elem_data_type));
     is_int4_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||

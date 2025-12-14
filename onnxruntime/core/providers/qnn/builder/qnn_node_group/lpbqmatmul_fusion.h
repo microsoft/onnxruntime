@@ -43,6 +43,8 @@ class LowPowerBlockQuantizedMatMulFusion : public IQnnNodeGroup {
 
  private:
   std::array<const NodeUnit*, 3> node_units_;
+  mutable std::vector<const NodeUnit*> filtered_node_units_;
+  mutable bool filtered_node_units_initialized_ = false;
 };
 
 }  // namespace qnn

@@ -72,7 +72,11 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedMatMulFusion::TryFusion(
   } else {
     // Get DequantizeLinear contains per-block int scales and per-channel float scales
     // DequantizeLinear connects to scale (input 1) of DequantizeLinear node
-    const std::string& scale_name = (matmul_node_unit.Inputs()[1]).quant_param->scale.Name();
+    const auto& mm_input_1 = matmul_node_unit.Inputs()[1];
+    if (!mm_input_1.quant_param.has_value() || !mm_input_1.quant_param->scale.Exists()) {
+      return nullptr;
+    }
+    const std::string& scale_name = mm_input_1.quant_param->scale.Name();
     p_scale_dql_node_unit = GetParentOfInputByName(graph_viewer,
                                                    matmul_node_unit,
                                                    scale_name,
@@ -125,17 +129,17 @@ Status LowPowerBlockQuantizedMatMulFusion::AddToModelBuilder(QnnModelWrapper& qm
 }
 
 gsl::span<const NodeUnit* const> LowPowerBlockQuantizedMatMulFusion::GetNodeUnits() const {
-  static std::vector<const NodeUnit*> filtered_units;
-  filtered_units.clear();
-
-  // Add only non-nullptr node units
-  for (size_t i = 0; i < node_units_.size(); ++i) {
-    if (node_units_[i] != nullptr) {
-      filtered_units.push_back(node_units_[i]);
+  if (!filtered_node_units_initialized_) {
+    // Add only non-nullptr node units
+    for (size_t i = 0; i < node_units_.size(); ++i) {
+      if (node_units_[i] != nullptr) {
+        filtered_node_units_.push_back(node_units_[i]);
+      }
     }
+    filtered_node_units_initialized_ = true;
   }
 
-  return gsl::make_span(filtered_units);
+  return gsl::make_span(filtered_node_units_);
 }
 
 const NodeUnit* LowPowerBlockQuantizedMatMulFusion::GetTargetNodeUnit() const {
@@ -280,7 +284,7 @@ Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
   // Extract weight datatype from zeropoint (aka offset) of Input1 Quant param
   const std::optional<NodeUnitIODef::QuantParam>& mm_input_1_quant_param = mm_input_1_def.quant_param;
   bool is_int4_type = false;
-  if (mm_input_1_quant_param->zero_point != nullptr) {
+  if (mm_input_1_quant_param.has_value() && mm_input_1_quant_param->zero_point != nullptr) {
     int32_t elem_data_type = 0;
     ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(*mm_input_1_quant_param->zero_point, elem_data_type));
     is_int4_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
