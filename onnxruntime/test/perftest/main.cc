@@ -10,20 +10,42 @@
 #include "strings_helper.h"
 #include <google/protobuf/stubs/common.h>
 
+#include "windows/winappsdk_bootstrap.h"
+
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
 
-#ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
-#else
-int real_main(int argc, char* argv[]) {
-#endif
-  g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+
   perftest::PerformanceTestConfig test_config;
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
     fprintf(stderr, "%s", "See 'onnxruntime_perf_test --help'.");
+
+    std::wcout << std::endl;
+    for (int i = 0; i < argc; ++i) {
+      std::wcerr << "[" << i << "][" << argv[i] << "]" << std::endl;
+    }
+
+    std::wcout << std::endl;
     return -1;
   }
+
+  // Initialize WinAppSDK, WinML and EP Providers.
+  WinAppSDK_WinMLInitializeMLAndRegisterAllProviders(test_config.winappsdk_version.c_str());
+
+  // Initialize ONNX Runtime API
+  std::cout << "ONNX Runtime C++ API version: " << ORT_API_VERSION << std::endl;
+  g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+  if (g_ort == nullptr) {
+    std::cerr << "[WinAppSDK] Failed to get ONNX Runtime C API." << std::endl;
+    return -1;
+  }
+
+  Ort::InitApi(g_ort);
+
+  // Setup the Onnxruntime environment
   Ort::Env env{nullptr};
   {
     bool failed = false;
@@ -44,6 +66,13 @@ int real_main(int argc, char* argv[]) {
       return -1;
   }
 
+  std::cout << "-------------------------------------------" << std::endl;
+  std::cout << "[WinAppSDK] provider_Type_Name:" << test_config.machine_config.provider_type_name << std::endl;
+  std::cout << "[WinAppSDK] has_Required_Device_Type:" << test_config.has_required_device_type << std::endl;
+  std::cout << "[WinAppSDK] required_Device_Type:" << test_config.required_device_type << std::endl;
+  std::wcout << L"[WinAppSDK] model_file_path:" << test_config.model_info.model_file_path << std::endl;
+  std::cout << "-------------------------------------------" << std::endl;
+
   if (!test_config.plugin_ep_names_and_libs.empty()) {
     perftest::utils::RegisterExecutionProviderLibrary(env, test_config);
   }
@@ -61,9 +90,6 @@ int real_main(int argc, char* argv[]) {
 
   if (test_config.list_available_ep_devices) {
     perftest::utils::ListEpDevices(env);
-    if (test_config.registered_plugin_eps.empty()) {
-      fprintf(stdout, "No plugin execution provider libraries are registered. Please specify them using \"--plugin_ep_libs\"; otherwise, only CPU may be available.\n");
-    }
     return 0;
   }
 
@@ -87,14 +113,18 @@ int real_main(int argc, char* argv[]) {
   return 0;
 }
 
-#ifdef _WIN32
 int wmain(int argc, wchar_t* argv[]) {
-#else
-int main(int argc, char* argv[]) {
-#endif
   int retval = -1;
+
   ORT_TRY {
     retval = real_main(argc, argv);
+  }
+  ORT_CATCH(const winrt::hresult_error& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::wcerr << L"[WinAppSDK] WinRT error: " << ex.message().c_str() << L" (HRESULT: 0x"
+                 << std::hex << ex.code() << L")" << std::endl;
+      retval = -1;
+    });
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -103,7 +133,21 @@ int main(int argc, char* argv[]) {
     });
   }
 
+  std::cout << "Shutting down Protobuf library..." << std::endl;
   ::google::protobuf::ShutdownProtobufLibrary();
+
+  std::cout << "Uninitializing WinML bootstrap..." << std::endl;
+  WinAppSDK_WinMLUninitialize();
 
   return retval;
 }
+
+//   catch (const winrt::hresult_error& ex) {
+//       std::wcerr << L"[WinAppSDK] WinRT error: " << ex.message().c_str() << L" (HRESULT: 0x"
+//                 << std::hex << ex.code() << L")" << std::endl;
+//       return -1;
+//   }
+//   catch (const std::exception& ex) {
+//       std::cerr << "[WinAppSDK] Standard exception in WinRT code: " << ex.what() << std::endl;
+//       return -1;
+//   }

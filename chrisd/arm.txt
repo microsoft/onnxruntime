@@ -1,0 +1,72 @@
+
+G:\onnxruntime>build\RelWithDebInfo\onnxruntime_perf_test.exe --winappsdk_version 2.0-experimental3 --list_ep_devices 
+ONNX Runtime C++ API version: 23
+winappsdk_version:2.0-experimental3
+package_family_name:Microsoft.WindowsAppRuntime.2.0-experimental3_8wekyb3d8bbwe
+[WinML] Provider: QNNExecutionProvider[WinML]  Ready state: NotReady
+[WinML]  ensure_ready_result:Success DiagnosticText:
+[WinML]  registration_result:true
+[WinAppSDK:OrtGetApiBase] C:\Program Files\WindowsApps\Microsoft.WindowsAppRuntime.2.0-experimental3_0.676.658.0_arm64__8wekyb3d8bbwe\onnxruntime.dll
+-------------------------------------------
+provider_Type_Name:CPUExecutionProvider
+has_Required_Device_Type:0
+required_Device_Type:0
+-------------------------------------------
+===== device id 0 ======
+name: CPUExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 1 ======
+name: DmlExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 2 ======
+name: QNNExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.1
+  library_path: C:\Program Files\WindowsApps\MicrosoftCorporationII.WinML.Qualcomm.QNN.EP.1.8_1.8.27.0_arm64__8wekyb3d8bbwe\ExecutionProvider\onnxruntime_providers_qnn.dll
+
+No plugin execution provider libraries are registered. Please specify them using "--plugin_ep_libs"; otherwise, only CPU may be available.
+Uninitializing WinML bootstrap...
+Shutting down Protobuf library...
+
+G:\onnxruntime>build\RelWithDebInfo\onnxruntime_perf_test.exe --winappsdk_version 1.8 --list_ep_devices 
+ONNX Runtime C++ API version: 23
+winappsdk_version:1.8
+package_family_name:Microsoft.WindowsAppRuntime.1.8_8wekyb3d8bbwe
+[WinML] Provider: QNNExecutionProvider[WinML]  Ready state: NotReady
+[WinML]  ensure_ready_result:Success DiagnosticText:
+[WinML]  registration_result:true
+[WinAppSDK:OrtGetApiBase] C:\Program Files\WindowsApps\Microsoft.WindowsAppRuntime.1.8_8000.675.1142.0_arm64__8wekyb3d8bbwe\onnxruntime.dll
+-------------------------------------------
+provider_Type_Name:CPUExecutionProvider
+has_Required_Device_Type:0
+required_Device_Type:0
+-------------------------------------------
+===== device id 0 ======
+name: CPUExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 1 ======
+name: DmlExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 2 ======
+name: QNNExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.1
+  library_path: C:\Program Files\WindowsApps\MicrosoftCorporationII.WinML.Qualcomm.QNN.EP.1.8_1.8.27.0_arm64__8wekyb3d8bbwe\ExecutionProvider\onnxruntime_providers_qnn.dll
+
+No plugin execution provider libraries are registered. Please specify them using "--plugin_ep_libs"; otherwise, only CPU may be available.
+Uninitializing WinML bootstrap...
+Shutting down Protobuf library...

@@ -197,3 +197,7 @@ Package.resolved
 .build/
 .swiftpm/
 repros/
+
+# WinAppSDK - We like app.manifest files for window builds.
+_deps
+!onnxruntime/test/perftest/windows/app.manifest

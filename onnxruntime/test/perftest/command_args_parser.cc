@@ -173,6 +173,13 @@ ABSL_FLAG(bool, list_ep_devices, false, "Prints all available device indices and
 ABSL_FLAG(std::string, select_ep_devices, "", "Specifies a semicolon-separated list of device indices to add to the session and run with.");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
+#ifdef BUILD_WINAPPSDK_PERF_TEST
+
+ABSL_FLAG(std::string, winappsdk_version, "1.8", "The major.minor version used in the PackageFamilyName, e.g. 1.7 will bind to Microsoft.WindowsAppRuntime.1.7_8wekyb3d8bbwe\n");
+ABSL_FLAG(std::string, required_device_type, "", "Specifies the device type, e.g. cpu, gpu, npu.");
+
+#endif
+
 namespace onnxruntime {
 namespace perftest {
 
@@ -475,16 +482,49 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     if (!plugin_ep_options.empty()) test_config.run_config.ep_runtime_config_string = ToPathString(plugin_ep_options);
   }
 
-  // --list_ep_devices
-  if (absl::GetFlag(FLAGS_list_ep_devices)) {
-    test_config.list_available_ep_devices = true;
-    return true;
-  }
-
   // --select_ep_devices
   {
     const auto& select_ep_devices = absl::GetFlag(FLAGS_select_ep_devices);
     if (!select_ep_devices.empty()) test_config.selected_ep_device_indices = select_ep_devices;
+  }
+
+#ifdef BUILD_WINAPPSDK_PERF_TEST
+  // --required_device_type
+  {
+    const auto& required_device_type = absl::GetFlag(FLAGS_required_device_type);
+
+    if (!required_device_type.empty()) {
+      test_config.has_required_device_type = true;
+
+      if (required_device_type == "cpu") {
+        test_config.required_device_type = OrtHardwareDeviceType::OrtHardwareDeviceType_CPU;
+      } else if (required_device_type == "gpu") {
+        test_config.required_device_type = OrtHardwareDeviceType::OrtHardwareDeviceType_GPU;
+      } else if (required_device_type == "npu") {
+        test_config.required_device_type = OrtHardwareDeviceType::OrtHardwareDeviceType_NPU;
+      }
+      else {
+        return false;
+      }
+    }
+  }
+
+  // --winappsdk_version
+  {
+    const auto& winappsdk_version = absl::GetFlag(FLAGS_winappsdk_version);
+    if (winappsdk_version.empty()) {
+      return false;
+    }
+
+    test_config.winappsdk_version  = winappsdk_version;
+  }
+
+#endif
+
+  // --list_ep_devices
+  if (absl::GetFlag(FLAGS_list_ep_devices)) {
+    test_config.list_available_ep_devices = true;
+    return true;
   }
 
   if (positional.size() == 2) {

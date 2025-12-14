@@ -247,6 +247,9 @@ option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
 
+# WinAppSDK
+option(onnxruntime_BUILD_WINAPPSDK_PERF_TEST "Build winappsdk_onnxruntime_perf_test" OFF)
+
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
 endif()
@@ -1644,6 +1647,17 @@ endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_unittests)
+endif()
+
+# WinAppSDK
+if (onnxruntime_BUILD_WINAPPSDK_PERF_TEST)
+  if (NOT onnxruntime_BUILD_UNIT_TESTS)
+    # HACK for now until we clean up the winappsdk_onnxruntime_perf_test file to be more self sufficient.
+    message(FATAL_ERROR "onnxruntime_BUILD_WINAPPSDK_PERF_TEST requires onnxruntime_BUILD_UNIT_TESTS to be ON")
+  endif()
+
+  list(APPEND ONNXRUNTIME_CMAKE_FILES winappsdk_onnxruntime_perf_test)
+
 endif()
 
 if (onnxruntime_BUILD_WINML_TESTS)

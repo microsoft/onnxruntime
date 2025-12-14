@@ -1,0 +1,264 @@
+init_apartment
+catalog
+providers
+Provider: NvTensorRTRTXExecutionProvider
+Provider: OpenVINOExecutionProvider
+g_ort
+onnxruntime_perf_test.exe: onnxruntime_perf_test [options...] model_path [result_file]
+
+Note: Options may be specified with either a single dash(-option) or a double dash(--option). Both forms are accepted and treated identically.
+
+Options:
+
+  Flags from G:\onnxruntime-chrisd\onnxruntime\test\perftest\command_args_parser.cc:
+    --A (Disables memory arena.); default: true;
+    --C (Specifies session configuration entries as key-value pairs:
+      -C "<key1>|<value1> <key2>|<value2>"
+      Refer to onnxruntime_session_options_config_keys.h for valid keys and
+      values.
+      [Example] -C "session.disable_cpu_ep_fallback|1 ep.context_enable|1"
+      ); default: "";
+    --D (Disables spinning entirely for thread owned by onnxruntime intra-op
+      thread pool.); default: false;
+    --F (Specifies a free dimension by denotation to override to a specific
+      value for performance optimization.
+      [Usage]: -f "dimension_denotation1:override_value1" -f
+      "dimension_denotation2:override_value2" ... or -f
+      "dimension_denotation1:override_value1 dimension_denotation2 :
+      override_value2... ". Override value must > 0.); default: "";
+    --I (Generates tensor input binding. Free dimensions are treated as 1 unless
+      overridden using -f.); default: false;
+    --M (Disables memory pattern.); default: true;
+    --P (Uses parallel executor instead of sequential executor.);
+      default: false;
+    --R (Allows user to register custom op by .so or .dll file.); default: "";
+    --S (Given random seed, to produce the same input data. This defaults to
+      -1(no initialize).); default: -1;
+    --T (Specifies intra op thread affinity string.); default: "";
+    --X (Registers custom ops from onnxruntime-extensions.); default: false;
+    --Z (Disallows thread from spinning during runs to reduce cpu usage.);
+      default: false;
+    --c (Specifies the (max) number of runs to invoke simultaneously.);
+      default: 1;
+    --compile_binary_embed (Embed binary blob within EP context node);
+      default: false;
+    --compile_ep_context (Generate an EP context model); default: false;
+    --compile_model_path (The compiled model path for saving EP context model.
+      Overwrites if already exists); default: "model_ctx.onnx";
+    --d (Specifies CUDNN convolution algorithms: 0(benchmark), 1(heuristic),
+      2(default).); default: 0;
+    --e (Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx',
+      'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm',
+      'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.); default: "cpu";
+    --f (Specifies a free dimension by name to override to a specific value for
+      performance optimization.
+      [Usage]: -f "dimension_name1:override_value1" -f
+      "dimension_name2:override_value2" ... or -f
+      "dimension_name1:override_value1 dimension_name2:override_value2 ... ".
+      Override value must > 0.); default: "";
+    --g ([TensorRT RTX | TensorRT | CUDA] Enables tensor input and output
+      bindings on CUDA before session run.); default: false;
+    --h (Print program usage.); default: false;
+    --i (Specifies EP specific runtime options as key-value pairs.
+      Different runtime options available are:
+      [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'
+
+      [ACL only] [enable_fast_math]: Options: 'true', 'false', default: 'false',
+
+      [DML only] [performance_preference]: DML device performance preference,
+      options: 'default', 'minimum_power', 'high_performance',
+      [DML only] [device_filter]: DML device filter, options: 'any', 'gpu',
+      'npu',
+      [DML only] [disable_metacommands]: Options: 'true', 'false',
+      [DML only] [enable_graph_capture]: Options: 'true', 'false',
+      [DML only] [enable_graph_serialization]: Options: 'true', 'false',
+
+      [OpenVINO only] [device_type]: Overrides the accelerator hardware type and
+      precision with these values at runtime.
+      [OpenVINO only] [device_id]: Selects a particular hardware device for
+      inference.
+      [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type
+      and precision with these values at runtime.
+      [OpenVINO only] [cache_dir]: Explicitly specify the path to dump and load
+      the blobs(Model caching) or cl_cache (Kernel Caching) files feature. If
+      blob files are already present, it will be directly loaded.
+      [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue
+      throttling for GPU device(Reduces the CPU Utilization while using GPU)
+      [OpenVINO only] [reshape_input]: Sets model input shapes with support for
+      bounded dynamic dimensions using 'min..max' syntax (e.g.,
+      [1..10,3,224,224])
+      [OpenVINO only] [layout]: Specifies the layout for inputs/outputs to
+      interpret tensor dimensions correctly.
+      [Example] [For OpenVINO EP] -e openvino -i "device_type|CPU
+      num_of_threads|5 enable_opencl_throttling|true
+      reshape_input|<input_name>[1,3,60,60..100] layout|<input_name>[NCHW]
+      cache_dir|"<path>""
+
+      [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually
+      exclusive with 'backend_path'.
+      [QNN only] [backend_path]: QNN backend path. E.g.,
+      '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually
+      exclusive with 'backend_type'.
+      [QNN only] [profiling_level]: QNN profiling level, options: 'basic',
+      'detailed', default 'off'.
+      [QNN only] [profiling_file_path] : QNN profiling file path if ETW not
+      enabled.
+      [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.
+      [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).
+      [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst',
+      'balanced', 'default', 'high_performance',
+      'high_power_saver', 'low_balanced', 'extreme_power_saver',
+      'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to
+      'default'.
+      [QNN only] [op_packages]: QNN UDO package, allowed format:
+      op_packages|<op_type>:<op_package_path>:<interface_symbol_name>[:<target>],<op_type2>:<op_package_path2>:<interface_symbol_name2>[:<target2>].
+      [QNN only] [qnn_context_priority]: QNN context priority, options: 'low',
+      'normal', 'normal_high', 'high'. Default to 'normal'.
+      [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g
+      '/folderpath/libQnnSaver.so'.
+      [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph
+      finalization optimization mode, options:
+      '0', '1', '2', '3', default is '0'.
+      [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK
+      documentation for specific values. Defaults to '0' (unknown).
+      [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use
+      ops compatible with this architecture.
+      Options are '0', '68', '69', '73', '75'. Defaults to '0' (none).
+      [QNN only] [device_id]: The ID of the device to use when setting
+      'htp_arch'. Defaults to '0' (for single device).
+      [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so
+      that the float32 model will be inferenced with fp16 precision.
+      Otherwise, it will be fp32 precision. Works for float32 model for HTP
+      backend. Defaults to '1' (with FP16 precision.).
+      [QNN only] [offload_graph_io_quantization]: Offload graph input
+      quantization and graph output dequantization to another EP (typically CPU
+      EP).
+      Defaults to '0' (QNN EP handles the graph I/O quantization and
+      dequantization).
+      [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer,
+      used while generating QNN context binary.
+      [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared
+      memory allocator and use it for inputs and outputs. Requires
+      libcdsprpc.so/dll to be available.
+      Defaults to '0' (disabled).
+      [Example] [For QNN EP] -e qnn -i "backend_type|cpu"
+
+      [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for
+      TensorRT parser to get capability.
+      [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT
+      subgraphs.
+      [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace
+      size in byte.
+      [TensorRT only] [trt_fp16_enable]: Enable TensorRT FP16 precision.
+      [TensorRT only] [trt_int8_enable]: Enable TensorRT INT8 precision.
+      [TensorRT only] [trt_int8_calibration_table_name]: Specify INT8
+      calibration table name.
+      [TensorRT only] [trt_int8_use_native_calibration_table]: Use Native
+      TensorRT calibration table.
+      [TensorRT only] [trt_dla_enable]: Enable DLA in Jetson device.
+      [TensorRT only] [trt_dla_core]: DLA core number.
+      [TensorRT only] [trt_dump_subgraphs]: Dump TRT subgraph to onnx model.
+      [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.
+      [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.
+      [TensorRT only] [trt_engine_cache_prefix]: Customize engine cache prefix
+      when trt_engine_cache_enable is true.
+      [TensorRT only] [trt_engine_hw_compatible]: Enable hardware compatibility.
+      Engines ending with '_sm80+' can be re-used across all Ampere+ GPU (a
+      hardware-compatible engine may have lower throughput and/or higher latency
+      than its non-hardware-compatible counterpart).
+      [TensorRT only] [trt_weight_stripped_engine_enable]: Enable
+      weight-stripped engine build.
+      [TensorRT only] [trt_onnx_model_folder_path]: Folder path for the ONNX
+      model with weights.
+      [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT
+      engines to be built sequentially.
+      [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT
+      context memory sharing between subgraphs.
+      [TensorRT only] [trt_layer_norm_fp32_fallback]: Force Pow + Reduce ops in
+      layer norm to run in FP32 to avoid overflow.
+      [Example] [For TensorRT EP] -e tensorrt -i 'trt_fp16_enable|true
+      trt_int8_enable|true
+      trt_int8_calibration_table_name|calibration.flatbuffers
+      trt_int8_use_native_calibration_table|false
+      trt_force_sequential_engine_build|false'
+
+      [NNAPI only] [NNAPI_FLAG_USE_FP16]: Use fp16 relaxation in NNAPI EP..
+      [NNAPI only] [NNAPI_FLAG_USE_NCHW]: Use the NCHW layout in NNAPI EP.
+      [NNAPI only] [NNAPI_FLAG_CPU_DISABLED]: Prevent NNAPI from using CPU
+      devices.
+      [NNAPI only] [NNAPI_FLAG_CPU_ONLY]: Using CPU only in NNAPI EP.
+      [Example] [For NNAPI EP] -e nnapi -i "NNAPI_FLAG_USE_FP16
+      NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED"
+
+      [CoreML only] [ModelFormat]:[MLProgram, NeuralNetwork] Create an ML
+      Program model or Neural Network. Default is NeuralNetwork.
+      [CoreML only] [MLComputeUnits]:[CPUAndNeuralEngine CPUAndGPU ALL CPUOnly]
+      Specify to limit the backend device used to run the model.
+      [CoreML only] [AllowStaticInputShapes]:[0 1].
+      [CoreML only] [EnableOnSubgraphs]:[0 1].
+      [CoreML only] [SpecializationStrategy]:[Default FastPrediction].
+      [CoreML only] [ProfileComputePlan]:[0 1].
+      [CoreML only] [AllowLowPrecisionAccumulationOnGPU]:[0 1].
+      [CoreML only] [ModelCacheDirectory]:[path../a/b/c].
+      [Example] [For CoreML EP] -e coreml -i "ModelFormat|MLProgram
+      MLComputeUnits|CPUAndGPU"
+
+      [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16',
+      'DSP', 'AIP_FIXED_TF'.
+      [SNPE only] [priority]: execution priority, options: 'low', 'normal'.
+      [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT',
+      'ITENSOR'. default: ITENSOR'.
+      [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to
+      1 to enabled it. Disabled by default.
+      [Example] [For SNPE EP] -e snpe -i "runtime|CPU priority|low"
+      ); default: "";
+    --l (Provides file as binary in memory by using fopen before session
+      creation.); default: false;
+    --list_ep_devices (Prints all available device indices and their properties
+      (including metadata). This option makes the program exit early without
+      performing inference.
+      ); default: false;
+    --m (Specifies the test mode. Value could be 'duration' or 'times'.);
+      default: "duration";
+    --n (Allows user to measure session creation time to measure impact of
+      enabling any initialization optimizations.); default: false;
+    --o (Specifies graph optimization level. Default is 99 (all). Valid values
+      are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).);
+      default: 99;
+    --p (Specifies the profile name to enable profiling and dump the profile
+      data to the file.); default: "";
+    --plugin_ep_libs (Specifies a list of plugin execution provider (EP)
+      registration names and their corresponding shared libraries to register.
+      [Usage]: --plugin_ep_libs "plugin_ep_name_1|plugin_ep_1.dll
+      plugin_ep_name_2|plugin_ep_2.dll ... "); default: "";
+    --plugin_ep_options (Specifies provider options for each EP listed in
+      --plugin_eps. Options (key-value pairs) for each EP are separated by space
+      and EPs are separated by semicolons.
+      [Usage]: --plugin_ep_options "ep_1_option_1_key|ep_1_option_1_value
+      ...;ep_2_option_1_key|ep_2_option_1_value ...;... " or
+      --plugin_ep_options ";ep_2_option_1_key|ep_2_option_1_value ...;... " or
+      --plugin_ep_options "ep_1_option_1_key|ep_1_option_1_value
+      ...;;ep_3_option_1_key|ep_3_option_1_value ...;... "); default: "";
+    --plugin_eps (Specifies a semicolon-separated list of plugin execution
+      providers (EPs) to use.); default: "";
+    --q ([CUDA only] Uses separate stream for copy.); default: false;
+    --r (Specifies the repeated times if running in 'times' test mode.);
+      default: 1000;
+    --s (Shows statistics result, like P75, P90. If no result_file provided this
+      defaults to on.); default: false;
+    --select_ep_devices (Specifies a semicolon-separated list of device indices
+      to add to the session and run with.); default: "";
+    --t (Specifies the seconds to run for 'duration' mode.); default: 600;
+    --u (Specifies the optimized model path for saving.); default: "";
+    --v (Shows verbose information.); default: false;
+    --x (Sets the number of threads used to parallelize the execution within
+      nodes, A value of 0 means ORT will pick a default. Must >=0.); default: 0;
+    --y (Sets the number of threads used to parallelize the execution of the
+      graph (across nodes), A value of 0 means ORT will pick a default. Must
+      >=0.); default: 0;
+    --z (Sets denormal as zero. When turning on this option reduces latency
+      dramatically, a model may have denormals.); default: false;
+
+Try --helpfull to get a list of all flags or --help=substring shows help for
+flags which include specified substring in either in the name, or description or
+path.

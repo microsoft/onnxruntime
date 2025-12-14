@@ -1,0 +1,108 @@
+
+G:\onnxruntime-chrisd>build\RelWithDebInfo\onnxruntime_perf_test.exe --winappsdk_version 2.0-experimental3 --list_ep_devices 
+ONNX Runtime C++ API version: 23
+winappsdk_version:2.0-experimental3
+package_family_name:Microsoft.WindowsAppRuntime.2.0-experimental3_8wekyb3d8bbwe
+[WinML] Provider: OpenVINOExecutionProvider[WinML]  Ready state: NotReady
+[WinML]  ensure_ready_result:Success DiagnosticText:
+[WinML]  registration_result:true
+[WinML] Provider: NvTensorRTRTXExecutionProvider[WinML]  Ready state: NotReady
+[WinML]  ensure_ready_result:Success DiagnosticText:
+[WinML]  registration_result:true
+[WinAppSDK:OrtGetApiBase] C:\Program Files\WindowsApps\Microsoft.WindowsAppRuntime.2.0-experimental3_0.676.658.0_x64__8wekyb3d8bbwe\onnxruntime.dll
+-------------------------------------------
+provider_Type_Name:CPUExecutionProvider
+has_Required_Device_Type:0
+required_Device_Type:0
+-------------------------------------------
+===== device id 0 ======
+name: CPUExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 1 ======
+name: DmlExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 2 ======
+name: OpenVINOExecutionProvider
+vendor: Intel
+metadata:
+  ov_device: CPU
+  version: 1.1.0+bc991700b
+
+===== device id 3 ======
+name: OpenVINOExecutionProvider.AUTO
+vendor: Intel
+metadata:
+  ov_meta_device: AUTO
+  ov_device: CPU
+  version: 1.1.0+bc991700b
+
+===== device id 4 ======
+name: NvTensorRTRTXExecutionProvider
+vendor: NVIDIA
+metadata:
+  version: 1.23.0
+  library_path: C:\Program Files\WindowsApps\MicrosoftCorporationII.WinML.NVIDIA.TRT-RTX.EP.1.8_1.8.14.0_x64__8wekyb3d8bbwe\ExecutionProvider\onnxruntime_providers_nv_tensorrt_rtx.dll
+
+No plugin execution provider libraries are registered. Please specify them using "--plugin_ep_libs"; otherwise, only CPU may be available.
+Uninitializing WinML bootstrap...
+Shutting down Protobuf library...
+
+G:\onnxruntime-chrisd>build\RelWithDebInfo\onnxruntime_perf_test.exe --winappsdk_version 1.8 --list_ep_devices 
+ONNX Runtime C++ API version: 23
+winappsdk_version:1.8
+package_family_name:Microsoft.WindowsAppRuntime.1.8_8wekyb3d8bbwe
+[WinML] Provider: OpenVINOExecutionProvider[WinML]  Ready state: NotReady
+[WinML]  ensure_ready_result:Success DiagnosticText:
+[WinML]  registration_result:true
+[WinML] Provider: NvTensorRTRTXExecutionProvider[WinML]  Ready state: NotReady
+[WinML]  ensure_ready_result:Success DiagnosticText:
+[WinML]  registration_result:true
+[WinAppSDK:OrtGetApiBase] C:\Program Files\WindowsApps\Microsoft.WindowsAppRuntime.1.8_8000.675.1142.0_x64__8wekyb3d8bbwe\onnxruntime.dll
+-------------------------------------------
+provider_Type_Name:CPUExecutionProvider
+has_Required_Device_Type:0
+required_Device_Type:0
+-------------------------------------------
+===== device id 0 ======
+name: CPUExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 1 ======
+name: DmlExecutionProvider
+vendor: Microsoft
+metadata:
+  version: 1.23.2
+
+===== device id 2 ======
+name: OpenVINOExecutionProvider
+vendor: Intel
+metadata:
+  ov_device: CPU
+  version: 1.1.0+bc991700b
+
+===== device id 3 ======
+name: OpenVINOExecutionProvider.AUTO
+vendor: Intel
+metadata:
+  ov_meta_device: AUTO
+  ov_device: CPU
+  version: 1.1.0+bc991700b
+
+===== device id 4 ======
+name: NvTensorRTRTXExecutionProvider
+vendor: NVIDIA
+metadata:
+  version: 1.23.0
+  library_path: C:\Program Files\WindowsApps\MicrosoftCorporationII.WinML.NVIDIA.TRT-RTX.EP.1.8_1.8.14.0_x64__8wekyb3d8bbwe\ExecutionProvider\onnxruntime_providers_nv_tensorrt_rtx.dll
+
+No plugin execution provider libraries are registered. Please specify them using "--plugin_ep_libs"; otherwise, only CPU may be available.
+Uninitializing WinML bootstrap...
+Shutting down Protobuf library...

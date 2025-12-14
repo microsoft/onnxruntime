@@ -1,0 +1,385 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "perftest/RelWithDebInfo/perftest.exe"
+		},
+		{
+			"path" : "perftest/RelWithDebInfo/perftest.pdb"
+		}
+	],
+	"backtrace" : 2,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_executable",
+			"add_executable",
+			"target_link_libraries",
+			"_find_package",
+			"find_package",
+			"add_cppwinrt_projection",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"G:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"perftest/CMakeLists.txt",
+			"__output/windows-vs-x64/_deps/cmakenugetpackage-src/build/cmake/microsoft.windowsappsdk.ml-config.cmake",
+			"CMakeLists.txt",
+			"__output/windows-vs-x64/_deps/cmakenugetpackage-src/build/cmake/microsoft.windowsappsdk.foundation-config.cmake",
+			"__output/windows-vs-x64/_deps/cmakenugetpackage-src/build/cmake/microsoft.windows.cppwinrt-config.cmake",
+			"__output/windows-vs-x64/_deps/cmakenugetpackage-src/build/cmake/microsoft.windowsappsdk.interactiveexperiences-config.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 10,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 608,
+				"parent" : 1
+			},
+			{
+				"file" : 3
+			},
+			{
+				"command" : 4,
+				"file" : 3,
+				"line" : 54,
+				"parent" : 3
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 904,
+				"parent" : 4
+			},
+			{
+				"file" : 2,
+				"parent" : 5
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 139,
+				"parent" : 6
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 28,
+				"parent" : 6
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 904,
+				"parent" : 8
+			},
+			{
+				"file" : 4,
+				"parent" : 9
+			},
+			{
+				"command" : 2,
+				"file" : 4,
+				"line" : 111,
+				"parent" : 10
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 65,
+				"parent" : 6
+			},
+			{
+				"command" : 2,
+				"file" : 5,
+				"line" : 168,
+				"parent" : 12
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 26,
+				"parent" : 6
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 904,
+				"parent" : 14
+			},
+			{
+				"file" : 5,
+				"parent" : 15
+			},
+			{
+				"command" : 2,
+				"file" : 5,
+				"line" : 208,
+				"parent" : 16
+			},
+			{
+				"command" : 4,
+				"file" : 4,
+				"line" : 22,
+				"parent" : 10
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 904,
+				"parent" : 18
+			},
+			{
+				"file" : 6,
+				"parent" : 19
+			},
+			{
+				"command" : 2,
+				"file" : 6,
+				"line" : 109,
+				"parent" : 20
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 30,
+				"parent" : 0
+			},
+			{
+				"command" : 6,
+				"file" : 1,
+				"line" : 23,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /O2 /Ob1 /DNDEBUG -std:c++17 -MD -Z7"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 23,
+					"path" : "G:/onnxruntime_perf_test/include/onnxruntime"
+				},
+				{
+					"backtrace" : 23,
+					"path" : "G:/onnxruntime_perf_test/__output/windows-vs-x64/perftest"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__cppwinrt/Microsoft.WindowsAppSDK.ML"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__packages/Microsoft.WindowsAppSDK.ML.1.8.2091/include"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__cppwinrt/Microsoft.Windows.CppWinRT"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__packages/Microsoft.WindowsAppSDK.Runtime.1.8.250916003/include"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__cppwinrt/Microsoft.WindowsAppSDK.Foundation"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__packages/Microsoft.WindowsAppSDK.Foundation.1.8.250906002/include"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__cppwinrt/Microsoft.WindowsAppSDK.InteractiveExperiences"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__packages/Microsoft.WindowsAppSDK.InteractiveExperiences.1.8.250906004/include"
+				},
+				{
+					"backtrace" : 22,
+					"path" : "G:/onnxruntime_perf_test/__packages/Microsoft.Windows.ImplementationLibrary.1.0.240803.1/include"
+				},
+				{
+					"backtrace" : 22,
+					"isSystem" : true,
+					"path" : "G:/onnxruntime_perf_test/__output/windows-vs-x64/vcpkg_installed/x64-windows/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					2
+				],
+				"standard" : "17"
+			},
+			"sourceIndexes" : 
+			[
+				1,
+				3
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 22,
+			"id" : "Microsoft.WindowsAppSDK.Foundation::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 22,
+			"id" : "Microsoft.Windows.CppWinRT::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 22,
+			"id" : "Microsoft.WindowsAppSDK.InteractiveExperiences::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 22,
+			"id" : "Microsoft.WindowsAppSDK.ML::@6890427a1f51a3e7e1df"
+		},
+		{
+			"id" : "ZERO_CHECK::@6890427a1f51a3e7e1df"
+		}
+	],
+	"id" : "perftest::@06dc75e9154ea772cc2a",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/DWIN32 /D_WINDOWS /EHsc /O2 /Ob1 /DNDEBUG -MD -Z7",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "/machine:x64 /debug /INCREMENTAL",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "/subsystem:console",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 7,
+				"fragment" : "G:\\onnxruntime_perf_test\\__packages\\Microsoft.WindowsAppSDK.ML.1.8.2091\\runtimes\\win-x64\\native\\onnxruntime.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 11,
+				"fragment" : "G:\\onnxruntime_perf_test\\__packages\\Microsoft.WindowsAppSDK.Foundation.1.8.250906002\\lib\\native\\x64\\Microsoft.WindowsAppRuntime.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "RuntimeObject.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 17,
+				"fragment" : "ole32.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 17,
+				"fragment" : "oleaut32.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 21,
+				"fragment" : "G:\\onnxruntime_perf_test\\__packages\\Microsoft.WindowsAppSDK.InteractiveExperiences.1.8.250906004\\lib\\native\\win10-x64\\Microsoft.UI.Dispatching.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "perftest",
+	"nameOnDisk" : "perftest.exe",
+	"paths" : 
+	{
+		"build" : "perftest",
+		"source" : "perftest"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0,
+				2,
+				4,
+				5
+			]
+		},
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				1,
+				3
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 2,
+			"path" : "perftest/app.manifest",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "perftest/main.cxx",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 22,
+			"path" : "__output/windows-vs-x64/_deps/cmakenugetpackage-src/build/cmake/microsoft.windowsappsdk.ml.manifest",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 22,
+			"compileGroupIndex" : 0,
+			"path" : "__packages/Microsoft.WindowsAppSDK.ML.1.8.2091/include/WindowsMLAutoInitializer.SelfContained.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 22,
+			"path" : "__output/windows-vs-x64/_deps/cmakenugetpackage-src/build/cmake/Microsoft.WindowsAppSDK.Foundation.manifest",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 22,
+			"path" : "__output/windows-vs-x64/_deps/cmakenugetpackage-src/build/cmake/Microsoft.WindowsAppSDK.InteractiveExperiences.manifest",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "EXECUTABLE"
+}

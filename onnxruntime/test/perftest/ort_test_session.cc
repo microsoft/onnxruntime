@@ -62,566 +62,101 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
 
+  if (!performance_test_config.selected_ep_device_indices.empty()) {
+    ORT_THROW("[ERROR] [WinAppSDK]: selected_ep_device_indices is not supported.");
+  }
+
+  // Usage: --required_device_type gpu
+  // has_required_device_type = false;
+  // OrtHardwareDeviceType required_device_type = OrtHardwareDeviceType::OrtHardwareDeviceType_CPU;
+
+  // Usage: -e nvtensorrtrtx
+  // test_config.machine_config.provider_type_name, -e nvtensorrtrtx
+  provider_name_ = performance_test_config.machine_config.provider_type_name;
+
   // Add EP devices if any (created by plugin EP)
-  if (!performance_test_config.registered_plugin_eps.empty()) {
-    std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
-    // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
-    std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
-    std::unordered_set<int> added_ep_device_index_set;
+  // if (performance_test_config.has_required_device_type)
 
-    auto& ep_list = performance_test_config.machine_config.plugin_provider_type_list;
-    std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
+  std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+  std::vector<std::string> ep_list = performance_test_config.machine_config.plugin_provider_type_list;
 
-    // Select EP devices by provided device index
-    if (!performance_test_config.selected_ep_device_indices.empty()) {
-      std::vector<int> device_list;
-      device_list.reserve(performance_test_config.selected_ep_device_indices.size());
-      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
-      for (auto index : device_list) {
-        if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
-          fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
-          continue;
-        }
+  // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
+  std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
 
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
-            added_ep_devices[device.EpName()].push_back(device);
-            added_ep_device_index_set.insert(index);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
-          }
-        } else {
-          std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
-                                performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
-          fprintf(stderr, "%s", err_msg.c_str());
-        }
-      }
-    } else {
-      // Find and select the OrtEpDevice associated with the EP in "--plugin_eps".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          added_ep_devices[device.EpName()].push_back(device);
-          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
-        }
-      }
+  // Select EP devices by provided device index
+  // if (performance_test_config.has_required_device_type) {
+
+  for (int index = 0; index < ep_devices.size(); ++index) {
+    Ort::ConstEpDevice& device = ep_devices[index];
+
+    fprintf(stdout, "[WinML EP] EP Device [Index: %d, Name: %s]\n", static_cast<int>(index), device.EpName());
+
+    if (device.Device().Type() == performance_test_config.required_device_type && performance_test_config.machine_config.provider_type_name == device.EpName()) {
+      added_ep_devices[device.EpName()].push_back(device);
+      provider_name_.append(device.EpName());
+      provider_name_.append("|");
+      ep_list.push_back(device.EpName());
+
+      fprintf(stdout, "[WinML EP] EP Device [Index: %d, Name: %s] has been added to session.\n", index, device.EpName());
     }
+  }
 
-    if (added_ep_devices.empty()) {
-      ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
+  // for (size_t index = 0; index < ep_devices.size(); ++index) {
+  //   Ort::ConstEpDevice& device = ep_devices[index];
+  //   if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
+  //     added_ep_devices[device.EpName()].push_back(device);
+  //     fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
+  //   }
+  // }
+
+  if (added_ep_devices.empty()) {
+    ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
+  }
+
+  std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+
+  // EP's associated provider option lists
+  std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
+  ParseEpOptions(ep_option_string, ep_options_list);
+
+  // If user only provide the EPs' provider option lists for the first several EPs,
+  // add empty provider option lists for the rest EPs.
+  if (ep_options_list.size() < ep_list.size()) {
+    for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
+      ep_options_list.emplace_back();  // Adds a new empty map
     }
+  } else if (ep_options_list.size() > ep_list.size()) {
+    ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
+  }
 
-    std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+  // EP -> associated provider options
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
+  for (size_t i = 0; i < ep_list.size(); ++i) {
+    ep_options_map.emplace(ep_list[i], ep_options_list[i]);
+  }
 
-    // EP's associated provider option lists
-    std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
-    ParseEpOptions(ep_option_string, ep_options_list);
-
-    // If user only provide the EPs' provider option lists for the first several EPs,
-    // add empty provider option lists for the rest EPs.
-    if (ep_options_list.size() < ep_list.size()) {
-      for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
-        ep_options_list.emplace_back();  // Adds a new empty map
-      }
-    } else if (ep_options_list.size() > ep_list.size()) {
-      ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
-    }
-
-    // EP -> associated provider options
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
-    for (size_t i = 0; i < ep_list.size(); ++i) {
-      ep_options_map.emplace(ep_list[i], ep_options_list[i]);
-    }
-
-    for (auto& ep_and_devices : added_ep_devices) {
-      auto& ep = ep_and_devices.first;
-      auto& devices = ep_and_devices.second;
-      session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
-    }
+  for (auto& ep_and_devices : added_ep_devices) {
+    auto& ep = ep_and_devices.first;
+    auto& devices = ep_and_devices.second;
+    session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   std::unordered_map<std::string, std::string> provider_options;
-  if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
-#ifdef USE_DNNL
-    // Generate provider options
-    OrtDnnlProviderOptions dnnl_options;
-    dnnl_options.use_arena = 1;
-    dnnl_options.threadpool_args = nullptr;
 
-#if !defined(DNNL_ORT_THREAD)
-#if defined(_MSC_VER)
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif  // defined(_MSC_VER)
-    int num_threads = 0;
-    ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"});
-    for (const auto& provider_option : provider_options) {
-      if (provider_option.first == "num_of_threads") {
-        std::stringstream sstream(provider_option.second);
-        sstream >> num_threads;
-        if (num_threads < 0) {
-          ORT_THROW(
-              "[ERROR] [OneDNN] Invalid entry for the key 'num_of_threads',"
-              " set number of threads or use '0' for default\n");
-          // If the user doesnt define num_threads, auto detect threads later
-        }
-      }
-    }
-    dnnl_options.threadpool_args = static_cast<void*>(&num_threads);
-#endif  // !defined(DNNL_ORT_THREAD)
-    dnnl_options.use_arena = performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0;
-
-    session_options.AppendExecutionProvider_Dnnl(dnnl_options);
-#else
-    ORT_THROW("DNNL is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
-#ifdef USE_CUDA
-    Ort::CUDAProviderOptions cuda_options;
-
-    const char* config_val = nullptr;
-    switch (performance_test_config.run_config.cudnn_conv_algo) {
-      case 0:
-        config_val = "EXHAUSTIVE";
-        break;
-      case 1:
-        config_val = "HEURISTIC";
-        break;
-      default:
-        config_val = "DEFAULT";
-        break;
-    }
-    provider_options.emplace("cudnn_conv_algo_search", config_val);
-    provider_options.emplace("do_copy_in_default_stream",
-                             (!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0"));
-
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-
-    ParseSessionConfigs(ov_string, provider_options);
-    cuda_options.Update(provider_options);
-
-    session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
-    if (performance_test_config.run_config.enable_cuda_io_binding) {
-      device_memory_name_ = CUDA;
-    }
-#else
-    ORT_THROW("CUDA is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
-#ifdef USE_TENSORRT
-    Ort::TensorRTProviderOptions tensorrt_options;
-    // used to keep all option keys and value strings alive
-    std::list<std::string> buffer;
-
-#ifdef _MSC_VER
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    ParseSessionConfigs(ov_string, provider_options);
-    tensorrt_options.Update(provider_options);
-    session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
-
-    OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id = static_cast<OrtTensorRTProviderOptionsV2*>(tensorrt_options)->device_id;
-    cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
-    cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    // TODO: Support arena configuration for users of perf test
-    session_options.AppendExecutionProvider_CUDA(cuda_options);
-    if (performance_test_config.run_config.enable_cuda_io_binding) {
-      device_memory_name_ = CUDA;
-    }
-#else
-    ORT_THROW("TensorRT is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
-#ifdef USE_NV
-    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
-    if (performance_test_config.run_config.enable_cuda_io_binding) {
-      device_memory_name_ = CUDA;
-    }
-#else
-    ORT_THROW("NV TensorRT RTX is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
-#ifdef USE_QNN
-#ifdef _MSC_VER
-    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    ParseSessionConfigs(option_string, provider_options,
-                        {"backend_type", "backend_path", "profiling_file_path", "profiling_level",
-                         "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "op_packages",
-                         "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
-                         "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
-                         "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
-                         "json_qnn_graph_dir"});
-    for (const auto& provider_option : provider_options) {
-      const std::string& key = provider_option.first;
-      const std::string& value = provider_option.second;
-      if (key == "backend_path" || key == "profiling_file_path" || key == "json_qnn_graph_dir") {
-        if (value.empty()) {
-          ORT_THROW("Please provide the valid file path.");
-        }
-      } else if (key == "profiling_level") {
-        std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
-        if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
-          ORT_THROW("Supported profiling_level: off, basic, detailed");
-        }
-      } else if (key == "backend_type" || key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" ||
-                 key == "device_id") {
-        // no validation
-      } else if (key == "htp_performance_mode") {
-        std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                         "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
-                                                         "power_saver", "sustained_high_performance"};
-        if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
-          std::ostringstream str_stream;
-          std::copy(supported_htp_perf_mode.begin(), supported_htp_perf_mode.end(),
-                    std::ostream_iterator<std::string>(str_stream, ","));
-          std::string str = str_stream.str();
-          ORT_THROW("Supported htp_performance_mode: " + str);
-        }
-      } else if (key == "op_packages") {
-        if (value.empty()) {
-          ORT_THROW("Please provide the valid op_packages.");
-        }
-      } else if (key == "qnn_saver_path") {
-        // no validation
-      } else if (key == "htp_graph_finalization_optimization_mode") {
-        std::set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
-        if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
-          std::ostringstream str_stream;
-          std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),
-                    std::ostream_iterator<std::string>(str_stream, ","));
-          std::string str = str_stream.str();
-          ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
-        }
-      } else if (key == "qnn_context_priority") {
-        std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
-        if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
-          ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
-        }
-      } else if (key == "htp_arch") {
-        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
-        if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
-          std::ostringstream str_stream;
-          std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
-                    std::ostream_iterator<std::string>(str_stream, ","));
-          std::string str = str_stream.str();
-          ORT_THROW("Wrong value for htp_arch. select from: " + str);
-        }
-      } else if (key == "enable_htp_fp16_precision" ||
-                 key == "offload_graph_io_quantization" ||
-                 key == "enable_htp_spill_fill_buffer" ||
-                 key == "enable_htp_shared_memory_allocator" ||
-                 key == "dump_json_qnn_graph") {
-        std::set<std::string> supported_options = {"0", "1"};
-        if (supported_options.find(value) == supported_options.end()) {
-          std::ostringstream str_stream;
-          std::copy(supported_options.begin(), supported_options.end(),
-                    std::ostream_iterator<std::string>(str_stream, ","));
-          std::string str = str_stream.str();
-          ORT_THROW("Wrong value for ", key, ". select from: ", str);
-        }
-
-        if (key == "enable_htp_shared_memory_allocator" && value == "1") {
-          // if this option is set, also use the enabled allocator
-          device_memory_name_ = "QnnHtpShared";
-        }
-      }
-    }
-    session_options.AppendExecutionProvider("QNN", provider_options);
-#else
-    ORT_THROW("QNN is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kSnpeExecutionProvider) {
-#ifdef USE_SNPE
-#ifdef _MSC_VER
-    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"});
-    for (const auto& provider_option : provider_options) {
-      if (key == "runtime") {
-        std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
-        if (supported_runtime.find(value) == supported_runtime.end()) {
-          ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
-select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
-        }
-      } else if (key == "priority") {
-        // no validation
-      } else if (key == "buffer_type") {
-        std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
-        if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
-          ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
-select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
-        }
-      } else if (key == "enable_init_cache") {
-        if (value != "1") {
-          ORT_THROW("Set to 1 to enable_init_cache.");
-        }
-      }
-    }
-
-    session_options.AppendExecutionProvider("SNPE", provider_options);
-#else
-    ORT_THROW("SNPE is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kNnapiExecutionProvider) {
-#ifdef USE_NNAPI
-    uint32_t nnapi_flags = 0;
-#ifdef _MSC_VER
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    std::istringstream ss(ov_string);
-    std::string key;
-    while (ss >> key) {
-      if (key == "NNAPI_FLAG_USE_FP16") {
-        nnapi_flags |= NNAPI_FLAG_USE_FP16;
-      } else if (key == "NNAPI_FLAG_USE_NCHW") {
-        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
-      } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
-        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
-      } else if (key == "NNAPI_FLAG_CPU_ONLY") {
-        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
-      } else if (key.empty()) {
-      } else {
-        ORT_THROW(
-            "[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options "
-            "that are available for NNAPI. "
-            "['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
-      }
-    }
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
-#else
-    ORT_THROW("NNAPI is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kVSINPUExecutionProvider) {
-#ifdef USE_VSINPU
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VSINPU(session_options));
-#else
-    ORT_THROW("VSINPU is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
-#ifdef __APPLE__
-#ifdef USE_COREML
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    static const std::unordered_set<std::string> available_keys = {kCoremlProviderOption_MLComputeUnits,
-                                                                   kCoremlProviderOption_ModelFormat,
-                                                                   kCoremlProviderOption_RequireStaticInputShapes,
-                                                                   kCoremlProviderOption_EnableOnSubgraphs,
-                                                                   kCoremlProviderOption_SpecializationStrategy,
-                                                                   kCoremlProviderOption_ProfileComputePlan,
-                                                                   kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
-                                                                   kCoremlProviderOption_ModelCacheDirectory};
-    ParseSessionConfigs(ov_string, provider_options, available_keys);
-
-    std::unordered_map<std::string, std::string> available_options = {
-        {"CPUAndNeuralEngine", "1"},
-        {"CPUAndGPU", "1"},
-        {"CPUOnly", "1"},
-        {"ALL", "1"},
-    };
-    for (const auto& provider_option : provider_options) {
-      if (provider_option.first == kCoremlProviderOption_MLComputeUnits &&
-          available_options.find(provider_option.second) != available_options.end()) {
-      } else if (provider_option.first == kCoremlProviderOption_ModelFormat &&
-                 (provider_option.second == "MLProgram" || provider_option.second == "NeuralNetwork")) {
-      } else if (provider_option.first == kCoremlProviderOption_RequireStaticInputShapes &&
-                 (provider_option.second == "1" || provider_option.second == "0")) {
-      } else if (provider_option.first == kCoremlProviderOption_EnableOnSubgraphs &&
-                 (provider_option.second == "0" || provider_option.second == "1")) {
-      } else if (provider_option.first == kCoremlProviderOption_SpecializationStrategy &&
-                 (provider_option.second == "Default" || provider_option.second == "FastPrediction")) {
-      } else if (provider_option.first == kCoremlProviderOption_ProfileComputePlan &&
-                 (provider_option.second == "0" || provider_option.second == "1")) {
-      } else if (provider_option.first == kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU &&
-                 (provider_option.second == "0" || provider_option.second == "1")) {
-      } else if (provider_option.first == kCoremlProviderOption_ModelCacheDirectory) {
-      } else {
-        ORT_THROW("Invalid value for option ", provider_option.first, ": ", provider_option.second);
-      }
-    }
-    // COREML_FLAG_CREATE_MLPROGRAM
-    session_options.AppendExecutionProvider("CoreML", provider_options);
-#else
-    ORT_THROW("CoreML is not supported in this build\n");
-#endif
-#else
-    ORT_THROW("COREML is not supported on this platform.\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
-#ifdef USE_DML
-#ifdef _MSC_VER
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    ParseSessionConfigs(ov_string, provider_options,
-                        {"device_filter", "performance_preference", "disable_metacommands",
-                         "enable_graph_capture", "enable_graph_serialization"});
-    for (const auto& provider_option : provider_options) {
-      const std::string& key = provider_option.first;
-      const std::string& value = provider_option.second;
-      if (key == "device_filter") {
-        std::set<std::string> ov_supported_device_types = {"gpu", "npu"};
-        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
-        } else {
-          ORT_THROW(
-              "[ERROR] [DML] You have selected a wrong configuration value for the key 'device_filter'. "
-              "Select from 'gpu', or 'npu' \n");
-        }
-      } else if (key == "performance_preference") {
-        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimum_power"};
-        if (ov_supported_values.find(value) != ov_supported_values.end()) {
-        } else {
-          ORT_THROW(
-              "[ERROR] [DML] You have selected a wrong configuration value for the key 'performance_preference'. "
-              "Select from 'default', 'high_performance' or 'minimum_power' \n");
-        }
-      } else if (key == "disable_metacommands") {
-        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
-        if (ov_supported_values.find(value) != ov_supported_values.end()) {
-        } else {
-          ORT_THROW(
-              "[ERROR] [DML] You have selected a wrong value for the key 'disable_metacommands'. "
-              "Select from 'true' or 'false' \n");
-        }
-      } else if (key == "enable_graph_capture") {
-        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
-        if (ov_supported_values.find(value) != ov_supported_values.end()) {
-        } else {
-          ORT_THROW(
-              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_capture'. "
-              "Select from 'true' or 'false' \n");
-        }
-      } else if (key == "enable_graph_serialization") {
-        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
-        if (ov_supported_values.find(value) != ov_supported_values.end()) {
-          session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
-        } else {
-          ORT_THROW(
-              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_serialization'. "
-              "Select from 'true' or 'false' \n");
-        }
-      }
-    }
-    if (provider_options.find("performance_preference") == provider_options.end()) {
-      provider_options["performance_preference"] = "high_performance";
-    }
-    if (provider_options.find("device_filter") == provider_options.end()) {
-      provider_options["device_filter"] = "gpu";
-    }
-    if (provider_options.find("disable_metacommands") == provider_options.end()) {
-      provider_options["disable_metacommands"] = "false";
-    }
-    if (provider_options.find("enable_graph_capture") == provider_options.end()) {
-      provider_options["enable_graph_capture"] = "false";
-    }
-    session_options.AppendExecutionProvider("DML", provider_options);
-#else
-    ORT_THROW("DML is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kAclExecutionProvider) {
-#ifdef USE_ACL
-#if defined(_MSC_VER)
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif  // defined(_MSC_VER)
-    bool enable_fast_math = false;
-    ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
-    for (const auto& provider_option : provider_options) {
-      const std::string& key = provider_option.first;
-      const std::string& value = provider_option.second;
-      if (key == "enable_fast_math") {
-        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
-        if (ov_supported_values.find(value) != ov_supported_values.end()) {
-          enable_fast_math = (value == "true") || (value == "True");
-        } else {
-          ORT_THROW(
-              "[ERROR] [ACL] You have selcted an invalid value for the key 'enable_fast_math'. "
-              "Select from 'true' or 'false' \n");
-        }
-      }
-    }
-    Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_ACL(session_options, enable_fast_math));
-#else
-    ORT_THROW("Acl is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
-                                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
-#else
-    ORT_THROW("ArmNN is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kRocmExecutionProvider) {
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
-    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    // TODO: Support arena configuration for users of perf test
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
-#else
-    ORT_THROW("ROCM is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
-#ifdef USE_MIGRAPHX
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
-#else
-    ORT_THROW("MIGraphX is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kXnnpackExecutionProvider) {
-#ifdef USE_XNNPACK
-    session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
-    session_options.AppendExecutionProvider(
-        "XNNPACK", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
-#else
-    ORT_THROW("Xnnpack is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kWebGpuExecutionProvider) {
-#ifdef USE_WEBGPU
-    session_options.AppendExecutionProvider("WebGPU", {});
-#else
-    ORT_THROW("WebGPU is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
-#ifdef USE_VITISAI
-#ifdef _MSC_VER
-    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    ParseSessionConfigs(option_string, provider_options);
-
-    session_options.AppendExecutionProvider_VitisAI(provider_options);
-#else
-    ORT_THROW("VitisAI is not supported in this build\n");
-#endif
-  } else if (!provider_name_.empty() &&
-             provider_name_ != onnxruntime::kCpuExecutionProvider &&
-             provider_name_ != onnxruntime::kOpenVINOExecutionProvider) {
-    ORT_THROW("This backend is not included in perf test runner.\n");
+  if (performance_test_config.run_config.enable_cpu_mem_arena) {
+    session_options.EnableCpuMemArena();
+  } else {
+    session_options.DisableCpuMemArena();
   }
 
-  if (performance_test_config.run_config.enable_cpu_mem_arena)
-    session_options.EnableCpuMemArena();
-  else
-    session_options.DisableCpuMemArena();
   if (performance_test_config.run_config.enable_memory_pattern &&
-      performance_test_config.run_config.execution_mode == ExecutionMode::ORT_SEQUENTIAL)
+      performance_test_config.run_config.execution_mode == ExecutionMode::ORT_SEQUENTIAL){
     session_options.EnableMemPattern();
-  else
+  } else {
     session_options.DisableMemPattern();
+  }
+
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
 
   // Set any extra session configuration entries provided by the user via command-line arguments.
@@ -702,182 +237,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       }
     }
   }
-  if (provider_name_ == onnxruntime::kOpenVINOExecutionProvider) {
-#ifdef USE_OPENVINO
-#ifdef _MSC_VER
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    std::unordered_map<std::string, std::string> ov_options;
-    std::istringstream ss(ov_string);
-    std::string token;
-    while (ss >> token) {
-      if (token == "") {
-        continue;
-      }
-      auto pos = token.find("|");
-      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-        ORT_THROW("[ERROR] [OpenVINO] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
-      }
-
-      auto key = token.substr(0, pos);
-      auto value = token.substr(pos + 1);
-
-      if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
-                                                           "GPU.0", "GPU.1", "NPU"};
-        std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
-                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                         "GPU.0_FP16", "GPU.1_FP16"};
-        size_t num_gpus = 10;
-        for (size_t i = 0; i <= num_gpus; i++) {
-          ov_supported_device_types.emplace("GPU." + std::to_string(i));
-        }
-        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
-          ov_options[key] = value;
-        } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
-          ov_options[key] = value;
-        } else if (value.find("HETERO") == 0) {
-          ov_options[key] = value;
-        } else if (value.find("MULTI") == 0) {
-          ov_options[key] = value;
-        } else if (value.find("AUTO") == 0) {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
-              "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
-              " HETERO/MULTI/AUTO options available. \n");
-        }
-      } else if (key == "device_id") {
-        if (value == "CPU" || value == "GPU" || value == "NPU") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
-        }
-      } else if (key == "precision") {
-        auto device_type = ov_options["device_type"];
-        if (device_type.find("GPU") != std::string::npos) {
-          if (value == "") {
-            ov_options[key] = "FP16";
-            continue;
-          } else if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
-            ov_options[key] = value;
-            continue;
-          } else {
-            ORT_THROW(
-                "[ERROR] [OpenVINO] Unsupported inference precision is selected. "
-                "GPU only supported FP32 / FP16. \n");
-          }
-        } else if (device_type.find("NPU") != std::string::npos) {
-          if (value == "" || value == "ACCURACY" || value == "FP16") {
-            ov_options[key] = "FP16";
-            continue;
-          } else {
-            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
-          }
-        } else if (device_type.find("CPU") != std::string::npos) {
-          if (value == "" || value == "ACCURACY" || value == "FP32") {
-            ov_options[key] = "FP32";
-            continue;
-          } else {
-            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
-          }
-        }
-      } else if (key == "enable_opencl_throttling") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_opencl_throttling' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "enable_qdq_optimizer") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "enable_causallm") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] The value for the key 'enable_causallm' should be a boolean i.e. true or false."
-              " Default value is false. This provider option must be used with CausalLM Models viz. LLMs & SLMs only.\n");
-        }
-      } else if (key == "disable_dynamic_shapes") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] The value for the key 'enable_dynamic_shapes' "
-              "should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "num_of_threads") {
-        if (std::stoi(value) <= 0) {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
-        } else {
-          ov_options[key] = value;
-        }
-      } else if (key == "load_config") {
-        auto load_json = [&](std::string filename) -> std::string {
-          std::ifstream input_filestream(filename);
-          if (!input_filestream.is_open()) {
-            ORT_THROW("Passed an invalid JSON config file path \"" + filename + "\".");
-          }
-          nlohmann::json json_config;
-          try {
-            input_filestream >> json_config;
-          } catch (const OnnxRuntimeException& ex) {
-            ORT_THROW("Exception parsing config file \"" + filename + "\".\n" + ex.what());
-          } catch (const std::exception& ex) {
-            throw std::runtime_error("Standard exception for config file \"" + filename + "\".\n" + ex.what());
-          } catch (...) {
-            throw std::runtime_error("Unknown exception for config file \"" + filename + "\".\n");
-          }
-          if (json_config.empty()) {
-            ORT_THROW("Empty JSON content passed \"" + filename + "\".");
-          }
-          return json_config.dump();
-        };
-        ov_options[key] = load_json(value);
-      } else if (key == "model_priority") {
-        ov_options[key] = value;
-      } else if (key == "cache_dir") {
-        ov_options[key] = value;
-      } else if (key == "context") {
-        ov_options[key] = value;
-      } else if (key == "num_streams") {
-        if (std::stoi(value) <= 0 && std::stoi(value) > 8) {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
-        } else {
-          ov_options[key] = value;
-        }
-      } else if (key == "device_memory_name") {
-        device_memory_name_ = std::move(value);
-      } else if (key == "device_luid") {
-        ov_options[key] = value;
-      } else if (key == "reshape_input") {
-        ov_options[key] = value;
-      } else if (key == "layout") {
-        ov_options[key] = value;
-      } else {
-        ORT_THROW(
-            "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
-            " ['device_type', 'device_id', 'num_of_threads', 'load_config', 'cache_dir', 'num_streams', "
-            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer',"
-            " 'enable_causallm', 'reshape_input', 'layout', 'model_priority'] \n");
-      }
-    }
-    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
-#else
-    ORT_THROW("OpenVINO is not supported in this build\n");
-#endif
-  }
 
   if (performance_test_config.run_config.use_extensions) {
     session_options.EnableOrtCustomOps();
@@ -948,6 +307,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
     outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
   }
+
+  fprintf(stdout, "[WinAppSDK] provider_names: %s\n", provider_name_.c_str());
 }
 
 template <typename T>

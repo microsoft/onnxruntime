@@ -1,0 +1,17 @@
+G:/onnxruntime-chrisd/build
+G:/onnxruntime-chrisd/cmake
+G:\onnxruntime-chrisd\build\_deps\abseil_cpp-src
+G:\onnxruntime-chrisd\build\_deps\date-src\include
+G:\onnxruntime-chrisd\build\_deps\eigen3-src
+G:\onnxruntime-chrisd\build\_deps\flatbuffers-src\include
+G:\onnxruntime-chrisd\build\_deps\gsl-src\include
+G:\onnxruntime-chrisd\build\_deps\microsoft_wil-src\include
+G:\onnxruntime-chrisd\build\_deps\mp11-src\include
+G:\onnxruntime-chrisd\build\_deps\nlohmann_json-src\include\
+G:\onnxruntime-chrisd\build\_deps\onnx-build
+G:\onnxruntime-chrisd\build\_deps\onnx-src
+G:\onnxruntime-chrisd\build\_deps\protobuf-src\src
+G:\onnxruntime-chrisd\build\_deps\pytorch_cpuinfo-src\include
+G:\onnxruntime-chrisd\build\_deps\re2-src
+G:\onnxruntime-chrisd\build\_deps\safeint-src
+onnxruntime_external_lib_include_dirs-NOTFOUND
