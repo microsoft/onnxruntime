@@ -416,6 +416,14 @@ class IExecutionProvider {
     return InlinedVector<const Node*>();
   }
 
+  /**
+   * Returns a the underlying OrtEp instance if this IExecutionProvider wraps a plugin EP.
+   * Otherwise, returns a nullptr (default implementation).
+   */
+  virtual const OrtEp* GetOrtEp() const {
+    return nullptr;
+  }
+
  private:
   const std::string type_;
 
