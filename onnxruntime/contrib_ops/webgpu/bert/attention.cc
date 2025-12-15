@@ -4,6 +4,7 @@
 #include "contrib_ops/webgpu/bert/attention.h"
 
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/webgpu/bert/flash_attention.h"
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -735,6 +736,19 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
 
   // Compute Q, K, V from input, weights, and bias
   ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias, &Q, &K, &V));
+
+  // Check if we can use flash attention
+  // For Attention operator, we need to create present_key and present_value tensors for flash attention
+  // even though they are not exposed as outputs
+  TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+                                      parameters.total_sequence_length_, parameters.head_size_});
+  Tensor present_key = context.CreateGPUTensor(input->DataType(), present_kv_shape);
+  Tensor present_value = context.CreateGPUTensor(input->DataType(), present_kv_shape);
+
+  if (CanApplyFlashAttention(nullptr, &present_key, &present_value, parameters, context)) {
+    return ApplyFlashAttention(&Q, &K, &V, attention_bias, output, nullptr, &present_key, nullptr, &present_value,
+                               parameters, context, nullptr);
+  }
 
   // Apply the actual attention computation
   return ApplyAttention(&Q, &K, &V, attention_bias, nullptr, nullptr, output, /* present_key */ nullptr,

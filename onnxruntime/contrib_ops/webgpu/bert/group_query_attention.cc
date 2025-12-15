@@ -245,6 +245,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 scale_,
                                                                 softcap_));
   params.use_smooth_softmax = use_smooth_softmax_;
+  params.rotary_interleaved = rotary_interleaved_;
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
@@ -287,7 +288,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
-    will_use_flash_attention = CanApplyFlashAttention(attention_bias, present_key, present_value, temp_params, context);
+    will_use_flash_attention = CanApplyFlashAttention(nullptr, present_key, present_value, temp_params, context);
   }
 
   if (parameters.is_packed_qkv_ && do_rotary_) {

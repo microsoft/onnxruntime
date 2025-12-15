@@ -152,7 +152,7 @@ void RunTestWrapper() {
   RunTest<T>({}, {});
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
   // _TileMemcpyKernelFromInput, vectorized 4
   RunTest<T>({256, 512}, {3, 1});
 
@@ -263,7 +263,7 @@ TEST(TensorOpTest, TileStringType) { RunTestWrapper<std::string>(); }
 
 TEST(TensorOpTest, TileBoolType) { RunTestWrapperForBool(); }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 TEST(TensorOpTest, TileMLFloat16Type) { RunTestWrapper<MLFloat16>(); }
 #endif
 

@@ -191,13 +191,6 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
 namespace contrib {
-namespace rocm {
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace rocm
-}  // namespace contrib
-
-namespace contrib {
 namespace snpe {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
