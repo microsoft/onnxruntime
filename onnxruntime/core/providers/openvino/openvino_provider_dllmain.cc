@@ -1,5 +1,6 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Intel Corporation.
 // Licensed under the MIT License.
+#ifdef _WIN32
 
 #include <Windows.h>
 #ifdef __GNUC__
@@ -12,11 +13,16 @@
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
-#include "core/session/ort_env.h"
+#include <atomic>
 
+// Reuse the global shutdown indicator (do NOT set it here; that is owned by the core DLL).
 extern std::atomic<bool> g_is_shutting_down;
 
-// dllmain.cc : Defines the entry point for the DLL application.
+// NOTE:
+// This DllMain exists because the OpenVINO provider DLL statically links protobuf independently
+// of the core onnxruntime DLL. The core DLL's DllMain won't clean up this copy.
+// We perform protobuf shutdown on dynamic unload, and (optionally) during process termination
+// when memory leak checking is enabled.
 BOOL APIENTRY DllMain(HMODULE /*hModule*/,
                       DWORD ul_reason_for_call,
                       LPVOID lpvReserved) {
@@ -28,18 +34,18 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
     case DLL_PROCESS_DETACH:
       // Windows API doc says: "When handling DLL_PROCESS_DETACH, a DLL should free resources such as heap memory only if the DLL is being unloaded dynamically"
       if (lpvReserved != nullptr) {
-        g_is_shutting_down = true;
-        // do not do cleanup if process termination scenario
+        // Process termination. Normally skipped for speed/safety,
+        // but in leak-check builds we reclaim protobuf heap.
 #if defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
-        // In leak-check builds we still want protobuf shutdown to avoid flagged leaks.
         ::google::protobuf::ShutdownProtobufLibrary();
 #endif
       } else {
-        // Cleanup protobuf library.
-        // NOTE: it might be too early to do so, as all function local statics and global objects are not destroyed yet.
+        // Dynamic unload: safe to clean up.
         ::google::protobuf::ShutdownProtobufLibrary();
       }
       break;
   }
   return TRUE;
 }
+
+#endif  // defined(_WIN32)
