@@ -122,6 +122,11 @@ stages:
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
+        brew tap wix/brew
+        brew install applesimutils
+      displayName: applesimutils
+
+    - script: |
         gem install securerandom -v 0.3.2 --user-install --force
         gem install drb -v 2.0.6 --user-install --force
         gem install zeitwerk -v 2.6.18 --user-install --force
