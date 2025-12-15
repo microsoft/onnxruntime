@@ -147,7 +147,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(microkernel_src "")
 
   include(${XNNPACK_DIR}/cmake/gen/scalar_microkernels.cmake)
-  include(${XNNPACK_DIR}/cmake/gen/wasm_microkernels.cmake)
   list(APPEND microkernel_src ${PROD_SCALAR_MICROKERNEL_SRCS})
   list(APPEND microkernel_src ${PROD_WASM_MICROKERNEL_SRCS})
 
