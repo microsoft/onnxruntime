@@ -71,8 +71,6 @@ onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_p
 
 if (Python_EXECUTABLE)
   message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
-  message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
-  message(STATUS "Python3_LIBRARIES: ${Python3_LIBRARIES}")
 
   # Use a cached variable so we don't re-run detection on every configure
   if (NOT DEFINED ORT_PYTHON_FREE_THREADED_DETECTED)
