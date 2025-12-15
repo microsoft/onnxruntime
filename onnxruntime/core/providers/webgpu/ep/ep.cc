@@ -86,31 +86,6 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
   return nullptr;
 }
 
-OrtStatus* KernelCreate(void* kernel_create_func_state,
-                        const OrtKernelInfo* info,
-                        OrtKernelImpl** kernel_out) {
-  // try {
-  //   Ort::ConstKernelInfo kernel_info{info};
-  //   FuncManager func_mgr;  // Empty FuncManager for now
-  //   const OpKernelInfo op_kernel_info{info, func_mgr};
-  //   std::unique_ptr<OpKernel> op_kernel;
-  //   Status status = kernel_create_func(func_mgr, op_kernel_info, op_kernel);
-  //   if (!status.IsOK()) {
-  //     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
-  //                                   status.ErrorMessage().c_str());
-  //   }
-  //   *kernel_out = new OrtKernelImpl{std::move(op_kernel)};
-  //   return nullptr;
-  // } catch (const Ort::Exception& ex) {
-  //   Ort::Status status(ex);
-  //   return status.release();
-  // } catch (const std::exception& ex) {
-  //   Ort::Status status(ex.what(), ORT_EP_FAIL);
-  //   return status.release();
-  // }
-  return nullptr;
-}
-
 OrtStatus* ORT_API_CALL Ep::GetKernelRegistryImpl(
     _In_ OrtEp* this_ptr,
     _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry) noexcept {
@@ -123,12 +98,6 @@ OrtStatus* ORT_API_CALL Ep::GetKernelRegistryImpl(
     const char* ep_name = ep->factory_.GetName(&ep->factory_);
 
     auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep->impl_);
-
-    // RETURN_IF_ERROR(ort_registry.AddKernel(
-    //     built_kernel_def,
-    //     KernelCreate,
-    //     nullptr  // No state
-    //     ));
 
     *kernel_registry = *onnxruntime::webgpu::GetKernelRegistry(webgpu_ep.IsGraphCaptureEnabled()).get();
     return nullptr;
