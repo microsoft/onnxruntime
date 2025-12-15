@@ -119,6 +119,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool share_ep_contexts_ = false;
   bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
+  bool enable_file_mapped_weights_ = true;
 #if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif

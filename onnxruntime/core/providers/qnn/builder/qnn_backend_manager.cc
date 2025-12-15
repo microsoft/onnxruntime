@@ -29,6 +29,10 @@
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#include "core/providers/qnn/builder/qnn_windows_file_mapper.h"
+#endif
+
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
 
@@ -770,22 +774,54 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
   return Status::OK();
 }
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+// callback required for allocating file mapping resources
+static Qnn_ErrorHandle_t DmaDataProvider(Qnn_ContextBinaryDataRequest_t request,
+                                         Qnn_ContextBinaryDmaDataResponse_t* response, void* notify_param) {
+  if (notify_param == nullptr) {
+    LOGS_DEFAULT(ERROR) << "DmaProvider: notify_param is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+  auto pair = reinterpret_cast<std::pair<FileMappingCallbackInterface*, void*>*>(notify_param);
+
+  if (pair->first == nullptr) {
+    LOGS_DEFAULT(ERROR) << "DmaProvider: file mapper is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  };
+
+  return pair->first->MapDmaData(request, response, pair->second);
+}
+
+// callback required for releasing file mapping resources
+static Qnn_ErrorHandle_t DmaDataRelease(Qnn_ContextBinaryDmaDataMem_t data_mem, void* notify_param) {
+  if (notify_param == nullptr) {
+    LOGS_DEFAULT(ERROR) << "DmaRelease: notify_param is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  auto pair = reinterpret_cast<std::pair<FileMappingCallbackInterface*, void*>*>(notify_param);
+
+  if (pair->first == nullptr) {
+    LOGS_DEFAULT(ERROR) << "DmaRelease: file mapper is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  };
+
+  return pair->first->ReleaseDmaData(data_mem, pair->second);
+}
+#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED
+
 // callback required to add context handles to class list
 // when using contextCreateFromBinaryListAsync()
-void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
-                                Qnn_GraphHandle_t graph,
-                                const char* graphName,
-                                QnnContext_createFromBinaryAsyncNotifyType_t notifyType,
-                                void* notifyParam,
-                                Qnn_ErrorHandle_t status) {
+static void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
+                                       Qnn_GraphHandle_t /* graph */,
+                                       const char* /* graph_name */,
+                                       QnnContext_createFromBinaryAsyncNotifyType_t /* notify_type */,
+                                       void* notify_param,
+                                       Qnn_ErrorHandle_t /* status */) {
   auto qnn_backend_manager = SharedContext::GetInstance().GetSharedQnnBackendManager();
 
   if (context) {
-    qnn_backend_manager->ProcessContextFromBinListAsync(context, notifyParam);
-  }
-
-  if (nullptr == graphName || graph || notifyType || status) {
-    // Avoid compilation unused var warning error
+    qnn_backend_manager->ProcessContextFromBinListAsync(context, notify_param);
   }
 }
 
@@ -807,6 +843,32 @@ void QnnBackendManager::ProcessContextFromBinListAsync(Qnn_ContextHandle_t conte
   if (s != Status::OK()) {
     LOGS(*logger_, WARNING) << "Unable to add context " << context;
   }
+}
+
+Status QnnBackendManager::ReadContextBinIfValid(const std::string& context_bin_filepath,
+                                                BufferInfo_t& buffer_info,
+                                                bool read_file_contents) {
+  std::ifstream cache_file(context_bin_filepath.c_str(), std::ifstream::binary);
+  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to retrieve context binary from: ", context_bin_filepath);
+
+  cache_file.seekg(0, cache_file.end);
+  size_t buffer_size = static_cast<size_t>(cache_file.tellg());
+  ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+
+  std::unique_ptr<char[]> buffer;
+  if (read_file_contents) {
+    cache_file.seekg(0, cache_file.beg);
+    buffer = std::make_unique<char[]>(buffer_size);
+    ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
+
+    const auto& read_result = cache_file.read(buffer.get(), buffer_size);
+    ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
+  }
+
+  buffer_info.data = std::move(buffer);
+  buffer_info.size = buffer_size;
+
+  return Status::OK();
 }
 
 Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
@@ -845,6 +907,26 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
 #endif
                                           nullptr};
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+  if (file_mapped_weights_enabled_ && file_mapper_) {
+    // Retry logic -- if context creation failed with file mapped weights, then retry with feature disabled
+    if (CreateContextFromListAsyncV2(configs, context_bin_map) != Status::OK()) {
+      LOGS(*logger_, WARNING) << "Failed to create context with file mapping enabled. Retrying with feature disabled.";
+
+      file_mapped_weights_enabled_ = false;
+      // Destruction of file_mapper_ to prevent resource leaks
+      file_mapper_.reset();
+    } else {
+      return Status::OK();
+    }
+  }
+#endif
+  return CreateContextFromListAsyncV1(configs, context_bin_map);
+}
+
+Status QnnBackendManager::CreateContextFromListAsyncV1(const QnnContext_Config_t** configs,
+                                                       std::unordered_map<std::string,
+                                                                          std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::vector<QnnContext_Params_t> context_params_list;
   std::vector<QnnContext_ParamsV1_t> context_paramsv1_list;
   std::vector<const QnnContext_Params_t*> context_params_ptr_list;
@@ -856,20 +938,12 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
   for (auto& it : context_bin_map) {
     auto context_bin_filepath = it.first;
 
-    std::ifstream cache_file(context_bin_filepath.c_str(), std::ifstream::binary);
-    ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to retrieve context binary from: ", context_bin_filepath);
+    BufferInfo_t buffer_info;
+    ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer_info, true));
 
-    cache_file.seekg(0, cache_file.end);
-    size_t buffer_size = static_cast<size_t>(cache_file.tellg());
-    ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+    std::unique_ptr<char[]> buffer = std::move(buffer_info.data);
+    size_t buffer_size = buffer_info.size;
 
-    cache_file.seekg(0, cache_file.beg);
-    std::unique_ptr<char[]> buffer = std::make_unique<char[]>(buffer_size);
-    ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
-    const auto& read_result = cache_file.read(buffer.get(), buffer_size);
-    ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
-
-    cache_file.close();
     QnnContext_ParamsV1_t context_params_v1 = {nullptr,
                                                buffer.get(),
                                                buffer_size,
@@ -900,6 +974,88 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
   return Status::OK();
 }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+Status QnnBackendManager::CreateContextFromListAsyncV2(const QnnContext_Config_t** configs,
+                                                       std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
+  std::vector<QnnContext_Params_t> context_params_list;
+  std::vector<QnnContext_ParamsV2_t> context_paramsv2_list;
+  std::vector<Qnn_ContextBinaryCallback_t> context_callbacks_list;
+  std::vector<const QnnContext_Params_t*> context_params_ptr_list;
+
+  std::vector<std::pair<FileMappingCallbackInterface*, void*>> file_mapping_notify_param_list;
+  std::vector<void*> buffer_list;
+
+  context_params_list.reserve(context_bin_map.size());
+  context_callbacks_list.reserve(context_bin_map.size());
+  context_params_ptr_list.reserve(context_bin_map.size() + 1);
+  file_mapping_notify_param_list.reserve(context_bin_map.size());
+
+  for (auto& it : context_bin_map) {
+    auto context_bin_filepath = it.first;
+
+    BufferInfo_t buffer_info;
+    ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer_info, false));
+
+    size_t buffer_size = buffer_info.size;
+    ORT_RETURN_IF(buffer_size == 0, "Context bin has a size of 0 bytes: ", context_bin_filepath);
+
+    void* buffer = nullptr;
+    void* file_mapping_handle = nullptr;
+    ORT_RETURN_IF_ERROR(file_mapper_->MapContextBin(context_bin_filepath, &file_mapping_handle));
+    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappingPointer(context_bin_filepath, &buffer));
+
+    auto& notify_param = file_mapping_notify_params_.emplace_back(file_mapper_.get(),
+                                                                  file_mapping_handle);
+
+    Qnn_ContextBinaryCallback_t context_file_map_callbacks;
+    context_file_map_callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
+    context_file_map_callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
+    context_file_map_callbacks.dmaBufferCallback.v1.dataProvide = DmaDataProvider;
+    context_file_map_callbacks.dmaBufferCallback.v1.dataRelease = DmaDataRelease;
+    context_file_map_callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(&notify_param);
+
+    // Callbacks require QnnContext_ParamsV2_t which is new to QNN API 2.31
+    QnnContext_ParamsV2_t context_params_v2 = {nullptr,
+                                               buffer,
+                                               buffer_size,
+                                               nullptr,
+                                               ContextCreateAsyncCallback,
+                                               it.second.get(),
+                                               &context_file_map_callbacks};
+
+    QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_2,
+                                          {}};
+    context_params.v2 = &context_params_v2;
+
+    buffer_list.push_back(buffer);
+    context_params_list.push_back(std::move(context_params));
+    context_callbacks_list.push_back(std::move(context_file_map_callbacks));
+    context_paramsv2_list.push_back(std::move(context_params_v2));
+    context_params_ptr_list.push_back(&(context_params_list.back()));
+    file_mapping_notify_param_list.push_back(std::move(notify_param));
+  }
+  context_params_ptr_list.push_back(nullptr);
+  auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
+                                                                device_handle_,
+                                                                context_params_ptr_list.data(),
+                                                                configs,
+                                                                nullptr);
+  file_mapping_notify_param_list.clear();
+  context_params_ptr_list.clear();
+  context_callbacks_list.clear();
+  context_paramsv2_list.clear();
+  context_params_list.clear();
+
+  for (auto& buffer : buffer_list) {
+    ORT_RETURN_IF_ERROR(file_mapper_->FreeContextBinMappingPointer(buffer));
+  }
+  buffer_list.clear();
+
+  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
+  return Status::OK();
+}
+#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED
 
 Status QnnBackendManager::SetContextPriority(ContextPriority context_priority) {
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
@@ -1098,6 +1254,7 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
 }
 
 Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                                         const std::string& context_bin_filepath,
                                                          std::string node_name,
                                                          QnnModelLookupTable& qnn_models,
                                                          int64_t max_spill_fill_size) {
@@ -1106,6 +1263,28 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                 nullptr == qnn_sys_interface_.systemContextFree;
   ORT_RETURN_IF(result, "Failed to get valid function pointer.");
 
+  void* bin_buffer = nullptr;
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+  void* file_mapping_handle;
+  if (buffer == nullptr) {
+    ORT_RETURN_IF(!file_mapped_weights_enabled_, "Attempting to load QNN context from buffer but buffer is null");
+    ORT_RETURN_IF(!file_mapper_, "Attemping to use File Mapping feature but file_mapper_ is uninitialized");
+
+    BufferInfo_t buffer_info;
+    ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer_info, false));
+    buffer_length = buffer_info.size;
+
+    ORT_RETURN_IF(buffer_length == 0, "Context bin has a size of 0 bytes", context_bin_filepath);
+    ORT_RETURN_IF_ERROR(file_mapper_->MapContextBin(context_bin_filepath, &file_mapping_handle));
+    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappingPointer(context_bin_filepath, &bin_buffer));
+
+  } else {
+    bin_buffer = static_cast<void*>(buffer);
+  }
+#else
+  bin_buffer = static_cast<void*>(buffer);
+#endif
+
   QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
@@ -1113,7 +1292,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
-                                                     static_cast<void*>(buffer),
+                                                     bin_buffer,
                                                      buffer_length,
                                                      &binary_info,
                                                      &binary_info_size);
@@ -1188,6 +1367,25 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                   "Invalid function pointer for contextCreateFromBinary.");
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+    Qnn_ContextBinaryCallback_t callbacks;
+    if (file_mapped_weights_enabled_ && file_mapper_) {
+      ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinaryWithCallback,
+                    "Invalid function pointer for contextCreateFromBinaryWithCallback.");
+
+      auto& notify_param = file_mapping_notify_params_.emplace_back(file_mapper_.get(),
+                                                                    file_mapping_handle);
+
+      callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
+      callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
+      callbacks.dmaBufferCallback.v1.dataProvide = DmaDataProvider;
+      callbacks.dmaBufferCallback.v1.dataRelease = DmaDataRelease;
+      callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(&notify_param);
+    }
+#else
+  ORT_UNUSED_PARAMETER(context_bin_filepath);
+#endif
+
     qnn::profile::ProfilingInfo profiling_info;
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     if (ProfilingEnabled()) {
@@ -1195,13 +1393,47 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     }
 #endif
 
-    rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
-                                                device_handle_,
-                                                context_configs,
-                                                static_cast<void*>(buffer),
-                                                buffer_length,
-                                                &context,
-                                                profile_backend_handle_);
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+    std::unique_ptr<char[]> backup_buffer;
+    if (file_mapped_weights_enabled_ && file_mapper_) {
+      rt = qnn_interface_.contextCreateFromBinaryWithCallback(backend_handle_,
+                                                              device_handle_,
+                                                              context_configs,
+                                                              &callbacks,
+                                                              bin_buffer,
+                                                              buffer_length,
+                                                              &context,
+                                                              profile_backend_handle_,
+                                                              NULL);
+
+      ORT_RETURN_IF_ERROR(file_mapper_->FreeContextBinMappingPointer(bin_buffer));
+
+      if (rt != QNN_SUCCESS) {
+        LOGS(*logger_, WARNING) << "Failed to create context with file mapping enabled. Retrying with feature disabled.";
+
+        file_mapped_weights_enabled_ = false;
+        // Destruction of file_mapper_ to prevent resource leaks
+        file_mapper_.reset();
+
+        // Read context bin from file since file mapping has failed
+        BufferInfo_t buffer_info;
+        ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer_info, true));
+        backup_buffer = std::move(buffer_info.data);
+
+        bin_buffer = static_cast<void*>(backup_buffer.get());
+      }
+    }
+#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED
+
+    if (!file_mapped_weights_enabled_ || rt != QNN_SUCCESS) {
+      rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
+                                                  device_handle_,
+                                                  context_configs,
+                                                  bin_buffer,
+                                                  buffer_length,
+                                                  &context,
+                                                  profile_backend_handle_);
+    }
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     if (ProfilingEnabled()) {
@@ -1249,6 +1481,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool need_load_system_lib,
                                        bool share_ep_contexts,
                                        bool enable_vtcm_backup_buffer_sharing,
+                                       bool enable_file_mapped_weights,
                                        std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
@@ -1280,6 +1513,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     return Status::OK();
   }
 
+  file_mapped_weights_enabled_ = enable_file_mapped_weights;
   vtcm_backup_buffer_sharing_enabled_ = enable_vtcm_backup_buffer_sharing;
 
   Status status = Status::OK();
@@ -1334,6 +1568,12 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     ORT_RETURN_IF_ERROR(LoadOpPackage());
     LOGS(logger, VERBOSE) << "LoadOpPackage succeed.";
   }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+  if (file_mapped_weights_enabled_ && !file_mapper_ && GetQnnBackendType() == QnnBackendType::HTP) {
+    file_mapper_ = std::make_shared<WindowsFileMapper>(logger);
+  }
+#endif
 
   bool enable_htp_weight_sharing = false;
   if (share_ep_contexts && !load_from_cached_context) {
@@ -1529,7 +1769,6 @@ void QnnBackendManager::ReleaseResources() {
   }
 
   backend_setup_completed_ = false;
-
   return;
 }
 
