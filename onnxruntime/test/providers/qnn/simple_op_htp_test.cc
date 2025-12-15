@@ -128,6 +128,15 @@ TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
                  ExpectedEPNodeAssignment::All);
 }
 
+TEST_F(QnnCPUBackendTests, Concat_EmptyInput) {
+  RunOpTestOnCPU("Concat",
+                 {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                  TestInputDef<float>({1, 0, 4, 4}, false, {})},
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                 13,
+                 ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model

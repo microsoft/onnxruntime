@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// BiasDropout kernel is only implemented for CUDA/ROCM
-#if (defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)) || defined(USE_ROCM)
+// BiasDropout kernel is only implemented for CUDA
+#if (defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL))
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4389)
@@ -17,23 +17,14 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#ifdef USE_ROCM
-#include "core/providers/rocm/shared_inc/rocm_utils.h"
-#else
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#endif
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
-#ifdef USE_ROCM
-using onnxruntime::rocm::BitmaskElementType;
-using onnxruntime::rocm::kNumBitsPerBitmaskElement;
-#else
 using onnxruntime::cuda::BitmaskElementType;
 using onnxruntime::cuda::kNumBitsPerBitmaskElement;
-#endif
 using namespace onnxruntime::test;
 
 enum TrainingMode { TrainingFalse,
@@ -182,8 +173,6 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   std::vector<std::unique_ptr<IExecutionProvider>> t_eps;
 #ifdef USE_CUDA
   t_eps.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  t_eps.emplace_back(DefaultRocmExecutionProvider());
 #endif
   t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &t_eps);
 
@@ -204,8 +193,6 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   std::vector<std::unique_ptr<IExecutionProvider>> t_bitmask_eps;
 #ifdef USE_CUDA
   t_bitmask_eps.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  t_bitmask_eps.emplace_back(DefaultRocmExecutionProvider());
 #endif
   t_bitmask.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &t_bitmask_eps);
 }

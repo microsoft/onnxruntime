@@ -53,14 +53,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kRocmExecutionProvider,
-#ifdef USE_ROCM
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kOpenVINOExecutionProvider,
 #ifdef USE_OPENVINO
             true,

@@ -15,26 +15,25 @@ namespace {
 
 void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
-                                bool has_bias,
+                                const ShaderVariableHelper* c,
                                 int c_components,
                                 int output_components,
                                 bool c_is_scalar) {
   shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));\n";
 
-  if (has_bias) {
-    const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
+  if (c != nullptr) {
     shader.AdditionalImplementation() << "    value += output_element_t(uniforms.beta) * ";
     // We can be allowed to use broadcasting only when both components are equal.
     // There is only one case for c_components_ is not equal output_components.
     // I.g. the former is `1` and the latter is `4`.
-    // That means the shape of C is either {M,1} or {1,1}
+    // That means the shape of `c` is either {M,1} or {1,1}
     if (c_components == output_components) {
       shader.AdditionalImplementation() << "output_value_t("
-                                        << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
+                                        << c->GetByOffset(c->BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
     } else if (c_is_scalar) {
-      shader.AdditionalImplementation() << "output_value_t(C[0]);\n";
+      shader.AdditionalImplementation() << "output_value_t(" << c->GetByOffset("0") << ");\n";
     } else {
-      shader.AdditionalImplementation() << "output_value_t(C[row]);\n";
+      shader.AdditionalImplementation() << "output_value_t(" << c->GetByOffset("row") << ");\n";
     }
   }
   shader.AdditionalImplementation() << output.SetByIndices("coords", "value") << "\n";
@@ -42,12 +41,12 @@ void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
 
 void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                               const ShaderVariableHelper& output,
-                              bool has_bias,
+                              const ShaderVariableHelper* bias,
                               std::string activation_snippet,
                               bool is_channels_last) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
-  if (has_bias) {
-    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? "bias[colIn]" : "bias[row]") << ");\n";
+  if (bias != nullptr) {
+    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? bias->GetByOffset("colIn") : bias->GetByOffset("row")) << ");\n";
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
                                     << output.SetByIndices("coords", "value") << "\n";
@@ -55,6 +54,7 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
 
 void HandleMatMulWithSplitK(
     ShaderHelper& shader,
+    const ShaderVariableHelper& output,
     ProgramVariableDataType output_variable_type) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
 
@@ -76,16 +76,8 @@ void HandleMatMulWithSplitK(
     let offset0 = i2o_output(coords) * 4u;
     for (var i = 0u; i < 4u; i++) {
         let offset = offset0 + i;
-        while (true) {
-            let old_output_i32 = atomicLoad(&output[offset]);
-            let old_output_f32 = bitcast<f32>(old_output_i32);
-            let new_output_f32 = old_output_f32 + value[i];
-            let new_output_i32 = bitcast<i32>(new_output_f32);
-            let output_compare_exchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
-            if (output_compare_exchange.old_value == old_output_i32) {
-                break;
-            }
-        }
+)";
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "f32", "value[i]") << R"(
     }
 )";
       break;
@@ -98,16 +90,8 @@ void HandleMatMulWithSplitK(
     vec2h_values[1] = value.zw;
     for (var i = 0u; i < 2u; i++) {
         let offset = offset0 + i;
-        while (true) {
-            let old_output_i32 = atomicLoad(&output[offset]);
-            let old_output_vec2h = bitcast<vec2h>(old_output_i32);
-            let new_output_vec2h = old_output_vec2h + vec2h_values[i];
-            let new_output_i32 = bitcast<i32>(new_output_vec2h);
-            let output_compare_exchange = atomicCompareExchangeWeak(&output[offset], old_output_i32, new_output_i32);
-            if (output_compare_exchange.old_value == old_output_i32) {
-                break;
-            }
-        }
+)";
+      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "vec2h", "vec2h_values[i]") << R"(
     }
 )";
       break;
@@ -197,7 +181,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
 
 void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper& output,
-                         bool has_bias,
+                         const ShaderVariableHelper* bias,
                          bool is_gemm,
                          int c_components,
                          int output_components,
@@ -217,16 +201,16 @@ void MatMulWriteFnSource(ShaderHelper& shader,
   if (use_split_k) {
     // Set output when MatMul is performed with Split-K.
     // When Split-K is used in MatMul, the bias will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
-    // instead of here, so `has_bias` and `is_channels_last` is not used for Split-K. Note that we
-    // still need to handle `has_bias` (and `is_channels_last` in the future) in
+    // instead of here, so `bias` and `is_channels_last` is not used for Split-K. Note that we
+    // still need to handle `bias` (and `is_channels_last` in the future) in
     // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
-    ORT_ENFORCE(!has_bias, "Bias is not supported in MatMulProgram when Split-K is enabled.");
+    ORT_ENFORCE(bias == nullptr, "Bias is not supported in MatMulProgram when Split-K is enabled.");
     ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled.");
-    HandleMatMulWithSplitK(shader, output_variable_type);
+    HandleMatMulWithSplitK(shader, output, output_variable_type);
   } else if (is_gemm) {
-    HandleMaybeHaveBiasForGEMM(shader, output, has_bias, c_components, output_components, c_is_scalar);
+    HandleMaybeHaveBiasForGEMM(shader, output, bias, c_components, output_components, c_is_scalar);
   } else {
-    HandleMaybeBiasForMatMul(shader, output, has_bias, activation_snippet, is_channels_last);
+    HandleMaybeBiasForMatMul(shader, output, bias, activation_snippet, is_channels_last);
   }
 
   shader.AdditionalImplementation()

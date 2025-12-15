@@ -30,7 +30,12 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_));
   }
-  MatMulWriteFnSource(shader, output, need_handle_bias_, true, c_components_, output_components_, c_is_scalar_);
+
+  const ShaderVariableHelper* c = nullptr;
+  if (need_handle_bias_) {
+    c = &shader.AddInput("c", ShaderUsage::UseUniform);
+  }
+  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, output_components_, c_is_scalar_);
 
   return Status::OK();
 }

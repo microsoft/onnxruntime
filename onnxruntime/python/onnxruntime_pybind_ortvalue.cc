@@ -47,13 +47,7 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
             "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
       } else if (strcmp(GetDeviceName(device), HIP) == 0) {
-#if USE_ROCM
-        if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-          throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-        }
-
-        allocator = GetRocmAllocator(device.Id());
-#elif USE_MIGRAPHX
+#if USE_MIGRAPHX
         allocator = GetMIGraphXAllocator(device.Id());
 #else
         throw std::runtime_error(
@@ -123,20 +117,6 @@ void addOrtValueMethods(pybind11::module& m) {
             // in CUDA
             CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
                                  true, false, CpuToCudaMemCpy);
-          } else
-#endif
-#ifdef USE_ROCM
-              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
-            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-            }
-
-            // InputDeflist is null because OrtValue creation is not tied to a specific model
-            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors
-            // in ROCM
-            CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
-                                 true, false, CpuToRocmMemCpy);
           } else
 #endif
 #if USE_MIGRAPHX
@@ -210,19 +190,6 @@ void addOrtValueMethods(pybind11::module& m) {
                 values_type,
                 *(ml_value->GetMutable<Tensor>()),
                 CpuToCudaMemCpy);
-          } else
-#endif
-#if USE_ROCM
-              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
-            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-            }
-
-            onnxruntime::python::CopyDataToTensor(
-                py_values,
-                values_type,
-                *(ml_value->GetMutable<Tensor>()),
-                CpuToRocmMemCpy);
           } else
 #endif
 #if USE_MIGRAPHX

@@ -97,6 +97,15 @@ struct OrtVitisAIEpAPI {
   void (*profiler_collect)(
       std::vector<EventInfo>& api_events,
       std::vector<EventInfo>& kernel_events);
+  const char* (*get_compiled_model_compatibility_info)(
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* eps,
+      const void* graph_viewer) = nullptr;
+  int (*validate_compiled_model_compatibility_info)(
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* eps,
+      const char* compatibility_info,
+      const void* const* devices,
+      size_t num_devices,
+      int* model_compatibility) = nullptr;
   void (*deinitialize_onnxruntime_vitisai_ep)();
   void Ensure() {
     if (handle_)
@@ -137,6 +146,8 @@ struct OrtVitisAIEpAPI {
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "get_compiled_model_compatibility_info", (void**)&get_compiled_model_compatibility_info);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "validate_compiled_model_compatibility_info", (void**)&validate_compiled_model_compatibility_info);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_set_ep_dynamic_options", (void**)&vitisai_ep_set_ep_dynamic_options));
@@ -177,6 +188,42 @@ void profiler_collect(
   if (s_library_vitisaiep.profiler_collect) {
     s_library_vitisaiep.profiler_collect(api_events, kernel_events);
   }
+}
+
+std::string get_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const onnxruntime::GraphViewer& graph_viewer) {
+  std::string result_str;
+  if (s_library_vitisaiep.get_compiled_model_compatibility_info) {
+    const char* result = s_library_vitisaiep.get_compiled_model_compatibility_info(&eps, &graph_viewer);
+    if (result && result[0] != '\0') {
+      result_str = result;
+    }
+  }
+  return result_str;
+}
+
+Status validate_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const std::string& compatibility_info,
+    OrtCompiledModelCompatibility& model_compatibility) {
+  if (s_library_vitisaiep.validate_compiled_model_compatibility_info) {
+    // Call with nullptr devices since ORT provider doesn't have device information
+    int ret_model_compatibility = 0;
+    int status = s_library_vitisaiep.validate_compiled_model_compatibility_info(
+        &eps,
+        compatibility_info.c_str(),
+        nullptr,  // devices - not available
+        0,        // num_devices
+        &ret_model_compatibility);
+    if (status == 0) {
+      model_compatibility = static_cast<OrtCompiledModelCompatibility>(ret_model_compatibility);
+      return Status::OK();
+    }
+  }
+  // Default to NOT_APPLICABLE
+  model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  return Status::OK();
 }
 
 void change_status_with_error(void* status_ptr, int error_code, const char* error_msg) {
@@ -610,4 +657,54 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   } else {
     return &the_global_api;
   }
+}
+
+struct ExternalEpLibaray {
+  ExternalEpLibaray(const std::string& libray_name) : libray_name_{libray_name} {
+    Ensure();
+  }
+  onnxruntime::Provider* (*get_provider_api)();
+  void (*create_ep_factories)(void*, const OrtApiBase*, void*, OrtEpFactory**, size_t, size_t*);
+  void (*set_session_option)(OrtSessionOptions*);
+
+  void Ensure() {
+    if (handle_)
+      return;
+    auto& env = Provider_GetHost()->Env__Default();
+    auto library_filename = PathString(LIBRARY_PREFIX) + PathString(libray_name_.begin(), libray_name_.end()) + LIBRARY_EXTENSION;
+    auto full_path = env.GetRuntimePath() + library_filename;
+    ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "GetProvider", (void**)&get_provider_api));
+  }
+
+  void Clear() {
+    if (handle_) {
+      auto& env = Provider_GetHost()->Env__Default();
+      auto status = env.UnloadDynamicLibrary(handle_);
+      vai_assert(status.IsOK(), status.ErrorMessage());
+      handle_ = nullptr;
+    }
+  }
+
+ private:
+  std::string libray_name_;
+  void* handle_{};
+};
+static std::unordered_map<std::string, std::unique_ptr<ExternalEpLibaray>> g_external_ep_libaries;
+
+std::unique_ptr<onnxruntime::IExecutionProvider>
+CreateExecutionProviderFromAnotherEp(const std::string& lib, const OrtSessionOptions& session_options,
+                                     std::unordered_map<std::string, std::string>& provider_options) {
+  auto it = g_external_ep_libaries.find(lib);
+  if (it == g_external_ep_libaries.end()) {
+    it = g_external_ep_libaries.emplace(lib, std::make_unique<ExternalEpLibaray>(lib)).first;
+  }
+  auto ep_lib = it->second.get();
+  auto get_provider_func = ep_lib->get_provider_api;
+  auto provider = get_provider_func();
+  std::unique_ptr<onnxruntime::IExecutionProvider> ret;
+  provider->Initialize();
+  std::ignore = provider->CreateIExecutionProvider(nullptr, nullptr, 0, const_cast<onnxruntime::ProviderOptions&>(provider_options), session_options, *((OrtLogger*)nullptr), ret);
+
+  return ret;
 }
