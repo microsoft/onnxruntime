@@ -165,7 +165,9 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
   // Update end position for causal.
   int end = valid_end;
   if (causal) {
-    const int end_causal = total_sequence_length - sequence_length + s + 1;
+    // For causal attention per ONNX spec: query position i attends to key positions [0, i].
+    // This creates a lower triangular attention mask.
+    const int end_causal = s + 1;
     if (end_causal < end) {
       end = end_causal;
     }
@@ -241,7 +243,9 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
   // Update end position for causal.
   int end = valid_end;
   if (causal) {
-    int end_causal = total_sequence_length - sequence_length + s + 1;
+    // For causal attention per ONNX spec: query position i attends to key positions [0, i].
+    // This creates a lower triangular attention mask.
+    int end_causal = s + 1;
     if (end_causal < end) {
       end = end_causal;
     }
@@ -333,8 +337,9 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
                            : float(input[index]);
     float thread_data = input_data * rsqrt_head_size;
     if (causal) {
-      int from_index = total_sequence_length - sequence_length + s;  // offset in total sequence length.
-      if (i > from_index) {
+      // For causal attention per ONNX spec: query position i attends to key positions [0, i].
+      // This creates a lower triangular attention mask.
+      if (i > s) {
         thread_data = -CUDART_INF_F;
       }
     }
@@ -439,8 +444,9 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
     thread_data = float(input[index]) * rsqrt_head_size;
 
     if (causal) {
-      int from_index = total_sequence_length - sequence_length + s;  // offset in total sequence length.
-      if (threadIdx.x > from_index) {
+      // For causal attention per ONNX spec: query position i attends to key positions [0, i].
+      // This creates a lower triangular attention mask.
+      if (threadIdx.x > s) {
         thread_data = -CUDART_INF_F;
       }
     }
